@@ -4,7 +4,7 @@ Scan physical cards with a webcam, read the card name and the printing details
 from the card face, resolve them against the local MTGJSON database, and import
 the confirmed results into inventory.
 
-Status: **planning complete, not started.**
+Status: **Phase 0 and Phase 1 complete.**
 
 ---
 
@@ -116,7 +116,7 @@ until confirmed.
 Ordered so the headlessly-testable work comes first and the camera is never a
 prerequisite for progress.
 
-### Phase 0 — Secure context (infrastructure, no repo change)
+### Phase 0 — Secure context (infrastructure, no repo change) — done
 
 Stand up `cloudflared` pointing at the app, add a Cloudflare Access policy, keep
 the LAN URL for non-camera use.
@@ -124,7 +124,7 @@ the LAN URL for non-camera use.
 *Done when:* `navigator.mediaDevices.getUserMedia` is defined at the tunnel
 hostname, and the app is not reachable publicly without passing Access.
 
-### Phase 1 — Resolution layer
+### Phase 1 — Resolution layer — done
 
 Collector-number normalisation; set+collector lookup without a name; migration
 adding a composite index on `(set_code, collector_number)` (only `set_code` is
@@ -132,6 +132,12 @@ indexed today); resolve endpoint returning ranked candidates with confidence.
 
 *Done when:* candidates can be fetched with `curl` for modern, old, DFC and
 promo cards, with sensible ranking and no camera involved.
+
+Delivered as `src/services/scanService.js` (normalisation, the nameless
+set+collector lookup, fuzzy name recovery and confidence ranking),
+`src/routes/scan.js` (`GET /api/scan/resolve` for one reading,
+`POST /api/scan/resolve` for a batch) and migration
+`022-add-set-collector-index`.
 
 ### Phase 2 — Capture UI
 

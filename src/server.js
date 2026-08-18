@@ -15,6 +15,7 @@ import cardRoutes from './routes/cards.js';
 import deckRoutes from './routes/decks.js';
 import setRoutes from './routes/sets.js';
 import adminRoutes from './routes/admin.js';
+import scanRoutes from './routes/scan.js';
 import shoppingRoutes from './routes/shopping.js';
 import inventoryRoutes from './routes/inventory.js';
 import priceMonitoringRoutes from './routes/priceMonitoring.js';
@@ -67,6 +68,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/price-monitoring', priceMonitoringRoutes);
 app.use('/api/manapool', manapoolRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/scan', scanRoutes);
 
 // SPA catch-all route (MUST be last)
 if (process.env.NODE_ENV === 'production') {
