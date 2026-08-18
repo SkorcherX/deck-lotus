@@ -34,6 +34,13 @@ jobs:
       packages: write
 
     steps:
+      # GHCR rejects uppercase repository names. github.repository preserves the
+      # owner's casing, which breaks any fork whose owner has capitals, so
+      # normalise it here — metadata-action lowercases its own inputs, but the
+      # raw env var is used directly by the build outputs and manifest steps.
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
       - name: Prepare platform name
         run: echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
         env:
@@ -99,6 +106,10 @@ jobs:
       packages: write
 
     steps:
+      # See the note in the build job — same lowercase requirement applies here.
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
