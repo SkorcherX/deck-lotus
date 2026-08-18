@@ -991,15 +991,28 @@
                     <div class="scan-column">
                         <div id="scan-stage" class="scan-stage hidden">
                             <video id="scan-video" playsinline muted></video>
-                            <div id="scan-guide" class="scan-guide">
-                                <div id="scan-region-title" class="scan-region scan-region-title">
-                                    <span>title</span>
-                                </div>
-                                <div id="scan-region-collector" class="scan-region scan-region-collector">
-                                    <span>collector</span>
-                                </div>
+                            <div id="scan-overlay" class="scan-overlay">
+                                <svg
+                                    class="scan-overlay-svg"
+                                    viewBox="0 0 100 100"
+                                    preserveAspectRatio="none"
+                                >
+                                    <polygon id="scan-quad-card" class="scan-quad-card" points="" />
+                                    <polygon id="scan-quad-title" class="scan-quad-region" points="" />
+                                    <polygon id="scan-quad-collector" class="scan-quad-region" points="" />
+                                </svg>
+                                <div id="scan-handle-0" class="scan-handle" title="Top-left corner"></div>
+                                <div id="scan-handle-1" class="scan-handle" title="Top-right corner"></div>
+                                <div id="scan-handle-2" class="scan-handle" title="Bottom-right corner"></div>
+                                <div id="scan-handle-3" class="scan-handle" title="Bottom-left corner"></div>
                             </div>
                         </div>
+
+                        <p class="scan-hint">
+                            Lay the card down, tilt the lid at it, then drag the four
+                            corners onto the card once. Captures are straightened back
+                            to a true card shape before anything is read.
+                        </p>
 
                         <div class="scan-metrics">
                             <span id="scan-chip-stable" class="scan-chip">Still &mdash;</span>
@@ -1028,6 +1041,21 @@
                             </button>
                         </div>
 
+                        <div class="scan-controls">
+                            <button id="scan-mark-empty" class="btn btn-secondary">
+                                <i class="ph ph-crosshair btn-icon"></i>
+                                <span class="btn-text">Mark empty desk</span>
+                            </button>
+                            <button id="scan-clear-reference" class="btn btn-secondary hidden">
+                                <i class="ph ph-x btn-icon"></i>
+                                <span class="btn-text">Forget empty desk</span>
+                            </button>
+                            <button id="scan-reset-guide" class="btn btn-secondary">
+                                <i class="ph ph-frame-corners btn-icon"></i>
+                                <span class="btn-text">Reset guide</span>
+                            </button>
+                        </div>
+
                         <details class="scan-tuning">
                             <summary>Tuning</summary>
                             <p class="scan-tuning-note">
@@ -1037,7 +1065,8 @@
                             <div class="scan-tuning-grid">
                                 <label>Stillness <input type="number" id="scan-threshold-stability" step="0.5" min="0" /></label>
                                 <label>Focus <input type="number" id="scan-threshold-sharpness" step="10" min="0" /></label>
-                                <label>Card fill <input type="number" id="scan-threshold-fill" step="1" min="0" /></label>
+                                <label>Card presence <input type="number" id="scan-threshold-presence" step="1" min="0" /></label>
+                                <label>Edge fallback <input type="number" id="scan-threshold-fill" step="1" min="0" /></label>
                                 <label>Good frames <input type="number" id="scan-threshold-streak" step="1" min="1" /></label>
                             </div>
                             <div class="scan-tuning-grid">

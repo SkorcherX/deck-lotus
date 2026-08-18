@@ -6,32 +6,53 @@ import {
   analyzeFrame,
   cameraAvailability,
   createAutoCapture,
-  cropCard,
   cropRegion,
+  defaultQuad,
+  frameImageData,
   guideRect,
   loadImageFile,
+  quadFromRect,
+  rectifiedSize,
+  referenceFrom,
+  regionQuad,
+  warpQuad,
+  warpQuadInto,
 } from '../utils/cardCapture.js';
 
 /**
  * Phase 2 of camera scan import: capture only.
  *
- * This page frames a card, decides when it is worth grabbing, and produces the
- * two crops OCR will read. It does not read them — the crops are rendered
- * on screen so the regions and thresholds can be tuned against real cards
- * before any OCR exists.
+ * The page frames a card, decides when it is worth grabbing, and produces the
+ * two crops OCR will read. It does not read them — the crops are rendered on
+ * screen so the regions and thresholds can be tuned against real cards before
+ * any OCR exists.
+ *
+ * Framing is a draggable quad rather than a fixed rectangle. On a laptop the
+ * camera is on the lid, so the comfortable way to scan is to lay the card on
+ * the desk and tilt the lid down at it — which shows the card as a trapezoid.
+ * The quad is marked once and every capture is warped back to a true card
+ * rectangle before anything is cropped from it.
  */
 
 const STORAGE_KEY = 'scan.captureSettings';
 
-// The analysis canvas is deliberately tiny: every metric is a per-pixel pass
+// Bump when the built-in thresholds or regions change. Stored settings otherwise
+// win forever, so anyone who had used the page once would keep the old defaults
+// and never see a recalibration. The quad survives a bump — it describes the
+// user's desk, not our tuning.
+const SETTINGS_VERSION = 3;
+
+// The analysis buffer is deliberately tiny: every metric is a per-pixel pass
 // over it on every frame, and none of them need detail.
 const ANALYSIS_HEIGHT = 176;
 const ANALYSIS_WIDTH = Math.round(ANALYSIS_HEIGHT * CARD_ASPECT);
 
-// Metrics run well below the video frame rate; nothing here changes fast enough
-// to need 60Hz, and the whole point is to leave CPU for OCR later.
-const ANALYSIS_INTERVAL_MS = 100;
+// Frames are downscaled before the per-frame warp reads them back. Reading a
+// full 1920x1080 frame into JS ten times a second is 8MB a go and pointlessly
+// precise for deciding whether a card is sitting still.
+const ANALYSIS_SOURCE_WIDTH = 480;
 
+const ANALYSIS_INTERVAL_MS = 100;
 const MAX_RECENT_CAPTURES = 12;
 
 const state = {
@@ -39,30 +60,55 @@ const state = {
   rafId: null,
   lastAnalysisAt: 0,
   previousGray: null,
+  referenceGray: null,
   autoCapture: null,
   autoEnabled: true,
   captures: [],
+  dragging: null,
   settings: loadSettings(),
+  // Reused across frames so the loop allocates nothing per tick.
+  buffers: { source: null, analysis: null, scratch: null },
 };
 
-function loadSettings() {
-  const fallback = {
+function freshSettings() {
+  return {
+    version: SETTINGS_VERSION,
     thresholds: { ...DEFAULT_THRESHOLDS },
     regions: {
       title: { ...DEFAULT_REGIONS.title },
       collector: { ...DEFAULT_REGIONS.collector },
     },
+    quad: defaultQuad(),
   };
+}
+
+function loadSettings() {
+  const fallback = freshSettings();
 
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!stored) return fallback;
+
+    // Tuning from an older version is discarded rather than merged: it was
+    // calibrated against different defaults, and silently keeping half of it is
+    // worse than starting from the current ones.
+    const stale = stored.version !== SETTINGS_VERSION;
+
     return {
-      thresholds: { ...fallback.thresholds, ...stored.thresholds },
-      regions: {
-        title: { ...fallback.regions.title, ...stored.regions?.title },
-        collector: { ...fallback.regions.collector, ...stored.regions?.collector },
-      },
+      version: SETTINGS_VERSION,
+      thresholds: stale ? fallback.thresholds : { ...fallback.thresholds, ...stored.thresholds },
+      regions: stale
+        ? fallback.regions
+        : {
+            title: { ...fallback.regions.title, ...stored.regions?.title },
+            collector: { ...fallback.regions.collector, ...stored.regions?.collector },
+          },
+      // A quad only means anything with all four corners, so a partial one is
+      // discarded rather than merged into something misshapen.
+      quad:
+        Array.isArray(stored.quad) && stored.quad.length === 4
+          ? stored.quad.map((p) => ({ x: p.x, y: p.y }))
+          : fallback.quad,
     };
   } catch {
     return fallback;
@@ -114,8 +160,8 @@ async function startCamera() {
   const deviceId = el('scan-camera-select')?.value;
   const constraints = {
     video: {
-      // A collector number is ~3mm tall on the card, so the request asks for as
-      // much sensor resolution as the camera will give.
+      // A collector number is ~3mm tall on the card, and at desk distance that
+      // is only a few pixels, so ask for every pixel the camera has.
       width: { ideal: 1920 },
       height: { ideal: 1080 },
       ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' }),
@@ -144,7 +190,9 @@ async function startCamera() {
 
   state.autoCapture = createAutoCapture(state.settings.thresholds);
   state.previousGray = null;
-  positionGuide();
+  state.referenceGray = null;
+  updateReferenceLabel();
+  drawOverlay();
   startLoop();
 }
 
@@ -173,37 +221,65 @@ function showUnsupported(reason) {
   el('scan-start-btn')?.setAttribute('disabled', 'disabled');
 }
 
-/* ------------------------------------------------------------------- guide */
+/* ----------------------------------------------------------------- overlay */
 
 /**
- * Position the guide overlay in percentages of the video box, so it tracks the
- * rect the analysis actually uses no matter how the video is scaled for
- * display.
+ * Draw the quad, the crop regions and the drag handles over the video.
+ *
+ * The polygons live in an SVG with a 0-100 viewBox and no aspect preservation,
+ * so fractional frame coordinates become percentages of the video box whatever
+ * shape it is displayed at. The handles are separate absolutely-positioned
+ * elements, because that same non-uniform scaling would squash a circle.
  */
-function positionGuide() {
-  const video = el('scan-video');
-  const overlay = el('scan-guide');
+function drawOverlay() {
+  const quad = state.settings.quad;
+  const points = (pts) => pts.map((p) => `${p.x * 100},${p.y * 100}`).join(' ');
 
-  // The guide depends on the frame size, so it can only be placed once the
-  // video is running; the region boxes are fractions of the guide and are
-  // always worth updating, so tuning them shows an effect before the camera
-  // is even started.
-  if (overlay && video?.videoWidth) {
-    const rect = guideRect(video.videoWidth, video.videoHeight);
-    overlay.style.left = `${(rect.x / video.videoWidth) * 100}%`;
-    overlay.style.top = `${(rect.y / video.videoHeight) * 100}%`;
-    overlay.style.width = `${(rect.width / video.videoWidth) * 100}%`;
-    overlay.style.height = `${(rect.height / video.videoHeight) * 100}%`;
-  }
+  const cardPoly = el('scan-quad-card');
+  if (cardPoly) cardPoly.setAttribute('points', points(quad));
 
   for (const key of ['title', 'collector']) {
-    const box = el(`scan-region-${key}`);
-    const region = state.settings.regions[key];
-    if (!box) continue;
-    box.style.left = `${region.x * 100}%`;
-    box.style.top = `${region.y * 100}%`;
-    box.style.width = `${region.w * 100}%`;
-    box.style.height = `${region.h * 100}%`;
+    const poly = el(`scan-quad-${key}`);
+    if (poly) poly.setAttribute('points', points(regionQuad(quad, state.settings.regions[key])));
+  }
+
+  quad.forEach((corner, index) => {
+    const handle = el(`scan-handle-${index}`);
+    if (!handle) return;
+    handle.style.left = `${corner.x * 100}%`;
+    handle.style.top = `${corner.y * 100}%`;
+  });
+}
+
+function beginDrag(event, index) {
+  event.preventDefault();
+  state.dragging = index;
+  event.target.setPointerCapture?.(event.pointerId);
+}
+
+function moveDrag(event) {
+  if (state.dragging === null) return;
+  const box = el('scan-stage').getBoundingClientRect();
+
+  const clamp = (v) => Math.min(1, Math.max(0, v));
+  state.settings.quad[state.dragging] = {
+    x: clamp((event.clientX - box.left) / box.width),
+    y: clamp((event.clientY - box.top) / box.height),
+  };
+
+  drawOverlay();
+}
+
+function endDrag() {
+  if (state.dragging === null) return;
+  state.dragging = null;
+  saveSettings();
+  // The quad decides which patch of desk "empty" described, so a reference taken
+  // through the old quad no longer means anything.
+  if (state.referenceGray) {
+    state.referenceGray = null;
+    updateReferenceLabel();
+    showToast('Guide moved — mark the empty desk again', 'info');
   }
 }
 
@@ -211,10 +287,14 @@ function positionGuide() {
 
 function startLoop() {
   const video = el('scan-video');
+
+  const source = document.createElement('canvas');
+  const sourceCtx = source.getContext('2d', { willReadFrequently: true });
   const analysis = document.createElement('canvas');
   analysis.width = ANALYSIS_WIDTH;
   analysis.height = ANALYSIS_HEIGHT;
-  const ctx = analysis.getContext('2d', { willReadFrequently: true });
+  const analysisCtx = analysis.getContext('2d', { willReadFrequently: true });
+  state.buffers = { source: sourceCtx, analysis: analysisCtx, scratch: null };
 
   const tick = (timestamp) => {
     state.rafId = requestAnimationFrame(tick);
@@ -223,14 +303,22 @@ function startLoop() {
     if (timestamp - state.lastAnalysisAt < ANALYSIS_INTERVAL_MS) return;
     state.lastAnalysisAt = timestamp;
 
-    const rect = guideRect(video.videoWidth, video.videoHeight);
-    ctx.drawImage(
-      video,
-      rect.x, rect.y, rect.width, rect.height,
-      0, 0, ANALYSIS_WIDTH, ANALYSIS_HEIGHT
+    if (source.width !== ANALYSIS_SOURCE_WIDTH) {
+      source.width = ANALYSIS_SOURCE_WIDTH;
+      source.height = Math.round((ANALYSIS_SOURCE_WIDTH * video.videoHeight) / video.videoWidth);
+    }
+    sourceCtx.drawImage(video, 0, 0, source.width, source.height);
+
+    // Metrics are measured on the rectified card, not on the raw frame, so a
+    // tilted view is judged on the same terms as a flat one.
+    state.buffers.scratch = warpQuadInto(
+      analysisCtx,
+      sourceCtx.getImageData(0, 0, source.width, source.height),
+      state.settings.quad,
+      state.buffers.scratch
     );
 
-    const metrics = analyzeFrame(ctx, state.previousGray);
+    const metrics = analyzeFrame(analysisCtx, state.previousGray, state.referenceGray);
     state.previousGray = metrics.gray;
 
     const verdict = state.autoCapture.evaluate(metrics);
@@ -238,11 +326,10 @@ function startLoop() {
 
     if (verdict.shouldCapture) {
       if (state.autoEnabled) {
-        capture(video, rect, 'auto');
+        captureFromVideo(video, 'auto');
       } else {
-        // Auto-capture is off. evaluate() disarms itself whenever it fires, so
-        // re-arm immediately — otherwise the readout freezes on a card that was
-        // never actually captured.
+        // evaluate() disarms itself whenever it fires, so re-arm immediately —
+        // otherwise the readout freezes on a card that was never captured.
         state.autoCapture.reset();
       }
     }
@@ -254,9 +341,23 @@ function startLoop() {
 function renderMetrics(metrics, verdict) {
   const { thresholds } = state.settings;
 
-  setChip('scan-chip-stable', verdict.checks.stable, `Still ${metrics.difference.toFixed(1)}/${thresholds.stability}`);
-  setChip('scan-chip-sharp', verdict.checks.sharp, `Focus ${Math.round(metrics.sharpness)}/${thresholds.sharpness}`);
-  setChip('scan-chip-filled', verdict.checks.filled, `Card ${metrics.fill.toFixed(1)}/${thresholds.fill}`);
+  setChip(
+    'scan-chip-stable',
+    verdict.checks.stable,
+    `Still ${metrics.difference.toFixed(1)}/${thresholds.stability}`
+  );
+  setChip(
+    'scan-chip-sharp',
+    verdict.checks.sharp,
+    `Focus ${Math.round(metrics.sharpness)}/${thresholds.sharpness}`
+  );
+  setChip(
+    'scan-chip-filled',
+    verdict.checks.filled,
+    Number.isFinite(metrics.presence)
+      ? `Card ${metrics.presence.toFixed(1)}/${thresholds.presence}`
+      : `Edges ${metrics.fill.toFixed(1)}/${thresholds.fill}`
+  );
 
   const streak = el('scan-streak');
   if (streak) {
@@ -265,10 +366,10 @@ function renderMetrics(metrics, verdict) {
       : 'Swap the card to arm again';
   }
 
-  const guide = el('scan-guide');
-  if (guide) {
-    guide.classList.toggle('scan-guide-ready', verdict.streak > 0);
-    guide.classList.toggle('scan-guide-disarmed', !verdict.armed);
+  const overlay = el('scan-overlay');
+  if (overlay) {
+    overlay.classList.toggle('scan-overlay-ready', verdict.streak > 0);
+    overlay.classList.toggle('scan-overlay-disarmed', !verdict.armed);
   }
 }
 
@@ -282,14 +383,25 @@ function setChip(id, ok, label) {
 /* ----------------------------------------------------------------- capture */
 
 /**
- * Take the crops from any source (live video or an uploaded still) and hand
- * them on. Phase 3 listens for `scan:capture` and does the reading; nothing
- * here interprets the pixels.
+ * Rectify the quad out of the live frame at full resolution, then crop.
+ *
+ * The frame is read at native size here — once per capture, not per frame — so
+ * the card keeps every pixel the camera resolved.
  */
-function capture(source, rect, trigger) {
-  const card = cropCard(source, rect);
-  const title = cropRegion(source, rect, state.settings.regions.title);
-  const collector = cropRegion(source, rect, state.settings.regions.collector);
+function captureFromVideo(video, trigger) {
+  const size = rectifiedSize(state.settings.quad, video.videoWidth, video.videoHeight);
+  const frame = frameImageData(video, video.videoWidth, video.videoHeight);
+  emitCapture(warpQuad(frame, state.settings.quad, size.width, size.height), trigger);
+}
+
+/**
+ * Take the crops from a rectified card and hand them on. Phase 3 listens for
+ * `scan:capture` and does the reading; nothing here interprets the pixels.
+ */
+function emitCapture(card, trigger) {
+  const cardRect = { x: 0, y: 0, width: card.width, height: card.height };
+  const title = cropRegion(card, cardRect, state.settings.regions.title);
+  const collector = cropRegion(card, cardRect, state.settings.regions.collector);
 
   const entry = { id: Date.now() + Math.random(), trigger, card, title, collector, at: new Date() };
 
@@ -313,7 +425,13 @@ function renderCapture(entry) {
 
   const label = el('scan-capture-label');
   if (label) {
-    label.textContent = `${entry.trigger === 'auto' ? 'Auto-captured' : entry.trigger === 'upload' ? 'From file' : 'Manual capture'} at ${entry.at.toLocaleTimeString()}`;
+    const how =
+      entry.trigger === 'auto'
+        ? 'Auto-captured'
+        : entry.trigger === 'upload'
+          ? 'From file'
+          : 'Manual capture';
+    label.textContent = `${how} at ${entry.at.toLocaleTimeString()} — rectified to ${entry.card.width}x${entry.card.height}`;
   }
 }
 
@@ -328,14 +446,16 @@ function swapCanvas(containerId, canvas) {
 function renderRecent() {
   const strip = el('scan-recent');
   const count = el('scan-count');
-  if (count) count.textContent = `${state.captures.length} capture${state.captures.length === 1 ? '' : 's'} this session`;
+  if (count) {
+    count.textContent = `${state.captures.length} capture${state.captures.length === 1 ? '' : 's'} this session`;
+  }
   if (!strip) return;
 
   strip.innerHTML = '';
   for (const entry of state.captures) {
     const thumb = document.createElement('img');
-    // Thumbnails are drawn from the capture we already hold, so nothing is
-    // re-encoded at full size and no image ever leaves the browser.
+    // Thumbnails come from the capture we already hold, so nothing is re-encoded
+    // at full size and no image ever leaves the browser.
     thumb.src = entry.card.toDataURL('image/jpeg', 0.6);
     thumb.className = 'scan-thumb';
     thumb.title = entry.at.toLocaleTimeString();
@@ -348,8 +468,9 @@ function renderRecent() {
 
 /**
  * Still-image fallback. A tightly cropped card photo is used whole; a looser
- * shot gets the same guide rect the live view uses, which is also how this path
- * doubles as a way to exercise the pipeline with no camera at all.
+ * shot gets the same card-shaped box in the middle. Either way it goes through
+ * the warp, which is a no-op for a rectangle — so this path exercises the whole
+ * pipeline with no camera at all.
  */
 async function captureFromFile(file) {
   try {
@@ -360,10 +481,46 @@ async function captureFromFile(file) {
         ? { x: 0, y: 0, width: image.width, height: image.height }
         : guideRect(image.width, image.height);
 
-    capture(image, rect, 'upload');
+    const quad = quadFromRect(rect, image.width, image.height);
+    const size = rectifiedSize(quad, image.width, image.height);
+    const frame = frameImageData(image, image.width, image.height);
+    emitCapture(warpQuad(frame, quad, size.width, size.height), 'upload');
   } catch (error) {
     showToast(error.message, 'error');
   }
+}
+
+/* --------------------------------------------------------------- reference */
+
+/**
+ * Remember what the empty desk looks like through the quad.
+ *
+ * Absolute edge energy cannot tell a busy desk from a card: measured on a real
+ * webcam, an empty desk scored 18.7 against a card's 19.7, and the fixed guide
+ * happily auto-captured an empty room twelve times. Differencing against a
+ * reference of the same patch of desk separates them properly.
+ */
+function markEmpty() {
+  if (!state.buffers.analysis || !state.stream) {
+    showToast('Start the camera first', 'error');
+    return;
+  }
+  state.referenceGray = referenceFrom(state.buffers.analysis);
+  state.autoCapture?.reset();
+  updateReferenceLabel();
+  showToast('Empty desk marked — a card is now detected by difference', 'success');
+}
+
+function clearReference() {
+  state.referenceGray = null;
+  state.autoCapture?.reset();
+  updateReferenceLabel();
+}
+
+function updateReferenceLabel() {
+  const text = el('scan-mark-empty')?.querySelector('.btn-text');
+  if (text) text.textContent = state.referenceGray ? 'Re-mark empty' : 'Mark empty desk';
+  el('scan-clear-reference')?.classList.toggle('hidden', !state.referenceGray);
 }
 
 /* ------------------------------------------------------------------ tuning */
@@ -371,6 +528,7 @@ async function captureFromFile(file) {
 const TUNING_FIELDS = [
   ['scan-threshold-stability', 'thresholds', 'stability'],
   ['scan-threshold-sharpness', 'thresholds', 'sharpness'],
+  ['scan-threshold-presence', 'thresholds', 'presence'],
   ['scan-threshold-fill', 'thresholds', 'fill'],
   ['scan-threshold-streak', 'thresholds', 'streak'],
   ['scan-title-x', 'regions.title', 'x'],
@@ -395,14 +553,13 @@ function syncTuningInputs() {
 }
 
 function applyTuningInput(id, path, key) {
-  const input = el(id);
-  const value = parseFloat(input.value);
+  const value = parseFloat(el(id).value);
   if (Number.isNaN(value)) return;
 
   settingsGroup(path)[key] = value;
   saveSettings();
   state.autoCapture?.setThresholds(state.settings.thresholds);
-  positionGuide();
+  drawOverlay();
 }
 
 /* ------------------------------------------------------------------- setup */
@@ -412,12 +569,13 @@ export function setupScan() {
     const availability = cameraAvailability();
     if (!availability.available) showUnsupported(availability.reason);
     syncTuningInputs();
-    positionGuide();
+    drawOverlay();
     renderRecent();
+    updateReferenceLabel();
   });
 
-  // Leaving the page releases the camera — a live webcam indicator on a page
-  // the user has navigated away from is alarming, and the stream is not free.
+  // Leaving the page releases the camera — a live webcam indicator on a page the
+  // user has navigated away from is alarming, and the stream is not free.
   window.addEventListener('page:leave', (event) => {
     if (event.detail?.page === 'scan') stopCamera();
   });
@@ -434,12 +592,23 @@ export function setupScan() {
       showToast('Start the camera first', 'error');
       return;
     }
-    capture(video, guideRect(video.videoWidth, video.videoHeight), 'manual');
+    captureFromVideo(video, 'manual');
   });
 
   el('scan-auto-toggle')?.addEventListener('change', (e) => {
     state.autoEnabled = e.target.checked;
     state.autoCapture?.reset();
+  });
+
+  el('scan-mark-empty')?.addEventListener('click', markEmpty);
+  el('scan-clear-reference')?.addEventListener('click', clearReference);
+
+  el('scan-reset-guide')?.addEventListener('click', () => {
+    const video = el('scan-video');
+    state.settings.quad = defaultQuad(video?.videoWidth || 1920, video?.videoHeight || 1080);
+    saveSettings();
+    clearReference();
+    drawOverlay();
   });
 
   el('scan-file-input')?.addEventListener('change', (e) => {
@@ -457,24 +626,28 @@ export function setupScan() {
   });
 
   el('scan-reset-tuning')?.addEventListener('click', () => {
-    state.settings = {
-      thresholds: { ...DEFAULT_THRESHOLDS },
-      regions: {
-        title: { ...DEFAULT_REGIONS.title },
-        collector: { ...DEFAULT_REGIONS.collector },
-      },
-    };
+    // Resetting thresholds and regions must not throw away a quad dragged onto a
+    // real card; the guide has its own reset.
+    const quad = state.settings.quad;
+    state.settings = freshSettings();
+    state.settings.quad = quad;
     saveSettings();
     syncTuningInputs();
     state.autoCapture?.setThresholds(state.settings.thresholds);
-    positionGuide();
-    showToast('Capture settings reset to defaults', 'success');
+    drawOverlay();
+    showToast('Thresholds and regions reset to defaults', 'success');
   });
 
   for (const [id, path, key] of TUNING_FIELDS) {
     el(id)?.addEventListener('input', () => applyTuningInput(id, path, key));
   }
 
-  el('scan-video')?.addEventListener('loadedmetadata', positionGuide);
-  window.addEventListener('resize', positionGuide);
+  for (let i = 0; i < 4; i++) {
+    el(`scan-handle-${i}`)?.addEventListener('pointerdown', (e) => beginDrag(e, i));
+  }
+  window.addEventListener('pointermove', moveDrag);
+  window.addEventListener('pointerup', endDrag);
+
+  el('scan-video')?.addEventListener('loadedmetadata', drawOverlay);
+  window.addEventListener('resize', drawOverlay);
 }
