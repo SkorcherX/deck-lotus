@@ -65,6 +65,11 @@ function setupFilterListeners() {
     sortSelect.addEventListener('change', (e) => {
       filters.sort = e.target.value;
       currentPage = 1;
+      // Sorting by price with prices hidden orders rows by an invisible value,
+      // so reveal them. Leaving them on is harmless if the user sorts away again.
+      if (filters.sort.startsWith('price_') && !showPrices) {
+        setShowPrices(true, { render: false }); // loadInventoryData renders below
+      }
       loadInventoryData();
     });
   }
@@ -124,23 +129,31 @@ function setupViewToggle() {
   }
 }
 
+// Single place that owns the price-visibility state, so the $ button and the
+// price sort options cannot drift out of sync.
+function setShowPrices(next, { render = true } = {}) {
+  showPrices = next;
+  localStorage.setItem('inventoryShowPrices', String(showPrices));
+
+  const priceBtn = document.getElementById('inventory-price-toggle');
+  if (priceBtn) {
+    priceBtn.classList.toggle('active', showPrices);
+    priceBtn.setAttribute('aria-pressed', String(showPrices));
+    priceBtn.title = showPrices ? 'Hide prices' : 'Show prices';
+  }
+
+  // Prices are already in the loaded payload — no refetch needed
+  if (render) renderInventory();
+}
+
 function setupPriceToggle() {
   const priceBtn = document.getElementById('inventory-price-toggle');
   if (!priceBtn) return;
 
-  // Restore the persisted state on load
-  priceBtn.classList.toggle('active', showPrices);
-  priceBtn.setAttribute('aria-pressed', String(showPrices));
+  // Restore the persisted state on load, without rendering an empty grid
+  setShowPrices(showPrices, { render: false });
 
-  priceBtn.addEventListener('click', () => {
-    showPrices = !showPrices;
-    localStorage.setItem('inventoryShowPrices', String(showPrices));
-    priceBtn.classList.toggle('active', showPrices);
-    priceBtn.setAttribute('aria-pressed', String(showPrices));
-    priceBtn.title = showPrices ? 'Hide prices' : 'Show prices';
-    // Prices are already in the loaded payload — no refetch needed
-    renderInventory();
-  });
+  priceBtn.addEventListener('click', () => setShowPrices(!showPrices));
 }
 
 // Summarises the last-synced price for a card row.

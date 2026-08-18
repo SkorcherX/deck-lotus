@@ -43,7 +43,16 @@ export function getInventory(userId, filters = {}) {
         JOIN printings p ON dc.printing_id = p.id
         JOIN decks d ON dc.deck_id = d.id
         WHERE d.user_id = ? AND p.card_id = c.id
-      ) as total_in_decks
+      ) as total_in_decks,
+      (
+        SELECT MAX(NULLIF(
+          (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1),
+          0
+        ))
+        FROM owned_printings op
+        JOIN printings p ON op.printing_id = p.id
+        WHERE op.user_id = ? AND p.card_id = c.id
+      ) as max_price
     FROM cards c
     WHERE c.id IN (
       SELECT DISTINCT p.card_id
@@ -53,8 +62,9 @@ export function getInventory(userId, filters = {}) {
     )
   `;
 
-  // Add userId params for the subqueries
-  params.push(userId, userId);
+  // Add userId params for the subqueries — order matches the SELECT above:
+  // total_owned (params[0]), total_in_decks, max_price, then the WHERE ... IN
+  params.push(userId, userId, userId);
 
   // Count query
   let countSql = `
@@ -156,6 +166,14 @@ export function getInventory(userId, filters = {}) {
       break;
     case 'type':
       sql += ` ORDER BY c.type_line ASC, c.name ASC`;
+      break;
+    // Cards with no synced price sort last in both directions — "unknown" is
+    // not the same as "cheap", so they should not head up the ascending list.
+    case 'price_desc':
+      sql += ` ORDER BY max_price IS NULL, max_price DESC, c.name ASC`;
+      break;
+    case 'price_asc':
+      sql += ` ORDER BY max_price IS NULL, max_price ASC, c.name ASC`;
       break;
     default:
       sql += ` ORDER BY c.name ASC`;
