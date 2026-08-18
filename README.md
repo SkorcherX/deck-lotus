@@ -4,6 +4,10 @@
   <p>A modern, self-hosted Magic: The Gathering deck builder with Mana Pool integration, price monitoring, cart optimization, and multi-user support.</p>
 </div>
 
+> **Note:** This is a fork of [madeofpendletonwool/deck-lotus](https://github.com/madeofpendletonwool/deck-lotus)
+> maintained by [SkorcherX](https://github.com/SkorcherX), with additional fixes and features.
+> Instructions below reference this fork's container image.
+
 ## Features
 
 ### Deck Building
@@ -86,7 +90,7 @@ mkdir -p deck-lotus-data
 cat > docker-compose.yml << 'EOF'
 services:
   deck-lotus:
-    image: ghcr.io/madeofpendletonwool/deck-lotus:latest
+    image: ghcr.io/skorcherx/deck-lotus:latest
     ports:
       - "3000:3000"
     environment:
@@ -120,7 +124,7 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ## Build from Source
 
 ```bash
-git clone https://github.com/madeofpendletonwool/deck-lotus.git
+git clone https://github.com/SkorcherX/deck-lotus.git
 cd deck-lotus
 
 cp .env.example .env
