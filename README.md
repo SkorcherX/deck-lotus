@@ -96,6 +96,8 @@ services:
       - ADMIN_EMAIL=admin@example.com
       - ADMIN_PASSWORD=changeme123
       # Optional but recommended — enables price monitoring & cart optimizer
+      # Both are required together; setting only one leaves the integration disabled
+      - MANAPOOL_USER_EMAIL=
       - MANAPOOL_API_TOKEN=
       # Optional — enables push notifications for price alerts
       - NTFY_TOPIC=

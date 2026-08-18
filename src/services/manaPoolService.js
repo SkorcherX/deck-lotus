@@ -8,6 +8,19 @@ export function isConfigured() {
   return !!(process.env.MANAPOOL_API_TOKEN && process.env.MANAPOOL_USER_EMAIL);
 }
 
+// Names exactly which env vars are missing so the error is actionable —
+// both are required, and blaming only the token sends people down the wrong path.
+function assertConfigured() {
+  if (isConfigured()) return;
+  const missing = [];
+  if (!process.env.MANAPOOL_USER_EMAIL) missing.push('MANAPOOL_USER_EMAIL');
+  if (!process.env.MANAPOOL_API_TOKEN) missing.push('MANAPOOL_API_TOKEN');
+  throw new Error(
+    `Mana Pool integration not configured (${missing.join(' and ')} missing). ` +
+      'Both MANAPOOL_USER_EMAIL and MANAPOOL_API_TOKEN are required.'
+  );
+}
+
 function authHeaders() {
   return {
     'X-ManaPool-Email': process.env.MANAPOOL_USER_EMAIL,
@@ -42,7 +55,7 @@ async function apiPost(path, body) {
 // POST /card_info — body: { card_names: [...] }
 // Response: { cards: [{ name, from_price_cents, quantity_available, ... }], not_found: [...] }
 export async function getCardInfoBulk(names) {
-  if (!isConfigured()) throw new Error('Mana Pool API token not configured (MANAPOOL_API_TOKEN missing)');
+  assertConfigured();
   if (!names?.length) return [];
   const res = await apiPost('/card_info', { card_names: names.slice(0, 100) });
   return Array.isArray(res) ? res : (res.cards ?? []);
@@ -52,7 +65,7 @@ export async function getCardInfoBulk(names) {
 // Response: { meta: { as_of }, data: [{ name, scryfall_id, price_cents, price_cents_nm, price_cents_lp_plus, ... }] }
 // All prices are in cents — divide by 100 for dollars.
 async function getAllSinglePrices() {
-  if (!isConfigured()) throw new Error('Mana Pool API token not configured (MANAPOOL_API_TOKEN missing)');
+  assertConfigured();
   const res = await apiGet('/prices/singles');
   return Array.isArray(res) ? res : (res.data ?? []);
 }
@@ -62,9 +75,7 @@ async function getAllSinglePrices() {
 // Uses /prices/singles which has per-printing prices for all in-stock items.
 // All prices from the API are in cents — divided by 100 here.
 export async function getLowestPrice(cardName, condition = 'nm', scryfallId = null) {
-  if (!isConfigured()) {
-    throw new Error('Mana Pool API token not configured (MANAPOOL_API_TOKEN missing)');
-  }
+  assertConfigured();
 
   const normalised = condition?.toLowerCase();
   const useNm = normalised === 'nm';
@@ -126,7 +137,7 @@ function toConditionIds(condition) {
 // model: 'lowest_price' | 'balanced' | 'fewest_packages' | 'gathered_shipping_only'
 // Response: { cart: [{ inventory_id, quantity_selected }], totals: { subtotal_cents, shipping_cents, buyer_fee_cents, total_cents, seller_count } }
 export async function optimizeCart(items, model = 'lowest_price') {
-  if (!isConfigured()) throw new Error('Mana Pool API token not configured (MANAPOOL_API_TOKEN missing)');
+  assertConfigured();
   if (!items?.length) throw new Error('No items provided');
 
   const body = {
@@ -149,6 +160,6 @@ export async function optimizeCart(items, model = 'lowest_price') {
 // decklist: plain-text list, e.g. "1 Sol Ring\n1 Atraxa..."
 // format: 'commander' | 'standard' | 'modern' | etc.
 export async function validateDeck(decklist, format = 'commander') {
-  if (!isConfigured()) throw new Error('Mana Pool API token not configured (MANAPOOL_API_TOKEN missing)');
+  assertConfigured();
   return apiPost('/deck', { decklist, format });
 }
