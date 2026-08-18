@@ -162,6 +162,10 @@ Scan queue with thumbnails, verification table, editable fields, printing picker
 for name-only matches, quantity, foil checkbox, and batch commit through
 `setOwnedPrintingQuantity`.
 
+The printing picker pages its results. Phase 1's resolve endpoint caps
+candidates at 20, which is fine for a ranked shortlist but not for a name-only
+match on a card with dozens of printings — the picker needs all of them.
+
 *Done when:* a stack of mixed cards can be scanned continuously, corrected in
 one pass, and committed with inventory totals matching.
 
