@@ -8,17 +8,18 @@ import {
   analyzeFrame,
   cameraAvailability,
   createAutoCapture,
-  cropRegion,
   defaultQuad,
   frameImageData,
   guideRect,
   loadImageFile,
   quadFromRect,
   rectifiedSize,
+  regionOutputSize,
   referenceFrom,
   regionQuad,
   warpQuad,
   warpQuadInto,
+  warpRegion,
 } from '../utils/cardCapture.js';
 
 /**
@@ -396,19 +397,28 @@ function setChip(id, ok, label) {
  * the card keeps every pixel the camera resolved.
  */
 function captureFromVideo(video, trigger) {
-  const size = rectifiedSize(state.settings.quad, video.videoWidth, video.videoHeight);
   const frame = frameImageData(video, video.videoWidth, video.videoHeight);
-  emitCapture(warpQuad(frame, state.settings.quad, size.width, size.height), trigger);
+  emitCapture(frame, state.settings.quad, video.videoWidth, video.videoHeight, trigger);
 }
 
 /**
- * Take the crops from a rectified card and hand them on. Phase 3 listens for
+ * Rectify the card and take the crops, then hand them on. Phase 3 listens for
  * `scan:capture` and does the reading; nothing here interprets the pixels.
+ *
+ * Each crop is warped from the original frame rather than cut out of the
+ * rectified card, so the small print is resampled once instead of twice.
  */
-function emitCapture(card, trigger) {
-  const cardRect = { x: 0, y: 0, width: card.width, height: card.height };
-  const title = cropRegion(card, cardRect, state.settings.regions.title);
-  const collector = cropRegion(card, cardRect, state.settings.regions.collector);
+function emitCapture(frame, quad, frameWidth, frameHeight, trigger) {
+  const size = rectifiedSize(quad, frameWidth, frameHeight);
+  const card = warpQuad(frame, quad, size.width, size.height);
+
+  const cropOf = (region) => {
+    const out = regionOutputSize(size, region);
+    return warpRegion(frame, quad, region, out.width, out.height);
+  };
+
+  const title = cropOf(state.settings.regions.title);
+  const collector = cropOf(state.settings.regions.collector);
 
   const entry = { id: Date.now() + Math.random(), trigger, card, title, collector, at: new Date() };
 
@@ -616,9 +626,8 @@ async function captureFromFile(file) {
         : guideRect(image.width, image.height);
 
     const quad = quadFromRect(rect, image.width, image.height);
-    const size = rectifiedSize(quad, image.width, image.height);
     const frame = frameImageData(image, image.width, image.height);
-    emitCapture(warpQuad(frame, quad, size.width, size.height), 'upload');
+    emitCapture(frame, quad, image.width, image.height, 'upload');
   } catch (error) {
     showToast(error.message, 'error');
   }

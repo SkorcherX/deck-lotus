@@ -318,6 +318,32 @@ function warpInto(dst, sourceImageData, quad) {
 }
 
 /**
+ * Warp one crop region straight out of the source frame.
+ *
+ * The obvious route — rectify the whole card, then crop and upscale that —
+ * resamples every pixel twice, and the collector line is only a dozen or so
+ * pixels tall before either pass. Restricting the card's projective map to a
+ * region is itself a projective map, fully determined by the region's four
+ * corner images, so the region can be sampled from the original pixels in one
+ * step at whatever size OCR wants.
+ */
+export function warpRegion(sourceImageData, quad, region, outWidth, outHeight) {
+  return warpQuad(sourceImageData, regionQuad(quad, region), outWidth, outHeight);
+}
+
+/**
+ * Output size for a region crop: its size on the rectified card, scaled up for
+ * OCR. Small text needs the pixels, and here they cost one resampling rather
+ * than two.
+ */
+export function regionOutputSize(cardSize, region, scale = 3) {
+  return {
+    width: Math.max(8, Math.round(cardSize.width * region.w * scale)),
+    height: Math.max(8, Math.round(cardSize.height * region.h * scale)),
+  };
+}
+
+/**
  * Output size for a rectified capture: tall enough to keep the pixels the
  * camera actually resolved along the card's longest edge, so the warp neither
  * throws detail away nor invents it.
