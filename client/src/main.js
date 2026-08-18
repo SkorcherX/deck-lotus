@@ -6,6 +6,7 @@ import { setupCards } from './components/cards.js';
 import { setupSettings } from './components/settings.js';
 import { setupShopping } from './components/shopping.js';
 import { setupInventory } from './components/inventory.js';
+import { setupScan } from './components/scan.js';
 import { setupSharedDeck, loadSharedDeck } from './components/sharedDeck.js';
 import { setupPriceMonitoring } from './components/priceMonitoring.js';
 import { setupUserMenu } from './components/userMenu.js';
@@ -70,6 +71,12 @@ class App {
   }
 
   showPage(pageName) {
+    // Components that hold a resource while their page is visible — the scan
+    // page's camera stream — need to know they are being navigated away from.
+    if (this.currentPage && this.currentPage !== pageName) {
+      window.dispatchEvent(new CustomEvent('page:leave', { detail: { page: this.currentPage } }));
+    }
+
     this.currentPage = pageName;
 
     // Hide all pages
@@ -103,6 +110,9 @@ class App {
       case 'inventory':
         window.dispatchEvent(new CustomEvent('page:inventory'));
         break;
+      case 'scan':
+        window.dispatchEvent(new CustomEvent('page:scan'));
+        break;
       case 'price-monitoring':
         window.dispatchEvent(new CustomEvent('page:price-monitoring'));
         break;
@@ -132,6 +142,7 @@ class App {
     setupCards();
     setupShopping();
     setupInventory();
+    setupScan();
     setupSettings();
     setupPriceMonitoring();
     setupSharedDeck();

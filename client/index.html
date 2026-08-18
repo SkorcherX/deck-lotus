@@ -77,6 +77,10 @@
                             <i class="ph ph-archive nav-icon"></i>
                             <span class="nav-text">Inventory</span>
                         </a>
+                        <a href="#" data-page="scan" class="nav-link" title="Scan Cards">
+                            <i class="ph ph-camera nav-icon"></i>
+                            <span class="nav-text">Scan</span>
+                        </a>
                         <a href="#" data-page="price-monitoring" class="nav-link" title="Price Watch">
                             <i class="ph ph-bell-ringing nav-icon"></i>
                             <span class="nav-text">Price Watch</span>
@@ -955,6 +959,136 @@
             </div>
 
             <!-- Price Monitoring Page -->
+            <!-- Scan Page -->
+            <div id="scan-page" class="page hidden">
+                <div class="page-header">
+                    <h2>Scan Cards</h2>
+                    <div class="page-header-actions">
+                        <select id="scan-camera-select" class="scan-camera-select" disabled></select>
+                        <button id="scan-start-btn" class="btn btn-primary">
+                            <i class="ph ph-video-camera btn-icon"></i>
+                            <span class="btn-text">Start Camera</span>
+                        </button>
+                        <button id="scan-stop-btn" class="btn btn-secondary hidden">
+                            <i class="ph ph-video-camera-slash btn-icon"></i>
+                            <span class="btn-text">Stop Camera</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="scan-unsupported" class="scan-notice hidden">
+                    <i class="ph ph-warning-circle"></i>
+                    <div>
+                        <strong>Camera unavailable.</strong>
+                        <div id="scan-unsupported-reason"></div>
+                        <div class="scan-notice-hint">
+                            A still image still works — the crops come out the same way.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="scan-layout">
+                    <div class="scan-column">
+                        <div id="scan-stage" class="scan-stage hidden">
+                            <video id="scan-video" playsinline muted></video>
+                            <div id="scan-guide" class="scan-guide">
+                                <div id="scan-region-title" class="scan-region scan-region-title">
+                                    <span>title</span>
+                                </div>
+                                <div id="scan-region-collector" class="scan-region scan-region-collector">
+                                    <span>collector</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="scan-metrics">
+                            <span id="scan-chip-stable" class="scan-chip">Still &mdash;</span>
+                            <span id="scan-chip-sharp" class="scan-chip">Focus &mdash;</span>
+                            <span id="scan-chip-filled" class="scan-chip">Card &mdash;</span>
+                            <span id="scan-streak" class="scan-streak">Camera off</span>
+                        </div>
+
+                        <div class="scan-controls">
+                            <button id="scan-shutter-btn" class="btn btn-primary">
+                                <i class="ph ph-camera btn-icon"></i>
+                                <span class="btn-text">Capture</span>
+                            </button>
+                            <label class="scan-toggle">
+                                <input type="checkbox" id="scan-auto-toggle" checked />
+                                Auto-capture
+                            </label>
+                            <label class="btn btn-secondary scan-file-label">
+                                <i class="ph ph-image btn-icon"></i>
+                                <span class="btn-text">Use an image</span>
+                                <input type="file" id="scan-file-input" accept="image/*" hidden />
+                            </label>
+                            <button id="scan-clear-btn" class="btn btn-secondary">
+                                <i class="ph ph-trash btn-icon"></i>
+                                <span class="btn-text">Clear</span>
+                            </button>
+                        </div>
+
+                        <details class="scan-tuning">
+                            <summary>Tuning</summary>
+                            <p class="scan-tuning-note">
+                                Thresholds decide when auto-capture fires. Regions are
+                                fractions of the card and move the boxes on the preview.
+                            </p>
+                            <div class="scan-tuning-grid">
+                                <label>Stillness <input type="number" id="scan-threshold-stability" step="0.5" min="0" /></label>
+                                <label>Focus <input type="number" id="scan-threshold-sharpness" step="10" min="0" /></label>
+                                <label>Card fill <input type="number" id="scan-threshold-fill" step="1" min="0" /></label>
+                                <label>Good frames <input type="number" id="scan-threshold-streak" step="1" min="1" /></label>
+                            </div>
+                            <div class="scan-tuning-grid">
+                                <label>Title x <input type="number" id="scan-title-x" step="0.005" min="0" max="1" /></label>
+                                <label>Title y <input type="number" id="scan-title-y" step="0.005" min="0" max="1" /></label>
+                                <label>Title w <input type="number" id="scan-title-w" step="0.005" min="0" max="1" /></label>
+                                <label>Title h <input type="number" id="scan-title-h" step="0.005" min="0" max="1" /></label>
+                            </div>
+                            <div class="scan-tuning-grid">
+                                <label>Collector x <input type="number" id="scan-collector-x" step="0.005" min="0" max="1" /></label>
+                                <label>Collector y <input type="number" id="scan-collector-y" step="0.005" min="0" max="1" /></label>
+                                <label>Collector w <input type="number" id="scan-collector-w" step="0.005" min="0" max="1" /></label>
+                                <label>Collector h <input type="number" id="scan-collector-h" step="0.005" min="0" max="1" /></label>
+                            </div>
+                            <button id="scan-reset-tuning" class="btn btn-secondary btn-sm">Reset to defaults</button>
+                        </details>
+                    </div>
+
+                    <div class="scan-column">
+                        <div id="scan-empty" class="scan-empty">
+                            <i class="ph ph-scan"></i>
+                            <p>
+                                Hold a card in the guide, or pick an image. The two crops
+                                below are exactly what the reader will see.
+                            </p>
+                        </div>
+
+                        <div id="scan-result" class="scan-result hidden">
+                            <div id="scan-capture-label" class="scan-capture-label"></div>
+                            <div class="scan-crop">
+                                <h4>Title band</h4>
+                                <div id="scan-preview-title" class="scan-crop-box"></div>
+                            </div>
+                            <div class="scan-crop">
+                                <h4>Collector block</h4>
+                                <div id="scan-preview-collector" class="scan-crop-box"></div>
+                            </div>
+                            <div class="scan-crop">
+                                <h4>Captured card</h4>
+                                <div id="scan-preview-card" class="scan-crop-box scan-crop-card"></div>
+                            </div>
+                        </div>
+
+                        <div class="scan-recent-header">
+                            <span id="scan-count">0 captures this session</span>
+                        </div>
+                        <div id="scan-recent" class="scan-recent"></div>
+                    </div>
+                </div>
+            </div>
+
             <div id="price-monitoring-page" class="page hidden">
                 <div class="page-header">
                     <h2>Price Watch</h2>

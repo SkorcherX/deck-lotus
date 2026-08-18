@@ -4,7 +4,7 @@ Scan physical cards with a webcam, read the card name and the printing details
 from the card face, resolve them against the local MTGJSON database, and import
 the confirmed results into inventory.
 
-Status: **Phase 0 and Phase 1 complete.**
+Status: **Phases 0-1 complete; Phase 2 built, pending real-card tuning.**
 
 ---
 
@@ -139,13 +139,25 @@ set+collector lookup, fuzzy name recovery and confidence ranking),
 `POST /api/scan/resolve` for a batch) and migration
 `022-add-set-collector-index`.
 
-### Phase 2 — Capture UI
+### Phase 2 — Capture UI — built
 
 Video preview, guide overlay, auto-capture heuristics, manual shutter, still
 upload fallback. Emits the two crops and renders them on-screen for tuning.
 
 *Done when:* a card held in frame reliably auto-captures, and the two crops land
 on the right regions across several sets.
+
+Delivered as a Scan page: `client/src/utils/cardCapture.js` (guide geometry,
+region crops, the three frame metrics and the auto-capture state machine) and
+`client/src/components/scan.js` (camera, live metric readout, manual shutter,
+still-image fallback, capture strip). Captures are dispatched as a
+`scan:capture` event carrying the card crop and the two region crops; Phase 3
+listens for it.
+
+The metrics and the crop regions are exposed in a Tuning panel on the page and
+persisted in `localStorage`, because the defaults are a starting guess — the
+thresholds that matter depend on the webcam, and confirming the regions across
+several sets needs real cards in front of a real camera.
 
 ### Phase 3 — OCR
 
