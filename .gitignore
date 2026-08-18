@@ -8,3 +8,6 @@ client/dist/
 client/node_modules/
 *.log
 .DS_Store
+
+# OCR assets are staged from node_modules at build time, not committed
+client/public/tesseract/

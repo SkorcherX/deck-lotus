@@ -1030,6 +1030,10 @@
                                 <input type="checkbox" id="scan-auto-toggle" checked />
                                 Auto-capture
                             </label>
+                            <label class="scan-toggle">
+                                <input type="checkbox" id="scan-ocr-toggle" checked />
+                                Read cards
+                            </label>
                             <label class="btn btn-secondary scan-file-label">
                                 <i class="ph ph-image btn-icon"></i>
                                 <span class="btn-text">Use an image</span>
@@ -1053,6 +1057,10 @@
                             <button id="scan-reset-guide" class="btn btn-secondary">
                                 <i class="ph ph-frame-corners btn-icon"></i>
                                 <span class="btn-text">Reset guide</span>
+                            </button>
+                            <button id="scan-reread-btn" class="btn btn-secondary">
+                                <i class="ph ph-arrow-clockwise btn-icon"></i>
+                                <span class="btn-text">Re-read last</span>
                             </button>
                         </div>
 
@@ -1092,6 +1100,28 @@
                                 Hold a card in the guide, or pick an image. The two crops
                                 below are exactly what the reader will see.
                             </p>
+                        </div>
+
+                        <div id="scan-reading" class="scan-reading hidden">
+                            <div class="scan-reading-head">
+                                <h4>Reading</h4>
+                                <span id="scan-read-status" class="scan-read-status"></span>
+                            </div>
+                            <dl class="scan-fields">
+                                <dt>Name</dt>
+                                <dd id="scan-read-name"></dd>
+                                <dt>Set</dt>
+                                <dd id="scan-read-set"></dd>
+                                <dt>Collector</dt>
+                                <dd id="scan-read-collector"></dd>
+                            </dl>
+                            <div id="scan-candidates" class="scan-candidate-list"></div>
+                            <details class="scan-evidence">
+                                <summary>What the reader saw</summary>
+                                <div id="scan-read-raw" class="scan-read-raw"></div>
+                                <div id="scan-preview-title-ocr" class="scan-crop-box"></div>
+                                <div id="scan-preview-collector-ocr" class="scan-crop-box"></div>
+                            </details>
                         </div>
 
                         <div id="scan-result" class="scan-result hidden">

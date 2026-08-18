@@ -3,12 +3,18 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-ocr-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-ocr-assets.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
     "vite": "^5.0.10"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "tesseract.js": "^7.0.0",
+    "tesseract.js-core": "^6.1.2"
+  }
 }

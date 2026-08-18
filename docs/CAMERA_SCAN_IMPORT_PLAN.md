@@ -4,7 +4,7 @@ Scan physical cards with a webcam, read the card name and the printing details
 from the card face, resolve them against the local MTGJSON database, and import
 the confirmed results into inventory.
 
-Status: **Phases 0-2 complete.**
+Status: **Phases 0-2 complete; Phase 3 built, pending a real-card hit rate.**
 
 ---
 
@@ -99,11 +99,25 @@ Two crops taken relative to the guide rectangle, not the full frame:
 
 ### Preprocess and OCR
 
-Per region: grayscale → upscale 2–3× → adaptive threshold. Tesseract in
-single-line page-segmentation mode with **per-region character whitelists**
-(digits and `/` for the collector number, `A-Z0-9` for the set code, full
-alphabet for the title). Constraining the charset per region is the single
-biggest accuracy lever available.
+Per region: grayscale → upscale 3× (at crop time) → threshold against a local
+mean taken from an integral image. A global cutoff is the wrong tool for a card
+under a desk lamp, where one end of the crop is often twice as bright as the
+other. Polarity is then decided by which tone is in the minority, because ink
+always is — the collector block is white print on a dark border and thresholds
+to the inverse of what tesseract expects.
+
+Tesseract runs in single-line mode for the title and single-block mode for the
+two-line collector block, with **per-region character whitelists**. Constraining
+the charset per region is the single biggest accuracy lever available — but the
+whitelist must include the space, or tesseract cannot emit one and the set code
+fuses to the language code.
+
+Fields come out of the collector block by classifying tokens rather than matching
+a fixed shape, since which parts survive OCR varies wildly. The set code is
+found by its adjacency to the language code (`DMU • EN`), which beats any
+length-based heuristic: the artist's name shares that line, and "SIMON" is a
+longer all-letter token than "WAR". Each field is scored from the word it was
+read from, so junk elsewhere on the line cannot drag a clean field down.
 
 ### Resolve
 
@@ -184,7 +198,7 @@ few millimetres off the last one drifts the crops. Both regions carry margin to
 absorb it — the title band the most, being furthest from the anchored corners —
 but automatic per-frame card detection is the real fix.
 
-### Phase 3 — OCR
+### Phase 3 — OCR — built
 
 `tesseract.js` bundled locally in `client/public/` (never a CDN — the app is
 offline/self-hosted), worker setup, preprocessing, per-region whitelists, and
@@ -192,6 +206,37 @@ parsing to `{name, setCode, collectorNumber}` with per-field confidence.
 
 *Done when:* a representative tray of modern cards yields correct set code and
 collector number at a measured hit rate, with confidence tracked per field.
+
+Delivered as `client/src/utils/cardOcr.js` (worker lifecycle, preprocessing,
+per-region parameters, field parsing and per-field confidence) plus the reading
+panel on the Scan page, which shows the fields, the ranked candidates from
+Phase 1's resolver, and — behind a disclosure — the raw text and the thresholded
+images the engine actually saw.
+
+Assets are staged from `node_modules` into `public/tesseract` by a `prebuild`
+step rather than committed: 18.1MB of binaries rewritten on every dependency
+bump is a bad trade when `npm install` already has them. No Dockerfile change,
+as predicted. Only the `.wasm.js` cores ship, not the sibling `.wasm` files —
+they embed the binary, verified by hiding them and watching OCR keep working,
+which saved 5.5MB.
+
+The core file is pinned after detecting SIMD ourselves rather than letting
+tesseract choose: its own probe also asks for `relaxedsimd` builds that
+tesseract.js-core does not ship, and offline there is no CDN to fall back to.
+
+Measured on synthetic cards, 3 of 3 read correctly end to end: names at 94-96%,
+set codes 88-94%, collector numbers 54-95% — the 54% being a genuinely messy
+read (`0107/7281 M`) that the parser recovered from and scored honestly. About
+2.5s per card with a warm worker, which answers one of the open questions below.
+
+Three bugs that only testing could have found: the collector whitelist had no
+space character, so `DMU EN` came back as `DMUEN` with the set code fused to the
+language; the rarity letter attaches to either half of `0107/281 M`, not just
+the number; and tesseract v7 returns no word confidences unless blocks are
+requested, so every field scored 0%.
+
+*Still open:* the real-card hit rate, which is what the phase is actually judged
+on. It needs a tray of real cards under the overhead USB camera.
 
 ### Phase 4 — Queue, verification, commit
 
@@ -231,7 +276,10 @@ handling.
 
 ## 6. Open questions
 
-- Acceptable per-card scan time, end to end?
+- Acceptable per-card scan time, end to end? Measured at ~2.5s of OCR per card
+  with a warm worker, on top of the ~300ms auto-capture settle. Reads are
+  serialised behind the capture loop, so a scan session is not blocked by them —
+  captures keep accumulating while the reader works through the queue.
 - Minimum hit rate on modern cards before this replaces manual entry?
 - Should a scan session be able to default to foil (for scanning a foil binder),
   rather than ticking each card?

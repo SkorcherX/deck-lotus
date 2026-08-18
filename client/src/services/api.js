@@ -112,6 +112,15 @@ class ApiClient {
     return this.request(`/cards/${id}/printings`);
   }
 
+  // Card scanning
+  async resolveScan({ name, setCode, collectorNumber, limit = 10 }) {
+    const params = new URLSearchParams({ limit });
+    if (name) params.append('name', name);
+    if (setCode) params.append('set', setCode);
+    if (collectorNumber) params.append('collector', collectorNumber);
+    return this.request(`/scan/resolve?${params}`);
+  }
+
   async advancedSearch(filters) {
     const params = new URLSearchParams(filters);
     return this.request(`/cards/advanced?${params}`);

@@ -26,7 +26,7 @@ export const CARD_ASPECT = 63 / 88;
  * corners the quad is anchored to, so placement drift moves it most.
  */
 export const DEFAULT_REGIONS = {
-  title: { x: 0.045, y: 0.02, w: 0.72, h: 0.12 },
+  title: { x: 0.045, y: 0.02, w: 0.76, h: 0.12 },
   collector: { x: 0.025, y: 0.845, w: 0.33, h: 0.13 },
 };
 

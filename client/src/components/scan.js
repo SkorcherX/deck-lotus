@@ -1,4 +1,6 @@
+import api from '../services/api.js';
 import { showToast } from '../utils/ui.js';
+import { createCardReader } from '../utils/cardOcr.js';
 import {
   CARD_ASPECT,
   DEFAULT_REGIONS,
@@ -20,12 +22,12 @@ import {
 } from '../utils/cardCapture.js';
 
 /**
- * Phase 2 of camera scan import: capture only.
+ * Camera scan: capture, read, resolve.
  *
- * The page frames a card, decides when it is worth grabbing, and produces the
- * two crops OCR will read. It does not read them — the crops are rendered on
- * screen so the regions and thresholds can be tuned against real cards before
- * any OCR exists.
+ * The page frames a card, decides when it is worth grabbing, produces the two
+ * crops, reads them with tesseract, and asks the server to resolve the reading
+ * into ranked candidates. Committing to inventory is Phase 4 — nothing here
+ * writes anything.
  *
  * Framing is a draggable quad rather than a fixed rectangle. On a laptop the
  * camera is on the lid, so the comfortable way to scan is to lay the card on
@@ -40,7 +42,7 @@ const STORAGE_KEY = 'scan.captureSettings';
 // win forever, so anyone who had used the page once would keep the old defaults
 // and never see a recalibration. The quad survives a bump — it describes the
 // user's desk, not our tuning.
-const SETTINGS_VERSION = 3;
+const SETTINGS_VERSION = 4;
 
 // The analysis buffer is deliberately tiny: every metric is a per-pixel pass
 // over it on every frame, and none of them need detail.
@@ -65,6 +67,11 @@ const state = {
   autoEnabled: true,
   captures: [],
   dragging: null,
+  reader: null,
+  ocrEnabled: true,
+  // Reads are serialised: one tesseract worker cannot recognise two images at
+  // once, and captures can arrive faster than it finishes.
+  readQueue: Promise.resolve(),
   settings: loadSettings(),
   // Reused across frames so the loop allocates nothing per tick.
   buffers: { source: null, analysis: null, scratch: null },
@@ -413,6 +420,129 @@ function emitCapture(card, trigger) {
   renderRecent();
 
   window.dispatchEvent(new CustomEvent('scan:capture', { detail: entry }));
+
+  if (state.ocrEnabled) readCapture(entry);
+}
+
+/* --------------------------------------------------------------- read/resolve */
+
+function reader() {
+  if (!state.reader) {
+    state.reader = createCardReader({
+      onProgress: (message) => {
+        // The first read downloads ~17MB of engine and language data from our own
+        // origin. That is worth narrating; the per-card work afterwards is not.
+        if (message.status && !state.reader?.ready) {
+          setReadStatus(`${message.status.replace(/_/g, ' ')}${
+            message.progress ? ` ${Math.round(message.progress * 100)}%` : ''
+          }`);
+        }
+      },
+    });
+  }
+  return state.reader;
+}
+
+/**
+ * Read one capture and resolve it.
+ *
+ * Reads are serialised through the queue below rather than run per capture: a
+ * continuous scan session can produce captures faster than tesseract finishes,
+ * and a second recognize() on the same worker while one is in flight throws.
+ */
+async function readCapture(entry) {
+  state.readQueue = state.readQueue.then(() => runRead(entry)).catch(() => {});
+  return state.readQueue;
+}
+
+async function runRead(entry) {
+  setReadStatus('Reading…');
+
+  let reading;
+  try {
+    reading = await reader().read(entry);
+  } catch (error) {
+    setReadStatus(`Read failed: ${error.message}`);
+    return;
+  }
+
+  entry.reading = reading;
+  renderReading(entry);
+
+  // A reading with nothing in it cannot be resolved, and asking the server to
+  // confirm that is a wasted round trip.
+  if (!reading.name && !(reading.setCode && reading.collectorNumber)) {
+    setReadStatus(`Nothing readable (${reading.elapsedMs}ms)`);
+    return;
+  }
+
+  try {
+    const resolved = await api.resolveScan({
+      name: reading.name,
+      setCode: reading.setCode,
+      collectorNumber: reading.collectorNumber,
+      limit: 5,
+    });
+    entry.candidates = resolved.candidates;
+    renderCandidates(entry);
+    setReadStatus(`Read in ${reading.elapsedMs}ms`);
+  } catch (error) {
+    setReadStatus(`Resolve failed: ${error.message}`);
+  }
+}
+
+function setReadStatus(text) {
+  const el_ = el('scan-read-status');
+  if (el_) el_.textContent = text;
+}
+
+function renderReading(entry) {
+  const reading = entry.reading;
+  el('scan-reading')?.classList.remove('hidden');
+
+  const field = (id, value, confidence) => {
+    const node = el(id);
+    if (!node) return;
+    node.innerHTML = value
+      ? `<strong>${value}</strong> <span class="scan-confidence">${Math.round(confidence * 100)}%</span>`
+      : '<span class="scan-unread">not read</span>';
+  };
+
+  field('scan-read-name', reading.name, reading.confidence.name);
+  field('scan-read-set', reading.setCode, reading.confidence.setCode);
+  field('scan-read-collector', reading.collectorNumber, reading.confidence.collectorNumber);
+
+  const raw = el('scan-read-raw');
+  if (raw) {
+    raw.textContent = `title: ${JSON.stringify(reading.raw.title)}  collector: ${JSON.stringify(reading.raw.collector)}`;
+  }
+
+  // Show what the engine actually saw, which is the only way to tell a bad crop
+  // from a bad threshold.
+  swapCanvas('scan-preview-title-ocr', reading.images.title);
+  swapCanvas('scan-preview-collector-ocr', reading.images.collector);
+}
+
+function renderCandidates(entry) {
+  const list = el('scan-candidates');
+  if (!list) return;
+
+  const candidates = entry.candidates || [];
+  if (!candidates.length) {
+    list.innerHTML = '<div class="scan-unread">No candidates matched this reading</div>';
+    return;
+  }
+
+  list.innerHTML = candidates
+    .map(
+      (c, index) => `
+      <div class="scan-candidate${index === 0 ? ' scan-candidate-top' : ''}">
+        <span class="scan-candidate-name">${c.name}</span>
+        <span class="scan-candidate-print">${c.setCode} ${c.collectorNumber || ''}</span>
+        <span class="scan-confidence">${Math.round(c.confidence * 100)}%</span>
+      </div>`
+    )
+    .join('');
 }
 
 function renderCapture(entry) {
@@ -459,7 +589,11 @@ function renderRecent() {
     thumb.src = entry.card.toDataURL('image/jpeg', 0.6);
     thumb.className = 'scan-thumb';
     thumb.title = entry.at.toLocaleTimeString();
-    thumb.addEventListener('click', () => renderCapture(entry));
+    thumb.addEventListener('click', () => {
+      renderCapture(entry);
+      if (entry.reading) renderReading(entry);
+      if (entry.candidates) renderCandidates(entry);
+    });
     strip.appendChild(thumb);
   }
 }
@@ -598,6 +732,19 @@ export function setupScan() {
   el('scan-auto-toggle')?.addEventListener('change', (e) => {
     state.autoEnabled = e.target.checked;
     state.autoCapture?.reset();
+  });
+
+  el('scan-ocr-toggle')?.addEventListener('change', (e) => {
+    state.ocrEnabled = e.target.checked;
+  });
+
+  el('scan-reread-btn')?.addEventListener('click', () => {
+    const latest = state.captures[0];
+    if (!latest) {
+      showToast('Nothing captured yet', 'error');
+      return;
+    }
+    readCapture(latest);
   });
 
   el('scan-mark-empty')?.addEventListener('click', markEmpty);
