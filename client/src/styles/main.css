@@ -4168,3 +4168,59 @@ button.btn-icon.active {
     max-height: 50vh !important;
   }
 }
+
+/* Inventory price toggle ($ button) — column added only when prices are shown */
+.inventory-list-header:has(.list-col-price) {
+  grid-template-columns: 2fr 1.5fr 1fr 60px 0.75fr 0.75fr 0.75fr 0.85fr;
+}
+
+.inventory-list-header:has(.list-col-select):has(.list-col-price) {
+  grid-template-columns: 40px 2fr 1.5fr 1fr 60px 0.75fr 0.75fr 0.75fr 0.85fr;
+}
+
+.inventory-list-item:has(.list-col-price) {
+  grid-template-columns: 2fr 1.5fr 1fr 60px 0.75fr 0.75fr 0.75fr 0.85fr;
+}
+
+.inventory-list-item:has(.list-col-select):has(.list-col-price) {
+  grid-template-columns: 40px 2fr 1.5fr 1fr 60px 0.75fr 0.75fr 0.75fr 0.85fr;
+}
+
+.list-col-price {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--success, var(--primary));
+}
+
+.list-col-price.no-price {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* Grid view price badge */
+.inventory-card-price {
+  margin-top: 0.35rem;
+  font-weight: 700;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--success, var(--primary));
+}
+
+.inventory-card-price.no-price {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* Active state for the $ toggle, matching the view-toggle buttons */
+#inventory-price-toggle.active {
+  color: var(--primary);
+}
+
+@media (max-width: 768px) {
+  .list-col-price {
+    flex: 1;
+    order: 5;
+    text-align: left;
+  }
+}

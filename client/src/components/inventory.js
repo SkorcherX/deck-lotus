@@ -13,6 +13,7 @@ let filters = {
   sort: 'name',
   availability: 'all',
 };
+let showPrices = localStorage.getItem('inventoryShowPrices') === 'true';
 let searchTimeout = null;
 let quickSearchTimeout = null;
 let selectedCards = new Set(); // Track selected card IDs for multi-select
@@ -33,6 +34,9 @@ export function setupInventory() {
 
   // Setup view toggle
   setupViewToggle();
+
+  // Setup price toggle
+  setupPriceToggle();
 
   // Setup pagination
   setupPagination();
@@ -118,6 +122,43 @@ function setupViewToggle() {
       renderInventory();
     });
   }
+}
+
+function setupPriceToggle() {
+  const priceBtn = document.getElementById('inventory-price-toggle');
+  if (!priceBtn) return;
+
+  // Restore the persisted state on load
+  priceBtn.classList.toggle('active', showPrices);
+  priceBtn.setAttribute('aria-pressed', String(showPrices));
+
+  priceBtn.addEventListener('click', () => {
+    showPrices = !showPrices;
+    localStorage.setItem('inventoryShowPrices', String(showPrices));
+    priceBtn.classList.toggle('active', showPrices);
+    priceBtn.setAttribute('aria-pressed', String(showPrices));
+    priceBtn.title = showPrices ? 'Hide prices' : 'Show prices';
+    // Prices are already in the loaded payload — no refetch needed
+    renderInventory();
+  });
+}
+
+// Summarises the last-synced price for a card row.
+// Inventory rows group all owned printings of a card, which can carry different
+// prices, so report the dearest unit price and break the rest out in the tooltip.
+function getPriceSummary(card) {
+  const priced = (card.printings || []).filter(p => p.price > 0);
+  if (!priced.length) return null;
+
+  const unit = Math.max(...priced.map(p => p.price));
+  const total = priced.reduce((sum, p) => sum + p.price * p.quantity, 0);
+  const unpriced = (card.printings || []).length - priced.length;
+
+  const lines = priced.map(p => `${p.set_code?.toUpperCase() || '?'} x${p.quantity} — $${p.price.toFixed(2)} ea`);
+  if (unpriced > 0) lines.push(`${unpriced} printing${unpriced > 1 ? 's' : ''} with no synced price`);
+  lines.push(`Total owned value: $${total.toFixed(2)}`);
+
+  return { unit, total, tooltip: lines.join('\n') };
 }
 
 function setupPagination() {
@@ -794,6 +835,7 @@ function renderGridView(container) {
     const isSelected = selectedCards.has(card.card_id);
     const printingCount = card.printings ? card.printings.length : 0;
     const printingImages = card.printings ? card.printings.map(p => p.image_url).filter(Boolean) : [];
+    const price = showPrices ? getPriceSummary(card) : null;
 
     return `
       <div class="inventory-card-item ${isSelected ? 'selected' : ''}" data-card-id="${card.card_id}" data-printing-images='${JSON.stringify(printingImages)}'>
@@ -824,6 +866,11 @@ function renderGridView(container) {
               <i class="ph ph-check-circle"></i> ${card.available}
             </span>
           </div>
+          ${showPrices ? `
+            <div class="inventory-card-price ${price ? '' : 'no-price'}" title="${price ? price.tooltip.replace(/"/g, '&quot;') : 'No synced price available'}">
+              ${price ? `$${price.unit.toFixed(2)}` : '—'}
+            </div>
+          ` : ''}
         </div>
       </div>
     `;
@@ -906,10 +953,12 @@ function renderListView(container) {
       <span class="list-col-owned">Owned</span>
       <span class="list-col-decks">In Decks</span>
       <span class="list-col-available">Available</span>
+      ${showPrices ? '<span class="list-col-price">Price</span>' : ''}
     </div>
     ${inventoryData.cards.map(card => {
       const isSelected = selectedCards.has(card.card_id);
       const printingCount = card.printings ? card.printings.length : 0;
+      const price = showPrices ? getPriceSummary(card) : null;
       return `
         <div class="inventory-list-item ${isSelected ? 'selected' : ''}" data-card-id="${card.card_id}">
           ${selectMode ? `
@@ -926,6 +975,11 @@ function renderListView(container) {
           <span class="list-col-owned">${card.total_owned}</span>
           <span class="list-col-decks">${card.total_in_decks}</span>
           <span class="list-col-available ${card.available <= 0 ? 'none-available' : ''}">${card.available}</span>
+          ${showPrices ? `
+            <span class="list-col-price ${price ? '' : 'no-price'}" title="${price ? price.tooltip.replace(/"/g, '&quot;') : 'No synced price available'}">
+              ${price ? `$${price.unit.toFixed(2)}` : '—'}
+            </span>
+          ` : ''}
         </div>
       `;
     }).join('')}
