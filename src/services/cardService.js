@@ -640,7 +640,7 @@ export function getCardOwnedPrintings(userId, cardId) {
      JOIN printings p ON op.printing_id = p.id
      LEFT JOIN sets s ON p.set_code = s.code
      WHERE op.user_id = ? AND p.card_id = ?
-     ORDER BY p.set_code, p.collector_number`,
+     ORDER BY p.set_code, p.collector_number, op.is_foil`,
     [userId, cardId]
   );
 }
@@ -649,7 +649,10 @@ export function getCardOwnedPrintings(userId, cardId) {
  * Add or update owned printing quantity
  * Also syncs with owned_cards table
  */
-export function setOwnedPrintingQuantity(userId, printingId, quantity) {
+// Foil and non-foil copies of the same printing are tracked as separate rows,
+// so isFoil is part of the identity of the row being set, not just an attribute.
+export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = false) {
+  const foilFlag = isFoil ? 1 : 0;
   // Get the card_id for this printing
   const printing = db.get(
     `SELECT card_id FROM printings WHERE id = ?`,
@@ -665,8 +668,8 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity) {
   if (quantity <= 0) {
     // Remove if quantity is 0 or less
     db.run(
-      `DELETE FROM owned_printings WHERE user_id = ? AND printing_id = ?`,
-      [userId, printingId]
+      `DELETE FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+      [userId, printingId, foilFlag]
     );
 
     // Check if any other printings of this card are still owned
@@ -691,8 +694,8 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity) {
 
   // Check if already exists
   const existing = db.get(
-    `SELECT id FROM owned_printings WHERE user_id = ? AND printing_id = ?`,
-    [userId, printingId]
+    `SELECT id FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+    [userId, printingId, foilFlag]
   );
 
   if (existing) {
@@ -704,8 +707,8 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity) {
   } else {
     // Insert new
     db.run(
-      `INSERT INTO owned_printings (user_id, printing_id, quantity) VALUES (?, ?, ?)`,
-      [userId, printingId, quantity]
+      `INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil) VALUES (?, ?, ?, ?)`,
+      [userId, printingId, quantity, foilFlag]
     );
   }
 

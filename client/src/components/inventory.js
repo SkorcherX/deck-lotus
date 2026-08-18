@@ -156,6 +156,13 @@ function setupPriceToggle() {
   priceBtn.addEventListener('click', () => setShowPrices(!showPrices));
 }
 
+// How many owned copies of this card are foil, across all its printings.
+function getFoilCount(card) {
+  return (card.printings || [])
+    .filter(p => p.is_foil)
+    .reduce((sum, p) => sum + (p.quantity || 0), 0);
+}
+
 // Summarises the last-synced price for a card row.
 // Inventory rows group all owned printings of a card, which can carry different
 // prices, so report the dearest unit price and break the rest out in the tooltip.
@@ -167,7 +174,9 @@ function getPriceSummary(card) {
   const total = priced.reduce((sum, p) => sum + p.price * p.quantity, 0);
   const unpriced = (card.printings || []).length - priced.length;
 
-  const lines = priced.map(p => `${p.set_code?.toUpperCase() || '?'} x${p.quantity} — $${p.price.toFixed(2)} ea`);
+  const lines = priced.map(p =>
+    `${p.set_code?.toUpperCase() || '?'}${p.is_foil ? ' (foil)' : ''} x${p.quantity} — $${p.price.toFixed(2)} ea`
+  );
   if (unpriced > 0) lines.push(`${unpriced} printing${unpriced > 1 ? 's' : ''} with no synced price`);
   lines.push(`Total owned value: $${total.toFixed(2)}`);
 
@@ -329,6 +338,9 @@ async function showPrintingsFlyout(cardId, anchorEl) {
       <div class="printing-flyout-header">
         <input type="text" class="printing-flyout-search" placeholder="Filter by set..." autocomplete="off">
         <span class="printing-flyout-count">${printings.length} printings</span>
+        <label class="printing-flyout-foil" title="Add the foil version of this printing">
+          <input type="checkbox" class="printing-foil-checkbox"> <i class="ph ph-sparkle"></i> Foil
+        </label>
       </div>
       <div class="printing-flyout-list">
         ${printings.map(p => `
@@ -379,20 +391,23 @@ async function showPrintingsFlyout(cardId, anchorEl) {
     setTimeout(() => searchInput.focus(), 50);
 
     // Add handlers for adding printings
+    const isFoilChecked = () => flyout.querySelector('.printing-foil-checkbox')?.checked ?? false;
+
     flyout.querySelectorAll('.printing-add-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const printingId = parseInt(btn.dataset.printingId);
-        await quickAddPrinting(printingId);
+        await quickAddPrinting(printingId, isFoilChecked());
       });
     });
 
     // Click on printing item to add
     flyout.querySelectorAll('.printing-flyout-item').forEach(item => {
       item.addEventListener('click', async (e) => {
-        if (e.target.closest('.printing-add-btn')) return;
+        // Toggling the foil checkbox must not also add the card
+        if (e.target.closest('.printing-add-btn') || e.target.closest('.printing-flyout-foil')) return;
         const printingId = parseInt(item.dataset.printingId);
-        await quickAddPrinting(printingId);
+        await quickAddPrinting(printingId, isFoilChecked());
       });
     });
 
@@ -410,10 +425,10 @@ function closePrintingFlyout() {
   document.querySelectorAll('.quick-result-item').forEach(el => el.classList.remove('active'));
 }
 
-async function quickAddPrinting(printingId) {
+async function quickAddPrinting(printingId, isFoil = false) {
   try {
-    await api.setOwnedPrintingQuantity(printingId, 1);
-    showToast('Card added to inventory!', 'success');
+    await api.setOwnedPrintingQuantity(printingId, 1, isFoil);
+    showToast(isFoil ? 'Foil card added to inventory!' : 'Card added to inventory!', 'success');
 
     // Refresh inventory data
     await loadInventoryData();
@@ -849,6 +864,7 @@ function renderGridView(container) {
     const printingCount = card.printings ? card.printings.length : 0;
     const printingImages = card.printings ? card.printings.map(p => p.image_url).filter(Boolean) : [];
     const price = showPrices ? getPriceSummary(card) : null;
+    const foilCount = getFoilCount(card);
 
     return `
       <div class="inventory-card-item ${isSelected ? 'selected' : ''}" data-card-id="${card.card_id}" data-printing-images='${JSON.stringify(printingImages)}'>
@@ -865,6 +881,11 @@ function renderGridView(container) {
           ${printingCount > 1 ? `
             <div class="inventory-printings-badge" title="${printingCount} different printings owned">
               <i class="ph ph-stack"></i> ${printingCount}
+            </div>
+          ` : ''}
+          ${foilCount > 0 ? `
+            <div class="inventory-foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned">
+              <i class="ph ph-sparkle"></i> ${foilCount}
             </div>
           ` : ''}
         </div>
@@ -972,6 +993,7 @@ function renderListView(container) {
       const isSelected = selectedCards.has(card.card_id);
       const printingCount = card.printings ? card.printings.length : 0;
       const price = showPrices ? getPriceSummary(card) : null;
+      const foilCount = getFoilCount(card);
       return `
         <div class="inventory-list-item ${isSelected ? 'selected' : ''}" data-card-id="${card.card_id}">
           ${selectMode ? `
@@ -981,7 +1003,10 @@ function renderListView(container) {
               </div>
             </span>
           ` : ''}
-          <span class="list-col-name">${card.name}</span>
+          <span class="list-col-name">
+            ${card.name}
+            ${foilCount > 0 ? `<span class="foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned"><i class="ph ph-sparkle"></i> ${foilCount}</span>` : ''}
+          </span>
           <span class="list-col-type">${card.type_line || ''}</span>
           <span class="list-col-mana">${formatMana(card.mana_cost || '')}</span>
           <span class="list-col-prints">${printingCount > 1 ? `<i class="ph ph-stack"></i> ${printingCount}` : '1'}</span>

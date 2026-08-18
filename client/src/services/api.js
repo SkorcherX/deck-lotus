@@ -135,10 +135,10 @@ class ApiClient {
     return this.request(`/cards/${cardId}/ownership-usage`);
   }
 
-  async setOwnedPrintingQuantity(printingId, quantity) {
+  async setOwnedPrintingQuantity(printingId, quantity, isFoil = false) {
     return this.request(`/cards/printings/${printingId}/quantity`, {
       method: 'POST',
-      body: JSON.stringify({ quantity }),
+      body: JSON.stringify({ quantity, isFoil }),
     });
   }
 
@@ -420,10 +420,10 @@ class ApiClient {
     });
   }
 
-  async quickAddToInventory(printingId, quantity = 1) {
+  async quickAddToInventory(printingId, quantity = 1, isFoil = false) {
     return this.request('/inventory/quick-add', {
       method: 'POST',
-      body: JSON.stringify({ printingId, quantity }),
+      body: JSON.stringify({ printingId, quantity, isFoil }),
     });
   }
 

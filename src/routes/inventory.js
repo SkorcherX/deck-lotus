@@ -116,13 +116,13 @@ router.post('/bulk-add', authenticate, (req, res, next) => {
  */
 router.post('/quick-add', authenticate, (req, res, next) => {
   try {
-    const { printingId, quantity = 1 } = req.body;
+    const { printingId, quantity = 1, isFoil = false } = req.body;
 
     if (!printingId) {
       return res.status(400).json({ error: 'printingId is required' });
     }
 
-    const result = setOwnedPrintingQuantity(req.user.id, printingId, quantity);
+    const result = setOwnedPrintingQuantity(req.user.id, printingId, quantity, isFoil);
     res.json(result);
   } catch (error) {
     next(error);

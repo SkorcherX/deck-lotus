@@ -1,5 +1,21 @@
 import db from '../db/connection.js';
 
+// Price of one owned copy, honouring its finish. Foil copies are worth their
+// foil price; where a printing has no foil price synced we fall back to the
+// normal price rather than treating the copy as unpriced.
+// Expects `op` (owned_printings) and `p` (printings) to be in scope.
+const OWNED_COPY_PRICE = `
+  COALESCE(
+    (SELECT price FROM prices
+      WHERE printing_uuid = p.uuid AND provider = 'tcgplayer'
+        AND price_type = CASE WHEN op.is_foil = 1 THEN 'foil' ELSE 'normal' END
+      LIMIT 1),
+    (SELECT price FROM prices
+      WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal'
+      LIMIT 1)
+  )
+`;
+
 /**
  * Get all owned cards for inventory display
  * Returns cards with printing details, quantities, and deck usage stats
@@ -45,10 +61,7 @@ export function getInventory(userId, filters = {}) {
         WHERE d.user_id = ? AND p.card_id = c.id
       ) as total_in_decks,
       (
-        SELECT MAX(NULLIF(
-          (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1),
-          0
-        ))
+        SELECT MAX(NULLIF(${OWNED_COPY_PRICE}, 0))
         FROM owned_printings op
         JOIN printings p ON op.printing_id = p.id
         WHERE op.user_id = ? AND p.card_id = c.id
@@ -199,18 +212,19 @@ export function getInventory(userId, filters = {}) {
       SELECT
         op.id as owned_printing_id,
         op.quantity,
+        op.is_foil,
         p.id as printing_id,
         p.set_code,
         p.collector_number,
         p.rarity,
         p.image_url,
         s.name as set_name,
-        (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1) as price
+        ${OWNED_COPY_PRICE} as price
       FROM owned_printings op
       JOIN printings p ON op.printing_id = p.id
       LEFT JOIN sets s ON p.set_code = s.code
       WHERE op.user_id = ? AND p.card_id = ?
-      ORDER BY p.set_code, p.collector_number
+      ORDER BY p.set_code, p.collector_number, op.is_foil
     `, [userId, card.card_id]);
 
     return {
@@ -261,10 +275,7 @@ export function getInventoryStats(userId) {
   // Estimated total value
   const estimatedValue = db.get(`
     SELECT COALESCE(SUM(
-      op.quantity * COALESCE(
-        (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1),
-        0
-      )
+      op.quantity * COALESCE(${OWNED_COPY_PRICE}, 0)
     ), 0) as total
     FROM owned_printings op
     JOIN printings p ON op.printing_id = p.id
@@ -335,7 +346,8 @@ export function bulkAddToInventory(userId, items) {
 
   for (const item of items) {
     try {
-      const { cardName, setCode, quantity = 1 } = item;
+      const { cardName, setCode, quantity = 1, isFoil = false } = item;
+      const foilFlag = isFoil ? 1 : 0;
 
       if (!cardName) {
         results.failed++;
@@ -392,8 +404,8 @@ export function bulkAddToInventory(userId, items) {
 
       // Add or update owned_printings
       const existing = db.get(
-        `SELECT id, quantity FROM owned_printings WHERE user_id = ? AND printing_id = ?`,
-        [userId, printing.id]
+        `SELECT id, quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+        [userId, printing.id, foilFlag]
       );
 
       if (existing) {
@@ -403,8 +415,8 @@ export function bulkAddToInventory(userId, items) {
         );
       } else {
         db.run(
-          `INSERT INTO owned_printings (user_id, printing_id, quantity) VALUES (?, ?, ?)`,
-          [userId, printing.id, quantity]
+          `INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil) VALUES (?, ?, ?, ?)`,
+          [userId, printing.id, quantity, foilFlag]
         );
       }
 

@@ -4224,3 +4224,60 @@ button.btn-icon.active {
     text-align: left;
   }
 }
+
+/* Foil tracking — badges and the quick-add foil checkbox */
+.inventory-foil-badge {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.5rem;
+  background: linear-gradient(135deg, #f0abfc, #818cf8, #22d3ee);
+  color: #1e1b4b;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.inventory-foil-badge i {
+  font-size: 0.875rem;
+}
+
+/* Inline foil marker used in list rows and the card detail modal */
+.foil-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: middle;
+  background: linear-gradient(135deg, #f0abfc, #818cf8, #22d3ee);
+  color: #1e1b4b;
+}
+
+.printing-flyout-foil {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.printing-flyout-foil input {
+  cursor: pointer;
+  margin: 0;
+}
+
+.printing-flyout-foil:hover {
+  color: var(--text-primary);
+}

@@ -250,13 +250,13 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
   try {
     const printingId = parseInt(req.params.printingId);
     const userId = req.user.id;
-    const { quantity } = req.body;
+    const { quantity, isFoil = false } = req.body;
 
     if (quantity === undefined || quantity === null) {
       return res.status(400).json({ error: 'Quantity is required' });
     }
 
-    const result = setOwnedPrintingQuantity(userId, printingId, parseInt(quantity));
+    const result = setOwnedPrintingQuantity(userId, printingId, parseInt(quantity), isFoil);
     res.json(result);
   } catch (error) {
     next(error);

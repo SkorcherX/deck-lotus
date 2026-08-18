@@ -63,5 +63,9 @@ taken on GitHub — only do it when explicitly asked.
   legality is checked locally against the MTGJSON data in the app's SQLite
   database and needs no credentials; Validate Deck proxies to Mana Pool's
   `/deck` endpoint and does. They are not duplicates.
+- Foil copies are separate `owned_printings` rows: the table is keyed
+  `UNIQUE(user_id, printing_id, is_foil)`. Anything reading or writing an owned
+  row must carry `is_foil`, or it will silently act on the wrong finish.
+  Foil copies price off `price_type = 'foil'`, falling back to `normal`.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.
