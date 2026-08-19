@@ -4726,3 +4726,14 @@ button.btn-icon.active {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* The quad a capture was actually read from, when snapping moved it away from
+   the marked one. Drawn in warning colour because a large divergence is the
+   thing worth noticing. */
+.scan-quad-used {
+  fill: none;
+  stroke: var(--warning);
+  stroke-width: 0.4;
+  stroke-dasharray: 2 1.5;
+  vector-effect: non-scaling-stroke;
+}

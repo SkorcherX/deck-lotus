@@ -413,6 +413,15 @@ export function parseCollectorBlock(text, words) {
     if (numeric.length) collectorNumber = numeric[0];
   }
 
+  if (!collectorNumber) {
+    // Some sets print the rarity before the number and give no set total at all
+    // — Foundations reads "U 0533" — and the space between them is easily lost.
+    // The three-digit minimum keeps set codes out of this: "M21" is a set, while
+    // "U0533" is a rarity fused to a collector number.
+    const fused = tokens.find((t) => /^[A-Z]\d{3,}$/.test(t) && RARITY_LETTERS.has(t[0]));
+    if (fused) collectorNumber = fused.slice(1);
+  }
+
   // Then the set code. Set codes can lead with a digit (4ED) and can contain
   // them (M21), so the shape is 2-4 characters with at least one letter and not
   // all digits — which would be the collector number or the set total.

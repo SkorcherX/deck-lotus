@@ -410,21 +410,28 @@ function refineEdge(gray, width, height, from, to, searchRadius, minStrength, sa
       if (strength > strongest) strongest = strength;
     }
 
-    // Take the outermost convincing step, not the strongest one. A card's black
-    // border makes the border-to-face transition far more pronounced than the
-    // card-to-table edge, so going by strength snaps the quad to the inside of
-    // the border and shifts every crop inward — measured as a clipped first
-    // character on both collector lines.
+    // Take the convincing step nearest to where the guess put the edge.
     //
-    // "Convincing" has to be an absolute floor rather than a fraction of the
-    // strongest step here, for the same reason: against a border transition
-    // eight times its size, the real outer edge never clears a relative bar.
+    // Neither "strongest" nor "outermost" works. Strongest snaps to the inside
+    // of the card's black border, which is a far more pronounced transition than
+    // card-against-table. Outermost overshoots the other way, onto the soft
+    // shadow a card casts on cloth — measured on a real capture, a quad the user
+    // had aligned by eye moved 39px and dragged the collector crop off the top
+    // line and onto the tablecloth.
+    //
+    // A marked quad is a person's aim, and it is usually good. Refining to the
+    // nearest real edge keeps that aim and only corrects it, so the snap can
+    // improve a placement but never run away from one.
+    //
+    // "Convincing" is an absolute floor rather than a fraction of the strongest
+    // step: against a border transition eight times its size, the card's true
+    // outer edge would never clear a relative bar.
     const qualifying = candidates.filter((c) => c.strength >= minStrength);
-    const outermost = qualifying.length
-      ? qualifying.reduce((best, c) => (c.d < best.d ? c : best))
+    const nearest = qualifying.length
+      ? qualifying.reduce((best, c) => (Math.abs(c.d) < Math.abs(best.d) ? c : best))
       : null;
 
-    if (outermost) push_point(points, t, outermost);
+    if (nearest) push_point(points, t, nearest);
   }
 
   if (points.length < 6) return null;

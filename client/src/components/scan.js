@@ -44,7 +44,7 @@ const STORAGE_KEY = 'scan.captureSettings';
 // win forever, so anyone who had used the page once would keep the old defaults
 // and never see a recalibration. The quad survives a bump — it describes the
 // user's desk, not our tuning.
-const SETTINGS_VERSION = 7;
+const SETTINGS_VERSION = 8;
 
 // The analysis buffer is deliberately tiny: every metric is a per-pixel pass
 // over it on every frame, and none of them need detail.
@@ -90,7 +90,14 @@ function freshSettings() {
       collector: { ...DEFAULT_REGIONS.collector },
     },
     quad: defaultQuad(),
-    snapEnabled: true,
+    // Off by default. Snapping was built to rescue a loosely marked quad, but
+    // measured against a quad a person had aligned by eye — region boxes sitting
+    // exactly on the print — it moved 39px onto the shadow the card casts on
+    // cloth and dragged the collector crop off the top line. A person aiming at
+    // the print is more reliable than an edge detector guessing which of several
+    // nearby steps is the card, so the marked quad is used as marked unless the
+    // user asks for help.
+    snapEnabled: false,
   };
 }
 
@@ -121,7 +128,7 @@ function loadSettings() {
         Array.isArray(stored.quad) && stored.quad.length === 4
           ? stored.quad.map((p) => ({ x: p.x, y: p.y }))
           : fallback.quad,
-      snapEnabled: stored.snapEnabled !== false,
+      snapEnabled: stored.snapEnabled === true,
     };
   } catch {
     return fallback;
@@ -502,6 +509,24 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   if (state.ocrEnabled) readCapture(entry);
 }
 
+/**
+ * Show the quad a capture was actually taken from, over the live view.
+ *
+ * Only drawn when it differs from the marked one, so in the normal case the
+ * overlay stays as the user set it.
+ */
+function drawUsedQuad(quad, moved) {
+  const outline = el('scan-quad-used');
+  if (!outline) return;
+
+  if (!moved) {
+    outline.setAttribute('points', '');
+    return;
+  }
+
+  outline.setAttribute('points', quad.map((p) => `${p.x * 100},${p.y * 100}`).join(' '));
+}
+
 /* --------------------------------------------------------------- read/resolve */
 
 function reader() {
@@ -633,10 +658,15 @@ function renderCapture(entry) {
 
   const snapLabel = el('scan-snap-status');
   if (snapLabel) {
-    if (!state.settings.snapEnabled) snapLabel.textContent = '';
-    else if (entry.snap) snapLabel.textContent = `snapped ${entry.snap.moved}px to the card edges`;
+    if (!state.settings.snapEnabled) snapLabel.textContent = 'read from the guide as marked';
+    else if (entry.snap) snapLabel.textContent = `snapped ${entry.snap.moved}px from the marked guide`;
     else snapLabel.textContent = 'card edges not found — used the marked guide';
   }
+
+  // Draw where the crops were actually taken from. Without this the overlay
+  // shows the marked quad while the reader used a snapped one, which is exactly
+  // how a snap that moved 39px in the wrong direction went unnoticed.
+  drawUsedQuad(entry.quad, !!entry.snap);
 
   const label = el('scan-capture-label');
   if (label) {
