@@ -109,7 +109,7 @@ function editDistance(a, b, max = 4) {
  * 0..1 similarity between an OCR'd name and a database name. Compares against
  * the front face too, since a DFC prints only its front face name.
  */
-function nameSimilarity(scanned, dbName) {
+function nameSimilarity(scanned, dbName, tolerance = 0.25) {
   if (!scanned || !dbName) return 0;
   const a = scanned.toLowerCase();
   const faces = [dbName.toLowerCase(), dbName.toLowerCase().split(' // ')[0]];
@@ -117,7 +117,10 @@ function nameSimilarity(scanned, dbName) {
   let best = 0;
   for (const face of faces) {
     if (a === face) return 1;
-    const cap = Math.max(2, Math.ceil(face.length * 0.25));
+    // How much damage to consider at all. The default suits a name standing on
+    // its own; callers with another field already matched can afford to look
+    // further, since they are disambiguating rather than identifying.
+    const cap = Math.max(2, Math.ceil(face.length * tolerance));
     const distance = editDistance(a, face, cap);
     const score = 1 - distance / Math.max(a.length, face.length);
     if (score > best) best = score;
@@ -220,6 +223,41 @@ export function findByFuzzySetAndCollector(setCode, collectorNumber, limit = MAX
 }
 
 /**
+ * Printings of a card whose name is near what was read, holding this collector
+ * number — in any set.
+ *
+ * Measured across real captures, the collector number is by far the soundest
+ * field: correct on every card tried, at 83-95% confidence, while the printed
+ * set code came back wrong every time (FDN read as FON, and once as ALC). So
+ * the set code is not required at all here. An approximate name plus an exact
+ * collector number narrows the database sharply, and unlike a wrong set code it
+ * cannot quietly point at the wrong card: ALC is a real set, so a misread that
+ * happens to be valid resolves confidently and wrongly.
+ */
+export function findByNameAndCollector(name, collectorNumber, limit = MAX_CANDIDATES) {
+  const normalized = normalizeCardName(name);
+  const variants = collectorNumberVariants(collectorNumber);
+  if (!normalized || variants.length === 0) return [];
+
+  for (const variant of variants) {
+    // Over-fetch: a collector number is shared by every set that reaches it, and
+    // the name is what narrows it back down.
+    const rows = queryPrintings('p.collector_number = ? COLLATE NOCASE', [variant], 500);
+    if (rows.length === 0) continue;
+
+    // A looser bar than elsewhere, deliberately. The collector number has
+    // already narrowed this to a handful of cards, so the name only has to tell
+    // them apart — and a foil's title reads badly: "Dazzling Angel" came back
+    // from a real capture as "Dazzl ns Ange", five edits out, which the usual
+    // threshold rejects outright.
+    const matching = rows.filter((row) => nameSimilarity(normalized, row.card_name, 0.45) >= 0.6);
+    if (matching.length > 0) return matching.slice(0, limit);
+  }
+
+  return [];
+}
+
+/**
  * Every printing of a card, by exact name or as the front face of a DFC.
  */
 export function findByName(name, limit = MAX_CANDIDATES) {
@@ -280,6 +318,10 @@ const STRATEGY_CONFIDENCE = {
   // Below an exact set match but above a name-only one: the collector number
   // still had to match exactly, and the set code was only one character out.
   'fuzzy-set+collector': 0.78,
+  // No set code involved, so this cannot be misled by one. The collector number
+  // matched exactly and the name is close, which in practice is a stronger
+  // combination than a set code that OCR rarely gets right.
+  'name+collector': 0.86,
   'name+set': 0.72,
   name: 0.55,
   'fuzzy-name': 0.35,
@@ -361,6 +403,13 @@ export function resolveScan({ name = null, setCode = null, collectorNumber = nul
     if (rows.length === 0) {
       collect(findByFuzzySetAndCollector(normalizedSet, normalizedCollector), 'fuzzy-set+collector');
     }
+  }
+
+  // Name plus collector number, ignoring the set code entirely. Runs whenever
+  // both are present, not only as a fallback: a set code read wrongly but
+  // plausibly would otherwise win on a strategy that scores higher.
+  if (normalizedName && normalizedCollector) {
+    collect(findByNameAndCollector(normalizedName, normalizedCollector), 'name+collector');
   }
 
   if (normalizedName && normalizedSet) {
