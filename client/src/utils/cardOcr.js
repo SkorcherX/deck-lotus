@@ -312,18 +312,40 @@ export function parseCollectorBlock(text, words) {
   const looksLikeSetCode = (t) =>
     /^[A-Z0-9]{2,4}$/.test(t) && /[A-Z]/.test(t) && !LANGUAGE_CODES.has(t);
 
-  // The block prints "SET • EN", so the token before the language code is the
-  // set code. This beats every heuristic based on length: the same line carries
-  // the artist's name, and "SIMON" is a longer all-letter token than "WAR".
+  // The block prints "SET • EN", so the set code is the token before the
+  // language code. This beats every heuristic based on length: the same line
+  // carries the artist's name, and "SIMON" is a longer all-letter token than
+  // "WAR".
+  //
+  // The search walks backwards rather than checking only the immediate
+  // neighbour, because the bullet between them often survives OCR as a stray
+  // token. Measured on a real capture reading "JR SNC 2 EN MATTEO BA", the
+  // bullet came through as "2" and the correct "SNC" sat one place further
+  // back.
   const languageAt = tokens.findIndex((t) => LANGUAGE_CODES.has(t));
-  if (languageAt > 0 && looksLikeSetCode(tokens[languageAt - 1])) {
-    setCode = tokens[languageAt - 1];
+  if (languageAt > 0) {
+    for (let i = languageAt - 1; i >= 0 && i >= languageAt - 3; i--) {
+      if (looksLikeSetCode(tokens[i])) {
+        setCode = tokens[i];
+        break;
+      }
+    }
   }
 
-  // With no language code read, fall back to the first token of the right shape.
-  // A lone rarity letter is excluded by the two-character minimum.
+  // With no language code read, position cannot be trusted at all: leading junk
+  // is common (that capture began with a spurious "JR") and the artist's name
+  // trails behind ("BA"). Length is the better signal — the overwhelming
+  // majority of printed set codes are three characters, and two-character
+  // tokens are usually debris from the rarity letter or an initial.
   if (!setCode) {
-    setCode = tokens.find(looksLikeSetCode) || null;
+    const shaped = tokens.filter(looksLikeSetCode);
+    for (const length of [3, 4, 2]) {
+      const match = shaped.find((t) => t.length === length);
+      if (match) {
+        setCode = match;
+        break;
+      }
+    }
   }
 
   // Last resort: spacing on this line is small and frequently lost altogether,
