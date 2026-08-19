@@ -54,6 +54,113 @@ export function simdSupported() {
   }
 }
 
+/* -------------------------------------------------------------- text bands */
+
+/**
+ * Find the rows of a crop that actually carry print.
+ *
+ * Cropping by fixed fractions of the card is only as good as the alignment
+ * beneath it, and the collector block occupies about 7% of a card's height —
+ * a couple of percent of drift walks the crop off the print entirely, which is
+ * exactly what a real capture showed: the collector number sat above the crop
+ * and only the set line survived.
+ *
+ * So the regions are cut generously and then trimmed to their content here.
+ * Text rows vary far more than blank ones, so the row-wise standard deviation
+ * separates them without needing to know the polarity, the colour of the card,
+ * or where the print was supposed to be.
+ *
+ * @returns {{top: number, bottom: number} | null} null when no clear band stands
+ *   out, in which case the caller should keep the crop as it is.
+ */
+export function findTextRows(image, options = {}) {
+  const { padding = 0.35, minRows = 3 } = options;
+  const { data, width, height } = image;
+
+  const deviations = new Float64Array(height);
+  for (let y = 0; y < height; y++) {
+    let sum = 0;
+    let sumSquares = 0;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const value = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      sum += value;
+      sumSquares += value * value;
+    }
+    const mean = sum / width;
+    deviations[y] = Math.sqrt(Math.max(0, sumSquares / width - mean * mean));
+  }
+
+  const sorted = [...deviations].sort((a, b) => a - b);
+  const quiet = sorted[Math.floor(sorted.length * 0.25)];
+  const loud = sorted[Math.floor(sorted.length * 0.95)];
+
+  // Nothing stands out from the background: no text, or a crop so uniformly
+  // busy that trimming it would be arbitrary.
+  if (loud - quiet < 6) return null;
+
+  const cutoff = quiet + (loud - quiet) * 0.35;
+
+  const bands = [];
+  let start = -1;
+  for (let y = 0; y < height; y++) {
+    const active = deviations[y] >= cutoff;
+    if (active && start < 0) start = y;
+    // Small gaps are the space between two printed lines, not the end of the
+    // block, so bands are joined across them.
+    if (!active || y === height - 1) {
+      if (start >= 0) {
+        const end = active ? y : y - 1;
+        const previous = bands[bands.length - 1];
+        // Join across a gap up to a line's own height. The collector block is
+        // two lines with ordinary leading between them, and a threshold tighter
+        // than that spacing splits them — measured on a synthetic card, the
+        // number line was dropped and only the set line survived, which is the
+        // same symptom the real capture showed for a different reason.
+        const gap = start - previous?.end;
+        const lineHeight = previous ? previous.end - previous.start : 0;
+        if (previous && gap <= Math.max(lineHeight * 1.5, height * 0.25)) previous.end = end;
+        else bands.push({ start, end });
+        start = -1;
+      }
+    }
+  }
+
+  const usable = bands.filter((b) => b.end - b.start >= minRows);
+  if (!usable.length) return null;
+
+  // The tallest band is the print; anything else is an edge or a speck.
+  const best = usable.reduce((a, b) => (b.end - b.start > a.end - a.start ? b : a));
+  const margin = Math.round((best.end - best.start) * padding);
+
+  return {
+    top: Math.max(0, best.start - margin),
+    bottom: Math.min(height - 1, best.end + margin),
+  };
+}
+
+/** Crop a canvas to the rows carrying print, or return it unchanged. */
+export function trimToText(canvas, options = {}) {
+  const ctx = canvas.getContext('2d');
+  const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const rows = findTextRows(image, options);
+  if (!rows) return canvas;
+
+  const height = rows.bottom - rows.top + 1;
+  // A trim that keeps nearly everything is not worth an extra canvas.
+  if (height >= canvas.height * 0.92) return canvas;
+
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = height;
+  out.getContext('2d').drawImage(
+    canvas,
+    0, rows.top, canvas.width, height,
+    0, 0, canvas.width, height
+  );
+  return out;
+}
+
 /* ----------------------------------------------------------- preprocessing */
 
 /**
@@ -436,9 +543,13 @@ export function createCardReader({ onProgress } = {}) {
     return starting;
   }
 
-  async function recognizeRegion(canvas, { psm, whitelist, preprocess }) {
+  async function recognizeRegion(canvas, { psm, whitelist, preprocess, trim = true }) {
     const engine = await ensureWorker();
-    const image = preprocess ? preprocessForOcr(canvas, preprocess) : canvas;
+    // Trim first: preprocessing decides polarity from what it is given, and a
+    // crop still holding the card face above the black border has both
+    // polarities in it at once.
+    const framed = trim ? trimToText(canvas) : canvas;
+    const image = preprocess ? preprocessForOcr(framed, preprocess) : framed;
 
     await engine.setParameters({
       tessedit_pageseg_mode: psm,

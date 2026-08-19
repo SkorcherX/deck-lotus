@@ -44,7 +44,7 @@ const STORAGE_KEY = 'scan.captureSettings';
 // win forever, so anyone who had used the page once would keep the old defaults
 // and never see a recalibration. The quad survives a bump — it describes the
 // user's desk, not our tuning.
-const SETTINGS_VERSION = 6;
+const SETTINGS_VERSION = 7;
 
 // The analysis buffer is deliberately tiny: every metric is a per-pixel pass
 // over it on every frame, and none of them need detail.

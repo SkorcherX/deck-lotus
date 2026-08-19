@@ -18,17 +18,18 @@ export const CARD_ASPECT = 63 / 88;
  * of the crop; the mana symbols are the main source of junk characters in an
  * OCR'd name.
  *
- * The regions track the print closely rather than carrying wide margins. They
- * once needed the margin to absorb a hand-marked quad drifting against
- * hand-placed cards, but edge snapping removes that drift, and the margin
- * turned out to cost more than it saved: a collector crop wide enough to
- * survive drift also swallowed the card face above the black border strip, and
- * one crop cannot hold both white-on-black and black-on-light text. A single
- * polarity decision has to invert one of them wrongly.
+ * The regions are cut generously and then trimmed to their content by the
+ * reader, rather than being sized to the print exactly. Sizing them exactly
+ * makes them hostage to the alignment beneath: the collector block is about 7%
+ * of a card's height, so a couple of percent of drift moves the crop off the
+ * print, and a real capture lost the collector number that way while keeping
+ * the set line. Generous plus content-aware beats precise plus brittle, and
+ * trimming to the print also keeps the card face above the black border out of
+ * the crop, which is what forced one polarity decision to serve two polarities.
  */
 export const DEFAULT_REGIONS = {
-  title: { x: 0.045, y: 0.033, w: 0.74, h: 0.068 },
-  collector: { x: 0.03, y: 0.905, w: 0.32, h: 0.072 },
+  title: { x: 0.045, y: 0.015, w: 0.74, h: 0.115 },
+  collector: { x: 0.025, y: 0.855, w: 0.33, h: 0.135 },
 };
 
 /**
@@ -499,16 +500,7 @@ function lineIntersection(p1, p2, p3, p4) {
  *   null when the card cannot be found, in which case the caller keeps the
  *   marked quad rather than trusting a bad fit.
  */
-export function snapQuadToCard(frame, quad, options = {}) {
-  // minStrength is both the floor for believing an individual edge step and the
-  // bar the fitted edges must clear overall.
-  const { searchFraction = 0.06, minStrength = 10 } = options;
-  const { width, height } = frame;
-
-  const gray = new Float64Array(width * height);
-  for (let i = 0, p = 0; i < frame.data.length; i += 4, p++) {
-    gray[p] = frame.data[i] * 0.299 + frame.data[i + 1] * 0.587 + frame.data[i + 2] * 0.114;
-  }
+function snapOnce(gray, width, height, quad, searchFraction, minStrength) {
 
   // Work in pixels: the search radius is a physical distance, not a fraction.
   const pixels = quad.map((c) => ({ x: c.x * width, y: c.y * height }));
@@ -540,14 +532,97 @@ export function snapQuadToCard(frame, quad, options = {}) {
     corners.push({ x: point.x / width, y: point.y / height });
   }
 
-  // A refinement that moved a long way did not refine anything — it locked onto
-  // something else. Better to keep the marked quad than to crop the table.
   const moved = Math.max(
     ...corners.map((c, i) => Math.hypot((c.x - quad[i].x) * width, (c.y - quad[i].y) * height))
   );
-  if (moved > searchRadius * 2.5) return null;
 
   return { quad: corners, strength, moved };
+}
+
+/**
+ * How far the quad's proportions are from a Magic card's, as a ratio.
+ *
+ * The card is 63x88mm and nothing else, so this is free ground truth: a snapped
+ * quad with the wrong proportions has locked onto something that is not the
+ * card — the stack underneath it, a shadow, the edge of the mat. Measured from
+ * a real capture, an over-large quad pushed the collector crop clean off the
+ * bottom of the print while every edge still looked individually plausible.
+ *
+ * Perspective makes this approximate, so the tolerance is generous; it is there
+ * to catch gross failures, not to police a few degrees of tilt.
+ */
+export function quadAspectError(quad, frameWidth, frameHeight) {
+  const distance = (a, b) =>
+    Math.hypot((a.x - b.x) * frameWidth, (a.y - b.y) * frameHeight);
+
+  const width = (distance(quad[0], quad[1]) + distance(quad[3], quad[2])) / 2;
+  const height = (distance(quad[0], quad[3]) + distance(quad[1], quad[2])) / 2;
+  if (height < 1e-6) return Infinity;
+
+  return Math.abs(width / height - CARD_ASPECT) / CARD_ASPECT;
+}
+
+/**
+ * Refine a guessed quad onto the card actually in frame.
+ *
+ * Runs the refinement repeatedly. One pass can only move each edge as far as it
+ * searches, so a quad marked 10% too large — easy to do with fingertip-sized
+ * handles on a phone — cannot reach the card in a single step. Each pass starts
+ * from the last, so the quad walks in and converges.
+ *
+ * @returns {{quad: Array, strength: number, moved: number, passes: number} | null}
+ *   null when the card cannot be found or the result is not card-shaped, in
+ *   which case the caller keeps the marked quad rather than trusting a bad fit.
+ */
+export function snapQuadToCard(frame, quad, options = {}) {
+  // minStrength is both the floor for believing an individual edge step and the
+  // bar the fitted edges must clear overall.
+  const {
+    searchFraction = 0.06,
+    minStrength = 10,
+    passes = 4,
+    maxAspectError = 0.12,
+  } = options;
+  const { width, height } = frame;
+
+  const gray = new Float64Array(width * height);
+  for (let i = 0, p = 0; i < frame.data.length; i += 4, p++) {
+    gray[p] = frame.data[i] * 0.299 + frame.data[i + 1] * 0.587 + frame.data[i + 2] * 0.114;
+  }
+
+  let current = quad;
+  let strength = 0;
+  let used = 0;
+
+  for (let pass = 0; pass < passes; pass++) {
+    // Coarse to fine. The first pass searches wide, because a quad marked well
+    // outside the card cannot be corrected by a window that never reaches it —
+    // measured on a phone, a quad 10% too large left the card beyond a 6%
+    // search and the snap simply found nothing. Later passes narrow, so the
+    // result settles on the card's edge rather than drifting to whatever else
+    // is within reach.
+    const reach = pass === 0 ? searchFraction * 2.5 : searchFraction;
+    const result = snapOnce(gray, width, height, current, reach, minStrength);
+    if (!result) break;
+
+    current = result.quad;
+    strength = result.strength;
+    used = pass + 1;
+
+    // Settled: further passes would only chase noise.
+    if (result.moved < 1) break;
+  }
+
+  if (used === 0) return null;
+
+  // The card's known proportions are the check on all of this.
+  if (quadAspectError(current, width, height) > maxAspectError) return null;
+
+  const moved = Math.max(
+    ...current.map((c, i) => Math.hypot((c.x - quad[i].x) * width, (c.y - quad[i].y) * height))
+  );
+
+  return { quad: current, strength, moved, passes: used };
 }
 
 /**
