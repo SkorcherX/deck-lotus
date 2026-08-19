@@ -229,6 +229,17 @@ export function getInventory(userId, filters = {}) {
 
     return {
       ...card,
+      // Show the art of a printing actually owned, not whichever one the
+      // card-level query happened to reach first. The list is how a collection
+      // is recognised at a glance, and the art is the thing a user recognises —
+      // showing a different printing's art than the one they chose, and than
+      // the detail view shows when they click through, makes their own
+      // collection look unfamiliar.
+      //
+      // Where several printings of a card are owned, the one with the most
+      // copies represents the row; ties fall to the printings query's own
+      // ordering, so the choice is stable between requests.
+      image_url: representativeImage(printings) || card.image_url,
       available: card.total_owned - card.total_in_decks,
       printings
     };
@@ -243,6 +254,22 @@ export function getInventory(userId, filters = {}) {
       limit
     }
   };
+}
+
+/**
+ * The owned printing whose art should stand for the card in a list.
+ *
+ * Returns null when no owned printing has an image, leaving the caller to fall
+ * back to any printing of the card — a picture of the right card beats no
+ * picture at all.
+ */
+function representativeImage(printings) {
+  let best = null;
+  for (const printing of printings) {
+    if (!printing.image_url) continue;
+    if (!best || printing.quantity > best.quantity) best = printing;
+  }
+  return best ? best.image_url : null;
 }
 
 /**
