@@ -57,82 +57,101 @@ export function simdSupported() {
 /* ----------------------------------------------------------- preprocessing */
 
 /**
- * Grayscale, then threshold against a local mean.
+ * Grayscale, denoise, then threshold with Sauvola's method.
  *
- * A global threshold is the wrong tool for a card under a desk lamp: one end of
- * the crop is often twice as bright as the other, and any single cutoff either
- * loses the dark end or floods the bright one. The local mean comes from an
- * integral image, so the window size costs nothing.
+ * The obvious approach — threshold each pixel against its local mean minus a
+ * fixed offset — works on a white or gold card and destroys a black or green
+ * one. Those frames print dark text on a dark plate, so the strokes sit only a
+ * few grey levels below their surroundings and a fixed offset misses them
+ * entirely; measured on a dark card, the name came back as
+ * "olare ec 2 Ih 4 z Ls . alypse".
+ *
+ * Sauvola scales the threshold by the local standard deviation instead:
+ *
+ *   t = mean * (1 + k * (stddev / R - 1))
+ *
+ * Where contrast is low the deviation is small, the threshold drops toward the
+ * mean, and faint strokes still register. Both the mean and the deviation come
+ * from integral images, so the window size costs nothing.
  *
  * @param {HTMLCanvasElement} source  an upscaled region crop
- * @param {{window?: number, offset?: number}} [options]
- *   window — fraction of the crop height to average over
- *   offset — how far below the local mean a pixel must fall to count as ink
+ * @param {object} [options]
+ *   window   — fraction of the crop height to average over
+ *   k        — Sauvola sensitivity; lower keeps more ink on low-contrast plates
+ *   denoise  — smooth over a 3x3 window first, to stop sensor grain thresholding
+ *              into speckle that OCR reads as punctuation
+ *   grayscale — skip thresholding and hand tesseract contrast-stretched grey,
+ *              letting its own binarizer decide
+ *   invert   — force the polarity rather than inferring it
  */
 export function preprocessForOcr(source, options = {}) {
-  const { window: windowFraction = 0.6, offset = 8 } = options;
-  const { width, height } = source;
+  const {
+    window: windowFraction = 0.6,
+    k = 0.18,
+    denoise = true,
+    grayscale = false,
+    invert = null,
+  } = options;
 
+  const { width, height } = source;
   const ctx = source.getContext('2d');
   const image = ctx.getImageData(0, 0, width, height);
-  const gray = new Float64Array(width * height);
 
+  let gray = new Float64Array(width * height);
   for (let i = 0, p = 0; i < image.data.length; i += 4, p++) {
     gray[p] = image.data[i] * 0.299 + image.data[i + 1] * 0.587 + image.data[i + 2] * 0.114;
   }
 
-  // Integral image, one row and column of padding so every window lookup is
-  // four array reads with no bounds special-casing.
-  const iw = width + 1;
-  const integral = new Float64Array(iw * (height + 1));
-  for (let y = 0; y < height; y++) {
-    let rowSum = 0;
-    for (let x = 0; x < width; x++) {
-      rowSum += gray[y * width + x];
-      integral[(y + 1) * iw + (x + 1)] = integral[y * iw + (x + 1)] + rowSum;
-    }
-  }
+  if (denoise) gray = boxBlur(gray, width, height);
 
-  const radius = Math.max(4, Math.round((height * windowFraction) / 2));
   const out = ctx.createImageData(width, height);
-  let inkCount = 0;
 
-  for (let y = 0; y < height; y++) {
-    const y0 = Math.max(0, y - radius);
-    const y1 = Math.min(height - 1, y + radius);
-    for (let x = 0; x < width; x++) {
-      const x0 = Math.max(0, x - radius);
-      const x1 = Math.min(width - 1, x + radius);
+  if (grayscale) {
+    // Stretch to the full range and let tesseract binarize. Its own thresholding
+    // is well tuned, and on some frames beating it to the punch only loses
+    // information.
+    let min = 255;
+    let max = 0;
+    for (let i = 0; i < gray.length; i++) {
+      if (gray[i] < min) min = gray[i];
+      if (gray[i] > max) max = gray[i];
+    }
+    const span = Math.max(1, max - min);
+    const dark = meanOf(gray) < 128;
 
-      const area = (x1 - x0 + 1) * (y1 - y0 + 1);
-      const sum =
-        integral[(y1 + 1) * iw + (x1 + 1)] -
-        integral[y0 * iw + (x1 + 1)] -
-        integral[(y1 + 1) * iw + x0] +
-        integral[y0 * iw + x0];
-
-      const isInk = gray[y * width + x] < sum / area - offset;
-      if (isInk) inkCount++;
-
-      const value = isInk ? 0 : 255;
-      const di = (y * width + x) * 4;
-      out.data[di] = value;
-      out.data[di + 1] = value;
-      out.data[di + 2] = value;
+    for (let p = 0; p < gray.length; p++) {
+      let value = ((gray[p] - min) / span) * 255;
+      // Light text on a dark plate is inverted so tesseract always sees dark on
+      // light, which is what it is trained for.
+      if (invert === null ? dark : invert) value = 255 - value;
+      const di = p * 4;
+      out.data[di] = out.data[di + 1] = out.data[di + 2] = value;
       out.data[di + 3] = 255;
     }
-  }
+  } else {
+    const { mean, deviation } = localStatistics(gray, width, height, windowFraction);
+    let inkCount = 0;
 
-  // Tesseract expects dark text on a light ground. The collector block is white
-  // print on a dark border, which thresholds to the inverse of that, so polarity
-  // is decided by which colour is in the minority — ink always is.
-  const inverted = inkCount > width * height * 0.5;
-  if (inverted) {
-    for (let i = 0; i < out.data.length; i += 4) {
-      const value = 255 - out.data[i];
-      out.data[i] = value;
-      out.data[i + 1] = value;
-      out.data[i + 2] = value;
+    for (let p = 0; p < gray.length; p++) {
+      // R is the dynamic range of the deviation; 128 is Sauvola's own value.
+      const threshold = mean[p] * (1 + k * (deviation[p] / 128 - 1));
+      const isInk = gray[p] < threshold;
+      if (isInk) inkCount++;
+      const value = isInk ? 0 : 255;
+      const di = p * 4;
+      out.data[di] = out.data[di + 1] = out.data[di + 2] = value;
+      out.data[di + 3] = 255;
+    }
+
+    // Tesseract expects dark text on a light ground. The collector block is
+    // white print on a dark border, which thresholds to the inverse of that, so
+    // polarity is decided by which tone is in the minority — ink always is.
+    const inverted = invert === null ? inkCount > width * height * 0.5 : invert;
+    if (inverted) {
+      for (let i = 0; i < out.data.length; i += 4) {
+        const value = 255 - out.data[i];
+        out.data[i] = out.data[i + 1] = out.data[i + 2] = value;
+      }
     }
   }
 
@@ -140,8 +159,89 @@ export function preprocessForOcr(source, options = {}) {
   canvas.width = width;
   canvas.height = height;
   canvas.getContext('2d').putImageData(out, 0, 0);
-  canvas.dataset.inverted = String(inverted);
   return canvas;
+}
+
+function meanOf(values) {
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) sum += values[i];
+  return sum / values.length;
+}
+
+/** 3x3 mean. Sensor grain on a dark card otherwise thresholds into speckle. */
+function boxBlur(gray, width, height) {
+  const out = new Float64Array(gray.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let sum = 0;
+      let count = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= height) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= width) continue;
+          sum += gray[yy * width + xx];
+          count++;
+        }
+      }
+      out[y * width + x] = sum / count;
+    }
+  }
+  return out;
+}
+
+/**
+ * Local mean and standard deviation over a square window, from integral images
+ * of the values and of their squares.
+ */
+function localStatistics(gray, width, height, windowFraction) {
+  const iw = width + 1;
+  const sums = new Float64Array(iw * (height + 1));
+  const squares = new Float64Array(iw * (height + 1));
+
+  for (let y = 0; y < height; y++) {
+    let rowSum = 0;
+    let rowSquare = 0;
+    for (let x = 0; x < width; x++) {
+      const value = gray[y * width + x];
+      rowSum += value;
+      rowSquare += value * value;
+      sums[(y + 1) * iw + (x + 1)] = sums[y * iw + (x + 1)] + rowSum;
+      squares[(y + 1) * iw + (x + 1)] = squares[y * iw + (x + 1)] + rowSquare;
+    }
+  }
+
+  const radius = Math.max(4, Math.round((height * windowFraction) / 2));
+  const mean = new Float64Array(gray.length);
+  const deviation = new Float64Array(gray.length);
+
+  const window = (table, x0, y0, x1, y1) =>
+    table[(y1 + 1) * iw + (x1 + 1)] -
+    table[y0 * iw + (x1 + 1)] -
+    table[(y1 + 1) * iw + x0] +
+    table[y0 * iw + x0];
+
+  for (let y = 0; y < height; y++) {
+    const y0 = Math.max(0, y - radius);
+    const y1 = Math.min(height - 1, y + radius);
+    for (let x = 0; x < width; x++) {
+      const x0 = Math.max(0, x - radius);
+      const x1 = Math.min(width - 1, x + radius);
+      const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+
+      const sum = window(sums, x0, y0, x1, y1);
+      const square = window(squares, x0, y0, x1, y1);
+      const m = sum / area;
+      const p = y * width + x;
+      mean[p] = m;
+      // Clamped because floating-point cancellation can push a flat window
+      // fractionally below zero.
+      deviation[p] = Math.sqrt(Math.max(0, square / area - m * m));
+    }
+  }
+
+  return { mean, deviation };
 }
 
 /* ----------------------------------------------------------------- parsing */
@@ -271,6 +371,13 @@ export function parseCollectorBlock(text, words) {
   };
 }
 
+/** Short label for a preprocessing variant, for the diagnostics panel. */
+function describeVariant(preprocess = {}) {
+  if (preprocess.grayscale) return 'grayscale';
+  if (preprocess.k !== undefined && preprocess.k <= 0.1) return 'low-contrast';
+  return 'default';
+}
+
 /* ------------------------------------------------------------------ reader */
 
 /**
@@ -339,6 +446,30 @@ export function createCardReader({ onProgress } = {}) {
     };
   }
 
+  /**
+   * Try preprocessing variants until one is clearly good enough, and keep the
+   * best.
+   *
+   * A single fixed pipeline cannot serve both a white card and a black one: the
+   * settings that pull dark text off a dark plate over-ink a light one. Rather
+   * than guess per card, read with the default, and only if that scores poorly
+   * spend more time on the alternatives. Good cards still cost one pass.
+   */
+  async function readBest(canvas, { psm, whitelist, variants, score }) {
+    let best = null;
+
+    for (const preprocess of variants) {
+      const result = await recognizeRegion(canvas, { psm, whitelist, preprocess });
+      const value = score(result);
+
+      if (!best || value > best.value) best = { result, value, preprocess };
+      // Good enough to stop paying for further attempts.
+      if (best.value >= 0.9) break;
+    }
+
+    return best;
+  }
+
   /** Word confidences when available, otherwise one synthetic whole-image score. */
   function wordsOrFallback(result) {
     if (result.words.length) return result.words;
@@ -357,23 +488,43 @@ export function createCardReader({ onProgress } = {}) {
 
       // The collector block is read first: it is the higher-signal field, and on
       // a modern card it alone resolves the printing.
-      const collectorResult = await recognizeRegion(capture.collector, {
+      const collectorAttempt = await readBest(capture.collector, {
         psm: PSM_BLOCK,
         whitelist: COLLECTOR_CHARS,
         // A tighter window than the title: two short lines of small print, where
         // a wide average washes the strokes out.
-        preprocess: { window: 0.35, offset: 10 },
+        variants: [
+          { window: 0.35 },
+          { window: 0.35, k: 0.08 },
+          { window: 0.35, grayscale: true },
+        ],
+        score: (result) => {
+          const parsed = parseCollectorBlock(result.text, wordsOrFallback(result));
+          // A collector block is judged on whether it yielded fields, not on how
+          // confident tesseract felt about the artist's initials.
+          return (parsed.collectorNumber ? 0.5 : 0) + (parsed.setCode ? 0.5 : 0);
+        },
       });
+      const collectorResult = collectorAttempt.result;
       const collector = parseCollectorBlock(
         collectorResult.text,
         wordsOrFallback(collectorResult)
       );
 
-      const titleResult = await recognizeRegion(capture.title, {
+      const titleAttempt = await readBest(capture.title, {
         psm: PSM_SINGLE_LINE,
         whitelist: TITLE_CHARS,
-        preprocess: { window: 0.8, offset: 8 },
+        variants: [
+          { window: 0.8 },
+          { window: 0.8, k: 0.08 },
+          { window: 0.8, grayscale: true },
+        ],
+        score: (result) => {
+          const parsed = parseTitle(result.text, wordsOrFallback(result));
+          return parsed.name ? parsed.confidence : 0;
+        },
       });
+      const titleResult = titleAttempt.result;
       const title = parseTitle(titleResult.text, wordsOrFallback(titleResult));
 
       return {
@@ -396,6 +547,12 @@ export function createCardReader({ onProgress } = {}) {
           collector: collectorResult.preprocessed,
         },
         elapsedMs: Math.round(performance.now() - started),
+        // Which preprocessing actually won, so the tuning panel can show whether
+        // a card needed the low-contrast path.
+        strategy: {
+          title: describeVariant(titleAttempt.preprocess),
+          collector: describeVariant(collectorAttempt.preprocess),
+        },
       };
     },
 

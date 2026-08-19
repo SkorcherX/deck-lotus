@@ -70,6 +70,8 @@ const state = {
   dragging: null,
   reader: null,
   ocrEnabled: true,
+  // Null until the user picks a camera themselves; see startCamera.
+  cameraChoice: null,
   // Reads are serialised: one tesseract worker cannot recognise two images at
   // once, and captures can arrive faster than it finishes.
   readQueue: Promise.resolve(),
@@ -156,6 +158,29 @@ async function populateCameraList() {
   select.disabled = cameras.length < 2;
 }
 
+/**
+ * Point the picker at the camera actually in use and report its resolution.
+ *
+ * The resolution is worth surfacing rather than assuming: what a camera returns
+ * for a 4K request varies enormously, and on small print it is the number that
+ * decides whether anything is readable at all.
+ */
+function reflectActiveCamera() {
+  const track = state.stream?.getVideoTracks?.()[0];
+  if (!track) return;
+
+  const settings = track.getSettings?.() || {};
+  const select = el('scan-camera-select');
+  if (select && settings.deviceId) select.value = settings.deviceId;
+
+  const readout = el('scan-resolution');
+  if (readout) {
+    readout.textContent = settings.width
+      ? `${settings.width}x${settings.height}`
+      : '';
+  }
+}
+
 async function startCamera() {
   const availability = cameraAvailability();
   if (!availability.available) {
@@ -165,14 +190,19 @@ async function startCamera() {
 
   stopCamera();
 
-  const deviceId = el('scan-camera-select')?.value;
+  // Only honour an explicit choice. Reading the select back would pin whatever
+  // happened to be listed first, and on a phone that is the selfie camera —
+  // so the second session would come up facing the wrong way.
   const constraints = {
     video: {
-      // A collector number is ~3mm tall on the card, and at desk distance that
-      // is only a few pixels, so ask for every pixel the camera has.
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' }),
+      // A collector number is ~3mm tall on the card, so ask for every pixel the
+      // camera has and let it cap itself. `ideal` is best-effort, so a 1080p
+      // webcam simply returns 1080p.
+      width: { ideal: 3840 },
+      height: { ideal: 2160 },
+      ...(state.cameraChoice
+        ? { deviceId: { exact: state.cameraChoice } }
+        : { facingMode: { ideal: 'environment' } }),
     },
     audio: false,
   };
@@ -191,6 +221,7 @@ async function startCamera() {
   // Device labels are blank until permission has been granted, so the list is
   // only worth filling in after the stream exists.
   await populateCameraList();
+  reflectActiveCamera();
 
   el('scan-stage').classList.remove('hidden');
   el('scan-start-btn').classList.add('hidden');
@@ -725,7 +756,8 @@ export function setupScan() {
 
   el('scan-start-btn')?.addEventListener('click', startCamera);
   el('scan-stop-btn')?.addEventListener('click', stopCamera);
-  el('scan-camera-select')?.addEventListener('change', () => {
+  el('scan-camera-select')?.addEventListener('change', (e) => {
+    state.cameraChoice = e.target.value;
     if (state.stream) startCamera();
   });
 
