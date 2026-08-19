@@ -18,16 +18,17 @@ export const CARD_ASPECT = 63 / 88;
  * of the crop; the mana symbols are the main source of junk characters in an
  * OCR'd name.
  *
- * Both regions carry margin around the print. A fixed quad cannot follow a card
- * that was laid down a few millimetres off the last one, and measured against
- * real placements that drift put the title text right on the crop edge. Extra
- * blank space costs OCR very little; a clipped glyph costs it the whole field.
- * The title band is the more generous of the two because it is furthest from the
- * corners the quad is anchored to, so placement drift moves it most.
+ * The regions track the print closely rather than carrying wide margins. They
+ * once needed the margin to absorb a hand-marked quad drifting against
+ * hand-placed cards, but edge snapping removes that drift, and the margin
+ * turned out to cost more than it saved: a collector crop wide enough to
+ * survive drift also swallowed the card face above the black border strip, and
+ * one crop cannot hold both white-on-black and black-on-light text. A single
+ * polarity decision has to invert one of them wrongly.
  */
 export const DEFAULT_REGIONS = {
-  title: { x: 0.045, y: 0.02, w: 0.76, h: 0.12 },
-  collector: { x: 0.025, y: 0.845, w: 0.33, h: 0.13 },
+  title: { x: 0.045, y: 0.033, w: 0.74, h: 0.068 },
+  collector: { x: 0.03, y: 0.905, w: 0.32, h: 0.072 },
 };
 
 /**
@@ -315,6 +316,238 @@ function warpInto(dst, sourceImageData, quad) {
       dst.data[di + 3] = 255;
     }
   }
+}
+
+/* ==========================================================================
+   Snapping the quad to the card
+
+   A quad marked by hand is a good guess, never an exact one — especially on a
+   phone, where the handles are smaller than a fingertip. Cards then land a few
+   millimetres off it, and because every crop is a fraction of the quad, a small
+   misalignment walks the collector crop clean off the print. Measured on a real
+   capture: the crop began at the type line and the collector text was half out
+   of frame at the bottom.
+
+   So the marked quad is treated as a starting guess and refined against the
+   card's actual edges before each capture. Starting from a good guess is what
+   makes this robust without any general-purpose vision: each edge only has to
+   be found within a narrow band of where it already is.
+   ========================================================================== */
+
+/** Bilinear sample of a grayscale buffer at fractional pixel coordinates. */
+function sampleGray(gray, width, height, x, y) {
+  if (x < 0 || y < 0 || x >= width - 1 || y >= height - 1) return null;
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const tx = x - x0;
+  const ty = y - y0;
+  const i = y0 * width + x0;
+  return (
+    gray[i] * (1 - tx) * (1 - ty) +
+    gray[i + 1] * tx * (1 - ty) +
+    gray[i + width] * (1 - tx) * ty +
+    gray[i + width + 1] * tx * ty
+  );
+}
+
+/** Median of an array, used throughout for its indifference to outliers. */
+function median(values) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Find one edge of the card near where the guess says it should be.
+ *
+ * Samples along the guessed edge and, at each sample, scans perpendicular for
+ * the strongest intensity step — the card's border against the surface. The
+ * offsets are then fitted as a straight line in the edge's own frame
+ * (`offset = a + b·t`), which lets the refined edge translate, rotate and
+ * change length rather than merely shift.
+ */
+function push_point(points, t, candidate) {
+  points.push({ t, offset: candidate.d, strength: candidate.strength });
+}
+
+function refineEdge(gray, width, height, from, to, searchRadius, minStrength, samples = 15) {
+  const ex = to.x - from.x;
+  const ey = to.y - from.y;
+  const length = Math.hypot(ex, ey);
+  if (length < 1e-6) return null;
+
+  // Unit normal to the edge.
+  const nx = -ey / length;
+  const ny = ex / length;
+
+  const points = [];
+
+  for (let i = 0; i < samples; i++) {
+    // Skip the ends: corners are where two edges disagree, and rounded card
+    // corners have no clean step at all.
+    const t = 0.15 + (0.7 * i) / (samples - 1);
+    const px = from.x + ex * t;
+    const py = from.y + ey * t;
+
+    // Collect every step across the search window, then choose among them.
+    const candidates = [];
+    let strongest = 0;
+
+    for (let d = -searchRadius; d <= searchRadius; d += 1) {
+      const ax = px + nx * (d - 1);
+      const ay = py + ny * (d - 1);
+      const bx = px + nx * (d + 1);
+      const by = py + ny * (d + 1);
+
+      const before = sampleGray(gray, width, height, ax, ay);
+      const after = sampleGray(gray, width, height, bx, by);
+      if (before === null || after === null) continue;
+
+      const strength = Math.abs(after - before);
+      candidates.push({ d, strength });
+      if (strength > strongest) strongest = strength;
+    }
+
+    // Take the outermost convincing step, not the strongest one. A card's black
+    // border makes the border-to-face transition far more pronounced than the
+    // card-to-table edge, so going by strength snaps the quad to the inside of
+    // the border and shifts every crop inward — measured as a clipped first
+    // character on both collector lines.
+    //
+    // "Convincing" has to be an absolute floor rather than a fraction of the
+    // strongest step here, for the same reason: against a border transition
+    // eight times its size, the real outer edge never clears a relative bar.
+    const qualifying = candidates.filter((c) => c.strength >= minStrength);
+    const outermost = qualifying.length
+      ? qualifying.reduce((best, c) => (c.d < best.d ? c : best))
+      : null;
+
+    if (outermost) push_point(points, t, outermost);
+  }
+
+  if (points.length < 6) return null;
+
+  // Discard samples whose offset disagrees with the consensus — a finger, a
+  // shadow or the edge of the card underneath will each produce a few.
+  const offsets = points.map((p) => p.offset);
+  const centre = median(offsets);
+  const spread = Math.max(2, 1.5 * median(offsets.map((o) => Math.abs(o - centre))));
+  const kept = points.filter((p) => Math.abs(p.offset - centre) <= spread);
+
+  if (kept.length < 5) return null;
+
+  // Least squares of offset against t, weighted by edge strength.
+  let sw = 0;
+  let st = 0;
+  let so = 0;
+  let stt = 0;
+  let sto = 0;
+  for (const point of kept) {
+    const w = point.strength;
+    sw += w;
+    st += w * point.t;
+    so += w * point.offset;
+    stt += w * point.t * point.t;
+    sto += w * point.t * point.offset;
+  }
+
+  const denominator = sw * stt - st * st;
+  let a;
+  let b;
+  if (Math.abs(denominator) < 1e-9) {
+    a = so / sw;
+    b = 0;
+  } else {
+    b = (sw * sto - st * so) / denominator;
+    a = (so - b * st) / sw;
+  }
+
+  return {
+    from: { x: from.x + nx * a, y: from.y + ny * a },
+    to: { x: to.x + nx * (a + b), y: to.y + ny * (a + b) },
+    strength: median(kept.map((p) => p.strength)),
+    shift: a,
+  };
+}
+
+/** Where two lines cross, or null if they are parallel. */
+function lineIntersection(p1, p2, p3, p4) {
+  const d1x = p2.x - p1.x;
+  const d1y = p2.y - p1.y;
+  const d2x = p4.x - p3.x;
+  const d2y = p4.y - p3.y;
+
+  const denominator = d1x * d2y - d1y * d2x;
+  if (Math.abs(denominator) < 1e-12) return null;
+
+  const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denominator;
+  return { x: p1.x + d1x * t, y: p1.y + d1y * t };
+}
+
+/**
+ * Refine a guessed quad onto the card actually in frame.
+ *
+ * @param {{data: Uint8ClampedArray, width: number, height: number}} frame
+ * @param {Array<{x: number, y: number}>} quad  corners as fractions of the frame
+ * @param {{searchFraction?: number, minStrength?: number}} [options]
+ *   searchFraction — how far to look for each edge, as a fraction of the card's
+ *     smaller dimension. Deliberately small: this corrects a good guess rather
+ *     than searching the frame, and a wide search finds the table edge instead.
+ *   minStrength — how pronounced the intensity step must be to be believed.
+ * @returns {{quad: Array, strength: number, moved: number} | null}
+ *   null when the card cannot be found, in which case the caller keeps the
+ *   marked quad rather than trusting a bad fit.
+ */
+export function snapQuadToCard(frame, quad, options = {}) {
+  // minStrength is both the floor for believing an individual edge step and the
+  // bar the fitted edges must clear overall.
+  const { searchFraction = 0.06, minStrength = 10 } = options;
+  const { width, height } = frame;
+
+  const gray = new Float64Array(width * height);
+  for (let i = 0, p = 0; i < frame.data.length; i += 4, p++) {
+    gray[p] = frame.data[i] * 0.299 + frame.data[i + 1] * 0.587 + frame.data[i + 2] * 0.114;
+  }
+
+  // Work in pixels: the search radius is a physical distance, not a fraction.
+  const pixels = quad.map((c) => ({ x: c.x * width, y: c.y * height }));
+  const side = (a, b) => Math.hypot(pixels[a].x - pixels[b].x, pixels[a].y - pixels[b].y);
+  const shortSide = Math.min((side(0, 1) + side(3, 2)) / 2, (side(0, 3) + side(1, 2)) / 2);
+  const searchRadius = Math.max(4, Math.round(shortSide * searchFraction));
+
+  // Edges in order: top, right, bottom, left.
+  const edges = [
+    refineEdge(gray, width, height, pixels[0], pixels[1], searchRadius, minStrength),
+    refineEdge(gray, width, height, pixels[1], pixels[2], searchRadius, minStrength),
+    refineEdge(gray, width, height, pixels[2], pixels[3], searchRadius, minStrength),
+    refineEdge(gray, width, height, pixels[3], pixels[0], searchRadius, minStrength),
+  ];
+
+  if (edges.some((edge) => edge === null)) return null;
+
+  const strength = median(edges.map((edge) => edge.strength));
+  if (strength < minStrength) return null;
+
+  // Corners are where consecutive refined edges meet, which is what lets the
+  // quad rotate and resize instead of only shifting.
+  const corners = [];
+  for (let i = 0; i < 4; i++) {
+    const previous = edges[(i + 3) % 4];
+    const current = edges[i];
+    const point = lineIntersection(previous.from, previous.to, current.from, current.to);
+    if (!point) return null;
+    corners.push({ x: point.x / width, y: point.y / height });
+  }
+
+  // A refinement that moved a long way did not refine anything — it locked onto
+  // something else. Better to keep the marked quad than to crop the table.
+  const moved = Math.max(
+    ...corners.map((c, i) => Math.hypot((c.x - quad[i].x) * width, (c.y - quad[i].y) * height))
+  );
+  if (moved > searchRadius * 2.5) return null;
+
+  return { quad: corners, strength, moved };
 }
 
 /**

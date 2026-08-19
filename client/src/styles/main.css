@@ -4721,3 +4721,8 @@ button.btn-icon.active {
   font-variant-numeric: tabular-nums;
   align-self: center;
 }
+
+.scan-snap-status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

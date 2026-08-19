@@ -180,6 +180,46 @@ export function findBySetAndCollector(setCode, collectorNumber, limit = MAX_CAND
 }
 
 /**
+ * Printings with this collector number in a set whose code is nearly what was
+ * read.
+ *
+ * OCR gets a three-letter set code almost right far more often than it gets it
+ * exactly right — a real capture of a Dominaria United card read "OMU". The
+ * collector number is usually the sounder of the two, so the number is trusted
+ * and the set code is treated as approximate: candidate sets are those holding
+ * that collector number, narrowed to codes within one edit of what was read.
+ */
+export function findByFuzzySetAndCollector(setCode, collectorNumber, limit = MAX_CANDIDATES) {
+  const set = normalizeSetCode(setCode);
+  const variants = collectorNumberVariants(collectorNumber);
+  if (!set || variants.length === 0) return [];
+
+  for (const variant of variants) {
+    const rows = queryPrintings(
+      'p.collector_number = ? COLLATE NOCASE',
+      [variant],
+      // A collector number is shared by every set that reaches it, so this
+      // deliberately over-fetches before the set code narrows it down.
+      500
+    );
+    if (rows.length === 0) continue;
+
+    const near = rows.filter((row) => {
+      const candidate = normalizeSetCode(row.set_code);
+      if (!candidate || candidate === set) return false;
+      // One edit, and only between codes of comparable length: "OMU" for "DMU"
+      // is a misread, "M21" for "M2" is a different set.
+      if (Math.abs(candidate.length - set.length) > 1) return false;
+      return editDistance(candidate, set, 1) <= 1;
+    });
+
+    if (near.length > 0) return near.slice(0, limit);
+  }
+
+  return [];
+}
+
+/**
  * Every printing of a card, by exact name or as the front face of a DFC.
  */
 export function findByName(name, limit = MAX_CANDIDATES) {
@@ -237,6 +277,9 @@ export function findByFuzzyName(name, limit = MAX_CANDIDATES) {
 const STRATEGY_CONFIDENCE = {
   'name+set+collector': 0.98,
   'set+collector': 0.9,
+  // Below an exact set match but above a name-only one: the collector number
+  // still had to match exactly, and the set code was only one character out.
+  'fuzzy-set+collector': 0.78,
   'name+set': 0.72,
   name: 0.55,
   'fuzzy-name': 0.35,
@@ -313,6 +356,11 @@ export function resolveScan({ name = null, setCode = null, collectorNumber = nul
       collect(named, 'name+set+collector');
     }
     collect(rows, 'set+collector');
+
+    // Only worth the wider search when the set code as read matched nothing.
+    if (rows.length === 0) {
+      collect(findByFuzzySetAndCollector(normalizedSet, normalizedCollector), 'fuzzy-set+collector');
+    }
   }
 
   if (normalizedName && normalizedSet) {

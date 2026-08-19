@@ -15,6 +15,7 @@ import {
   quadFromRect,
   rectifiedSize,
   regionOutputSize,
+  snapQuadToCard,
   referenceFrom,
   regionQuad,
   warpQuad,
@@ -43,7 +44,7 @@ const STORAGE_KEY = 'scan.captureSettings';
 // win forever, so anyone who had used the page once would keep the old defaults
 // and never see a recalibration. The quad survives a bump — it describes the
 // user's desk, not our tuning.
-const SETTINGS_VERSION = 4;
+const SETTINGS_VERSION = 6;
 
 // The analysis buffer is deliberately tiny: every metric is a per-pixel pass
 // over it on every frame, and none of them need detail.
@@ -89,6 +90,7 @@ function freshSettings() {
       collector: { ...DEFAULT_REGIONS.collector },
     },
     quad: defaultQuad(),
+    snapEnabled: true,
   };
 }
 
@@ -119,6 +121,7 @@ function loadSettings() {
         Array.isArray(stored.quad) && stored.quad.length === 4
           ? stored.quad.map((p) => ({ x: p.x, y: p.y }))
           : fallback.quad,
+      snapEnabled: stored.snapEnabled !== false,
     };
   } catch {
     return fallback;
@@ -427,9 +430,34 @@ function setChip(id, ok, label) {
  * The frame is read at native size here — once per capture, not per frame — so
  * the card keeps every pixel the camera resolved.
  */
+// Edge snapping runs on a downscaled copy of the frame. A card edge is a
+// hundred-pixel-long step; finding it does not need 4K, and converting a full
+// 4K frame to a float buffer would cost ~66MB on a phone for no benefit.
+const SNAP_SOURCE_WIDTH = 960;
+
+/**
+ * Refine the marked quad onto the card actually in frame.
+ *
+ * Returns the marked quad unchanged when the card cannot be found — a bad snap
+ * would crop the table, which is worse than a slightly loose crop.
+ */
+function snapQuad(source, frameWidth, frameHeight) {
+  if (!state.settings.snapEnabled) return { quad: state.settings.quad, snap: null };
+
+  const width = Math.min(SNAP_SOURCE_WIDTH, frameWidth);
+  const height = Math.round((width / frameWidth) * frameHeight);
+  const small = frameImageData(source, width, height);
+
+  const snapped = snapQuadToCard(small, state.settings.quad);
+  return snapped
+    ? { quad: snapped.quad, snap: { moved: Math.round(snapped.moved), strength: Math.round(snapped.strength) } }
+    : { quad: state.settings.quad, snap: null };
+}
+
 function captureFromVideo(video, trigger) {
+  const { quad, snap } = snapQuad(video, video.videoWidth, video.videoHeight);
   const frame = frameImageData(video, video.videoWidth, video.videoHeight);
-  emitCapture(frame, state.settings.quad, video.videoWidth, video.videoHeight, trigger);
+  emitCapture(frame, quad, video.videoWidth, video.videoHeight, trigger, snap);
 }
 
 /**
@@ -439,7 +467,7 @@ function captureFromVideo(video, trigger) {
  * Each crop is warped from the original frame rather than cut out of the
  * rectified card, so the small print is resampled once instead of twice.
  */
-function emitCapture(frame, quad, frameWidth, frameHeight, trigger) {
+function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null) {
   const size = rectifiedSize(quad, frameWidth, frameHeight);
   const card = warpQuad(frame, quad, size.width, size.height);
 
@@ -451,7 +479,16 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger) {
   const title = cropOf(state.settings.regions.title);
   const collector = cropOf(state.settings.regions.collector);
 
-  const entry = { id: Date.now() + Math.random(), trigger, card, title, collector, at: new Date() };
+  const entry = {
+    id: Date.now() + Math.random(),
+    trigger,
+    card,
+    title,
+    collector,
+    quad,
+    snap,
+    at: new Date(),
+  };
 
   state.captures.unshift(entry);
   state.captures = state.captures.slice(0, MAX_RECENT_CAPTURES);
@@ -594,6 +631,13 @@ function renderCapture(entry) {
   swapCanvas('scan-preview-title', entry.title);
   swapCanvas('scan-preview-collector', entry.collector);
 
+  const snapLabel = el('scan-snap-status');
+  if (snapLabel) {
+    if (!state.settings.snapEnabled) snapLabel.textContent = '';
+    else if (entry.snap) snapLabel.textContent = `snapped ${entry.snap.moved}px to the card edges`;
+    else snapLabel.textContent = 'card edges not found — used the marked guide';
+  }
+
   const label = el('scan-capture-label');
   if (label) {
     const how =
@@ -656,9 +700,14 @@ async function captureFromFile(file) {
         ? { x: 0, y: 0, width: image.width, height: image.height }
         : guideRect(image.width, image.height);
 
-    const quad = quadFromRect(rect, image.width, image.height);
+    const guess = quadFromRect(rect, image.width, image.height);
+    const previous = state.settings.quad;
+    state.settings.quad = guess;
+    const { quad, snap } = snapQuad(image, image.width, image.height);
+    state.settings.quad = previous;
+
     const frame = frameImageData(image, image.width, image.height);
-    emitCapture(frame, quad, image.width, image.height, 'upload');
+    emitCapture(frame, quad, image.width, image.height, 'upload', snap);
   } catch (error) {
     showToast(error.message, 'error');
   }
@@ -743,6 +792,8 @@ export function setupScan() {
     const availability = cameraAvailability();
     if (!availability.available) showUnsupported(availability.reason);
     syncTuningInputs();
+    const snapToggle = el('scan-snap-toggle');
+    if (snapToggle) snapToggle.checked = state.settings.snapEnabled;
     drawOverlay();
     renderRecent();
     updateReferenceLabel();
@@ -777,6 +828,11 @@ export function setupScan() {
 
   el('scan-ocr-toggle')?.addEventListener('change', (e) => {
     state.ocrEnabled = e.target.checked;
+  });
+
+  el('scan-snap-toggle')?.addEventListener('change', (e) => {
+    state.settings.snapEnabled = e.target.checked;
+    saveSettings();
   });
 
   el('scan-reread-btn')?.addEventListener('click', () => {
