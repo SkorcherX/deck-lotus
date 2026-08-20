@@ -2,6 +2,10 @@ import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
 
+// 54 = 9 rows of 6 at the grid's usual column count, so a full page ends on
+// a complete row instead of trailing off mid-row.
+const PAGE_SIZE = 54;
+
 let inventoryData = null;
 let currentPage = 1;
 let totalPages = 1;
@@ -258,27 +262,30 @@ function getPriceSummary(card) {
   return { unit, total, tooltip: lines.join('\n') };
 }
 
+// Bottom bar plus its mirror above the grid, so paging through a full page
+// of cards doesn't require scrolling down and back up just to reach "Next".
 function setupPagination() {
-  const prevBtn = document.getElementById('inventory-prev-page');
-  const nextBtn = document.getElementById('inventory-next-page');
-
-  if (prevBtn) {
-    prevBtn.addEventListener('click', () => {
+  ['inventory-prev-page', 'inventory-prev-page-top'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
       if (currentPage > 1) {
         currentPage--;
         loadInventoryData();
       }
     });
-  }
+  });
 
-  if (nextBtn) {
-    nextBtn.addEventListener('click', () => {
+  ['inventory-next-page', 'inventory-next-page-top'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
       if (currentPage < totalPages) {
         currentPage++;
         loadInventoryData();
       }
     });
-  }
+  });
 }
 
 let activePrintingFlyout = null; // Track active flyout
@@ -846,11 +853,11 @@ async function loadInventoryData() {
     // everyone else through the regular per-user ones.
     const [inventoryResult, statsResult] = selectedUserIds
       ? await Promise.all([
-          api.getAdminInventory(selectedUserIds, { ...filters, page: currentPage, limit: 50 }),
+          api.getAdminInventory(selectedUserIds, { ...filters, page: currentPage, limit: PAGE_SIZE }),
           api.getAdminInventoryStats(selectedUserIds)
         ])
       : await Promise.all([
-          api.getInventory({ ...filters, page: currentPage, limit: 50 }),
+          api.getInventory({ ...filters, page: currentPage, limit: PAGE_SIZE }),
           api.getInventoryStats()
         ]);
 
@@ -1143,11 +1150,16 @@ function renderListView(container) {
 }
 
 function renderPagination() {
-  const prevBtn = document.getElementById('inventory-prev-page');
-  const nextBtn = document.getElementById('inventory-next-page');
-  const pageInfo = document.getElementById('inventory-page-info');
-
-  if (prevBtn) prevBtn.disabled = currentPage <= 1;
-  if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
-  if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+  ['inventory-prev-page', 'inventory-prev-page-top'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = currentPage <= 1;
+  });
+  ['inventory-next-page', 'inventory-next-page-top'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = currentPage >= totalPages;
+  });
+  ['inventory-page-info', 'inventory-page-info-top'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `Page ${currentPage} of ${totalPages}`;
+  });
 }
