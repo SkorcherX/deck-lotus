@@ -4212,11 +4212,6 @@ button.btn-icon.active {
   font-weight: 400;
 }
 
-/* Active state for the $ toggle, matching the view-toggle buttons */
-#inventory-price-toggle.active {
-  color: var(--primary);
-}
-
 @media (max-width: 768px) {
   .list-col-price {
     flex: 1;
