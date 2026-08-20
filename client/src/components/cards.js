@@ -659,7 +659,12 @@ export async function showCardDetail(cardId) {
         </div>
         <div>
           <h2 style="margin: 0 0 0.5rem 0;">${card.name}</h2>
-          <button id="quick-add-modal-btn" class="btn btn-primary" style="margin-bottom: 1rem;">+ Add to Deck</button>
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+            <button id="quick-add-modal-btn" class="btn btn-primary">+ Add to Deck</button>
+            ${ownership && ownership.deckUsage && ownership.deckUsage.length > 0 ? `
+              <button id="quick-remove-modal-btn" class="btn btn-secondary">− Remove from Deck</button>
+            ` : ''}
+          </div>
 
           <div style="margin: 1rem 0; font-size: 1.1rem;">
             ${formatMana(card.mana_cost)}
@@ -1272,6 +1277,14 @@ export async function showCardDetail(cardId) {
       });
     }
 
+    // Quick remove from modal
+    const quickRemoveModalBtn = document.getElementById('quick-remove-modal-btn');
+    if (quickRemoveModalBtn) {
+      quickRemoveModalBtn.addEventListener('click', async () => {
+        await showQuickRemoveMenuModal(cardId, ownership.deckUsage);
+      });
+    }
+
     // Flip card handler for double-faced cards
     const flipCardBtn = document.getElementById('flip-card-btn');
     if (flipCardBtn) {
@@ -1371,6 +1384,72 @@ async function showQuickAddMenuModal(cardId) {
     }, 100);
   } catch (error) {
     showToast('Failed to load decks', 'error');
+  }
+}
+
+// deckUsage is the card's own ownership.deckUsage list — only decks that
+// actually contain this card are offered, unlike the "Add to Deck" menu
+// which lists every deck.
+async function showQuickRemoveMenuModal(cardId, deckUsage) {
+  if (!deckUsage || deckUsage.length === 0) return;
+
+  const modalBody = document.getElementById('modal-body');
+  const dropdown = document.createElement('div');
+  dropdown.id = 'modal-remove-deck-dropdown';
+  dropdown.style.cssText = `
+    position: absolute;
+    top: 60px;
+    right: 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.5rem;
+    min-width: 200px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 10001;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  `;
+
+  dropdown.innerHTML = deckUsage.map(d => `
+    <div class="deck-option" data-deck-id="${d.id}" style="padding: 0.5rem; cursor: pointer; border-radius: 4px; transition: background 0.2s;">
+      ${d.name} <span style="color: var(--text-secondary); font-size: 0.85rem;">(${d.total_quantity} cop${d.total_quantity === 1 ? 'y' : 'ies'})</span>
+    </div>
+  `).join('');
+
+  modalBody.appendChild(dropdown);
+
+  dropdown.querySelectorAll('.deck-option').forEach(opt => {
+    opt.addEventListener('mouseenter', () => opt.style.background = 'var(--bg-tertiary)');
+    opt.addEventListener('mouseleave', () => opt.style.background = 'transparent');
+    opt.addEventListener('click', async () => {
+      const deckId = opt.dataset.deckId;
+      dropdown.remove();
+      await quickRemoveCard(cardId, deckId);
+    });
+  });
+
+  setTimeout(() => {
+    document.addEventListener('click', function closeDropdown(e) {
+      if (!dropdown.contains(e.target) && !e.target.closest('#quick-remove-modal-btn')) {
+        dropdown.remove();
+        document.removeEventListener('click', closeDropdown);
+      }
+    });
+  }, 100);
+}
+
+async function quickRemoveCard(cardId, deckId) {
+  try {
+    showLoading();
+    await api.removeCardFromDeckByCardId(deckId, cardId);
+    hideLoading();
+    showToast('Removed from deck!', 'success', 2000);
+    // Reload the card detail to show updated deck usage
+    await showCardDetail(cardId);
+  } catch (error) {
+    hideLoading();
+    showToast('Failed to remove card', 'error');
   }
 }
 

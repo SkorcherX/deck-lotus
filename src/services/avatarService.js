@@ -6,8 +6,11 @@ import db from '../db/connection.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Mirrors client/src/utils/avatar.js — the 6 MTG mana colors plus colorless.
-const PRESET_IDS = new Set(['W', 'U', 'B', 'R', 'G', 'C']);
+// Mirrors client/src/utils/avatar.js — the curated set of Keyrune expansion-
+// symbol presets.
+const PRESET_IDS = new Set([
+  'khm', 'thb', 'war', 'znr', 'dom', 'grn', 'iko', 'afr', 'neo', 'one', 'ltr', 'mkm',
+]);
 
 const MIME_EXTENSIONS = {
   'image/png': '.png',
@@ -49,7 +52,7 @@ export function setAvatarGravatar(userId) {
 }
 
 /**
- * Select one of the built-in mana-symbol avatars.
+ * Select one of the built-in set-symbol avatars.
  */
 export function setAvatarPreset(userId, presetId) {
   if (!PRESET_IDS.has(presetId)) {

@@ -1,12 +1,20 @@
-// Built-in avatar presets: the 5 MTG mana colors plus colorless.
-// Original glyphs/colors, not WOTC artwork — safe to ship as UI chrome.
+// Built-in avatar presets: a dozen recognizable MTG expansion-set symbols,
+// rendered with the Keyrune webfont (SIL OFL 1.1 — see
+// client/src/assets/fonts/KEYRUNE-LICENSE.md). `ssClass` maps to a glyph rule
+// defined in client/src/styles/main.css (.ss-<id>).
 export const PRESET_AVATARS = [
-  { id: 'W', label: 'White', color: '#f8f6d8', glyph: 'W', textColor: '#8a7c3f' },
-  { id: 'U', label: 'Blue', color: '#0e68ab', glyph: 'U', textColor: '#ffffff' },
-  { id: 'B', label: 'Black', color: '#150b00', glyph: 'B', textColor: '#ffffff' },
-  { id: 'R', label: 'Red', color: '#d3202a', glyph: 'R', textColor: '#ffffff' },
-  { id: 'G', label: 'Green', color: '#00733e', glyph: 'G', textColor: '#ffffff' },
-  { id: 'C', label: 'Colorless', color: '#8c8c8c', glyph: 'C', textColor: '#ffffff' },
+  { id: 'khm', label: 'Kaldheim', color: '#4a6fa5' },
+  { id: 'thb', label: 'Theros Beyond Death', color: '#b08d3e' },
+  { id: 'war', label: 'War of the Spark', color: '#7a3b8f' },
+  { id: 'znr', label: 'Zendikar Rising', color: '#c25b2e' },
+  { id: 'dom', label: 'Dominaria', color: '#2e7d5b' },
+  { id: 'grn', label: 'Guilds of Ravnica', color: '#3f7d3f' },
+  { id: 'iko', label: 'Ikoria: Lair of Behemoths', color: '#9b3b3b' },
+  { id: 'afr', label: 'Adventures in the Forgotten Realms', color: '#8f2d2d' },
+  { id: 'neo', label: 'Kamigawa: Neon Dynasty', color: '#c23b6b' },
+  { id: 'one', label: 'Phyrexia: All Will Be One', color: '#5b5b5b' },
+  { id: 'ltr', label: 'Tales of Middle-earth', color: '#6b5638' },
+  { id: 'mkm', label: 'Murders at Karlov Manor', color: '#2e3d7d' },
 ];
 
 export function getPresetAvatar(presetId) {
@@ -15,8 +23,8 @@ export function getPresetAvatar(presetId) {
 
 /**
  * The image URL to use for a user's avatar, or null when the avatar should
- * be rendered as a colored glyph/initials div instead (preset, or Gravatar
- * fallback handled separately in userMenu.js).
+ * be rendered as a preset glyph or initials div instead (Gravatar fallback
+ * handled separately in userMenu.js).
  */
 export function getUploadedAvatarUrl(user) {
   if (user?.avatar_type === 'upload' && user.avatar_value) {

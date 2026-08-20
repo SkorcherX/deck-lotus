@@ -319,6 +319,37 @@ export function removeCardFromDeck(deckId, userId, deckCardId) {
 }
 
 /**
+ * Remove every copy of a card from a deck — all printings, all boards
+ * (mainboard/sideboard/maybeboard). Mirrors the "Add to Deck" quick action's
+ * simplicity: that adds one copy of a chosen printing without asking which
+ * board; this removes however many deck_cards rows exist for the card
+ * without asking the user to pick a printing/board first.
+ */
+export function removeCardFromDeckByCardId(deckId, userId, cardId) {
+  // Verify deck ownership
+  const deck = db.get(
+    `SELECT id FROM decks WHERE id = ? AND user_id = ?`,
+    [deckId, userId]
+  );
+
+  if (!deck) {
+    throw new Error('Deck not found or access denied');
+  }
+
+  db.run(
+    `DELETE FROM deck_cards WHERE deck_id = ? AND printing_id IN (
+       SELECT id FROM printings WHERE card_id = ?
+     )`,
+    [deckId, cardId]
+  );
+
+  // Update deck timestamp
+  db.run(`UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [deckId]);
+
+  return getDeckById(deckId, userId);
+}
+
+/**
  * Get deck statistics
  */
 export function getDeckStats(deckId, userId) {

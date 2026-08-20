@@ -267,8 +267,8 @@ function setupAvatarSettings() {
       class="avatar-preset-swatch"
       data-preset-id="${preset.id}"
       title="${preset.label}"
-      style="background: ${preset.color}; color: ${preset.textColor};"
-    >${preset.glyph}</button>
+      style="background: ${preset.color};"
+    ><i class="ss ss-${preset.id}"></i></button>
   `).join('');
 
   grid.addEventListener('click', async (e) => {
@@ -359,8 +359,8 @@ function renderAvatarPreview(user) {
       img.classList.add('hidden');
       initials.style.display = 'flex';
       initials.style.background = preset.color;
-      initials.style.color = preset.textColor;
-      initials.textContent = preset.glyph;
+      initials.style.color = '#fff';
+      initials.innerHTML = `<i class="ss ss-${preset.id}"></i>`;
       return;
     }
   }

@@ -85,22 +85,22 @@ async function updateAvatar() {
     return;
   }
 
-  // A selected mana-symbol preset renders as a colored glyph, same div used
-  // for the initials fallback.
+  // A selected set-symbol preset renders as a Keyrune glyph on a colored
+  // circle, same div used for the initials fallback.
   if (currentUser.avatar_type === 'preset') {
     const preset = getPresetAvatar(currentUser.avatar_value);
     if (preset) {
       avatarImg.classList.add('hidden');
       avatarInitials.style.display = 'flex';
       avatarInitials.style.background = preset.color;
-      avatarInitials.style.color = preset.textColor;
-      avatarInitials.textContent = preset.glyph;
+      avatarInitials.style.color = '#fff';
+      avatarInitials.innerHTML = `<i class="ss ss-${preset.id}"></i>`;
 
       dropdownAvatarImg.classList.add('hidden');
       dropdownAvatarInitials.style.display = 'flex';
       dropdownAvatarInitials.style.background = preset.color;
-      dropdownAvatarInitials.style.color = preset.textColor;
-      dropdownAvatarInitials.textContent = preset.glyph;
+      dropdownAvatarInitials.style.color = '#fff';
+      dropdownAvatarInitials.innerHTML = `<i class="ss ss-${preset.id}"></i>`;
       return;
     }
   }

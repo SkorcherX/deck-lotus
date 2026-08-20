@@ -1,3 +1,37 @@
+/* Keyrune set-symbol webfont (SIL OFL 1.1) — used for avatar presets.
+   See client/src/assets/fonts/KEYRUNE-LICENSE.md for attribution. */
+@font-face {
+  font-family: 'Keyrune';
+  src: url('../assets/fonts/keyrune.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+.ss {
+  display: inline-block;
+  font: normal normal normal 1em/1 Keyrune;
+  text-rendering: auto;
+  speak: none;
+  text-transform: none;
+  vertical-align: middle;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Avatar preset glyphs — a curated dozen recognizable expansion symbols */
+.ss-khm::before { content: "\e974"; }
+.ss-thb::before { content: "\e961"; }
+.ss-war::before { content: "\e95a"; }
+.ss-znr::before { content: "\e963"; }
+.ss-dom::before { content: "\e93f"; }
+.ss-grn::before { content: "\e94b"; }
+.ss-iko::before { content: "\e962"; }
+.ss-afr::before { content: "\e972"; }
+.ss-neo::before { content: "\e98c"; }
+.ss-one::before { content: "\e9a1"; }
+.ss-ltr::before { content: "\e9af"; }
+.ss-mkm::before { content: "\e9c9"; }
+
 :root {
   /* Brand / accent */
   --primary: #6366f1;
@@ -2312,7 +2346,7 @@ button.btn-icon.active {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.875rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: white;
 }
@@ -2347,7 +2381,7 @@ button.btn-icon.active {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.25rem;
+  font-size: 1.75rem;
   font-weight: 700;
   color: white;
 }
@@ -2371,8 +2405,11 @@ button.btn-icon.active {
   border-radius: 50%;
   border: 2px solid var(--border);
   cursor: pointer;
-  font-weight: 700;
-  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.4rem;
   transition: all 0.15s ease;
 }
 

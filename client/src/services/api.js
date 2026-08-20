@@ -219,6 +219,13 @@ class ApiClient {
     });
   }
 
+  // Removes every copy of a card (all printings, all boards) from a deck.
+  async removeCardFromDeckByCardId(deckId, cardId) {
+    return this.request(`/decks/${deckId}/cards/by-card-id/${cardId}`, {
+      method: 'DELETE',
+    });
+  }
+
   async updateDeckCard(deckId, cardId, updates) {
     return this.request(`/decks/${deckId}/cards/${cardId}`, {
       method: 'PUT',
