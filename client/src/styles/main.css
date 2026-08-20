@@ -813,6 +813,11 @@ select option {
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
+  /* Grid items default to min-width: auto, so the deck-tabs row's
+     non-wrapping content (meant to scroll within itself) would otherwise
+     force this whole grid column — and the page — wider than the viewport
+     instead of actually scrolling in place. */
+  min-width: 0;
 }
 
 .deck-tabs {
@@ -1214,6 +1219,7 @@ button.btn-icon.active {
   border-radius: 1rem;
   padding: 1.5rem;
   overflow-y: auto;
+  min-width: 0; /* see .deck-panel */
 }
 
 .stats-panel h3 {
@@ -3892,13 +3898,26 @@ button.btn-icon.active {
     order: 3;
   }
 
+  /* Without the header row, a bare number ("3", "4") means nothing — label
+     each stat inline so the stacked card stays legible. */
+  .list-col-prints,
   .list-col-owned,
   .list-col-decks,
-  .list-col-available {
+  .list-col-available,
+  .list-col-price {
     flex: 1;
     order: 4;
     text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
   }
+
+  .list-col-prints::before { content: 'Prints:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
+  .list-col-owned::before { content: 'Owned:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
+  .list-col-decks::before { content: 'In Decks:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
+  .list-col-available::before { content: 'Available:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
+  .list-col-price::before { content: 'Price:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
 
   .quick-add-wrapper {
     max-width: 100%;
