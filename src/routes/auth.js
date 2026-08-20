@@ -7,7 +7,9 @@ import {
   revokeApiKey,
   getUserById,
 } from '../services/authService.js';
+import { setAvatarGravatar, setAvatarPreset, saveUploadedAvatar } from '../services/avatarService.js';
 import { authenticate } from '../middleware/auth.js';
+import { uploadAvatar } from '../middleware/upload.js';
 import { verifyToken, generateTokens } from '../utils/jwt.js';
 import { isRegistrationEnabled } from '../services/settingsService.js';
 import db from '../db/connection.js';
@@ -108,6 +110,56 @@ router.get('/me', authenticate, (req, res, next) => {
 
     res.json({ user });
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/auth/avatar
+ * Select a Gravatar-based or preset avatar
+ * Body: { type: 'gravatar' | 'preset', value?: string }
+ */
+router.put('/avatar', authenticate, (req, res, next) => {
+  try {
+    const { type, value } = req.body;
+
+    let user;
+    if (type === 'gravatar') {
+      user = setAvatarGravatar(req.user.id);
+    } else if (type === 'preset') {
+      if (!value) {
+        return res.status(400).json({ error: 'value is required for preset avatars' });
+      }
+      user = setAvatarPreset(req.user.id, value);
+    } else {
+      return res.status(400).json({ error: "type must be 'gravatar' or 'preset'" });
+    }
+
+    res.json({ user });
+  } catch (error) {
+    if (error.message.startsWith('Invalid preset avatar')) {
+      return res.status(400).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
+ * POST /api/auth/avatar/upload
+ * Upload a custom avatar image
+ */
+router.post('/avatar/upload', authenticate, uploadAvatar.single('avatar'), (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    const user = saveUploadedAvatar(req.user.id, req.file.buffer, req.file.mimetype);
+    res.json({ user });
+  } catch (error) {
+    if (error.message === 'Unsupported image type') {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 });

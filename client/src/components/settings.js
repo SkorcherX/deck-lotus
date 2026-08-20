@@ -1,7 +1,12 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, showModal, showToast, confirmDialog } from '../utils/ui.js';
+import { PRESET_AVATARS, getPresetAvatar, getUploadedAvatarUrl } from '../utils/avatar.js';
+import { getGravatarUrl, getUserInitials, getUserColor } from '../utils/gravatar.js';
+import { refreshUserMenu } from './userMenu.js';
 
 export function setupSettings() {
+  setupAvatarSettings();
+
   const generateApiKeyBtn = document.getElementById('generate-api-key-btn');
   const refreshDbBtn = document.getElementById('refresh-db-btn');
   const backupDataBtn = document.getElementById('backup-data-btn');
@@ -244,6 +249,7 @@ export function setupSettings() {
   }
 
   window.addEventListener('page:settings', async () => {
+    await loadAvatarSettings();
     await loadApiKeys();
     await loadSyncStatus();
     await checkAdminAndLoadUsers();
@@ -251,6 +257,136 @@ export function setupSettings() {
     await loadBackups();
     await loadPriceSchedule();
   });
+}
+
+function setupAvatarSettings() {
+  const grid = document.getElementById('avatar-preset-grid');
+  grid.innerHTML = PRESET_AVATARS.map(preset => `
+    <button
+      type="button"
+      class="avatar-preset-swatch"
+      data-preset-id="${preset.id}"
+      title="${preset.label}"
+      style="background: ${preset.color}; color: ${preset.textColor};"
+    >${preset.glyph}</button>
+  `).join('');
+
+  grid.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.avatar-preset-swatch');
+    if (!btn) return;
+
+    try {
+      showLoading();
+      const result = await api.updateAvatar({ type: 'preset', value: btn.dataset.presetId });
+      renderAvatarPreview(result.user);
+      await refreshUserMenu();
+      hideLoading();
+      showToast('Avatar updated', 'success');
+    } catch (error) {
+      hideLoading();
+      showToast('Failed to update avatar: ' + error.message, 'error');
+    }
+  });
+
+  document.getElementById('avatar-use-gravatar-btn').addEventListener('click', async () => {
+    try {
+      showLoading();
+      const result = await api.updateAvatar({ type: 'gravatar' });
+      renderAvatarPreview(result.user);
+      await refreshUserMenu();
+      hideLoading();
+      showToast('Avatar updated', 'success');
+    } catch (error) {
+      hideLoading();
+      showToast('Failed to update avatar: ' + error.message, 'error');
+    }
+  });
+
+  const uploadInput = document.getElementById('avatar-upload-input');
+  document.getElementById('avatar-upload-btn').addEventListener('click', () => {
+    uploadInput.click();
+  });
+
+  uploadInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      showLoading();
+      const result = await api.uploadAvatar(file);
+      renderAvatarPreview(result.user);
+      await refreshUserMenu();
+      hideLoading();
+      showToast('Avatar updated', 'success');
+    } catch (error) {
+      hideLoading();
+      showToast('Failed to upload avatar: ' + error.message, 'error');
+    } finally {
+      uploadInput.value = '';
+    }
+  });
+}
+
+async function loadAvatarSettings() {
+  try {
+    const profile = await api.getProfile();
+    renderAvatarPreview(profile.user);
+  } catch (error) {
+    console.error('Failed to load avatar settings:', error);
+  }
+}
+
+function renderAvatarPreview(user) {
+  const img = document.getElementById('avatar-preview-img');
+  const initials = document.getElementById('avatar-preview-initials');
+
+  // Highlight the selected preset swatch, if any
+  document.querySelectorAll('.avatar-preset-swatch').forEach(btn => {
+    btn.classList.toggle('selected', user.avatar_type === 'preset' && btn.dataset.presetId === user.avatar_value);
+  });
+
+  const uploadedUrl = getUploadedAvatarUrl(user);
+  if (uploadedUrl) {
+    img.src = uploadedUrl;
+    img.classList.remove('hidden');
+    initials.style.display = 'none';
+    return;
+  }
+
+  if (user.avatar_type === 'preset') {
+    const preset = getPresetAvatar(user.avatar_value);
+    if (preset) {
+      img.classList.add('hidden');
+      initials.style.display = 'flex';
+      initials.style.background = preset.color;
+      initials.style.color = preset.textColor;
+      initials.textContent = preset.glyph;
+      return;
+    }
+  }
+
+  // Gravatar / initials fallback
+  const gravatarUrl = getGravatarUrl(user.email, 80);
+  initials.style.background = getUserColor(user.username);
+  initials.style.color = '';
+  initials.textContent = getUserInitials(user.username);
+
+  if (gravatarUrl) {
+    const probe = new Image();
+    probe.onload = () => {
+      img.src = gravatarUrl;
+      img.classList.remove('hidden');
+      initials.style.display = 'none';
+    };
+    probe.onerror = () => {
+      img.classList.add('hidden');
+      initials.style.display = 'flex';
+    };
+    probe.src = gravatarUrl;
+  } else {
+    img.classList.add('hidden');
+    initials.style.display = 'flex';
+  }
 }
 
 async function checkAdminAndLoadUsers() {

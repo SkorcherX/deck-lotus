@@ -2317,6 +2317,74 @@ button.btn-icon.active {
   color: white;
 }
 
+/* Avatar settings (Settings page) */
+.avatar-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.avatar-current-preview {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.avatar-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-preview-initials {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: white;
+}
+
+.avatar-settings-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.avatar-preset-grid {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.avatar-preset-swatch {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1.1rem;
+  transition: all 0.15s ease;
+}
+
+.avatar-preset-swatch:hover {
+  transform: scale(1.08);
+}
+
+.avatar-preset-swatch.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+}
+
 /* User Dropdown */
 .user-dropdown {
   position: absolute;
@@ -4239,6 +4307,55 @@ button.btn-icon.active {
 
 .inventory-foil-badge i {
   font-size: 0.875rem;
+}
+
+/* Admin cross-user inventory view: how many selected users own this card */
+.inventory-owners-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: rgba(16, 185, 129, 0.9);
+  color: white;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.inventory-owners-badge i {
+  font-size: 0.875rem;
+}
+
+.owners-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: middle;
+  background: rgba(16, 185, 129, 0.9);
+  color: white;
+}
+
+/* Admin "Viewing Inventory For" user checklist */
+.inventory-user-checklist {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.inventory-user-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  cursor: pointer;
 }
 
 /* Inline foil marker used in list rows and the card detail modal */

@@ -22,6 +22,7 @@ import priceMonitoringRoutes from './routes/priceMonitoring.js';
 import manapoolRoutes from './routes/manapool.js';
 import { setupDailySync } from './services/syncService.js';
 import { setupPriceMonitoringSchedule } from './services/priceMonitoringService.js';
+import { getAvatarsDir } from './services/avatarService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -52,6 +53,10 @@ if (process.env.NODE_ENV === 'production') {
   const clientBuildPath = join(__dirname, '../client/dist');
   app.use(express.static(clientBuildPath));
 }
+
+// Serve uploaded avatar images — not gated to production like the client
+// build, since avatars need to work in dev too.
+app.use('/avatars', express.static(getAvatarsDir()));
 
 // Health check endpoint
 app.get('/health', (req, res) => {

@@ -17,10 +17,26 @@ const OWNED_COPY_PRICE = `
 `;
 
 /**
+ * Builds a `= ?` or `IN (?,?,...)` clause plus matching params for a user
+ * scope that may be a single id (regular per-user routes) or an array of ids
+ * (admin cross-user views). Callers interpolate `clause` directly after a
+ * column name, e.g. \`op.user_id ${clause}\`.
+ */
+function userScopeSql(userIds) {
+  if (Array.isArray(userIds)) {
+    if (userIds.length === 0) {
+      throw new Error('userIds must be a non-empty array');
+    }
+    return { clause: `IN (${userIds.map(() => '?').join(',')})`, params: [...userIds] };
+  }
+  return { clause: '= ?', params: [userIds] };
+}
+
+/**
  * Get all owned cards for inventory display
  * Returns cards with printing details, quantities, and deck usage stats
  */
-export function getInventory(userId, filters = {}) {
+export function getInventory(userIds, filters = {}) {
   const {
     name,
     colors = [],
@@ -32,9 +48,13 @@ export function getInventory(userId, filters = {}) {
     limit = 50
   } = filters;
 
+  const isMultiUser = Array.isArray(userIds);
+  const scope = userScopeSql(userIds);
+  const usernamesById = isMultiUser ? getUsernamesById(userIds) : null;
+
   const offset = (page - 1) * limit;
-  const params = [userId];
-  const countParams = [userId];
+  const params = [];
+  const countParams = [];
 
   // Base query - get all owned cards with their details
   let sql = `
@@ -51,33 +71,33 @@ export function getInventory(userId, filters = {}) {
         SELECT COALESCE(SUM(op.quantity), 0)
         FROM owned_printings op
         JOIN printings p ON op.printing_id = p.id
-        WHERE op.user_id = ? AND p.card_id = c.id
+        WHERE op.user_id ${scope.clause} AND p.card_id = c.id
       ) as total_owned,
       (
         SELECT COALESCE(SUM(dc.quantity), 0)
         FROM deck_cards dc
         JOIN printings p ON dc.printing_id = p.id
         JOIN decks d ON dc.deck_id = d.id
-        WHERE d.user_id = ? AND p.card_id = c.id
+        WHERE d.user_id ${scope.clause} AND p.card_id = c.id
       ) as total_in_decks,
       (
         SELECT MAX(NULLIF(${OWNED_COPY_PRICE}, 0))
         FROM owned_printings op
         JOIN printings p ON op.printing_id = p.id
-        WHERE op.user_id = ? AND p.card_id = c.id
+        WHERE op.user_id ${scope.clause} AND p.card_id = c.id
       ) as max_price
     FROM cards c
     WHERE c.id IN (
       SELECT DISTINCT p.card_id
       FROM owned_printings op
       JOIN printings p ON op.printing_id = p.id
-      WHERE op.user_id = ?
+      WHERE op.user_id ${scope.clause}
     )
   `;
 
-  // Add userId params for the subqueries — order matches the SELECT above:
-  // total_owned (params[0]), total_in_decks, max_price, then the WHERE ... IN
-  params.push(userId, userId, userId);
+  // Params for the subqueries — order matches the SELECT above:
+  // total_owned, total_in_decks, max_price, then the WHERE ... IN
+  params.push(...scope.params, ...scope.params, ...scope.params, ...scope.params);
 
   // Count query
   let countSql = `
@@ -87,9 +107,10 @@ export function getInventory(userId, filters = {}) {
       SELECT DISTINCT p.card_id
       FROM owned_printings op
       JOIN printings p ON op.printing_id = p.id
-      WHERE op.user_id = ?
+      WHERE op.user_id ${scope.clause}
     )
   `;
+  countParams.push(...scope.params);
 
   // Name filter
   if (name && name.trim()) {
@@ -147,16 +168,16 @@ export function getInventory(userId, filters = {}) {
       SELECT DISTINCT p2.card_id
       FROM owned_printings op2
       JOIN printings p2 ON op2.printing_id = p2.id
-      WHERE op2.user_id = ? AND p2.set_code IN (${placeholders})
+      WHERE op2.user_id ${scope.clause} AND p2.set_code IN (${placeholders})
     )`;
     countSql += ` AND c.id IN (
       SELECT DISTINCT p2.card_id
       FROM owned_printings op2
       JOIN printings p2 ON op2.printing_id = p2.id
-      WHERE op2.user_id = ? AND p2.set_code IN (${placeholders})
+      WHERE op2.user_id ${scope.clause} AND p2.set_code IN (${placeholders})
     )`;
-    params.push(userId, ...setsArray);
-    countParams.push(userId, ...setsArray);
+    params.push(...scope.params, ...setsArray);
+    countParams.push(...scope.params, ...setsArray);
   }
 
   // Get total count
@@ -211,6 +232,7 @@ export function getInventory(userId, filters = {}) {
     const printings = db.all(`
       SELECT
         op.id as owned_printing_id,
+        op.user_id,
         op.quantity,
         op.is_foil,
         p.id as printing_id,
@@ -223,12 +245,18 @@ export function getInventory(userId, filters = {}) {
       FROM owned_printings op
       JOIN printings p ON op.printing_id = p.id
       LEFT JOIN sets s ON p.set_code = s.code
-      WHERE op.user_id = ? AND p.card_id = ?
+      WHERE op.user_id ${scope.clause} AND p.card_id = ?
       ORDER BY p.set_code, p.collector_number, op.is_foil
-    `, [userId, card.card_id]);
+    `, [...scope.params, card.card_id]);
+
+    // Admin multi-user view: show whose collection each card's copies come
+    // from, so filtering to a subset of users is legible per-card rather than
+    // just an opaque combined total.
+    const owners = isMultiUser ? summarizeOwners(printings, usernamesById) : undefined;
 
     return {
       ...card,
+      ...(owners ? { owners } : {}),
       // Show the art of a printing actually owned, not whichever one the
       // card-level query happened to reach first. The list is how a collection
       // is recognised at a glance, and the art is the thing a user recognises —
@@ -256,6 +284,30 @@ export function getInventory(userId, filters = {}) {
   };
 }
 
+function getUsernamesById(userIds) {
+  const rows = db.all(
+    `SELECT id, username FROM users WHERE id IN (${userIds.map(() => '?').join(',')})`,
+    userIds
+  );
+  return new Map(rows.map(r => [r.id, r.username]));
+}
+
+/**
+ * Per-card owner breakdown for the admin multi-user view: how many copies
+ * each selected user contributes, summed across their printings.
+ */
+function summarizeOwners(printings, usernamesById) {
+  const totals = new Map();
+  for (const printing of printings) {
+    totals.set(printing.user_id, (totals.get(printing.user_id) || 0) + printing.quantity);
+  }
+  return [...totals.entries()].map(([userId, quantity]) => ({
+    userId,
+    username: usernamesById.get(userId) || `#${userId}`,
+    quantity
+  }));
+}
+
 /**
  * The owned printing whose art should stand for the card in a list.
  *
@@ -275,29 +327,31 @@ function representativeImage(printings) {
 /**
  * Get inventory statistics
  */
-export function getInventoryStats(userId) {
+export function getInventoryStats(userIds) {
+  const scope = userScopeSql(userIds);
+
   // Total unique cards owned
   const uniqueCards = db.get(`
     SELECT COUNT(DISTINCT p.card_id) as count
     FROM owned_printings op
     JOIN printings p ON op.printing_id = p.id
-    WHERE op.user_id = ?
-  `, [userId]);
+    WHERE op.user_id ${scope.clause}
+  `, scope.params);
 
   // Total copies owned
   const totalCopies = db.get(`
     SELECT COALESCE(SUM(quantity), 0) as count
     FROM owned_printings
-    WHERE user_id = ?
-  `, [userId]);
+    WHERE user_id ${scope.clause}
+  `, scope.params);
 
   // Total in decks
   const inDecks = db.get(`
     SELECT COALESCE(SUM(dc.quantity), 0) as count
     FROM deck_cards dc
     JOIN decks d ON dc.deck_id = d.id
-    WHERE d.user_id = ?
-  `, [userId]);
+    WHERE d.user_id ${scope.clause}
+  `, scope.params);
 
   // Estimated total value
   const estimatedValue = db.get(`
@@ -306,8 +360,8 @@ export function getInventoryStats(userId) {
     ), 0) as total
     FROM owned_printings op
     JOIN printings p ON op.printing_id = p.id
-    WHERE op.user_id = ?
-  `, [userId]);
+    WHERE op.user_id ${scope.clause}
+  `, scope.params);
 
   const totalOwned = totalCopies?.count || 0;
   const totalInDecks = inDecks?.count || 0;

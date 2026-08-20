@@ -19,9 +19,19 @@ let quickSearchTimeout = null;
 let selectedCards = new Set(); // Track selected card IDs for multi-select
 let selectMode = false; // Whether multi-select mode is active
 
+// Admin cross-user inventory view. selectedUserIds is null for "just me"
+// (the normal, non-admin path); once set, loadInventoryData fetches through
+// the admin endpoints instead of the regular per-user ones.
+let currentUserId = null;
+let allUsers = [];
+let selectedUserIds = null;
+
 export function setupInventory() {
   // Load inventory data when page is shown
-  window.addEventListener('page:inventory', loadInventoryData);
+  window.addEventListener('page:inventory', async () => {
+    await setupAdminUserFilter();
+    await loadInventoryData();
+  });
 
   // Setup filter listeners
   setupFilterListeners();
@@ -106,6 +116,63 @@ function setupFilterListeners() {
   });
 }
 
+// Fetches the current user's admin status once per page visit and, for
+// admins, renders the "Viewing Inventory For" checklist. Non-admins never see
+// the control — their own inventory is the only thing they can view.
+async function setupAdminUserFilter() {
+  const row = document.getElementById('inventory-admin-user-filter');
+  const checklist = document.getElementById('inventory-user-checklist');
+  if (!row || !checklist) return;
+
+  try {
+    const profile = await api.getProfile();
+    currentUserId = profile.user.id;
+
+    if (!profile.user.is_admin) {
+      row.classList.add('hidden');
+      selectedUserIds = null;
+      return;
+    }
+
+    const { users } = await api.getAllUsers();
+    allUsers = users;
+    row.classList.remove('hidden');
+
+    checklist.innerHTML = allUsers.map(u => `
+      <label class="inventory-user-checkbox">
+        <input type="checkbox" value="${u.id}" ${u.id === currentUserId ? 'checked' : ''} />
+        ${u.username}${u.id === currentUserId ? ' (me)' : ''}
+      </label>
+    `).join('');
+
+    if (!checklist.dataset.wired) {
+      checklist.dataset.wired = 'true';
+      checklist.addEventListener('change', (e) => {
+        let checked = Array.from(checklist.querySelectorAll('input[type="checkbox"]:checked'))
+          .map(cb => parseInt(cb.value, 10));
+
+        // Refuse to leave nobody selected — re-check the box that was just
+        // unchecked rather than sending an empty filter to the server.
+        if (checked.length === 0) {
+          e.target.checked = true;
+          checked = [parseInt(e.target.value, 10)];
+        }
+
+        // Only me, checked → behave exactly like a regular user (no admin
+        // endpoints, no owners breakdown clutter on every card).
+        selectedUserIds = (checked.length === 1 && checked[0] === currentUserId) ? null : checked;
+
+        currentPage = 1;
+        loadInventoryData();
+      });
+    }
+  } catch (error) {
+    console.error('Failed to load admin user filter:', error);
+    row.classList.add('hidden');
+    selectedUserIds = null;
+  }
+}
+
 function setupViewToggle() {
   const gridBtn = document.getElementById('inventory-grid-view-btn');
   const listBtn = document.getElementById('inventory-list-view-btn');
@@ -161,6 +228,14 @@ function getFoilCount(card) {
   return (card.printings || [])
     .filter(p => p.is_foil)
     .reduce((sum, p) => sum + (p.quantity || 0), 0);
+}
+
+// Admin multi-user view only: "alice: 2, bob: 1" — who contributes this
+// card's copies, so a combined total isn't opaque about whose collection it
+// came from.
+function getOwnersTooltip(card) {
+  if (!card.owners || card.owners.length === 0) return '';
+  return card.owners.map(o => `${o.username}: ${o.quantity}`).join(', ');
 }
 
 // Summarises the last-synced price for a card row.
@@ -766,15 +841,18 @@ async function loadInventoryData() {
   try {
     showLoading();
 
-    // Load inventory and stats in parallel
-    const [inventoryResult, statsResult] = await Promise.all([
-      api.getInventory({
-        ...filters,
-        page: currentPage,
-        limit: 50
-      }),
-      api.getInventoryStats()
-    ]);
+    // Load inventory and stats in parallel — admins viewing another user (or
+    // a combination of users) go through the /admin/inventory endpoints,
+    // everyone else through the regular per-user ones.
+    const [inventoryResult, statsResult] = selectedUserIds
+      ? await Promise.all([
+          api.getAdminInventory(selectedUserIds, { ...filters, page: currentPage, limit: 50 }),
+          api.getAdminInventoryStats(selectedUserIds)
+        ])
+      : await Promise.all([
+          api.getInventory({ ...filters, page: currentPage, limit: 50 }),
+          api.getInventoryStats()
+        ]);
 
     inventoryData = inventoryResult;
     totalPages = inventoryResult.pagination.totalPages || 1;
@@ -886,6 +964,11 @@ function renderGridView(container) {
           ${foilCount > 0 ? `
             <div class="inventory-foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned">
               <i class="ph ph-sparkle"></i> ${foilCount}
+            </div>
+          ` : ''}
+          ${card.owners && card.owners.length > 0 ? `
+            <div class="inventory-owners-badge" title="${getOwnersTooltip(card).replace(/"/g, '&quot;')}">
+              <i class="ph ph-users"></i> ${card.owners.length}
             </div>
           ` : ''}
         </div>
@@ -1006,6 +1089,7 @@ function renderListView(container) {
           <span class="list-col-name">
             ${card.name}
             ${foilCount > 0 ? `<span class="foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned"><i class="ph ph-sparkle"></i> ${foilCount}</span>` : ''}
+            ${card.owners && card.owners.length > 0 ? `<span class="owners-badge" title="${getOwnersTooltip(card).replace(/"/g, '&quot;')}"><i class="ph ph-users"></i> ${card.owners.length}</span>` : ''}
           </span>
           <span class="list-col-type">${card.type_line || ''}</span>
           <span class="list-col-mana">${formatMana(card.mana_cost || '')}</span>
