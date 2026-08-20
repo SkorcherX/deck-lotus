@@ -658,7 +658,7 @@ export async function showCardDetail(cardId) {
           ` : ''}
         </div>
         <div>
-          <h2 style="margin: 0 0 0.5rem 0;">${card.name}</h2>
+          <h2 class="font-theme" style="margin: 0 0 0.5rem 0;">${card.name}</h2>
           <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
             <button id="quick-add-modal-btn" class="btn btn-primary">+ Add to Deck</button>
             ${ownership && ownership.deckUsage && ownership.deckUsage.length > 0 ? `

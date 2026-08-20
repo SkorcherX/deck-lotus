@@ -1,3 +1,22 @@
+/* Planewalker — MTG-themed display font, used sparingly for page/section
+   titles and card names only. Never for body copy, buttons, inputs, tables,
+   or other dense/small UI text — a fantasy display face like this is hard to
+   read at small sizes and in quantity. */
+@font-face {
+  font-family: 'Planewalker';
+  src: url('../assets/fonts/Planewalker.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-theme,
+.page-header h2,
+.auth-form h2 {
+  font-family: 'Planewalker', var(--font-sans, sans-serif);
+  letter-spacing: 0.02em;
+}
+
 /* Keyrune set-symbol webfont (SIL OFL 1.1) — used for avatar presets.
    See client/src/assets/fonts/KEYRUNE-LICENSE.md for attribution. */
 @font-face {
