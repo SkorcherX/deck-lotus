@@ -2887,14 +2887,33 @@ function renderOptimizerResults(result, el) {
 }
 
 function renderValidatorResults(result, el) {
-  console.log('Mana Pool validate-deck response:', result);
   const valid = result.valid ?? result.is_valid ?? result.legal;
-  const violations = result.violations ?? result.errors ?? result.issues ?? result.problems ?? result.legality_issues ?? [];
-  const commander = result.commander ?? result.commanders?.[0] ?? null;
-  const colorIdentity = result.color_identity ?? result.colors ?? [];
-  const cardCount = result.card_count ?? result.deck_size ?? null;
+  const d = result.details ?? {};
 
-  const colorMap = { W: '☀️', U: '💧', B: '💀', R: '🔥', G: '🌲' };
+  const violations = [
+    ...(d.illegal_cards ?? []).map(v => ({
+      card: v.name ?? v,
+      reason: `Not legal in this format${v.reason ? ` — ${v.reason}` : ''}`,
+    })),
+    ...(d.cards_not_found ?? []).map(v => ({
+      card: v.name ?? v,
+      reason: 'Card not found',
+    })),
+    ...(d.quantity_violations ?? []).map(v => ({
+      card: v.name,
+      reason: `${v.quantity} copies — max ${v.max_allowed} allowed`,
+    })),
+    ...(d.color_identity_violations ?? []).map(v => ({
+      card: v.name ?? v,
+      reason: "Outside the commander's color identity",
+    })),
+    ...(d.partner_violations ?? []).map(v => ({
+      card: v.name ?? v,
+      reason: v.reason ?? 'Not a valid partner/commander pairing',
+    })),
+  ];
+
+  const cardCount = d.total_card_count ?? null;
 
   el.innerHTML = `
     <div style="padding:1rem;border-radius:8px;background:${valid ? 'rgba(22,163,74,0.1)' : 'rgba(239,68,68,0.1)'};border:1px solid ${valid ? '#16a34a' : '#ef4444'};margin-bottom:1rem;">
@@ -2904,34 +2923,18 @@ function renderValidatorResults(result, el) {
       </div>
       ${cardCount != null ? `<div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.25rem;">${cardCount} cards</div>` : ''}
     </div>
-    ${commander ? `
-      <div style="margin-bottom:0.75rem;">
-        <span style="font-size:0.75rem;text-transform:uppercase;color:var(--text-secondary);font-weight:600;">Commander</span>
-        <div style="font-weight:600;margin-top:0.2rem;">${Array.isArray(commander) ? commander.join(' // ') : commander}</div>
-      </div>
-    ` : ''}
-    ${colorIdentity.length ? `
-      <div style="margin-bottom:0.75rem;">
-        <span style="font-size:0.75rem;text-transform:uppercase;color:var(--text-secondary);font-weight:600;">Color Identity</span>
-        <div style="font-size:1.2rem;margin-top:0.2rem;">${colorIdentity.map(c => colorMap[c] || c).join(' ')}</div>
-      </div>
-    ` : ''}
     ${violations.length ? `
       <div>
         <span style="font-size:0.75rem;text-transform:uppercase;color:#ef4444;font-weight:600;">Violations (${violations.length})</span>
         <div style="margin-top:0.5rem;display:flex;flex-direction:column;gap:0.4rem;">
-          ${violations.map(v => {
-            const card = v.card ?? v.name ?? '';
-            const reason = v.reason ?? v.message ?? v.error ?? String(v);
-            return `<div style="font-size:0.85rem;padding:0.4rem 0.6rem;background:rgba(239,68,68,0.08);border-radius:4px;">
-              ${card ? `<strong>${card}</strong> — ` : ''}${reason}
-            </div>`;
-          }).join('')}
+          ${violations.map(v => `<div style="font-size:0.85rem;padding:0.4rem 0.6rem;background:rgba(239,68,68,0.08);border-radius:4px;">
+              ${v.card ? `<strong>${v.card}</strong> — ` : ''}${v.reason}
+            </div>`).join('')}
         </div>
       </div>
     ` : (valid ? `<div style="font-size:0.875rem;color:var(--text-secondary);">No issues found.</div>` : `
       <div style="font-size:0.85rem;color:var(--text-secondary);">
-        Deck is invalid but no violation details were returned in a recognized field.
+        Deck is invalid but no specific violations were listed.
         <details style="margin-top:0.4rem;">
           <summary style="cursor:pointer;">Show raw response</summary>
           <pre style="white-space:pre-wrap;font-size:0.75rem;margin-top:0.4rem;">${JSON.stringify(result, null, 2)}</pre>
