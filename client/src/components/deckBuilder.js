@@ -2887,8 +2887,9 @@ function renderOptimizerResults(result, el) {
 }
 
 function renderValidatorResults(result, el) {
+  console.log('Mana Pool validate-deck response:', result);
   const valid = result.valid ?? result.is_valid ?? result.legal;
-  const violations = result.violations ?? result.errors ?? result.issues ?? [];
+  const violations = result.violations ?? result.errors ?? result.issues ?? result.problems ?? result.legality_issues ?? [];
   const commander = result.commander ?? result.commanders?.[0] ?? null;
   const colorIdentity = result.color_identity ?? result.colors ?? [];
   const cardCount = result.card_count ?? result.deck_size ?? null;
@@ -2928,6 +2929,14 @@ function renderValidatorResults(result, el) {
           }).join('')}
         </div>
       </div>
-    ` : (valid ? `<div style="font-size:0.875rem;color:var(--text-secondary);">No issues found.</div>` : '')}
+    ` : (valid ? `<div style="font-size:0.875rem;color:var(--text-secondary);">No issues found.</div>` : `
+      <div style="font-size:0.85rem;color:var(--text-secondary);">
+        Deck is invalid but no violation details were returned in a recognized field.
+        <details style="margin-top:0.4rem;">
+          <summary style="cursor:pointer;">Show raw response</summary>
+          <pre style="white-space:pre-wrap;font-size:0.75rem;margin-top:0.4rem;">${JSON.stringify(result, null, 2)}</pre>
+        </details>
+      </div>
+    `)}
   `;
 }
