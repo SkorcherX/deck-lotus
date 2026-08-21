@@ -493,10 +493,10 @@ class ApiClient {
     });
   }
 
-  async manaPoolValidateDeck(decklist, format = 'commander') {
+  async manaPoolValidateDeck(commanderNames, otherCards, format = 'commander') {
     return this.request('/manapool/validate-deck', {
       method: 'POST',
-      body: JSON.stringify({ decklist, format }),
+      body: JSON.stringify({ commanderNames, otherCards, format }),
     });
   }
 

@@ -22,12 +22,12 @@ router.post('/optimize', authenticate, async (req, res, next) => {
 });
 
 // Proxy to POST /deck
-// Body: { decklist, format? }
+// Body: { commanderNames: string[], otherCards: string[], format? }
 router.post('/validate-deck', authenticate, async (req, res, next) => {
   try {
-    const { decklist, format } = req.body;
-    if (!decklist) return res.status(400).json({ error: 'decklist is required' });
-    const result = await validateDeck(decklist, format || 'commander');
+    const { commanderNames, otherCards, format } = req.body;
+    if (!otherCards?.length) return res.status(400).json({ error: 'otherCards is required' });
+    const result = await validateDeck(commanderNames || [], otherCards, format || 'commander');
     res.json(result);
   } catch (err) {
     next(err);

@@ -197,13 +197,14 @@ export function setupDeckBuilder() {
     btn.innerHTML = '<i class="ph ph-spinner"></i> Validating…';
     resultsEl.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Checking deck with Mana Pool…</div>';
 
-    const decklist = currentDeck.cards
-      .filter(isMainboardCard)
-      .map(c => `${c.quantity} ${c.name}`)
-      .join('\n');
+    const mainboard = currentDeck.cards.filter(isMainboardCard);
+    const commanderNames = mainboard.filter(c => c.is_commander).map(c => c.name);
+    const otherCards = mainboard
+      .filter(c => !c.is_commander)
+      .map(c => `${c.quantity} ${c.name}`);
 
     try {
-      const result = await api.manaPoolValidateDeck(decklist, format);
+      const result = await api.manaPoolValidateDeck(commanderNames, otherCards, format);
       renderValidatorResults(result, resultsEl);
     } catch (err) {
       resultsEl.innerHTML = `<div style="color:#f87171;padding:1rem;border-radius:6px;background:rgba(248,113,113,0.1);">

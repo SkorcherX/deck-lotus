@@ -157,9 +157,10 @@ export async function optimizeCart(items, model = 'lowest_price') {
 }
 
 // POST /deck — validate a deck for a given format
-// decklist: plain-text list, e.g. "1 Sol Ring\n1 Atraxa..."
+// commanderNames: string[], e.g. ["Atraxa, Praetors' Voice"]
+// otherCards: plain-text lines, e.g. ["1 Sol Ring", "1 Arcane Signet"]
 // format: 'commander' | 'standard' | 'modern' | etc.
-export async function validateDeck(decklist, format = 'commander') {
+export async function validateDeck(commanderNames, otherCards, format = 'commander') {
   assertConfigured();
-  return apiPost('/deck', { decklist, format });
+  return apiPost('/deck', { commander_names: commanderNames, other_cards: otherCards, format });
 }
