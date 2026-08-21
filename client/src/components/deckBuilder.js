@@ -197,11 +197,15 @@ export function setupDeckBuilder() {
     btn.innerHTML = '<i class="ph ph-spinner"></i> Validating…';
     resultsEl.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Checking deck with Mana Pool…</div>';
 
+    // Adventure/split/DFC cards are stored with the combined "Front // Back" name
+    // (MTGJSON convention), but Mana Pool looks cards up by front-face name only.
+    const frontFace = name => name.split(' // ')[0];
+
     const mainboard = currentDeck.cards.filter(isMainboardCard);
-    const commanderNames = mainboard.filter(c => c.is_commander).map(c => c.name);
+    const commanderNames = mainboard.filter(c => c.is_commander).map(c => frontFace(c.name));
     const otherCards = mainboard
       .filter(c => !c.is_commander)
-      .map(c => ({ name: c.name, quantity: c.quantity }));
+      .map(c => ({ name: frontFace(c.name), quantity: c.quantity }));
 
     try {
       const result = await api.manaPoolValidateDeck(commanderNames, otherCards, format);
