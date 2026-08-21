@@ -73,6 +73,38 @@ class ApiClient {
     return this.request('/auth/api-keys');
   }
 
+  async updateAvatar(payload) {
+    return this.request('/auth/avatar', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async uploadAvatar(file) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const headers = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+
+    // Deliberately bypasses this.request() — it always sets
+    // Content-Type: application/json, which breaks multipart uploads. The
+    // browser sets the correct multipart boundary itself when Content-Type
+    // is left unset.
+    const response = await fetch(`${this.baseURL}/auth/avatar/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
   async createApiKey(name) {
     return this.request('/auth/api-keys', {
       method: 'POST',
@@ -184,6 +216,13 @@ class ApiClient {
     return this.request(`/decks/${deckId}/cards`, {
       method: 'POST',
       body: JSON.stringify({ printingId, quantity, isSideboard, isCommander, boardType }),
+    });
+  }
+
+  // Removes every copy of a card (all printings, all boards) from a deck.
+  async removeCardFromDeckByCardId(deckId, cardId) {
+    return this.request(`/decks/${deckId}/cards/by-card-id/${cardId}`, {
+      method: 'DELETE',
     });
   }
 
@@ -412,6 +451,28 @@ class ApiClient {
 
   async getInventoryStats() {
     return this.request('/inventory/stats');
+  }
+
+  // Admin cross-user inventory methods
+  async getAdminInventory(userIds, filters = {}) {
+    const params = new URLSearchParams();
+    params.append('userIds', userIds.join(','));
+    if (filters.name) params.append('name', filters.name);
+    if (filters.colors && filters.colors.length > 0) params.append('colors', filters.colors.join(','));
+    if (filters.type && filters.type !== 'all') params.append('type', filters.type);
+    if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));
+    if (filters.sort) params.append('sort', filters.sort);
+    if (filters.availability) params.append('availability', filters.availability);
+    if (filters.page) params.append('page', filters.page);
+    if (filters.limit) params.append('limit', filters.limit);
+
+    return this.request(`/admin/inventory?${params}`);
+  }
+
+  async getAdminInventoryStats(userIds) {
+    const params = new URLSearchParams();
+    params.append('userIds', userIds.join(','));
+    return this.request(`/admin/inventory/stats?${params}`);
   }
 
   async searchForInventoryAdd(query) {

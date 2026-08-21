@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { getGravatarUrl, getUserInitials, getUserColor } from '../utils/gravatar.js';
+import { getPresetAvatar, getUploadedAvatarUrl } from '../utils/avatar.js';
 
 let currentUser = null;
 let userStats = null;
@@ -54,6 +55,12 @@ async function loadUserData() {
   }
 }
 
+// Exposed so settings.js can refresh the nav avatar right after the user
+// changes it, instead of waiting for the next page:change event.
+export async function refreshUserMenu() {
+  await loadUserData();
+}
+
 async function updateAvatar() {
   if (!currentUser) return;
 
@@ -65,13 +72,48 @@ async function updateAvatar() {
   const dropdownAvatarImg = document.getElementById('dropdown-avatar-img');
   const dropdownAvatarInitials = document.getElementById('dropdown-avatar-initials');
 
+  // Uploaded custom image takes priority over everything else.
+  const uploadedUrl = getUploadedAvatarUrl(currentUser);
+  if (uploadedUrl) {
+    avatarImg.src = uploadedUrl;
+    avatarImg.classList.remove('hidden');
+    avatarInitials.style.display = 'none';
+
+    dropdownAvatarImg.src = uploadedUrl;
+    dropdownAvatarImg.classList.remove('hidden');
+    dropdownAvatarInitials.style.display = 'none';
+    return;
+  }
+
+  // A selected set-symbol preset renders as a Keyrune glyph on a colored
+  // circle, same div used for the initials fallback.
+  if (currentUser.avatar_type === 'preset') {
+    const preset = getPresetAvatar(currentUser.avatar_value);
+    if (preset) {
+      avatarImg.classList.add('hidden');
+      avatarInitials.style.display = 'flex';
+      avatarInitials.style.background = preset.color;
+      avatarInitials.style.color = '#fff';
+      avatarInitials.innerHTML = `<i class="ss ss-${preset.id}"></i>`;
+
+      dropdownAvatarImg.classList.add('hidden');
+      dropdownAvatarInitials.style.display = 'flex';
+      dropdownAvatarInitials.style.background = preset.color;
+      dropdownAvatarInitials.style.color = '#fff';
+      dropdownAvatarInitials.innerHTML = `<i class="ss ss-${preset.id}"></i>`;
+      return;
+    }
+  }
+
   // Try to load Gravatar
   const gravatarUrl = getGravatarUrl(currentUser.email, 80);
 
-  // Set background color for initials
+  // Set background color for initials (and reset any leftover preset text color)
   const userColor = getUserColor(currentUser.username);
   avatarInitials.style.background = userColor;
+  avatarInitials.style.color = '';
   dropdownAvatarInitials.style.background = userColor;
+  dropdownAvatarInitials.style.color = '';
 
   // Set initials
   const initials = getUserInitials(currentUser.username);

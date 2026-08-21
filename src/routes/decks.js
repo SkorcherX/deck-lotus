@@ -8,6 +8,7 @@ import {
   addCardToDeck,
   updateDeckCard,
   removeCardFromDeck,
+  removeCardFromDeckByCardId,
   getDeckStats,
   createDeckShare,
   getDeckByShareToken,
@@ -209,6 +210,25 @@ router.delete('/:id/cards/:cardId', authenticate, (req, res, next) => {
     const deckCardId = parseInt(req.params.cardId);
 
     const deck = removeCardFromDeck(deckId, req.user.id, deckCardId);
+
+    res.json({ deck });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/decks/:id/cards/by-card-id/:cardId
+ * Remove every copy of a card (all printings, all boards) from a deck —
+ * the "Remove from Deck" counterpart to the quick "+ Add to Deck" action,
+ * which likewise doesn't ask which printing/board.
+ */
+router.delete('/:id/cards/by-card-id/:cardId', authenticate, (req, res, next) => {
+  try {
+    const deckId = parseInt(req.params.id);
+    const cardId = parseInt(req.params.cardId);
+
+    const deck = removeCardFromDeckByCardId(deckId, req.user.id, cardId);
 
     res.json({ deck });
   } catch (error) {

@@ -2,6 +2,10 @@ import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
 
+// 54 = 9 rows of 6 at the grid's usual column count, so a full page ends on
+// a complete row instead of trailing off mid-row.
+const PAGE_SIZE = 54;
+
 let inventoryData = null;
 let currentPage = 1;
 let totalPages = 1;
@@ -19,9 +23,19 @@ let quickSearchTimeout = null;
 let selectedCards = new Set(); // Track selected card IDs for multi-select
 let selectMode = false; // Whether multi-select mode is active
 
+// Admin cross-user inventory view. selectedUserIds is null for "just me"
+// (the normal, non-admin path); once set, loadInventoryData fetches through
+// the admin endpoints instead of the regular per-user ones.
+let currentUserId = null;
+let allUsers = [];
+let selectedUserIds = null;
+
 export function setupInventory() {
   // Load inventory data when page is shown
-  window.addEventListener('page:inventory', loadInventoryData);
+  window.addEventListener('page:inventory', async () => {
+    await setupAdminUserFilter();
+    await loadInventoryData();
+  });
 
   // Setup filter listeners
   setupFilterListeners();
@@ -106,6 +120,63 @@ function setupFilterListeners() {
   });
 }
 
+// Fetches the current user's admin status once per page visit and, for
+// admins, renders the "Viewing Inventory For" checklist. Non-admins never see
+// the control — their own inventory is the only thing they can view.
+async function setupAdminUserFilter() {
+  const row = document.getElementById('inventory-admin-user-filter');
+  const checklist = document.getElementById('inventory-user-checklist');
+  if (!row || !checklist) return;
+
+  try {
+    const profile = await api.getProfile();
+    currentUserId = profile.user.id;
+
+    if (!profile.user.is_admin) {
+      row.classList.add('hidden');
+      selectedUserIds = null;
+      return;
+    }
+
+    const { users } = await api.getAllUsers();
+    allUsers = users;
+    row.classList.remove('hidden');
+
+    checklist.innerHTML = allUsers.map(u => `
+      <label class="inventory-user-checkbox">
+        <input type="checkbox" value="${u.id}" ${u.id === currentUserId ? 'checked' : ''} />
+        ${u.username}${u.id === currentUserId ? ' (me)' : ''}
+      </label>
+    `).join('');
+
+    if (!checklist.dataset.wired) {
+      checklist.dataset.wired = 'true';
+      checklist.addEventListener('change', (e) => {
+        let checked = Array.from(checklist.querySelectorAll('input[type="checkbox"]:checked'))
+          .map(cb => parseInt(cb.value, 10));
+
+        // Refuse to leave nobody selected — re-check the box that was just
+        // unchecked rather than sending an empty filter to the server.
+        if (checked.length === 0) {
+          e.target.checked = true;
+          checked = [parseInt(e.target.value, 10)];
+        }
+
+        // Only me, checked → behave exactly like a regular user (no admin
+        // endpoints, no owners breakdown clutter on every card).
+        selectedUserIds = (checked.length === 1 && checked[0] === currentUserId) ? null : checked;
+
+        currentPage = 1;
+        loadInventoryData();
+      });
+    }
+  } catch (error) {
+    console.error('Failed to load admin user filter:', error);
+    row.classList.add('hidden');
+    selectedUserIds = null;
+  }
+}
+
 function setupViewToggle() {
   const gridBtn = document.getElementById('inventory-grid-view-btn');
   const listBtn = document.getElementById('inventory-list-view-btn');
@@ -163,6 +234,14 @@ function getFoilCount(card) {
     .reduce((sum, p) => sum + (p.quantity || 0), 0);
 }
 
+// Admin multi-user view only: "alice: 2, bob: 1" — who contributes this
+// card's copies, so a combined total isn't opaque about whose collection it
+// came from.
+function getOwnersTooltip(card) {
+  if (!card.owners || card.owners.length === 0) return '';
+  return card.owners.map(o => `${o.username}: ${o.quantity}`).join(', ');
+}
+
 // Summarises the last-synced price for a card row.
 // Inventory rows group all owned printings of a card, which can carry different
 // prices, so report the dearest unit price and break the rest out in the tooltip.
@@ -183,27 +262,30 @@ function getPriceSummary(card) {
   return { unit, total, tooltip: lines.join('\n') };
 }
 
+// Bottom bar plus its mirror above the grid, so paging through a full page
+// of cards doesn't require scrolling down and back up just to reach "Next".
 function setupPagination() {
-  const prevBtn = document.getElementById('inventory-prev-page');
-  const nextBtn = document.getElementById('inventory-next-page');
-
-  if (prevBtn) {
-    prevBtn.addEventListener('click', () => {
+  ['inventory-prev-page', 'inventory-prev-page-top'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
       if (currentPage > 1) {
         currentPage--;
         loadInventoryData();
       }
     });
-  }
+  });
 
-  if (nextBtn) {
-    nextBtn.addEventListener('click', () => {
+  ['inventory-next-page', 'inventory-next-page-top'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
       if (currentPage < totalPages) {
         currentPage++;
         loadInventoryData();
       }
     });
-  }
+  });
 }
 
 let activePrintingFlyout = null; // Track active flyout
@@ -766,15 +848,18 @@ async function loadInventoryData() {
   try {
     showLoading();
 
-    // Load inventory and stats in parallel
-    const [inventoryResult, statsResult] = await Promise.all([
-      api.getInventory({
-        ...filters,
-        page: currentPage,
-        limit: 50
-      }),
-      api.getInventoryStats()
-    ]);
+    // Load inventory and stats in parallel — admins viewing another user (or
+    // a combination of users) go through the /admin/inventory endpoints,
+    // everyone else through the regular per-user ones.
+    const [inventoryResult, statsResult] = selectedUserIds
+      ? await Promise.all([
+          api.getAdminInventory(selectedUserIds, { ...filters, page: currentPage, limit: PAGE_SIZE }),
+          api.getAdminInventoryStats(selectedUserIds)
+        ])
+      : await Promise.all([
+          api.getInventory({ ...filters, page: currentPage, limit: PAGE_SIZE }),
+          api.getInventoryStats()
+        ]);
 
     inventoryData = inventoryResult;
     totalPages = inventoryResult.pagination.totalPages || 1;
@@ -886,6 +971,11 @@ function renderGridView(container) {
           ${foilCount > 0 ? `
             <div class="inventory-foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned">
               <i class="ph ph-sparkle"></i> ${foilCount}
+            </div>
+          ` : ''}
+          ${card.owners && card.owners.length > 0 ? `
+            <div class="inventory-owners-badge" title="${getOwnersTooltip(card).replace(/"/g, '&quot;')}">
+              <i class="ph ph-users"></i> ${card.owners.length}
             </div>
           ` : ''}
         </div>
@@ -1006,6 +1096,7 @@ function renderListView(container) {
           <span class="list-col-name">
             ${card.name}
             ${foilCount > 0 ? `<span class="foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned"><i class="ph ph-sparkle"></i> ${foilCount}</span>` : ''}
+            ${card.owners && card.owners.length > 0 ? `<span class="owners-badge" title="${getOwnersTooltip(card).replace(/"/g, '&quot;')}"><i class="ph ph-users"></i> ${card.owners.length}</span>` : ''}
           </span>
           <span class="list-col-type">${card.type_line || ''}</span>
           <span class="list-col-mana">${formatMana(card.mana_cost || '')}</span>
@@ -1059,11 +1150,16 @@ function renderListView(container) {
 }
 
 function renderPagination() {
-  const prevBtn = document.getElementById('inventory-prev-page');
-  const nextBtn = document.getElementById('inventory-next-page');
-  const pageInfo = document.getElementById('inventory-page-info');
-
-  if (prevBtn) prevBtn.disabled = currentPage <= 1;
-  if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
-  if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+  ['inventory-prev-page', 'inventory-prev-page-top'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = currentPage <= 1;
+  });
+  ['inventory-next-page', 'inventory-next-page-top'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = currentPage >= totalPages;
+  });
+  ['inventory-page-info', 'inventory-page-info-top'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `Page ${currentPage} of ${totalPages}`;
+  });
 }

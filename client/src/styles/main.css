@@ -1,3 +1,56 @@
+/* Planewalker — MTG-themed display font, used sparingly for page/section
+   titles and card names only. Never for body copy, buttons, inputs, tables,
+   or other dense/small UI text — a fantasy display face like this is hard to
+   read at small sizes and in quantity. */
+@font-face {
+  font-family: 'Planewalker';
+  src: url('../assets/fonts/Planewalker.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-theme,
+.page-header h2,
+.auth-form h2 {
+  font-family: 'Planewalker', var(--font-sans, sans-serif);
+  letter-spacing: 0.02em;
+}
+
+/* Keyrune set-symbol webfont (SIL OFL 1.1) — used for avatar presets.
+   See client/src/assets/fonts/KEYRUNE-LICENSE.md for attribution. */
+@font-face {
+  font-family: 'Keyrune';
+  src: url('../assets/fonts/keyrune.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+.ss {
+  display: inline-block;
+  font: normal normal normal 1em/1 Keyrune;
+  text-rendering: auto;
+  speak: none;
+  text-transform: none;
+  vertical-align: middle;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Avatar preset glyphs — a curated dozen recognizable expansion symbols */
+.ss-khm::before { content: "\e974"; }
+.ss-thb::before { content: "\e961"; }
+.ss-war::before { content: "\e95a"; }
+.ss-znr::before { content: "\e963"; }
+.ss-dom::before { content: "\e93f"; }
+.ss-grn::before { content: "\e94b"; }
+.ss-iko::before { content: "\e962"; }
+.ss-afr::before { content: "\e972"; }
+.ss-neo::before { content: "\e98c"; }
+.ss-one::before { content: "\e9a1"; }
+.ss-ltr::before { content: "\e9af"; }
+.ss-mkm::before { content: "\e9c9"; }
+
 :root {
   /* Brand / accent */
   --primary: #6366f1;
@@ -760,6 +813,11 @@ select option {
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
+  /* Grid items default to min-width: auto, so the deck-tabs row's
+     non-wrapping content (meant to scroll within itself) would otherwise
+     force this whole grid column — and the page — wider than the viewport
+     instead of actually scrolling in place. */
+  min-width: 0;
 }
 
 .deck-tabs {
@@ -1161,6 +1219,7 @@ button.btn-icon.active {
   border-radius: 1rem;
   padding: 1.5rem;
   overflow-y: auto;
+  min-width: 0; /* see .deck-panel */
 }
 
 .stats-panel h3 {
@@ -2312,9 +2371,80 @@ button.btn-icon.active {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.875rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: white;
+}
+
+/* Avatar settings (Settings page) */
+.avatar-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.avatar-current-preview {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.avatar-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-preview-initials {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: white;
+}
+
+.avatar-settings-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.avatar-preset-grid {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.avatar-preset-swatch {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.4rem;
+  transition: all 0.15s ease;
+}
+
+.avatar-preset-swatch:hover {
+  transform: scale(1.08);
+}
+
+.avatar-preset-swatch.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
 }
 
 /* User Dropdown */
@@ -3768,13 +3898,26 @@ button.btn-icon.active {
     order: 3;
   }
 
+  /* Without the header row, a bare number ("3", "4") means nothing — label
+     each stat inline so the stacked card stays legible. */
+  .list-col-prints,
   .list-col-owned,
   .list-col-decks,
-  .list-col-available {
+  .list-col-available,
+  .list-col-price {
     flex: 1;
     order: 4;
     text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
   }
+
+  .list-col-prints::before { content: 'Prints:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
+  .list-col-owned::before { content: 'Owned:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
+  .list-col-decks::before { content: 'In Decks:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
+  .list-col-available::before { content: 'Available:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
+  .list-col-price::before { content: 'Price:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
 
   .quick-add-wrapper {
     max-width: 100%;
@@ -4212,11 +4355,6 @@ button.btn-icon.active {
   font-weight: 400;
 }
 
-/* Active state for the $ toggle, matching the view-toggle buttons */
-#inventory-price-toggle.active {
-  color: var(--primary);
-}
-
 @media (max-width: 768px) {
   .list-col-price {
     flex: 1;
@@ -4244,6 +4382,55 @@ button.btn-icon.active {
 
 .inventory-foil-badge i {
   font-size: 0.875rem;
+}
+
+/* Admin cross-user inventory view: how many selected users own this card */
+.inventory-owners-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: rgba(16, 185, 129, 0.9);
+  color: white;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.inventory-owners-badge i {
+  font-size: 0.875rem;
+}
+
+.owners-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: middle;
+  background: rgba(16, 185, 129, 0.9);
+  color: white;
+}
+
+/* Admin "Viewing Inventory For" user checklist */
+.inventory-user-checklist {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.inventory-user-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  cursor: pointer;
 }
 
 /* Inline foil marker used in list rows and the card detail modal */

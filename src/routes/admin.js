@@ -12,6 +12,7 @@ import {
 } from '../services/backupService.js';
 import { getAllUsers, updateUser, deleteUser, resetUserPassword } from '../services/authService.js';
 import { getSettings, updateSettings } from '../services/settingsService.js';
+import { getInventory, getInventoryStats } from '../services/inventoryService.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
 
@@ -336,6 +337,83 @@ router.post('/users/:id/reset-password', authenticate, requireAdmin, async (req,
     if (error.message.includes('Password must be')) {
       return res.status(400).json({ error: error.message });
     }
+    next(error);
+  }
+});
+
+/**
+ * Parses a comma-separated `userIds` query param into an array of ints.
+ * "All users" is an explicit client-side selection, not an implicit default,
+ * so a missing/empty param is a 400 rather than silently meaning "everyone".
+ */
+function parseUserIds(req, res) {
+  const raw = req.query.userIds;
+  if (!raw) {
+    res.status(400).json({ error: 'userIds is required (comma-separated list of user ids)' });
+    return null;
+  }
+
+  const userIds = raw.split(',').map(id => parseInt(id, 10)).filter(id => !Number.isNaN(id));
+  if (userIds.length === 0) {
+    res.status(400).json({ error: 'userIds must contain at least one valid user id' });
+    return null;
+  }
+
+  return userIds;
+}
+
+/**
+ * GET /api/admin/inventory
+ * Cross-user inventory view (admin only)
+ * Query: userIds (required, comma-separated), plus the same filters as GET /api/inventory
+ */
+router.get('/inventory', authenticate, requireAdmin, (req, res, next) => {
+  try {
+    const userIds = parseUserIds(req, res);
+    if (!userIds) return;
+
+    const {
+      name,
+      colors,
+      type,
+      sets,
+      sort,
+      availability,
+      page = 1,
+      limit = 50
+    } = req.query;
+
+    const filters = {
+      name,
+      colors: colors ? colors.split(',') : [],
+      type,
+      sets: sets ? sets.split(',') : [],
+      sort: sort || 'name',
+      availability: availability || 'all',
+      page: parseInt(page),
+      limit: parseInt(limit)
+    };
+
+    const result = getInventory(userIds, filters);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/inventory/stats
+ * Combined inventory statistics for a set of users (admin only)
+ * Query: userIds (required, comma-separated)
+ */
+router.get('/inventory/stats', authenticate, requireAdmin, (req, res, next) => {
+  try {
+    const userIds = parseUserIds(req, res);
+    if (!userIds) return;
+
+    const stats = getInventoryStats(userIds);
+    res.json(stats);
+  } catch (error) {
     next(error);
   }
 });
