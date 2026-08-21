@@ -201,7 +201,7 @@ export function setupDeckBuilder() {
     const commanderNames = mainboard.filter(c => c.is_commander).map(c => c.name);
     const otherCards = mainboard
       .filter(c => !c.is_commander)
-      .map(c => `${c.quantity} ${c.name}`);
+      .map(c => ({ name: c.name, quantity: c.quantity }));
 
     try {
       const result = await api.manaPoolValidateDeck(commanderNames, otherCards, format);

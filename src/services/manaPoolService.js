@@ -158,7 +158,7 @@ export async function optimizeCart(items, model = 'lowest_price') {
 
 // POST /deck — validate a deck for a given format
 // commanderNames: string[], e.g. ["Atraxa, Praetors' Voice"]
-// otherCards: plain-text lines, e.g. ["1 Sol Ring", "1 Arcane Signet"]
+// otherCards: { name, quantity }[], e.g. [{ name: 'Sol Ring', quantity: 1 }]
 // format: 'commander' | 'standard' | 'modern' | etc.
 export async function validateDeck(commanderNames, otherCards, format = 'commander') {
   assertConfigured();
