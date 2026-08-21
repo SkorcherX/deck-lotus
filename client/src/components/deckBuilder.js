@@ -209,7 +209,7 @@ export function setupDeckBuilder() {
 
     try {
       const result = await api.manaPoolValidateDeck(commanderNames, otherCards, format);
-      renderValidatorResults(result, resultsEl);
+      renderValidatorResults(result, resultsEl, format);
     } catch (err) {
       resultsEl.innerHTML = `<div style="color:#f87171;padding:1rem;border-radius:6px;background:rgba(248,113,113,0.1);">
         <i class="ph ph-warning"></i> ${err.message}
@@ -1534,6 +1534,10 @@ function displayDeckPrice(price) {
   // Open validator modal from sidebar
   document.getElementById('validate-deck-btn').addEventListener('click', () => {
     document.getElementById('deck-validator-modal').classList.remove('hidden');
+    const formatSelect = document.getElementById('validator-format');
+    if (currentDeck?.format && [...formatSelect.options].some(o => o.value === currentDeck.format)) {
+      formatSelect.value = currentDeck.format;
+    }
     document.getElementById('validator-results').innerHTML = `
       <div style="text-align:center;padding:2rem;color:var(--text-secondary);font-size:0.875rem;">
         <i class="ph ph-shield" style="font-size:2rem;display:block;margin-bottom:0.5rem;opacity:0.4;"></i>
@@ -2890,7 +2894,7 @@ function renderOptimizerResults(result, el) {
   `;
 }
 
-function renderValidatorResults(result, el) {
+function renderValidatorResults(result, el, format) {
   const valid = result.valid ?? result.is_valid ?? result.legal;
   const d = result.details ?? {};
 
@@ -2919,6 +2923,20 @@ function renderValidatorResults(result, el) {
 
   const cardCount = d.total_card_count ?? null;
 
+  // Mana Pool doesn't itemize deck-size/commander-count requirements the way it
+  // itemizes legality/quantity/color-identity — it just leaves `valid: false`
+  // with everything else clean. Surface what we know so it isn't a dead end.
+  let sizeHint = '';
+  if (!valid && !violations.length) {
+    if (format === 'commander' && (d.commander_count ?? 0) < 1) {
+      sizeHint = `Commander format requires at least one designated commander, but this deck has ${d.commander_count ?? 0}. Set a commander in the deck builder and re-validate.`;
+    } else if (format === 'commander' && cardCount != null && cardCount !== 100) {
+      sizeHint = `Commander decks must have exactly 100 cards (including the commander); this deck has ${cardCount}.`;
+    } else if (format !== 'commander' && cardCount != null && cardCount < 60) {
+      sizeHint = `Constructed decks need at least 60 cards; this deck has ${cardCount}.`;
+    }
+  }
+
   el.innerHTML = `
     <div style="padding:1rem;border-radius:8px;background:${valid ? 'rgba(22,163,74,0.1)' : 'rgba(239,68,68,0.1)'};border:1px solid ${valid ? '#16a34a' : '#ef4444'};margin-bottom:1rem;">
       <div style="font-size:1.1rem;font-weight:700;color:${valid ? '#16a34a' : '#ef4444'};">
@@ -2937,8 +2955,8 @@ function renderValidatorResults(result, el) {
         </div>
       </div>
     ` : (valid ? `<div style="font-size:0.875rem;color:var(--text-secondary);">No issues found.</div>` : `
-      <div style="font-size:0.85rem;color:var(--text-secondary);">
-        Deck is invalid but no specific violations were listed.
+      <div style="font-size:0.85rem;color:var(--text-secondary);padding:0.4rem 0.6rem;background:rgba(239,68,68,0.08);border-radius:4px;">
+        ${sizeHint || 'Deck is invalid but no specific violations were listed.'}
         <details style="margin-top:0.4rem;">
           <summary style="cursor:pointer;">Show raw response</summary>
           <pre style="white-space:pre-wrap;font-size:0.75rem;margin-top:0.4rem;">${JSON.stringify(result, null, 2)}</pre>
