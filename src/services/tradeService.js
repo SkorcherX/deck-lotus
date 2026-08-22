@@ -119,9 +119,10 @@ function shortfallsFor(userId, printingKeys, deltas = new Map()) {
 /**
  * Decide which decks eat the shortfall.
  *
- * Decks are charged most-recently-updated first: that is the deck the user
- * was last working on, so it is the one they are most likely to want told
- * about. Within a deck the maybeboard goes before the sideboard before the
+ * Decks are charged least-recently-updated first, so the deck the user is
+ * actively working on is the last one to lose a card. A dusty deck that has
+ * not been touched in months is the cheapest place for the shortfall to land.
+ * Within a deck the maybeboard goes before the sideboard before the
  * mainboard — a maybeboard entry is a wish, a mainboard slot is the deck.
  *
  * The order is deterministic rather than clever. The user can move copies
@@ -130,7 +131,7 @@ function shortfallsFor(userId, printingKeys, deltas = new Map()) {
  */
 function allocateShortfall(deckRows, shortfall) {
   const ordered = [...deckRows].sort((a, b) => {
-    if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? 1 : -1;
+    if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? -1 : 1;
     return BOARD_ORDER[boardOf(a)] - BOARD_ORDER[boardOf(b)];
   });
 
