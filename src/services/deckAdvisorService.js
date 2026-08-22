@@ -165,9 +165,20 @@ function colorRequirements(spellCopies, landCopies, deckSize) {
   const results = [];
   for (const entry of byColor.values()) {
     const sources = landCopies.filter((l) => (l.color_identity || '').includes(entry.color)).length;
+
+    // The cards actually driving the requirement — the ones asking for two or
+    // more of this colour. When the mana cannot be fixed, these are what a
+    // player would cut instead, so they have to be nameable.
+    const demanding = [...new Map(
+      spellCopies
+        .filter((c) => !hasAlternativeCost(c) && (costPips(c.mana_cost)[entry.color] || 0) >= 2)
+        .map((c) => [c.name, c])
+    ).values()];
+
     results.push({
       ...entry,
       sources,
+      demanding,
       wanted: colorSourcesWanted(entry.turn, entry.pips, deckSize)
     });
   }
@@ -350,6 +361,10 @@ export function analyzeDeck(mainboard = [], sideboard = [], format = null) {
     spellCount,
     basicCount: landCopies.filter(isBasicLand).length,
     nonbasicLands: landCopies.filter((c) => !isBasicLand(c)).length,
+    // Lands making more than one colour are the only way a deck can supply two
+    // colours properly without simply playing more lands, so the advice about
+    // conflicting colour requirements depends on knowing how many there are.
+    dualLands: landCopies.filter((c) => (c.color_identity || '').split(',').filter(Boolean).length >= 2).length,
     creatureCount: spellCopies.filter(isCreature).length,
     attackers: spellCopies.filter(isCreature).length,
     avgMv,
@@ -418,12 +433,47 @@ export function buildFindings(metrics) {
   if (mainboardSize < 20 || spellCount === 0) return findings;
 
   // --- Mana base ----------------------------------------------------------
+  //
+  // The land count and the colour mix are two different questions — how many
+  // lands, and which ones — and answering them separately reads as a
+  // contradiction ("add green" next to "cut lands"). They are worked out
+  // together here so the advice resolves into one course of action.
   const landGap = metrics.suggestedLands - metrics.landCount;
 
-  if (Math.abs(landGap) >= 3) {
+  const shortColors = metrics.colors.filter(
+    (c) => c.needing >= 3 && metrics.landCount > 0 && c.sources < c.wanted
+  );
+
+  // Every colour wants its own share of the lands, and a land can only serve
+  // two colours if it makes both. When the totals cannot fit inside the deck's
+  // land count, no amount of adding or cutting lands will satisfy them all —
+  // the deck is asking for more than a mana base can give, and the honest
+  // answer is to change the cards or play duals rather than shuffle lands.
+  const totalDemand = shortColors.reduce((sum, c) => sum + c.wanted, 0);
+  const demandConflict = shortColors.length >= 2
+    && totalDemand > metrics.landCount + metrics.dualLands;
+
+  // Cutting lands while the colours already do not fit would make the real
+  // problem worse, so the conflict finding below supersedes this one entirely
+  // rather than sitting next to it giving the opposite instruction.
+  const cuttingWouldHurt = demandConflict && landGap < 0;
+
+  if (Math.abs(landGap) >= 3 && !cuttingWouldHurt) {
     const because = metrics.selectionDensity >= 0.15
       ? `cards costing ${metrics.avgMv.toFixed(1)} mana on average, and ${metrics.selectionCount} cards that help you find what you need`
       : `cards costing ${metrics.avgMv.toFixed(1)} mana on average`;
+
+    // Naming which lands to cut only helps when some colour is comfortable
+    // enough to lose one. If every colour is short, there is no spare land to
+    // point at and saying "keep the green and black ones" would be telling
+    // someone to cut lands while keeping all of them.
+    const spareColors = metrics.colors
+      .filter((c) => !shortColors.some((s) => s.color === c.color))
+      .map((c) => colorName(c.color));
+
+    const whichToCut = spareColors.length > 0
+      ? ` Cut the ones making ${spareColors.join(' or ')} first — those are the colours you have most covered.`
+      : ' Too many lands means drawing lands instead of spells.';
 
     add({
       code: 'land-count',
@@ -431,7 +481,7 @@ export function buildFindings(metrics) {
       severity: 'consider',
       message: landGap > 0
         ? `You have ${metrics.landCount} lands. A deck with ${because} usually wants about ${metrics.suggestedLands}, so consider adding ${landGap} more — too few lands means hands you cannot play.`
-        : `You have ${metrics.landCount} lands. A deck with ${because} usually wants about ${metrics.suggestedLands}, so consider cutting ${-landGap} — too many lands means drawing lands instead of spells.`,
+        : `You have ${metrics.landCount} lands. A deck with ${because} usually wants about ${metrics.suggestedLands}, so consider cutting ${-landGap}.${whichToCut}`,
       action: landGap > 0 ? { label: 'Show lands you own', filter: { type: 'Land' } } : null
     });
   }
@@ -448,14 +498,29 @@ export function buildFindings(metrics) {
     });
   }
 
-  const shortColors = metrics.colors.filter(
-    (c) => c.needing >= 3 && metrics.landCount > 0 && c.sources < c.wanted
-  );
+  if (demandConflict) {
+    // One finding replaces the per-colour ones, because they all have the same
+    // cause and the same two possible fixes.
+    const breakdown = shortColors
+      .map((c) => `your ${colorName(c.color)} cards want about ${c.wanted} lands that make ${colorName(c.color)}`)
+      .join(', and ');
 
-  // Three or more colours coming up short is one problem — too many colours —
-  // not three problems. Reporting it once says something the player can act on;
-  // reporting it five times buries every other finding in the panel.
-  if (shortColors.length >= 3) {
+    const cuttable = [...new Map(
+      shortColors.flatMap((c) => c.demanding).map((c) => [c.name, c])
+    ).values()];
+
+    add({
+      code: 'color-demands-conflict',
+      category: 'mana',
+      severity: 'warn',
+      message: `These do not fit together: ${breakdown} — but you only have ${metrics.landCount} lands in total, and ${metrics.dualLands === 0 ? 'none of them make more than one colour' : `only ${metrics.dualLands} of them make more than one colour`}. Adding or cutting lands cannot fix this. Either play lands that make two of your colours, or cut the cards that need two mana of the same colour${cuttable.length ? ` — the demanding ones are ${cuttable.slice(0, 4).map((c) => c.name).join(', ')}` : ''}.`,
+      evidence: names(cuttable),
+      action: { label: 'Show lands you own', filter: { type: 'Land' } }
+    });
+  } else if (shortColors.length >= 3) {
+    // Three or more colours coming up short is one problem — too many colours —
+    // not three problems. Reporting it once says something the player can act on;
+    // reporting it five times buries every other finding in the panel.
     add({
       code: 'color-support-spread',
       category: 'mana',
@@ -468,16 +533,26 @@ export function buildFindings(metrics) {
       const name = colorName(color.color);
       // Spelled out end to end: which card, how much of the colour it needs,
       // when it needs it, how many of your lands can actually make it.
-      const needs = color.pips >= 2
-        ? `${color.pips} ${name} mana`
-        : `${name} mana`;
+      const needs = color.pips >= 2 ? `${color.pips} ${name} mana` : `${name} mana`;
+
+      // The fix depends on whether the deck also has the wrong number of lands.
+      // Without this, "add green" and "cut lands" sit next to each other looking
+      // like opposite instructions when they are one instruction: swap.
+      const remedy = landGap >= 3
+        ? ` Adding ${name} lands would help this and your land count at the same time.`
+        : ` You have enough lands overall, so this is about which lands you play — swap some for ones that make ${name}, rather than adding more.`;
+
+      // A colour only a few cards need is often cheaper to cut than to support.
+      const splash = color.needing <= Math.max(4, Math.round(spellCount * 0.15))
+        ? ` Only ${color.needing} cards need ${name} at all, so cutting them is the other way out.`
+        : '';
 
       add({
         code: 'color-support',
         category: 'mana',
         severity: color.sources < color.wanted * 0.7 ? 'warn' : 'consider',
-        message: `${color.examples[0].name} needs ${needs} to cast, around turn ${color.turn}. Only ${color.sources} of your ${metrics.landCount} lands make ${name} — about ${color.wanted} would make it reliable.`,
-        evidence: names(color.examples),
+        message: `${color.examples[0].name} needs ${needs} to cast, around turn ${color.turn}. Only ${color.sources} of your ${metrics.landCount} lands make ${name} — about ${color.wanted} would make it reliable.${remedy}${splash}`,
+        evidence: names(color.demanding.length ? color.demanding : color.examples),
         action: { label: `Show ${name} lands you own`, filter: { type: 'Land', colors: [color.color] } },
         // The other half of the question: which lands are the ones being
         // counted? Filters the deck itself rather than the collection.

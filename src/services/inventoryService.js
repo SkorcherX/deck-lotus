@@ -5,6 +5,7 @@ import {
   rankFuzzyCandidates
 } from '../utils/cardNameMatch.js';
 import { ROLE_FILTERS } from './cardRoleService.js';
+import { colorFilterSql } from '../utils/colorFilter.js';
 
 // Price of one owned copy, honouring its finish. Foil copies are worth their
 // foil price; where a printing has no foil price synced we fall back to the
@@ -135,36 +136,15 @@ export function getInventory(userIds, filters = {}) {
     countParams.push(`%${name}%`);
   }
 
-  // Color filter
-  const colorsArray = Array.isArray(colors) ? colors : [];
-  if (colorsArray.length > 0) {
-    const hasColorless = colorsArray.includes('C');
-    const actualColors = colorsArray.filter(c => c !== 'C');
-
-    if (hasColorless && actualColors.length === 0) {
-      sql += ` AND (c.colors IS NULL OR c.colors = '' OR c.colors = '[]')`;
-      countSql += ` AND (c.colors IS NULL OR c.colors = '' OR c.colors = '[]')`;
-    } else if (hasColorless && actualColors.length > 0) {
-      sql += ` AND (`;
-      countSql += ` AND (`;
-      const colorConditions = [];
-      actualColors.forEach(color => {
-        colorConditions.push(`c.colors LIKE ?`);
-        params.push(`%${color}%`);
-        countParams.push(`%${color}%`);
-      });
-      sql += colorConditions.join(' AND ');
-      countSql += colorConditions.join(' AND ');
-      sql += ` OR c.colors IS NULL OR c.colors = '' OR c.colors = '[]')`;
-      countSql += ` OR c.colors IS NULL OR c.colors = '' OR c.colors = '[]')`;
-    } else {
-      actualColors.forEach(color => {
-        sql += ` AND c.colors LIKE ?`;
-        countSql += ` AND c.colors LIKE ?`;
-        params.push(`%${color}%`);
-        countParams.push(`%${color}%`);
-      });
-    }
+  // Color filter. The rule for what counts as a colour — including that a land
+  // counts as what it taps for — lives in colorFilterSql, shared with the deck
+  // builder's panel so the two views cannot disagree.
+  const colorFilter = colorFilterSql(colors, 'c');
+  if (colorFilter.clause) {
+    sql += ` AND ${colorFilter.clause}`;
+    countSql += ` AND ${colorFilter.clause}`;
+    params.push(...colorFilter.params);
+    countParams.push(...colorFilter.params);
   }
 
   // Type filter
@@ -937,39 +917,13 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     params.push(`%${type}%`);
   }
 
-  // Colour filter. Picking two colours means cards carrying both, and 'C'
-  // means colourless — but a land counts as the colours it produces, not the
-  // colours it is.
-  //
-  // This differs from the inventory page on purpose. An Island's `colors` is
-  // empty; only its colour identity says blue. Filtering a deck builder to
-  // blue and getting no Islands would be useless, and it is exactly what the
-  // "show me blue lands" suggestion needs.
-  const colorList = Array.isArray(colors) ? colors : String(colors).split(',').filter(Boolean);
-
-  if (colorList.length > 0) {
-    const wantsColorless = colorList.includes('C');
-    const actual = colorList.filter((c) => c !== 'C');
-    const LAND = `type_line LIKE '%Land%'`;
-    // Truly colourless: carries no colour, and is not a land that taps for one.
-    const COLORLESS = `(
-      (colors IS NULL OR colors = '' OR colors = '[]')
-      AND NOT (${LAND} AND color_identity IS NOT NULL AND color_identity <> '')
-    )`;
-    const carries = (count) => Array.from({ length: count })
-      .map(() => `(colors LIKE ? OR (${LAND} AND color_identity LIKE ?))`)
-      .join(' AND ');
-    const carriesParams = actual.flatMap((c) => [`%${c}%`, `%${c}%`]);
-
-    if (wantsColorless && actual.length === 0) {
-      where.push(COLORLESS);
-    } else if (wantsColorless) {
-      where.push(`((${carries(actual.length)}) OR ${COLORLESS})`);
-      params.push(...carriesParams);
-    } else {
-      where.push(carries(actual.length));
-      params.push(...carriesParams);
-    }
+  // Colour filter, shared with the inventory page. A land counts as the colours
+  // it produces rather than the colours it is, which is what makes "show me
+  // blue lands" work at all.
+  const builderColorFilter = colorFilterSql(colors, '');
+  if (builderColorFilter.clause) {
+    where.push(builderColorFilter.clause);
+    params.push(...builderColorFilter.params);
   }
 
   // Commander colour identity: every colour on the card must be one the

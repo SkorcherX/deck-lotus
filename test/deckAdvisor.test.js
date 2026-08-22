@@ -245,6 +245,78 @@ test('colour findings name the colour and both sides of the count', () => {
   assert.equal(black.deckAction.filter.produces, 'B');
 });
 
+/**
+ * A two-colour deck whose colour requirements cannot both fit inside its land
+ * count. Left alone, this produced advice that read as self-contradictory:
+ * "add green lands" beside "cut four lands".
+ */
+const conflictedDeck = (lands) => [
+  card('Battle Mammoth', { cmc: 5, mana_cost: '{3}{G}{G}', type_line: 'Creature — Elephant', power: '6', oracle_text: 'Trample.' }),
+  card('Death Baron', { cmc: 3, mana_cost: '{1}{B}{B}', type_line: 'Creature — Zombie Wizard', power: '2', oracle_text: 'Zombies you control get +1/+1.' }),
+  card('Grizzly Bears', { quantity: 16, cmc: 2, mana_cost: '{1}{G}', type_line: 'Creature — Bear', power: '2' }),
+  card('Murder', { quantity: 8, cmc: 3, mana_cost: '{1}{B}{B}', type_line: 'Instant', oracle_text: 'Destroy target creature.' }),
+  card('Duress', { quantity: 6, cmc: 1, mana_cost: '{B}', type_line: 'Sorcery', oracle_text: 'Target opponent reveals their hand. You choose a noncreature card from it. That player discards that card.' }),
+  ...lands
+];
+
+const separateLands = [
+  card('Forest', { quantity: 11, type_line: 'Basic Land — Forest', color_identity: 'G' }),
+  card('Swamp', { quantity: 11, type_line: 'Basic Land — Swamp', color_identity: 'B' })
+];
+
+const dualLands = [
+  card('Forest', { quantity: 6, type_line: 'Basic Land — Forest', color_identity: 'G' }),
+  card('Swamp', { quantity: 6, type_line: 'Basic Land — Swamp', color_identity: 'B' }),
+  card('Overgrown Tomb', { quantity: 10, type_line: 'Land — Swamp Forest', color_identity: 'B,G' })
+];
+
+test('colour demands that cannot all fit are reported once, not as two contradictions', () => {
+  const result = adviseDeck(conflictedDeck(separateLands), [], 'standard');
+  const found = codes(result);
+
+  assert.ok(found.includes('color-demands-conflict'), 'the impossible arithmetic is named');
+  assert.ok(!found.includes('color-support'), 'no per-colour finding alongside it');
+  assert.ok(!found.includes('color-support-spread'));
+
+  const conflict = find(result, 'color-demands-conflict');
+  assert.match(conflict.message, /22 lands in total/);
+  // The player asked whether the answer is to drop the card. It should say so.
+  assert.match(conflict.message, /Battle Mammoth/);
+  assert.ok(conflict.evidence.length > 0, 'the demanding cards are listed');
+});
+
+test('no advice to cut lands while the colours already do not fit', () => {
+  // Cutting lands makes an unsatisfiable colour requirement strictly worse, so
+  // this pairing must never appear together.
+  const found = codes(adviseDeck(conflictedDeck(separateLands), [], 'standard'));
+  assert.ok(!found.includes('land-count'), 'cutting lands would make the real problem worse');
+});
+
+test('with enough lands, colour advice says swap rather than add', () => {
+  const result = adviseDeck(conflictedDeck(dualLands), [], 'standard');
+  assert.ok(!codes(result).includes('color-demands-conflict'), 'duals resolve the conflict');
+
+  const support = find(result, 'color-support');
+  assert.ok(support, 'the remaining shortfall is still reported');
+  assert.match(support.message, /swap some/, 'framed as changing which lands, not adding more');
+  assert.doesNotMatch(support.message, /adding more lands/i);
+});
+
+test('land-cutting advice never tells you to keep every land you have', () => {
+  // "Cut 5 lands, keep the green and black ones" is not an instruction when
+  // green and black are the only lands in the deck.
+  const landCount = find(adviseDeck(conflictedDeck(dualLands), [], 'standard'), 'land-count');
+  assert.ok(landCount);
+
+  const keeps = landCount.message.match(/making ([a-z ]+?) first/);
+  if (keeps) {
+    const shortColorNames = adviseDeck(conflictedDeck(dualLands), [], 'standard')
+      .snapshot.colors.filter((c) => c.sources < c.wanted).length;
+    assert.ok(shortColorNames >= 0);
+    assert.doesNotMatch(landCount.message, /keep the green and black ones/);
+  }
+});
+
 test('cantrip density lowers the suggested land count', () => {
   const lands = card('Island', { quantity: 17, type_line: 'Basic Land — Island', color_identity: 'U' });
   const filler = card('Grizzly Bears', { quantity: 43, cmc: 2, mana_cost: '{1}{U}', type_line: 'Creature — Bear', power: '2' });

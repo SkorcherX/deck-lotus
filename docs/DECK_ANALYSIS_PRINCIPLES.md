@@ -46,6 +46,34 @@ constraint, not a matter of taste. There is a test that enforces it.
   you just counted" are different requests, and a finding about a count should
   offer both.
 
+## Findings must resolve to one course of action
+
+Each check measures one thing, but the player reads the whole panel at once. Two
+individually correct findings can add up to an instruction the reader cannot
+follow:
+
+> ✗ Battle Mammoth needs 2 green mana… about 16 would make it reliable.
+> ✗ You have 22 lands… consider cutting 4.
+
+Add lands, or cut lands? Neither: the first is about *which* lands, the second
+about *how many*. Rules that follow from this:
+
+- **Say which axis a finding is on.** A colour shortfall in a deck that already
+  has enough lands is a swap, and must say so — "this is about which lands you
+  play, not how many".
+- **Check whether the requirements are satisfiable at all.** Colour demands can
+  sum past the land count (`Σ wanted > landCount + duals`). When they do, no
+  amount of adding or cutting lands fixes it, and reporting each colour
+  separately hides that. Report the conflict once, and name the two real
+  options: lands making more than one colour, or cutting the cards that demand
+  two of the same.
+- **Suppress advice its neighbour contradicts.** While colour requirements
+  cannot be met, "cut 4 lands" makes the problem strictly worse, so the conflict
+  finding replaces it rather than sitting beside it.
+- **Offer the option to cut, not only the option to support.** A colour a
+  handful of cards need is often cheaper to remove than to build a mana base
+  around — a new player will not think of that on their own.
+
 Worked example — the same finding, before and after:
 
 > ✗ Casting 2 pips of B on turn 3 wants about 18 sources; you have 11.
