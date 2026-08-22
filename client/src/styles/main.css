@@ -3714,6 +3714,13 @@ button.btn-icon.active {
   gap: 0.25rem;
 }
 
+.inventory-result-count {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
 /* Inventory Grid */
 .inventory-grid {
   display: grid;

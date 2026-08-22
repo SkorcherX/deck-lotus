@@ -31,6 +31,26 @@ const COMMANDER_ELIGIBLE_SQL = `(
   OR c.oracle_text LIKE '%can be your commander%'
 )`;
 
+// How many copies of a card the scope owns, and how many of those are
+// committed to decks. Both are used twice over — once as a displayed column,
+// once by the availability filter — and the filter has to agree with the
+// number shown, so they are written once here. Each takes one set of scope
+// params. Expects `c` (cards) to be in scope.
+const ownedTotalSql = (scopeClause) => `(
+  SELECT COALESCE(SUM(op.quantity), 0)
+  FROM owned_printings op
+  JOIN printings p ON op.printing_id = p.id
+  WHERE op.user_id ${scopeClause} AND p.card_id = c.id
+)`;
+
+const inDecksTotalSql = (scopeClause) => `(
+  SELECT COALESCE(SUM(dc.quantity), 0)
+  FROM deck_cards dc
+  JOIN printings p ON dc.printing_id = p.id
+  JOIN decks d ON dc.deck_id = d.id
+  WHERE d.user_id ${scopeClause} AND p.card_id = c.id
+)`;
+
 /**
  * Builds a `= ?` or `IN (?,?,...)` clause plus matching params for a user
  * scope that may be a single id (regular per-user routes) or an array of ids
@@ -84,19 +104,8 @@ export function getInventory(userIds, filters = {}) {
       c.type_line,
       c.oracle_text,
       (SELECT p.image_url FROM printings p WHERE p.card_id = c.id AND p.image_url IS NOT NULL LIMIT 1) as image_url,
-      (
-        SELECT COALESCE(SUM(op.quantity), 0)
-        FROM owned_printings op
-        JOIN printings p ON op.printing_id = p.id
-        WHERE op.user_id ${scope.clause} AND p.card_id = c.id
-      ) as total_owned,
-      (
-        SELECT COALESCE(SUM(dc.quantity), 0)
-        FROM deck_cards dc
-        JOIN printings p ON dc.printing_id = p.id
-        JOIN decks d ON dc.deck_id = d.id
-        WHERE d.user_id ${scope.clause} AND p.card_id = c.id
-      ) as total_in_decks,
+      ${ownedTotalSql(scope.clause)} as total_owned,
+      ${inDecksTotalSql(scope.clause)} as total_in_decks,
       (
         SELECT MAX(NULLIF(${OWNED_COPY_PRICE}, 0))
         FROM owned_printings op
@@ -190,6 +199,24 @@ export function getInventory(userIds, filters = {}) {
     countParams.push(...scope.params, ...setsArray);
   }
 
+  // Availability filter. This has to be part of the query rather than a pass
+  // over the fetched page: filtering afterwards would drop cards from a page
+  // that was already cut to `limit`, leaving short pages and a total that
+  // disagrees with what is on screen.
+  if (availability === 'available') {
+    const clause = ` AND (${ownedTotalSql(scope.clause)} - ${inDecksTotalSql(scope.clause)}) > 0`;
+    sql += clause;
+    countSql += clause;
+    params.push(...scope.params, ...scope.params);
+    countParams.push(...scope.params, ...scope.params);
+  } else if (availability === 'in_decks') {
+    const clause = ` AND ${inDecksTotalSql(scope.clause)} > 0`;
+    sql += clause;
+    countSql += clause;
+    params.push(...scope.params);
+    countParams.push(...scope.params);
+  }
+
   // Get total count
   const countResult = db.get(countSql, countParams);
   const total = countResult ? countResult.total : 0;
@@ -229,16 +256,8 @@ export function getInventory(userIds, filters = {}) {
 
   const cards = db.all(sql, params);
 
-  // Filter by availability after fetching (since it involves calculated fields)
-  let filteredCards = cards;
-  if (availability === 'available') {
-    filteredCards = cards.filter(card => (card.total_owned - card.total_in_decks) > 0);
-  } else if (availability === 'in_decks') {
-    filteredCards = cards.filter(card => card.total_in_decks > 0);
-  }
-
   // Get printings for each card
-  const cardsWithPrintings = filteredCards.map(card => {
+  const cardsWithPrintings = cards.map(card => {
     const printings = db.all(`
       SELECT
         op.id as owned_printing_id,

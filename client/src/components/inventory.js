@@ -1090,6 +1090,7 @@ async function loadInventoryData() {
     totalPages = inventoryResult.pagination.totalPages || 1;
 
     renderStats(statsResult);
+    renderResultCount(inventoryResult.pagination.totalCards, statsResult.uniqueCards);
     renderInventory();
     renderPagination();
     updateBulkActionsBar();
@@ -1099,6 +1100,34 @@ async function loadInventoryData() {
     hideLoading();
     showError('Failed to load inventory: ' + error.message);
   }
+}
+
+// How many cards the filters matched. Says so plainly against the collection
+// total when anything is filtering, so a small number reads as "the filter is
+// narrow" rather than "the collection is small".
+function renderResultCount(matched, collectionTotal) {
+  const el = document.getElementById('inventory-result-count');
+  if (!el) return;
+
+  const count = Number(matched) || 0;
+  const noun = count === 1 ? 'card' : 'cards';
+
+  el.textContent = hasActiveFilters()
+    ? `${count.toLocaleString()} of ${Number(collectionTotal || 0).toLocaleString()} ${noun}`
+    : `${count.toLocaleString()} ${noun}`;
+}
+
+// Every control that can narrow the list, not just the search chips — the
+// count only means "of the collection" when something is actually filtering.
+function hasActiveFilters() {
+  return (
+    filters.names.length > 0 ||
+    filters.sets.length > 0 ||
+    filters.colors.length > 0 ||
+    (filters.type && filters.type !== 'all') ||
+    filters.availability !== 'all' ||
+    filters.commander !== 'all'
+  );
 }
 
 function renderStats(stats) {
