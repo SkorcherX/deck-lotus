@@ -21,6 +21,14 @@ const OWNED_COPY_PRICE = `
   )
 `;
 
+// A card can lead a Commander deck if it's a legendary creature, or its
+// Oracle text explicitly grants that (backgrounds' partners, some
+// planeswalkers, etc.). Expects `c` (cards) to be in scope.
+const COMMANDER_ELIGIBLE_SQL = `(
+  (c.type_line LIKE '%Legendary%' AND c.type_line LIKE '%Creature%')
+  OR c.oracle_text LIKE '%can be your commander%'
+)`;
+
 /**
  * Builds a `= ?` or `IN (?,?,...)` clause plus matching params for a user
  * scope that may be a single id (regular per-user routes) or an array of ids
@@ -49,6 +57,7 @@ export function getInventory(userIds, filters = {}) {
     sets = [],
     sort = 'name',
     availability = 'all', // 'all', 'available', 'in_decks'
+    commander = 'all', // 'all', 'eligible'
     page = 1,
     limit = 50
   } = filters;
@@ -163,6 +172,14 @@ export function getInventory(userIds, filters = {}) {
     countSql += ` AND c.type_line LIKE ?`;
     params.push(`%${type}%`);
     countParams.push(`%${type}%`);
+  }
+
+  // Commander eligibility filter: legendary creatures, plus anything else
+  // Oracle text explicitly says can be a commander (backgrounds' partners,
+  // certain planeswalkers, etc.)
+  if (commander === 'eligible') {
+    sql += ` AND ${COMMANDER_ELIGIBLE_SQL}`;
+    countSql += ` AND ${COMMANDER_ELIGIBLE_SQL}`;
   }
 
   // Set filter - cards that have owned printings in the selected sets

@@ -27,6 +27,7 @@ router.get('/', authenticate, (req, res, next) => {
       sets,
       sort,
       availability,
+      commander,
       page = 1,
       limit = 50
     } = req.query;
@@ -38,6 +39,7 @@ router.get('/', authenticate, (req, res, next) => {
       sets: sets ? sets.split(',') : [],
       sort: sort || 'name',
       availability: availability || 'all',
+      commander: commander || 'all',
       page: parseInt(page),
       limit: parseInt(limit)
     };

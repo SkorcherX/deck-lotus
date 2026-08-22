@@ -442,6 +442,7 @@ class ApiClient {
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
+    if (filters.commander) params.append('commander', filters.commander);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
 
@@ -463,6 +464,7 @@ class ApiClient {
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
+    if (filters.commander) params.append('commander', filters.commander);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
 
