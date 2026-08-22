@@ -3721,6 +3721,21 @@ button.btn-icon.active {
   margin-bottom: 0.75rem;
 }
 
+.inventory-scroll-sentinel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 1rem 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.inventory-scroll-sentinel .ph-circle-notch {
+  animation: spin 1s linear infinite;
+}
+
 /* Inventory Grid */
 .inventory-grid {
   display: grid;

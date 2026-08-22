@@ -23,6 +23,12 @@ let filters = {
   commander: 'all',
 };
 let showPrices = localStorage.getItem('inventoryShowPrices') === 'true';
+// Endless scroll replaces the pager: pages are appended as the reader reaches
+// the bottom rather than swapped in. `loadingMore` stops the observer firing a
+// second fetch for the page already in flight.
+let endlessScroll = localStorage.getItem('inventoryEndlessScroll') === 'true';
+let loadingMore = false;
+let scrollObserver = null;
 let quickSearchTimeout = null;
 // code -> set name, for labelling set chips. Empty until the sets the user
 // owns have loaded; an unrecognised code still filters, it just shows bare.
@@ -61,6 +67,9 @@ export function setupInventory() {
 
   // Setup pagination
   setupPagination();
+
+  // Setup endless scroll
+  setupEndlessScroll();
 
   // Setup bulk actions
   setupBulkActions();
@@ -1069,9 +1078,16 @@ function renderBulkAddPreview(items) {
   previewDiv.classList.remove('hidden');
 }
 
-async function loadInventoryData() {
+async function loadInventoryData({ append = false } = {}) {
   try {
-    showLoading();
+    // The full-page spinner is for a list being replaced. Appending keeps the
+    // current rows readable and shows its own footer instead.
+    if (append) {
+      loadingMore = true;
+      setScrollSentinel('loading');
+    } else {
+      showLoading();
+    }
 
     // Load inventory and stats in parallel — admins viewing another user (or
     // a combination of users) go through the /admin/inventory endpoints,
@@ -1086,18 +1102,48 @@ async function loadInventoryData() {
           api.getInventoryStats()
         ]);
 
-    inventoryData = inventoryResult;
+    const newCards = inventoryResult.cards || [];
+
+    if (append && inventoryData) {
+      // Keep the accumulated list as the source of truth, so a later full
+      // re-render (toggling prices, or the view mode) redraws every page the
+      // reader has scrolled through rather than just the last one.
+      inventoryData = {
+        ...inventoryResult,
+        cards: inventoryData.cards.concat(newCards)
+      };
+    } else {
+      inventoryData = inventoryResult;
+    }
     totalPages = inventoryResult.pagination.totalPages || 1;
 
     renderStats(statsResult);
     renderResultCount(inventoryResult.pagination.totalCards, statsResult.uniqueCards);
-    renderInventory();
+    renderInventory(append ? { cards: newCards, append: true } : {});
     renderPagination();
     updateBulkActionsBar();
 
+    // A replaced list is a new list. Without this the reader stays wherever
+    // they had scrolled to, which under endless scroll puts the sentinel
+    // straight back in view and refetches every page they had just filtered
+    // away — the new first page arrives and is immediately buried again.
+    if (!append && endlessScroll) scrollToListTop();
+
+    if (append) {
+      loadingMore = false;
+    }
+    updateScrollSentinel();
+    // An observer only reports threshold crossings. If the page that just
+    // arrived was short enough to leave the sentinel still on screen, nothing
+    // would fire again and loading would stall until the reader scrolled, so
+    // check the position directly once the new rows have been laid out.
+    if (endlessScroll) requestAnimationFrame(fillViewport);
+
     hideLoading();
   } catch (error) {
+    loadingMore = false;
     hideLoading();
+    updateScrollSentinel();
     showError('Failed to load inventory: ' + error.message);
   }
 }
@@ -1173,7 +1219,11 @@ function renderStats(stats) {
   `;
 }
 
-function renderInventory() {
+// `cards` defaults to everything loaded so far. Endless scroll passes just
+// the page it fetched along with append:true, so earlier rows keep their DOM
+// nodes — re-rendering them would restart every card image and throw away the
+// reader's place on the page.
+function renderInventory({ cards = null, append = false } = {}) {
   const container = document.getElementById('inventory-grid');
   if (!container) return;
 
@@ -1188,17 +1238,18 @@ function renderInventory() {
     return;
   }
 
+  const rows = cards || inventoryData.cards;
   if (viewMode === 'grid') {
-    renderGridView(container);
+    renderGridView(container, rows, append);
   } else {
-    renderListView(container);
+    renderListView(container, rows, append);
   }
 }
 
-function renderGridView(container) {
+function renderGridView(container, cards, append = false) {
   container.className = 'inventory-grid';
 
-  container.innerHTML = inventoryData.cards.map(card => {
+  const html = cards.map(card => {
     const isSelected = selectedCards.has(card.card_id);
     const printingCount = card.printings ? card.printings.length : 0;
     const printingImages = card.printings ? card.printings.map(p => p.image_url).filter(Boolean) : [];
@@ -1247,8 +1298,17 @@ function renderGridView(container) {
     `;
   }).join('');
 
-  // Add click and hover handlers
-  container.querySelectorAll('.inventory-card-item').forEach(item => {
+  if (append) {
+    container.insertAdjacentHTML('beforeend', html);
+  } else {
+    container.innerHTML = html;
+  }
+
+  // Add click and hover handlers. Only to rows that have not been wired up
+  // yet, so appending a page does not stack a second set of listeners on
+  // every card already on screen.
+  container.querySelectorAll('.inventory-card-item:not([data-bound])').forEach(item => {
+    item.dataset.bound = '1';
     const cardId = parseInt(item.dataset.cardId);
     const printingImages = JSON.parse(item.dataset.printingImages || '[]');
 
@@ -1311,10 +1371,10 @@ function renderGridView(container) {
   });
 }
 
-function renderListView(container) {
+function renderListView(container, cards, append = false) {
   container.className = 'inventory-list';
 
-  container.innerHTML = `
+  const header = `
     <div class="inventory-list-header">
       ${selectMode ? '<span class="list-col-select"></span>' : ''}
       <span class="list-col-name">Name</span>
@@ -1326,7 +1386,9 @@ function renderListView(container) {
       <span class="list-col-available">Available</span>
       ${showPrices ? '<span class="list-col-price">Price</span>' : ''}
     </div>
-    ${inventoryData.cards.map(card => {
+  `;
+
+  const rowsHtml = cards.map(card => {
       const isSelected = selectedCards.has(card.card_id);
       const printingCount = card.printings ? card.printings.length : 0;
       const price = showPrices ? getPriceSummary(card) : null;
@@ -1358,11 +1420,18 @@ function renderListView(container) {
           ` : ''}
         </div>
       `;
-    }).join('')}
-  `;
+  }).join('');
 
-  // Add click handlers
-  container.querySelectorAll('.inventory-list-item').forEach(item => {
+  // The header is written once; appended pages add rows beneath it.
+  if (append) {
+    container.insertAdjacentHTML('beforeend', rowsHtml);
+  } else {
+    container.innerHTML = header + rowsHtml;
+  }
+
+  // Add click handlers, skipping rows already wired up (see renderGridView).
+  container.querySelectorAll('.inventory-list-item:not([data-bound])').forEach(item => {
+    item.dataset.bound = '1';
     const cardId = parseInt(item.dataset.cardId);
 
     // Checkbox click
@@ -1396,7 +1465,113 @@ function renderListView(container) {
   });
 }
 
+// Endless scroll. The sentinel sits below the grid; when it comes within
+// sight the next page is fetched and appended.
+function setupEndlessScroll() {
+  const btn = document.getElementById('inventory-endless-toggle');
+  if (btn) {
+    setEndlessScroll(endlessScroll, { reload: false });
+    btn.addEventListener('click', () => setEndlessScroll(!endlessScroll));
+  }
+
+  const sentinel = document.getElementById('inventory-scroll-sentinel');
+  if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+
+  // Fires a page early, so the next rows are usually in place before the
+  // reader reaches the end of the ones they are looking at.
+  scrollObserver = new IntersectionObserver((entries) => {
+    if (!entries.some((entry) => entry.isIntersecting)) return;
+    loadNextPage();
+  }, { rootMargin: '600px' });
+
+  scrollObserver.observe(sentinel);
+}
+
+// Scrolls back up to the head of the list, and only ever upwards — opening
+// the page should not drag the reader past the filters to reach the grid.
+function scrollToListTop() {
+  const grid = document.getElementById('inventory-grid');
+  if (!grid) return;
+
+  const top = Math.max(window.scrollY + grid.getBoundingClientRect().top - 16, 0);
+  if (window.scrollY > top) window.scrollTo({ top });
+}
+
+// Loads another page while the sentinel is still within the observer's margin
+// of the viewport — i.e. while the rows on screen do not reach the bottom.
+function fillViewport() {
+  const sentinel = document.getElementById('inventory-scroll-sentinel');
+  if (!sentinel || sentinel.classList.contains('hidden')) return;
+  if (loadingMore || currentPage >= totalPages) return;
+
+  const { top } = sentinel.getBoundingClientRect();
+  if (top <= window.innerHeight + 600) loadNextPage();
+}
+
+function loadNextPage() {
+  if (!endlessScroll || loadingMore || !inventoryData) return;
+  if (currentPage >= totalPages) return;
+
+  currentPage += 1;
+  loadInventoryData({ append: true });
+}
+
+function setEndlessScroll(next, { reload = true } = {}) {
+  endlessScroll = next;
+  localStorage.setItem('inventoryEndlessScroll', String(next));
+
+  const btn = document.getElementById('inventory-endless-toggle');
+  if (btn) {
+    btn.classList.toggle('active', next);
+    btn.setAttribute('aria-pressed', String(next));
+    btn.title = next ? 'Endless scroll on' : 'Endless scroll off';
+  }
+
+  if (reload) {
+    // Switching modes reloads the page the reader is on rather than sending
+    // them back to the first one: turning the pager back on after scrolling
+    // to page 4 should leave them at page 4, not at the top of the list.
+    loadInventoryData();
+  } else {
+    renderPagination();
+    updateScrollSentinel();
+  }
+}
+
+// The sentinel doubles as the footer: it says what is happening, and stops
+// being watched once there is nothing left to fetch.
+function updateScrollSentinel() {
+  if (!endlessScroll) return setScrollSentinel('off');
+  if (loadingMore) return setScrollSentinel('loading');
+  if (!inventoryData || currentPage >= totalPages) return setScrollSentinel('end');
+  setScrollSentinel('more');
+}
+
+function setScrollSentinel(state) {
+  const sentinel = document.getElementById('inventory-scroll-sentinel');
+  if (!sentinel) return;
+
+  sentinel.classList.toggle('hidden', state === 'off');
+
+  if (state === 'loading') {
+    sentinel.innerHTML = '<i class="ph ph-circle-notch"></i> Loading more cards...';
+  } else if (state === 'end') {
+    // Only worth saying once the reader has actually scrolled through more
+    // than one page; on a short list it states the obvious.
+    sentinel.innerHTML = currentPage > 1 ? "That's everything." : '';
+  } else {
+    sentinel.innerHTML = '';
+  }
+}
+
 function renderPagination() {
+  // Endless scroll and a pager are two answers to the same question; showing
+  // both leaves "Page 3 of 7" sitting under seven pages of cards.
+  ['inventory-pagination', 'inventory-pagination-top'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', endlessScroll);
+  });
+
   ['inventory-prev-page', 'inventory-prev-page-top'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = currentPage <= 1;

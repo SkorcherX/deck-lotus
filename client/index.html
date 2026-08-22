@@ -1030,6 +1030,14 @@
                             </div>
                         </div>
                         <div class="filter-group">
+                            <label>Scrolling</label>
+                            <div class="view-toggle">
+                                <button id="inventory-endless-toggle" class="btn-icon" title="Endless scroll off" aria-pressed="false">
+                                    <i class="ph ph-infinity"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="filter-group">
                             <label>View</label>
                             <div class="view-toggle">
                                 <button id="inventory-grid-view-btn" class="btn-icon active" title="Grid view">
@@ -1066,6 +1074,9 @@
 
                 <!-- Card Grid/List -->
                 <div id="inventory-grid" class="inventory-grid"></div>
+
+                <!-- Endless scroll: fetches the next page when it scrolls into view -->
+                <div id="inventory-scroll-sentinel" class="inventory-scroll-sentinel hidden"></div>
 
                 <!-- Pagination -->
                 <div id="inventory-pagination" class="pagination">
