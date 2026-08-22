@@ -679,6 +679,37 @@ async function main() {
         JOIN printings p ON op.printing_id = p.id
       `).all();
 
+      // Trade rows reference printings, so clearing printings cascades them
+      // away. The trades themselves survive (they key on users), which would
+      // leave a pending trade with no cards in it — and an unacknowledged
+      // "you traded this away" notice would vanish before its owner ever saw
+      // it, which is the one thing that feature exists to prevent. Both carry
+      // is_foil for the same reason owned_printings does.
+      // This script can be run directly against a database that predates the
+      // trade tables, so ask before reading them rather than failing a sync
+      // over a feature that instance has not migrated to yet.
+      const hasTable = (name) => !!targetDb.prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`
+      ).get(name);
+
+      const tradeItemsBackup = hasTable('trade_items')
+        ? targetDb.prepare(`
+            SELECT ti.trade_id, ti.quantity, ti.is_foil, ti.direction, p.uuid as printing_uuid
+            FROM trade_items ti
+            JOIN printings p ON ti.printing_id = p.id
+          `).all()
+        : [];
+
+      const disruptionsBackup = hasTable('deck_card_disruptions')
+        ? targetDb.prepare(`
+            SELECT dcd.deck_id, dcd.trade_id, dcd.is_foil, dcd.board_type, dcd.quantity,
+                   dcd.card_name, dcd.created_at, dcd.acknowledged_at, dcd.resolution,
+                   p.uuid as printing_uuid
+            FROM deck_card_disruptions dcd
+            JOIN printings p ON dcd.printing_id = p.id
+          `).all()
+        : [];
+
       // Create backup directory if it doesn't exist
       const BACKUP_DIR = path.join(DATA_DIR, 'backups');
       if (!fs.existsSync(BACKUP_DIR)) {
@@ -696,7 +727,9 @@ async function main() {
         data: {
           deck_cards: deckCardsBackup,
           owned_cards: ownedCardsBackup,
-          owned_printings: ownedPrintingsBackup
+          owned_printings: ownedPrintingsBackup,
+          trade_items: tradeItemsBackup,
+          deck_card_disruptions: disruptionsBackup
         }
       };
 
@@ -750,6 +783,8 @@ async function main() {
       targetDb._deckCardsBackup = deckCardsBackup;
       targetDb._ownedCardsBackup = ownedCardsBackup;
       targetDb._ownedPrintingsBackup = ownedPrintingsBackup;
+      targetDb._tradeItemsBackup = tradeItemsBackup;
+      targetDb._disruptionsBackup = disruptionsBackup;
       targetDb._safetyBackupPath = safetyBackupPath;
     }
 
@@ -919,6 +954,123 @@ async function main() {
       console.log(`✓ Restored ${ownedPrintingsResult.restored} owned printing entries`);
       if (ownedPrintingsResult.notFound > 0) {
         console.log(`  ⚠️  ${ownedPrintingsResult.notFound} printings not found in new import (may have been removed from MTGJSON)`);
+      }
+    }
+
+    // STEP 7: Restore trade data if we backed it up
+    if (targetDb._tradeItemsBackup && targetDb._tradeItemsBackup.length > 0) {
+      console.log('\n🔄 Restoring trade data...');
+
+      const insertTradeItem = targetDb.prepare(`
+        INSERT INTO trade_items (trade_id, printing_id, is_foil, quantity, direction)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+
+      const getTradePrintingId = targetDb.prepare(`
+        SELECT id FROM printings WHERE uuid = ? LIMIT 1
+      `);
+
+      const restoreTradeItems = targetDb.transaction((entries) => {
+        let restored = 0;
+        let notFound = 0;
+
+        for (const entry of entries) {
+          const printing = getTradePrintingId.get(entry.printing_uuid);
+          if (printing) {
+            try {
+              insertTradeItem.run(
+                entry.trade_id,
+                printing.id,
+                entry.is_foil ?? 0,
+                entry.quantity,
+                entry.direction
+              );
+              restored++;
+            } catch (e) {
+              // The trade itself may have gone with a deleted user
+              notFound++;
+            }
+          } else {
+            notFound++;
+          }
+        }
+
+        return { restored, notFound };
+      });
+
+      const tradeResult = restoreTradeItems(targetDb._tradeItemsBackup);
+      console.log(`✓ Restored ${tradeResult.restored} trade card entries`);
+
+      if (tradeResult.notFound > 0) {
+        console.log(`  ⚠️  ${tradeResult.notFound} traded cards not found in new import`);
+
+        // A pending trade that lost cards would ask someone to accept a
+        // different trade than the one they were offered, so cancel it rather
+        // than let it stand in a shape nobody agreed to.
+        const orphaned = targetDb.prepare(`
+          UPDATE trades SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP
+           WHERE status = 'pending'
+             AND (SELECT COUNT(*) FROM trade_items WHERE trade_id = trades.id) = 0
+        `).run();
+
+        if (orphaned.changes > 0) {
+          console.log(`  ⚠️  Cancelled ${orphaned.changes} pending trade(s) left with no cards`);
+        }
+      }
+    }
+
+    // STEP 8: Restore the "traded away, still in your deck" notices
+    if (targetDb._disruptionsBackup && targetDb._disruptionsBackup.length > 0) {
+      console.log('\n🔄 Restoring traded-away deck notices...');
+
+      const insertDisruption = targetDb.prepare(`
+        INSERT INTO deck_card_disruptions
+          (deck_id, trade_id, printing_id, is_foil, board_type, quantity, card_name,
+           created_at, acknowledged_at, resolution)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const getDisruptionPrintingId = targetDb.prepare(`
+        SELECT id FROM printings WHERE uuid = ? LIMIT 1
+      `);
+
+      const restoreDisruptions = targetDb.transaction((entries) => {
+        let restored = 0;
+        let notFound = 0;
+
+        for (const entry of entries) {
+          const printing = getDisruptionPrintingId.get(entry.printing_uuid);
+          if (printing) {
+            try {
+              insertDisruption.run(
+                entry.deck_id,
+                entry.trade_id,
+                printing.id,
+                entry.is_foil ?? 0,
+                entry.board_type || 'mainboard',
+                entry.quantity,
+                entry.card_name,
+                entry.created_at,
+                entry.acknowledged_at,
+                entry.resolution
+              );
+              restored++;
+            } catch (e) {
+              // Deck may have been deleted since the trade
+              notFound++;
+            }
+          } else {
+            notFound++;
+          }
+        }
+
+        return { restored, notFound };
+      });
+
+      const disruptionResult = restoreDisruptions(targetDb._disruptionsBackup);
+      console.log(`✓ Restored ${disruptionResult.restored} traded-away notices`);
+      if (disruptionResult.notFound > 0) {
+        console.log(`  ⚠️  ${disruptionResult.notFound} notices could not be restored`);
       }
     }
 

@@ -71,5 +71,19 @@ taken on GitHub — only do it when explicitly asked.
   dropping it collapses two rows onto one key and `INSERT OR IGNORE` discards
   the second. Foil copies price off `price_type = 'foil'`, falling back to
   `normal`.
+- Trades exist to keep the household total honest: `acceptTrade` moves both
+  users' `owned_printings` inside one transaction, so a card cannot be added by
+  one person without being removed from the other. Never move inventory for a
+  trade outside that transaction.
+- A trade that leaves a deck short writes a `deck_card_disruptions` row instead
+  of editing the deck. The deck is shown exactly as listed until its owner
+  acknowledges it and picks `removed` (deck shrinks; `checkFormatRules` then
+  reports the size violation by itself) or `kept`. Nothing expires or
+  auto-applies these — an unread one is the point.
+- `scripts/import-mtgjson.js` clears `printings`, which cascades `trade_items`
+  and `deck_card_disruptions` away. Both are backed up and restored there by
+  printing `uuid`, same as `deck_cards` and `owned_printings`; a pending trade
+  that comes back empty is cancelled rather than left in a shape nobody agreed
+  to.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.
