@@ -5384,3 +5384,64 @@ button.btn-icon.active {
 }
 
 .deck-rules-more { font-style: italic; }
+
+/* ---- Suggestions (guidance, not rules) ---- */
+
+.deck-guidance {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.deck-guidance-head {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.deck-guidance-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Deliberately not red, and no left rule: a suggestion is not a failure. */
+.deck-guidance-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.deck-guidance-action {
+  align-self: flex-start;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--primary);
+  background: var(--primary-soft);
+  color: var(--text);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.deck-guidance-action:hover { background: var(--primary); color: #fff; }
+
+.inventory-panel-cmc-note {
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--primary);
+  background: var(--primary-soft);
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}

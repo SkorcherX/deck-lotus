@@ -13,7 +13,7 @@ import { debounce, formatMana, showToast } from '../utils/ui.js';
  */
 
 let ctx = null;              // { getDeck, refreshDeck }
-let filters = { name: '', type: 'all', colors: [], onlyFree: false, formatLegal: false, identityOnly: false };
+let filters = { name: '', type: 'all', colors: [], maxCmc: null, onlyFree: false, formatLegal: false, identityOnly: false };
 let page = 1;
 let feed = { items: [], total: 0, totalPages: 1 };
 let undoStack = [];
@@ -99,6 +99,18 @@ export function setupInventoryPanel(context) {
     });
   }
 
+  // The mana-value filter only ever arrives from a guidance action, so its
+  // only control is a way to drop it again.
+  const cmcNote = el('inventory-panel-cmc-note');
+  if (cmcNote) {
+    cmcNote.addEventListener('click', () => {
+      filters.maxCmc = null;
+      syncFilterControls();
+      page = 1;
+      loadFeed();
+    });
+  }
+
   const undoBtn = el('inventory-panel-undo');
   if (undoBtn) undoBtn.addEventListener('click', undoLast);
 
@@ -112,12 +124,9 @@ export function setupInventoryPanel(context) {
 export function resetInventoryPanel() {
   undoStack = [];
   page = 1;
-  filters = { name: '', type: 'all', colors: [], onlyFree: false, formatLegal: false, identityOnly: false };
+  filters = { name: '', type: 'all', colors: [], maxCmc: null, onlyFree: false, formatLegal: false, identityOnly: false };
 
-  document.querySelectorAll('#inventory-panel-colors [data-color]').forEach((chip) => {
-    chip.classList.remove('is-on');
-    chip.setAttribute('aria-pressed', 'false');
-  });
+  syncFilterControls();
 
   const panel = el('inventory-panel');
   if (panel) panel.classList.add('hidden');
@@ -125,10 +134,66 @@ export function resetInventoryPanel() {
   const toggle = el('inventory-panel-toggle');
   if (toggle) toggle.setAttribute('aria-expanded', 'false');
 
-  const search = el('inventory-panel-search');
-  if (search) search.value = '';
-
   renderUndo();
+}
+
+/**
+ * Open the panel showing the cards a piece of guidance is about — the "3
+ * lands short" advice is only useful if it can put those lands in front of
+ * you. Replaces the current filters rather than adding to them, so the
+ * result always matches what was asked for.
+ */
+export function openInventoryPanelWith({ type = 'all', colors = [], maxCmc = null } = {}) {
+  filters = {
+    name: '',
+    type: type || 'all',
+    colors: [...colors],
+    maxCmc,
+    onlyFree: false,
+    formatLegal: false,
+    identityOnly: false
+  };
+  page = 1;
+
+  syncFilterControls();
+
+  const panel = el('inventory-panel');
+  const toggle = el('inventory-panel-toggle');
+  if (panel) panel.classList.remove('hidden');
+  if (toggle) toggle.setAttribute('aria-expanded', 'true');
+
+  loadFeed();
+  panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Push the current filter state onto the controls, so the UI does not lie. */
+function syncFilterControls() {
+  const search = el('inventory-panel-search');
+  if (search) search.value = filters.name;
+
+  const typeFilter = el('inventory-panel-type');
+  if (typeFilter) typeFilter.value = filters.type;
+
+  for (const [id, key] of [
+    ['inventory-panel-only-free', 'onlyFree'],
+    ['inventory-panel-format-legal', 'formatLegal'],
+    ['inventory-panel-identity', 'identityOnly']
+  ]) {
+    const box = el(id);
+    if (box) box.checked = Boolean(filters[key]);
+  }
+
+  document.querySelectorAll('#inventory-panel-colors [data-color]').forEach((chip) => {
+    const on = filters.colors.includes(chip.dataset.color);
+    chip.classList.toggle('is-on', on);
+    chip.setAttribute('aria-pressed', String(on));
+  });
+
+  const cmcNote = el('inventory-panel-cmc-note');
+  if (cmcNote) {
+    cmcNote.classList.toggle('hidden', !filters.maxCmc);
+    cmcNote.textContent = filters.maxCmc ? `mana value ${filters.maxCmc} or less ✕` : '';
+  }
 }
 
 /** Refresh the panel's numbers after the deck changed elsewhere. */
@@ -174,6 +239,7 @@ async function loadFeed() {
       name: filters.name,
       type: filters.type,
       colors: filters.colors,
+      maxCmc: filters.maxCmc,
       onlyFree: filters.onlyFree,
       format: filters.formatLegal ? deck.format : null,
       colorIdentity: identity,

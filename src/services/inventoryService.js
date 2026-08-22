@@ -894,6 +894,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     type,
     colors = [],
     colorIdentity,
+    maxCmc,
     onlyFree = false,
     format,
     page = 1,
@@ -916,26 +917,38 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     params.push(`%${type}%`);
   }
 
-  // Colour filter, matching how the inventory page reads: picking two colours
-  // means cards carrying both, and 'C' means colourless. Distinct from the
-  // colour-identity filter below, which is about what a commander permits.
+  // Colour filter. Picking two colours means cards carrying both, and 'C'
+  // means colourless — but a land counts as the colours it produces, not the
+  // colours it is.
+  //
+  // This differs from the inventory page on purpose. An Island's `colors` is
+  // empty; only its colour identity says blue. Filtering a deck builder to
+  // blue and getting no Islands would be useless, and it is exactly what the
+  // "show me blue lands" suggestion needs.
   const colorList = Array.isArray(colors) ? colors : String(colors).split(',').filter(Boolean);
 
   if (colorList.length > 0) {
     const wantsColorless = colorList.includes('C');
     const actual = colorList.filter((c) => c !== 'C');
-    const COLORLESS = `(colors IS NULL OR colors = '' OR colors = '[]')`;
+    const LAND = `type_line LIKE '%Land%'`;
+    // Truly colourless: carries no colour, and is not a land that taps for one.
+    const COLORLESS = `(
+      (colors IS NULL OR colors = '' OR colors = '[]')
+      AND NOT (${LAND} AND color_identity IS NOT NULL AND color_identity <> '')
+    )`;
+    const carries = (count) => Array.from({ length: count })
+      .map(() => `(colors LIKE ? OR (${LAND} AND color_identity LIKE ?))`)
+      .join(' AND ');
+    const carriesParams = actual.flatMap((c) => [`%${c}%`, `%${c}%`]);
 
     if (wantsColorless && actual.length === 0) {
       where.push(COLORLESS);
     } else if (wantsColorless) {
-      where.push(`((${actual.map(() => 'colors LIKE ?').join(' AND ')}) OR ${COLORLESS})`);
-      params.push(...actual.map((c) => `%${c}%`));
+      where.push(`((${carries(actual.length)}) OR ${COLORLESS})`);
+      params.push(...carriesParams);
     } else {
-      for (const color of actual) {
-        where.push('colors LIKE ?');
-        params.push(`%${color}%`);
-      }
+      where.push(carries(actual.length));
+      params.push(...carriesParams);
     }
   }
 
@@ -949,6 +962,12 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
         params.push(`%${color}%`);
       }
     }
+  }
+
+  // Used by the curve suggestion to show what a top-heavy deck is short of.
+  if (maxCmc !== undefined && maxCmc !== null && maxCmc !== '') {
+    where.push('cmc <= ?');
+    params.push(Number(maxCmc));
   }
 
   if (onlyFree) {

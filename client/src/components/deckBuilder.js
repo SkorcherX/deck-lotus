@@ -4,7 +4,8 @@ import { showCardDetail } from './cards.js';
 import {
   setupInventoryPanel,
   resetInventoryPanel,
-  refreshInventoryPanel
+  refreshInventoryPanel,
+  openInventoryPanelWith
 } from './inventoryPanel.js';
 
 let currentDeck = null;
@@ -1991,40 +1992,66 @@ function renderRules() {
   const container = document.getElementById('deck-rules');
   if (!container) return;
 
-  if (!lastRules || !lastRules.known) {
-    container.innerHTML = `<div class="deck-rules-note">
-      Choose a format to check this deck against its rules.
-    </div>`;
+  if (!lastRules) {
+    container.innerHTML = '';
     return;
   }
 
-  if (lastRules.isLegal) {
-    container.innerHTML = `<div class="deck-rules-ok">
-      <i class="ph ph-check-circle"></i> Legal in ${escapeHtml(lastRules.formatLabel)}
-    </div>`;
-    return;
-  }
+  const rulesHtml = !lastRules.known
+    ? `<div class="deck-rules-note">Choose a format to check this deck against its rules.</div>`
+    : lastRules.isLegal
+      ? `<div class="deck-rules-ok"><i class="ph ph-check-circle"></i> Legal in ${escapeHtml(lastRules.formatLabel)}</div>`
+      : `
+        <div class="deck-rules-head">
+          ${lastRules.violations.length} ${lastRules.violations.length === 1 ? 'issue' : 'issues'} for ${escapeHtml(lastRules.formatLabel)}
+        </div>
+        <ul class="deck-rules-list">
+          ${lastRules.violations.map((v) => `
+            <li class="deck-rules-item">
+              <span class="deck-rules-message">${escapeHtml(v.message)}</span>
+              ${v.cards && v.cards.length ? `
+                <span class="deck-rules-cards">${v.cards.slice(0, 8).map((c) => {
+                  const detail = c.quantity ? ` ×${c.quantity}` : c.identity !== undefined ? ` (${escapeHtml(c.identity || 'colourless')})` : c.rarity ? ` (${escapeHtml(c.rarity)})` : '';
+                  return `<span class="deck-rules-card">${escapeHtml(c.name)}${detail}</span>`;
+                }).join('')}${v.cards.length > 8 ? `<span class="deck-rules-more">+${v.cards.length - 8} more</span>` : ''}</span>
+              ` : ''}
+            </li>
+          `).join('')}
+        </ul>
+      `;
 
-  const count = lastRules.violations.length;
+  // Guidance is styled apart from the rules above on purpose: these are
+  // suggestions, and a deck that ignores them is still perfectly legal.
+  const guidance = lastRules.guidance || [];
 
-  container.innerHTML = `
-    <div class="deck-rules-head">
-      ${count} ${count === 1 ? 'issue' : 'issues'} for ${escapeHtml(lastRules.formatLabel)}
+  const guidanceHtml = guidance.length === 0 ? '' : `
+    <div class="deck-guidance">
+      <div class="deck-guidance-head">Suggestions</div>
+      <ul class="deck-guidance-list">
+        ${guidance.map((g, index) => `
+          <li class="deck-guidance-item">
+            <span class="deck-guidance-message">${escapeHtml(g.message)}</span>
+            ${g.action ? `
+              <button class="deck-guidance-action" data-guidance="${index}">
+                ${escapeHtml(g.action.label)}
+              </button>
+            ` : ''}
+          </li>
+        `).join('')}
+      </ul>
     </div>
-    <ul class="deck-rules-list">
-      ${lastRules.violations.map((v) => `
-        <li class="deck-rules-item">
-          <span class="deck-rules-message">${escapeHtml(v.message)}</span>
-          ${v.cards && v.cards.length ? `
-            <span class="deck-rules-cards">${v.cards.slice(0, 8).map((c) => {
-              const detail = c.quantity ? ` ×${c.quantity}` : c.identity !== undefined ? ` (${escapeHtml(c.identity || 'colourless')})` : c.rarity ? ` (${escapeHtml(c.rarity)})` : '';
-              return `<span class="deck-rules-card">${escapeHtml(c.name)}${detail}</span>`;
-            }).join('')}${v.cards.length > 8 ? `<span class="deck-rules-more">+${v.cards.length - 8} more</span>` : ''}</span>
-          ` : ''}
-        </li>
-      `).join('')}
-    </ul>
   `;
+
+  container.innerHTML = rulesHtml + guidanceHtml;
+
+  // Each suggestion can put the relevant cards in front of you, which is the
+  // difference between advice that gets acted on and advice that gets ignored.
+  container.querySelectorAll('.deck-guidance-action').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = guidance[parseInt(btn.dataset.guidance, 10)];
+      if (item?.action?.filter) openInventoryPanelWith(item.action.filter);
+    });
+  });
 }
 
 function escapeHtml(value) {
