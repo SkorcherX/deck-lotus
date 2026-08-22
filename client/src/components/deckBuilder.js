@@ -12,7 +12,11 @@ import {
 let currentDeck = null;
 let currentDeckId = null;
 let searchTimeout = null;
-let currentFilter = { cmc: null, color: null, ownership: null }; // Filter state for deck cards (null, 'owned', 'not-owned')
+// Filter state for deck cards. `produces` is the colour a land can tap for,
+// which is not the same as `color`: an Island's colors is empty and only its
+// colour identity says blue, so "show me the lands that make blue" needs its
+// own dimension.
+let currentFilter = { cmc: null, color: null, ownership: null, produces: null };
 let deckFilterQuery = ''; // Name filter for deck cards
 let exampleHand = []; // Current example hand
 let activeTab = 'mainboard'; // Track which tab is currently active ('mainboard', 'sideboard', or 'maybeboard')
@@ -628,7 +632,7 @@ function renderDeckCards() {
   let maybeboardCards = currentDeck.cards.filter(isMaybeboardCard);
 
   // Apply filters
-  const hasFilter = currentFilter.cmc !== null || currentFilter.color !== null || currentFilter.ownership !== null || deckFilterQuery;
+  const hasFilter = currentFilter.cmc !== null || currentFilter.color !== null || currentFilter.ownership !== null || currentFilter.produces !== null || deckFilterQuery;
 
   // Apply name filter
   if (deckFilterQuery) {
@@ -647,6 +651,16 @@ function renderDeckCards() {
     mainboardCards = mainboardCards.filter(c => c.colors === currentFilter.color);
     sideboardCards = sideboardCards.filter(c => c.colors === currentFilter.color);
     maybeboardCards = maybeboardCards.filter(c => c.colors === currentFilter.color);
+  }
+
+  // The lands a colour-support suggestion counted, so "you have 11" can be
+  // turned into "here are those 11".
+  if (currentFilter.produces !== null) {
+    const makes = (c) => /land/i.test(c.type_line || '')
+      && (c.color_identity || '').includes(currentFilter.produces);
+    mainboardCards = mainboardCards.filter(makes);
+    sideboardCards = sideboardCards.filter(makes);
+    maybeboardCards = maybeboardCards.filter(makes);
   }
 
   if (currentFilter.ownership === 'owned') {
@@ -681,6 +695,7 @@ function renderDeckCards() {
       currentFilter.cmc = null;
       currentFilter.color = null;
       currentFilter.ownership = null;
+      currentFilter.produces = null;
       renderDeckCards();
       // Re-render stats to clear highlighted segments
       loadDeckStats();
@@ -1979,10 +1994,19 @@ function renderRules() {
           `<span class="deck-guidance-card">${escapeHtml(c.name)}${c.quantity > 1 ? ` ×${c.quantity}` : ''}</span>`
         ).join('')}${g.evidence.length > 6 ? `<span class="deck-rules-more">+${g.evidence.length - 6} more</span>` : ''}</span>
       ` : ''}
-      ${g.action ? `
-        <button class="deck-guidance-action" data-guidance="${index}">
-          ${escapeHtml(g.action.label)}
-        </button>
+      ${g.action || g.deckAction ? `
+        <span class="deck-guidance-actions">
+          ${g.deckAction ? `
+            <button class="deck-guidance-action deck-guidance-action-deck" data-deck-guidance="${index}">
+              ${escapeHtml(g.deckAction.label)}
+            </button>
+          ` : ''}
+          ${g.action ? `
+            <button class="deck-guidance-action" data-guidance="${index}">
+              ${escapeHtml(g.action.label)}
+            </button>
+          ` : ''}
+        </span>
       ` : ''}
     </li>
   `;
@@ -2009,10 +2033,29 @@ function renderRules() {
 
   // Each suggestion can put the relevant cards in front of you, which is the
   // difference between advice that gets acted on and advice that gets ignored.
-  container.querySelectorAll('.deck-guidance-action').forEach((btn) => {
+  container.querySelectorAll('.deck-guidance-action[data-guidance]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const item = guidance[parseInt(btn.dataset.guidance, 10)];
       if (item?.action?.filter) openInventoryPanelWith(item.action.filter);
+    });
+  });
+
+  // "You have 11" is only half an answer without "and here they are". This
+  // filters the deck itself rather than the collection, so a suggestion can
+  // show the cards it counted instead of cards to add.
+  container.querySelectorAll('[data-deck-guidance]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = guidance[parseInt(btn.dataset.deckGuidance, 10)];
+      const filter = item?.deckAction?.filter;
+      if (!filter) return;
+
+      currentFilter.cmc = filter.cmc ?? null;
+      currentFilter.color = filter.color ?? null;
+      currentFilter.produces = filter.produces ?? null;
+      currentFilter.ownership = null;
+
+      renderDeckCards();
+      document.querySelector('.deck-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
 }

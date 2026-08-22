@@ -22,6 +22,37 @@ Source: Reid Duke, *The Ultimate Guide to Legacy MTG*, Parts 1–8
 - Nothing here is a legality rule. A deck that ignores every finding in this
   document is still perfectly legal, and the UI must keep that distinction.
 
+## Wording is part of the check
+
+The audience is someone who has been playing for a week. A finding that is
+numerically correct but unreadable has failed, so the vocabulary is a design
+constraint, not a matter of taste. There is a test that enforces it.
+
+- **No jargon.** Not *pip*, *source*, *cantrip*, *CMC*, *mana value*, *curve*,
+  *tempo*, *card advantage*, *two-for-one*, *goldfish*, *on-curve*. Say what the
+  word means instead: "2 black mana", "lands that make black", "cards that help
+  you find what you need".
+- **Colours are words.** "black", never "B".
+- **Give both sides of every number.** "Only 11 of your 24 lands make black"
+  answers a question that "you have 11 sources" only raises.
+- **Name the card that caused it.** "Death Baron needs…" beats "some of your
+  cards need…", because the player can go and look at it.
+- **Say why it matters in the same sentence.** A number with no consequence
+  attached is something to scroll past.
+- **Don't cite cards the reader won't know.** "Blood Moon and Back to Basics"
+  means nothing outside eternal formats; "cards that shut off every land except
+  basics" means the same thing to everybody.
+- **Two questions, two buttons.** "Show me cards to add" and "show me the cards
+  you just counted" are different requests, and a finding about a count should
+  offer both.
+
+Worked example — the same finding, before and after:
+
+> ✗ Casting 2 pips of B on turn 3 wants about 18 sources; you have 11.
+>
+> ✓ Death Baron needs 2 black mana to cast, around turn 3. Only 11 of your 24
+>   lands make black — about 18 would make it reliable.
+
 ---
 
 ## Part 1 — Speed and power level

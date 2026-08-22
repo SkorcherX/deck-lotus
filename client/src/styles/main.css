@@ -5407,6 +5407,25 @@ button.btn-icon.active {
 
 .deck-guidance-action:hover { background: var(--primary); color: #fff; }
 
+.deck-guidance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* The "show me the cards you counted" button is secondary to the "show me
+   cards to add" one: it explains the number rather than acting on it. */
+.deck-guidance-action-deck {
+  border-color: var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.deck-guidance-action-deck:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+
 /* Severity is carried by a left rule rather than by colouring the text, so a
    warning reads as "look here first" without turning the panel into an error
    list. A suggestion is still not a failure. */

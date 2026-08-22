@@ -30,6 +30,16 @@ import {
 
 const OPENING_HAND = 7;
 
+/**
+ * Colour names, spelled out.
+ *
+ * The single letters are how Magic writes colours internally and how experienced
+ * players talk, but "you have 11 B sources" means nothing to someone who has
+ * been playing for a week. Everything a player reads says "black".
+ */
+const COLOR_NAMES = { W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' };
+const colorName = (color) => COLOR_NAMES[color] || color;
+
 // --- Small helpers ---------------------------------------------------------
 
 const qty = (list) => list.reduce((sum, c) => sum + (c.quantity || 1), 0);
@@ -412,17 +422,17 @@ export function buildFindings(metrics) {
 
   if (Math.abs(landGap) >= 3) {
     const because = metrics.selectionDensity >= 0.15
-      ? `an average cost of ${metrics.avgMv.toFixed(1)} and ${metrics.selectionCount} cards that dig`
-      : `an average cost of ${metrics.avgMv.toFixed(1)}`;
+      ? `cards costing ${metrics.avgMv.toFixed(1)} mana on average, and ${metrics.selectionCount} cards that help you find what you need`
+      : `cards costing ${metrics.avgMv.toFixed(1)} mana on average`;
 
     add({
       code: 'land-count',
       category: 'mana',
       severity: 'consider',
       message: landGap > 0
-        ? `Consider ${landGap} more land${landGap === 1 ? '' : 's'} — around ${metrics.suggestedLands} suits ${because}.`
-        : `Consider ${-landGap} fewer lands — around ${metrics.suggestedLands} suits ${because}.`,
-      action: landGap > 0 ? { label: 'Show your lands', filter: { type: 'Land' } } : null
+        ? `You have ${metrics.landCount} lands. A deck with ${because} usually wants about ${metrics.suggestedLands}, so consider adding ${landGap} more — too few lands means hands you cannot play.`
+        : `You have ${metrics.landCount} lands. A deck with ${because} usually wants about ${metrics.suggestedLands}, so consider cutting ${-landGap} — too many lands means drawing lands instead of spells.`,
+      action: landGap > 0 ? { label: 'Show lands you own', filter: { type: 'Land' } } : null
     });
   }
 
@@ -433,7 +443,8 @@ export function buildFindings(metrics) {
       code: 'no-basics',
       category: 'mana',
       severity: 'consider',
-      message: `No basic lands. Blood Moon, Back to Basics and land destruction turn all ${metrics.landCount} of your lands off at once.`
+      message: `None of your ${metrics.landCount} lands are basic lands (Plains, Island, Swamp, Mountain, Forest). Some decks play cards that shut off every land except basics, which would leave you unable to make mana at all. A few basics are cheap insurance.`,
+      action: { label: 'Show basic lands you own', filter: { type: 'Basic Land' } }
     });
   }
 
@@ -449,19 +460,28 @@ export function buildFindings(metrics) {
       code: 'color-support-spread',
       category: 'mana',
       severity: 'warn',
-      message: `This deck casts spells in ${metrics.colors.length} colours and none of them has enough sources (${shortColors.map((c) => `${c.color} ${c.sources}/${c.wanted}`).join(', ')}). Cutting a colour is usually easier than fixing the mana.`,
-      action: { label: 'Show your lands', filter: { type: 'Land' } }
+      message: `This deck uses ${metrics.colors.length} colours, and not enough of your ${metrics.landCount} lands make each one (${shortColors.map((c) => `${c.sources} make ${colorName(c.color)}, want ~${c.wanted}`).join('; ')}). With this many colours you will often hold cards you cannot pay for. Using fewer colours is usually easier than fixing the lands.`,
+      action: { label: 'Show lands you own', filter: { type: 'Land' } }
     });
   } else {
     for (const color of shortColors) {
-      const pipLabel = color.pips >= 2 ? `${color.pips} pips of ${color.color}` : `${color.color}`;
+      const name = colorName(color.color);
+      // Spelled out end to end: which card, how much of the colour it needs,
+      // when it needs it, how many of your lands can actually make it.
+      const needs = color.pips >= 2
+        ? `${color.pips} ${name} mana`
+        : `${name} mana`;
+
       add({
         code: 'color-support',
         category: 'mana',
         severity: color.sources < color.wanted * 0.7 ? 'warn' : 'consider',
-        message: `Casting ${pipLabel} on turn ${color.turn} wants about ${color.wanted} sources; you have ${color.sources}.`,
+        message: `${color.examples[0].name} needs ${needs} to cast, around turn ${color.turn}. Only ${color.sources} of your ${metrics.landCount} lands make ${name} — about ${color.wanted} would make it reliable.`,
         evidence: names(color.examples),
-        action: { label: `Show ${color.color} lands`, filter: { type: 'Land', colors: [color.color] } }
+        action: { label: `Show ${name} lands you own`, filter: { type: 'Land', colors: [color.color] } },
+        // The other half of the question: which lands are the ones being
+        // counted? Filters the deck itself rather than the collection.
+        deckAction: { label: `Show the ${color.sources} in this deck`, filter: { produces: color.color } }
       });
     }
   }
@@ -479,15 +499,15 @@ export function buildFindings(metrics) {
         code: 'turn-one',
         category: 'speed',
         severity: 'warn',
-        message: `Only a ${percent}% chance your opening hand has a land and something to do on turn 1. In this format that is usually a turn you cannot spare.`,
-        action: { label: 'Show 1-drops', filter: { maxCmc: 1 } }
+        message: `Only ${percent}% of your opening hands will have a land plus a card cheap enough to play on turn 1. That means most games start with you doing nothing on your first turn.`,
+        action: { label: 'Show 1-mana cards you own', filter: { maxCmc: 1 } }
       });
     } else if (metrics.pTurnOnePlay >= 0.7) {
       add({
         code: 'turn-one-strong',
         category: 'speed',
         severity: 'info',
-        message: `${percent}% of opening hands have a land and a turn-1 play${metrics.turnZeroCount > 0 ? `, plus ${metrics.turnZeroCount} cards that work before your first land` : ''}.`
+        message: `${percent}% of your opening hands have a land plus something cheap enough to play on turn 1${metrics.turnZeroCount > 0 ? `, and ${metrics.turnZeroCount} cards work before you even play a land` : ''}. You will rarely start a game doing nothing.`
       });
     }
 
@@ -501,8 +521,8 @@ export function buildFindings(metrics) {
         code: 'keepable-hands',
         category: 'mana',
         severity: 'consider',
-        message: `${Math.round(metrics.pKeepable * 100)}% of opening hands have 2–5 lands. You will be mulliganing more than you would like.`,
-        action: { label: 'Show your lands', filter: { type: 'Land' } }
+        message: `Only ${Math.round(metrics.pKeepable * 100)}% of your opening hands will have between 2 and 5 lands. The rest have too few or too many, and you will have to mulligan them — shuffle back and draw a new hand with one card fewer.`,
+        action: { label: 'Show lands you own', filter: { type: 'Land' } }
       });
     }
   }
@@ -515,8 +535,8 @@ export function buildFindings(metrics) {
       code: 'curve-expensive',
       category: 'curve',
       severity: metrics.avgMv > mvCeiling + 0.5 ? 'warn' : 'consider',
-      message: `Average cost is ${metrics.avgMv.toFixed(1)}. Games here are usually decided around turn ${profile.clock}, which suits an average nearer ${mvCeiling.toFixed(1)}.`,
-      action: { label: 'Show cheap spells', filter: { maxCmc: 2 } }
+      message: `Your cards cost ${metrics.avgMv.toFixed(1)} mana on average. Games in this format are usually over by about turn ${profile.clock}, so an average nearer ${mvCeiling.toFixed(1)} would let you actually cast more of your deck.`,
+      action: { label: 'Show cheap cards you own', filter: { maxCmc: 2 } }
     });
   }
 
@@ -525,8 +545,8 @@ export function buildFindings(metrics) {
       code: 'curve-top-heavy',
       category: 'curve',
       severity: 'consider',
-      message: `${Math.round(metrics.cheapShare * 100)}% of your spells cost 2 or less; decks in this format usually want nearer ${Math.round(profile.cheapShare * 100)}%.`,
-      action: { label: 'Show cheap spells', filter: { maxCmc: 2 } }
+      message: `Only ${Math.round(metrics.cheapShare * 100)}% of your cards cost 2 mana or less, where decks in this format usually want nearer ${Math.round(profile.cheapShare * 100)}%. Without cheap cards your early turns are spent doing nothing.`,
+      action: { label: 'Show cheap cards you own', filter: { maxCmc: 2 } }
     });
   }
 
@@ -536,9 +556,9 @@ export function buildFindings(metrics) {
       code: 'expensive-unexcused',
       category: 'curve',
       severity: 'consider',
-      message: `${metrics.expensiveUnexcused.length} cards cost ${profile.expensive} or more without a discount, a way to cheat them in, or the ability to end the game on their own.`,
+      message: `${metrics.expensiveUnexcused.length} of your cards cost ${profile.expensive} mana or more. Expensive cards are worth it when they win the game by themselves, or when something in your deck puts them into play early — these do neither, so they are likely to sit in your hand.`,
       evidence: names(unique),
-      action: { label: 'Show cheap spells', filter: { maxCmc: 2 } }
+      action: { label: 'Show cheap cards you own', filter: { maxCmc: 2 } }
     });
   }
 
@@ -581,7 +601,7 @@ export function buildFindings(metrics) {
       code: `symmetry-${hazard.code}`,
       category: 'symmetry',
       severity: 'warn',
-      message: `${unique[0].name} ${hazard.describe}${hazard.detail ? ` — ${hazard.detail}` : ''}, and would hit ${hazard.selfHits} of your own cards.`,
+      message: `${unique[0].name} ${hazard.describe}, which affects both players — ${hazard.detail ? `${hazard.detail}, it ` : 'it '}would also hit ${hazard.selfHits} of your own cards. Cards like this work best when your deck is built to avoid them.`,
       evidence: names(unique)
     });
   }
@@ -598,8 +618,8 @@ export function buildFindings(metrics) {
         code: 'answer-breadth',
         category: 'interaction',
         severity: 'warn',
-        message: `All ${metrics.interactionCount} of your answers only hit creatures. A resolved artifact or enchantment — Chalice of the Void, Blood Moon, Ensnaring Bridge — would be game over.`,
-        action: { label: 'Show broader removal', filter: { role: 'removal-permanent' } }
+        message: `All ${metrics.interactionCount} of your removal cards can only destroy creatures. If an opponent plays an artifact, enchantment or planeswalker, you have no way to get rid of it at all.`,
+        action: { label: 'Show removal that hits other cards', filter: { role: 'removal-permanent' } }
       });
     }
   }
@@ -610,8 +630,8 @@ export function buildFindings(metrics) {
       code: 'disruption-axes',
       category: 'interaction',
       severity: 'consider',
-      message: `All of your disruption is one kind of card (${only ? only[0] : 'the same effect'}). Mixing in a second kind means one resilient threat doesn't beat you on its own.`,
-      action: { label: 'Show interaction', filter: { role: 'interaction' } }
+      message: `Every card you have for dealing with the opponent works the same way (${only ? only[0] : 'the same effect'}). A deck that plays around that one answer beats you easily — a second kind, such as making them discard or countering a spell, is much harder to dodge.`,
+      action: { label: 'Show cards that interact', filter: { role: 'interaction' } }
     });
   }
 
@@ -632,8 +652,8 @@ export function buildFindings(metrics) {
         code: 'loss-mode-combo',
         category: 'coverage',
         severity: 'consider',
-        message: 'Nothing here interacts with a deck that wins on turn 1 or 2 — no free answers, little discard, no graveyard hate.',
-        action: { label: 'Show graveyard hate', filter: { role: 'graveyard-hate' } }
+        message: 'Some decks win on turn 1 or 2. Nothing here can stop them that early — no cheap counterspells, little in the way of making them discard, and nothing that shuts off graveyards.',
+        action: { label: 'Show cards that stop graveyards', filter: { role: 'graveyard-hate' } }
       });
     }
 
@@ -642,8 +662,8 @@ export function buildFindings(metrics) {
         code: 'loss-mode-threat',
         category: 'coverage',
         severity: 'consider',
-        message: `${metrics.interactionCount} cards answer anything the opponent does. A single resolved threat you can't remove ends most games.`,
-        action: { label: 'Show interaction', filter: { role: 'interaction' } }
+        message: `Only ${metrics.interactionCount} of your cards can remove or stop something the opponent plays. One creature you cannot answer will usually just win the game for them.`,
+        action: { label: 'Show cards that interact', filter: { role: 'interaction' } }
       });
     }
 
@@ -653,7 +673,7 @@ export function buildFindings(metrics) {
         category: 'coverage',
         severity: 'consider',
         message: `${metrics.advantageCount === 0 ? 'Nothing here draws you extra cards' : `Only ${metrics.advantageCount} cards draw you extra cards`}${metrics.selectionCount > 0 ? ` — card selection (${metrics.selectionCount}) finds your best card but doesn't give you more of them` : ''}. In a long game you run out first.`,
-        action: { label: 'Show card advantage', filter: { role: 'card-advantage' } }
+        action: { label: 'Show cards that draw cards', filter: { role: 'card-advantage' } }
       });
     }
   }
@@ -665,7 +685,7 @@ export function buildFindings(metrics) {
       code: 'loss-mode-mana',
       category: 'coverage',
       severity: 'consider',
-      message: 'Between the land count and the colours asked for, the most likely way you lose is simply not casting your spells.'
+      message: 'Putting the land count and the colours together: the most likely way you lose with this deck is not being able to cast the cards in your hand.'
     });
   }
 
@@ -676,9 +696,9 @@ export function buildFindings(metrics) {
       category: 'coverage',
       severity: metrics.winConditionCount === 0 ? 'warn' : 'consider',
       message: metrics.winConditionCount === 0
-        ? 'Nothing in this deck obviously ends a game on its own.'
-        : 'One card here ends the game on its own. If it is answered, you have no way to close.',
-      action: { label: 'Show ways to win', filter: { role: 'finisher' } }
+        ? 'Nothing in this deck looks like it can finish a game on its own. You need something that actually reduces the opponent to 0 life.'
+        : 'Only one card here can realistically finish a game. If the opponent removes it, you have no way left to win.',
+      action: { label: 'Show cards that can win a game', filter: { role: 'finisher' } }
     });
   }
 
@@ -689,7 +709,7 @@ export function buildFindings(metrics) {
       code: 'selection-strength',
       category: 'strength',
       severity: 'info',
-      message: `${metrics.selectionCount} cards dig for what you need, which smooths your draws and lets you run a land or two fewer than the curve alone suggests.`
+      message: `${metrics.selectionCount} of your cards help you find what you need, which makes your draws more consistent and lets you get away with a land or two fewer than usual.`
     });
   }
 
@@ -698,7 +718,7 @@ export function buildFindings(metrics) {
       code: 'pressure-strength',
       category: 'strength',
       severity: 'info',
-      message: `A cheap curve plus ${metrics.disruptionAxes} different kinds of disruption — pressure makes every answer you hold worth more, because the opponent has fewer turns to find one.`
+      message: `Cheap cards plus ${metrics.disruptionAxes} different ways of dealing with the opponent. That combination is strong: pressuring them early gives them fewer turns to find an answer.`
     });
   }
 
@@ -707,7 +727,7 @@ export function buildFindings(metrics) {
       code: 'archetype-unclear',
       category: 'coverage',
       severity: 'consider',
-      message: 'It is hard to tell what this deck is trying to do — it is not fast enough to race, not interactive enough to control, and has no engine to grind. Picking one of those is usually the biggest single improvement.'
+      message: 'It is hard to tell what this deck is trying to do. It is not cheap enough to win quickly, does not have enough removal to survive a long game, and has nothing that draws extra cards. Picking one of those three plans and building towards it is usually the single biggest improvement.'
     });
   }
 

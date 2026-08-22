@@ -202,6 +202,49 @@ test('opening-hand odds are withheld until the deck is nearly built', () => {
   assert.ok(!found.includes('turn-one'));
 });
 
+test('findings avoid jargon a new player would not know', () => {
+  // The audience is someone who has been playing for a week. "You have 11 B
+  // sources" is a correct sentence that tells them nothing, so the vocabulary
+  // is a design constraint rather than a matter of taste.
+  const banned = /\b(pips?|sources?|cantrips?|CMC|mana value|curve|goldfish|tempo|card advantage|on-curve|two-for-one)\b/i;
+
+  const deck = [
+    card('Death Baron', {
+      quantity: 4, cmc: 3, mana_cost: '{1}{B}{B}', type_line: 'Creature — Zombie Wizard', power: '2',
+      oracle_text: 'Skeletons you control and other Zombies you control get +1/+1 and have deathtouch.'
+    }),
+    card('Murder', { quantity: 8, cmc: 3, mana_cost: '{1}{B}{B}', type_line: 'Instant', oracle_text: 'Destroy target creature.' }),
+    card('Grizzly Bears', { quantity: 24, cmc: 2, mana_cost: '{1}{G}', type_line: 'Creature — Bear', power: '2' }),
+    card('Swamp', { quantity: 11, type_line: 'Basic Land — Swamp', color_identity: 'B' }),
+    card('Forest', { quantity: 13, type_line: 'Basic Land — Forest', color_identity: 'G' })
+  ];
+
+  for (const finding of adviseDeck(deck, [], 'standard').findings) {
+    const match = finding.message.match(banned);
+    assert.equal(match, null, `"${finding.code}" uses jargon (${match && match[0]}): ${finding.message}`);
+    assert.ok(!/\bthe [WUBRG] \b/.test(finding.message), `"${finding.code}" uses a bare colour letter`);
+  }
+});
+
+test('colour findings name the colour and both sides of the count', () => {
+  const deck = [
+    card('Death Baron', {
+      quantity: 4, cmc: 3, mana_cost: '{1}{B}{B}', type_line: 'Creature — Zombie Wizard', power: '2',
+      oracle_text: 'Zombies you control get +1/+1.'
+    }),
+    card('Grizzly Bears', { quantity: 32, cmc: 2, mana_cost: '{1}{G}', type_line: 'Creature — Bear', power: '2' }),
+    card('Swamp', { quantity: 11, type_line: 'Basic Land — Swamp', color_identity: 'B' }),
+    card('Forest', { quantity: 13, type_line: 'Basic Land — Forest', color_identity: 'G' })
+  ];
+
+  const black = find(adviseDeck(deck, [], 'standard'), 'color-support');
+  assert.ok(black, 'the shortfall is reported');
+  assert.match(black.message, /black/, 'the colour is spelled out');
+  assert.match(black.message, /11 of your 24 lands/, 'both sides of the count are given');
+  assert.ok(black.deckAction, 'the player can see which lands were counted');
+  assert.equal(black.deckAction.filter.produces, 'B');
+});
+
 test('cantrip density lowers the suggested land count', () => {
   const lands = card('Island', { quantity: 17, type_line: 'Basic Land — Island', color_identity: 'U' });
   const filler = card('Grizzly Bears', { quantity: 43, cmc: 2, mana_cost: '{1}{U}', type_line: 'Creature — Bear', power: '2' });
