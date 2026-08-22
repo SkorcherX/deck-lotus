@@ -16,6 +16,7 @@ let filters = {
   type: 'all',
   sort: 'name',
   availability: 'all',
+  commander: 'all',
 };
 let showPrices = localStorage.getItem('inventoryShowPrices') === 'true';
 let searchTimeout = null;
@@ -103,6 +104,16 @@ function setupFilterListeners() {
   if (availabilitySelect) {
     availabilitySelect.addEventListener('change', (e) => {
       filters.availability = e.target.value;
+      currentPage = 1;
+      loadInventoryData();
+    });
+  }
+
+  // Commander eligibility
+  const commanderSelect = document.getElementById('inventory-commander');
+  if (commanderSelect) {
+    commanderSelect.addEventListener('change', (e) => {
+      filters.commander = e.target.value;
       currentPage = 1;
       loadInventoryData();
     });
@@ -1032,25 +1043,18 @@ function renderGridView(container) {
           ${card.image_url ? `
             <img src="${card.image_url}" alt="${card.name}" loading="lazy" onerror="this.style.display='none'" data-original-src="${card.image_url}" />
           ` : ''}
-          <div class="inventory-quantity-badge">${card.total_owned}</div>
           ${printingCount > 1 ? `
             <div class="inventory-printings-badge" title="${printingCount} different printings owned">
               <i class="ph ph-stack"></i> ${printingCount}
             </div>
           ` : ''}
-          ${foilCount > 0 ? `
-            <div class="inventory-foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned">
-              <i class="ph ph-sparkle"></i> ${foilCount}
-            </div>
-          ` : ''}
-          ${card.owners && card.owners.length > 0 ? `
-            <div class="inventory-owners-badge" title="${getOwnersTooltip(card).replace(/"/g, '&quot;')}">
-              <i class="ph ph-users"></i> ${card.owners.length}
-            </div>
-          ` : ''}
         </div>
         <div class="inventory-card-info">
-          <div class="inventory-card-name">${card.name}</div>
+          <div class="inventory-card-name">
+            <span>${card.name}</span>
+            ${foilCount > 0 ? `<span class="foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned"><i class="ph ph-sparkle"></i> ${foilCount}</span>` : ''}
+            ${card.owners && card.owners.length > 0 ? `<span class="owners-badge" title="${getOwnersTooltip(card).replace(/"/g, '&quot;')}"><i class="ph ph-users"></i> ${card.owners.length}</span>` : ''}
+          </div>
           <div class="inventory-card-mana">${formatMana(card.mana_cost || '')}</div>
           <div class="inventory-card-stats">
             <span class="inventory-in-decks" title="In decks">

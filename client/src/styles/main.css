@@ -3673,19 +3673,6 @@ button.btn-icon.active {
   object-fit: cover;
 }
 
-.inventory-quantity-badge {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  background: var(--primary);
-  color: white;
-  padding: 0.25rem 0.625rem;
-  border-radius: 1rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
 .inventory-card-info {
   padding: 0.875rem;
 }
@@ -3694,9 +3681,17 @@ button.btn-icon.active {
   font-weight: 600;
   color: var(--text);
   margin-bottom: 0.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 0.15rem;
+}
+
+.inventory-card-name > :first-child {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .inventory-card-mana {
@@ -4381,47 +4376,8 @@ button.btn-icon.active {
   }
 }
 
-/* Foil tracking — badges and the quick-add foil checkbox */
-.inventory-foil-badge {
-  position: absolute;
-  bottom: 0.5rem;
-  right: 0.5rem;
-  background: linear-gradient(135deg, #f0abfc, #818cf8, #22d3ee);
-  color: #1e1b4b;
-  padding: 0.2rem 0.5rem;
-  border-radius: 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-}
-
-.inventory-foil-badge i {
-  font-size: 0.875rem;
-}
-
-/* Admin cross-user inventory view: how many selected users own this card */
-.inventory-owners-badge {
-  position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
-  background: rgba(16, 185, 129, 0.9);
-  color: white;
-  padding: 0.2rem 0.5rem;
-  border-radius: 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.inventory-owners-badge i {
-  font-size: 0.875rem;
-}
-
+/* Foil tracking and admin owners badges — inline markers next to the card
+   name (list rows, grid info box, and the card detail modal) */
 .owners-badge {
   display: inline-flex;
   align-items: center;
