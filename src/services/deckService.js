@@ -59,6 +59,7 @@ export function getDeckById(deckId, userId) {
       dc.is_sideboard,
       COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) as board_type,
       dc.is_commander,
+      dc.is_foil,
       p.id as printing_id,
       p.card_id,
       p.set_code,
@@ -183,7 +184,7 @@ export function deleteDeck(deckId, userId) {
 /**
  * Add card to deck
  */
-export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSideboard = false, isCommander = false, boardType = null) {
+export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSideboard = false, isCommander = false, boardType = null, isFoil = false) {
   // Verify deck ownership
   const deck = db.get(
     `SELECT id FROM decks WHERE id = ? AND user_id = ?`,
@@ -196,12 +197,15 @@ export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSidebo
 
   // Determine board type
   const finalBoardType = boardType || (isSideboard ? 'sideboard' : 'mainboard');
+  const foilFlag = isFoil ? 1 : 0;
 
-  // Check if card already exists in deck
+  // Check if card already exists in deck. Finish is part of the identity: a
+  // foil copy is a different row from a non-foil one, matching how the
+  // collection stores them.
   const existing = db.get(
     `SELECT id, quantity FROM deck_cards
-     WHERE deck_id = ? AND printing_id = ? AND board_type = ?`,
-    [deckId, printingId, finalBoardType]
+     WHERE deck_id = ? AND printing_id = ? AND board_type = ? AND is_foil = ?`,
+    [deckId, printingId, finalBoardType, foilFlag]
   );
 
   if (existing) {
@@ -214,9 +218,9 @@ export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSidebo
   } else {
     // Insert new
     db.run(
-      `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [deckId, printingId, quantity, isSideboard ? 1 : 0, isCommander ? 1 : 0, finalBoardType]
+      `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [deckId, printingId, quantity, isSideboard ? 1 : 0, isCommander ? 1 : 0, finalBoardType, foilFlag]
     );
   }
 
@@ -240,7 +244,7 @@ export function updateDeckCard(deckId, userId, deckCardId, updates) {
     throw new Error('Deck not found or access denied');
   }
 
-  const { quantity, isSideboard, isCommander, printingId, boardType } = updates;
+  const { quantity, isSideboard, isCommander, printingId, boardType, isFoil } = updates;
 
   const fields = [];
   const params = [];
@@ -273,6 +277,10 @@ export function updateDeckCard(deckId, userId, deckCardId, updates) {
   if (printingId !== undefined) {
     fields.push('printing_id = ?');
     params.push(printingId);
+  }
+  if (isFoil !== undefined) {
+    fields.push('is_foil = ?');
+    params.push(isFoil ? 1 : 0);
   }
 
   if (fields.length === 0) {
@@ -504,6 +512,7 @@ export function getDeckByShareToken(shareToken) {
       dc.is_sideboard,
       COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) as board_type,
       dc.is_commander,
+      dc.is_foil,
       p.id as printing_id,
       p.card_id,
       p.set_code,

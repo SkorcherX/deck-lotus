@@ -28,8 +28,18 @@ export function getPrintingPrices(uuid) {
  * Get deck total price
  */
 export function getDeckPrice(deckId) {
-  // Prefer tcgplayer normal prices (sourced from MTGJSON weekly sync)
+  // Prefer tcgplayer prices (sourced from MTGJSON weekly sync), honouring the
+  // finish the deck lists. A foil copy falls back to the normal price where no
+  // foil price has been synced, rather than counting as free.
   const priceSubquery = `COALESCE(
+    (SELECT price FROM prices
+      WHERE printing_uuid = p.uuid AND provider = 'tcgplayer'
+        AND price_type = CASE WHEN dc.is_foil = 1 THEN 'foil' ELSE 'normal' END
+      LIMIT 1),
+    (SELECT price FROM prices
+      WHERE printing_uuid = p.uuid
+        AND price_type = CASE WHEN dc.is_foil = 1 THEN 'foil' ELSE 'normal' END
+      LIMIT 1),
     (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1),
     (SELECT price FROM prices WHERE printing_uuid = p.uuid AND price_type = 'normal' LIMIT 1),
     0

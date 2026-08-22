@@ -630,7 +630,8 @@ async function main() {
       console.log('  📦 Creating safety backup before sync...');
 
       const deckCardsBackup = targetDb.prepare(`
-        SELECT dc.deck_id, dc.quantity, dc.is_sideboard, dc.is_commander, dc.board_type, p.uuid
+        SELECT dc.deck_id, dc.quantity, dc.is_sideboard, dc.is_commander, dc.board_type,
+               dc.is_foil, p.uuid
         FROM deck_cards dc
         JOIN printings p ON dc.printing_id = p.id
       `).all();
@@ -641,8 +642,12 @@ async function main() {
         JOIN cards c ON oc.card_id = c.id
       `).all();
 
+      // is_foil is part of an owned row's identity — owned_printings is keyed
+      // UNIQUE(user_id, printing_id, is_foil). Dropping it here would collapse
+      // a user's foil and non-foil copies onto the same key on restore, and the
+      // INSERT OR IGNORE would discard the second one.
       const ownedPrintingsBackup = targetDb.prepare(`
-        SELECT op.user_id, op.quantity, p.uuid as printing_uuid
+        SELECT op.user_id, op.quantity, op.is_foil, p.uuid as printing_uuid
         FROM owned_printings op
         JOIN printings p ON op.printing_id = p.id
       `).all();
@@ -747,8 +752,8 @@ async function main() {
       const backup = targetDb._deckCardsBackup;
 
       const insertDeckCard = targetDb.prepare(`
-        INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
       const getPrintingId = targetDb.prepare(`
@@ -769,7 +774,8 @@ async function main() {
                 entry.quantity,
                 entry.is_sideboard,
                 entry.is_commander,
-                entry.board_type || 'mainboard'
+                entry.board_type || 'mainboard',
+                entry.is_foil ?? 0
               );
               restored++;
             } catch (e) {
@@ -846,8 +852,8 @@ async function main() {
       const backup = targetDb._ownedPrintingsBackup;
 
       const insertOwnedPrinting = targetDb.prepare(`
-        INSERT OR IGNORE INTO owned_printings (user_id, printing_id, quantity)
-        VALUES (?, ?, ?)
+        INSERT OR IGNORE INTO owned_printings (user_id, printing_id, quantity, is_foil)
+        VALUES (?, ?, ?, ?)
       `);
 
       const getPrintingIdByUuid = targetDb.prepare(`
@@ -865,7 +871,8 @@ async function main() {
               insertOwnedPrinting.run(
                 entry.user_id,
                 printing.id,
-                entry.quantity
+                entry.quantity,
+                entry.is_foil ?? 0
               );
               restored++;
             } catch (e) {
