@@ -130,6 +130,8 @@
 
   /* Layout */
   --page-max: 1400px;
+  /* The navbar is sticky at the top, so anything else that sticks must clear it. */
+  --navbar-height: 4.8rem;
   --z-nav: 100;
   --z-popover: 900;
   --z-modal: 1000;
@@ -5120,5 +5122,100 @@ button.btn-icon.active {
   .inventory-panel-list {
     grid-template-columns: 1fr;
     max-height: none;
+  }
+}
+
+/* ---- Running tally ---- */
+
+.deck-tally {
+  position: sticky;
+  top: var(--navbar-height);
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 0.85rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.deck-tally-counts {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.tally-block {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.tally-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.tally-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.tally-target {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Whether the count meets the format's requirement is the one thing worth
+   reading at a glance, so it is carried by colour as well as by the number. */
+.tally-block.is-met .tally-value { color: var(--success); }
+.tally-block.is-over .tally-value { color: var(--danger); }
+.tally-block.is-under .tally-value { color: var(--text); }
+
+.deck-tally-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.tally-type {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.tally-type-count {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tally-empty {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .deck-tally {
+    position: static;
+    gap: 0.75rem;
+  }
+
+  .deck-tally-types {
+    margin-left: 0;
   }
 }

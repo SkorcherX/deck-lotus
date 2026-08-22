@@ -17,6 +17,7 @@ let activeTab = 'mainboard'; // Track which tab is currently active ('mainboard'
 let pricingMode = false; // Track if pricing mode is enabled
 let setGroupMode = false; // Track if set grouping mode is enabled
 let currentPriceData = null; // Store current price data for cards
+let lastStats = null; // Last stats payload, so the tally can re-render without refetching
 let optimizerState = {
   suggestions: [],
   currentIndex: 0,
@@ -114,6 +115,14 @@ export function setupDeckBuilder() {
     if (!cardSearch.contains(e.target) && !searchResults.contains(e.target)) {
       searchResults.classList.add('hidden');
     }
+  });
+
+  // Picking a format changes what the tally counts toward, so reflect it
+  // immediately rather than waiting for Save.
+  deckFormatSelect.addEventListener('change', () => {
+    if (!currentDeck) return;
+    currentDeck.format = deckFormatSelect.value;
+    renderTally(lastStats);
   });
 
   // Save deck
@@ -1950,7 +1959,99 @@ function calculateActualCMC(card) {
   return card.cmc || 0;
 }
 
+/**
+ * Deck-size targets per format.
+ *
+ * Only what the tally needs to say whether the count is there yet. The full
+ * rule set — copy limits, singleton, colour identity — belongs to the format
+ * coach, which will own this once it lands, and this should read from it then
+ * rather than keeping a second copy.
+ */
+const FORMAT_TARGETS = {
+  standard:  { mainboard: 60, exact: false, sideboard: 15 },
+  modern:    { mainboard: 60, exact: false, sideboard: 15 },
+  legacy:    { mainboard: 60, exact: false, sideboard: 15 },
+  vintage:   { mainboard: 60, exact: false, sideboard: 15 },
+  pauper:    { mainboard: 60, exact: false, sideboard: 15 },
+  commander: { mainboard: 100, exact: true, sideboard: 0 }
+};
+
+/**
+ * The running count against the format's targets, plus what the deck is made
+ * of. Sits above the deck so it stays in view while cards are being added.
+ */
+function renderTally(stats) {
+  const tally = document.getElementById('deck-tally');
+  if (!tally || !currentDeck) return;
+
+  const cards = currentDeck.cards || [];
+  const sum = (list) => list.reduce((total, c) => total + c.quantity, 0);
+
+  const mainboard = sum(cards.filter(isMainboardCard));
+  const sideboard = sum(cards.filter(isSideboardCard));
+  const target = FORMAT_TARGETS[currentDeck.format] || null;
+
+  applyCount('mainboard', mainboard, target ? target.mainboard : null, target ? target.exact : false);
+
+  // Commander has no sideboard, so showing an empty 0 / 0 would be noise.
+  const sideboardBlock = document.getElementById('tally-sideboard-block');
+  const showSideboard = !target || target.sideboard > 0 || sideboard > 0;
+  sideboardBlock.classList.toggle('hidden', !showSideboard);
+
+  if (showSideboard) {
+    applyCount('sideboard', sideboard, target ? target.sideboard : null, false, true);
+  }
+
+  // Types come from the deck stats query, so this breakout and the one in the
+  // stats panel always agree on how a card is categorised.
+  const types = document.getElementById('tally-types');
+  const distribution = (stats?.typeDistribution || []).filter((t) => t.total_cards > 0);
+
+  types.innerHTML = distribution.length === 0
+    ? '<span class="tally-empty">No cards yet</span>'
+    : distribution
+        .slice()
+        .sort((a, b) => b.total_cards - a.total_cards)
+        .map((item) => `
+          <span class="tally-type">
+            ${item.type}
+            <span class="tally-type-count">${item.total_cards}</span>
+          </span>
+        `).join('');
+}
+
+/**
+ * Set one count and say whether it satisfies the format. `isMaximum` marks a
+ * ceiling (a sideboard) rather than a floor: going over is the failure.
+ */
+function applyCount(which, count, target, exact, isMaximum = false) {
+  const value = document.getElementById(`tally-${which}`);
+  const label = document.getElementById(`tally-${which}-target`);
+  const block = value.closest('.tally-block');
+
+  value.textContent = count;
+  block.classList.remove('is-met', 'is-over', 'is-under');
+
+  if (target === null) {
+    label.textContent = '';
+    return;
+  }
+
+  label.textContent = exact ? `/ ${target} exactly` : isMaximum ? `/ ${target} max` : `/ ${target} min`;
+
+  if (exact) {
+    block.classList.add(count === target ? 'is-met' : count > target ? 'is-over' : 'is-under');
+  } else if (isMaximum) {
+    block.classList.add(count > target ? 'is-over' : 'is-met');
+  } else {
+    block.classList.add(count >= target ? 'is-met' : 'is-under');
+  }
+}
+
 function renderStats(stats) {
+  lastStats = stats;
+  renderTally(stats);
+
   // Calculate statistics for mana values
   const mainboardCards = currentDeck.cards.filter(isMainboardCard);
   const totalCards = mainboardCards.reduce((sum, c) => sum + c.quantity, 0);
