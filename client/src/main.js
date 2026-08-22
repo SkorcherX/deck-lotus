@@ -9,6 +9,7 @@ import { setupInventory } from './components/inventory.js';
 import { setupScan } from './components/scan.js';
 import { setupSharedDeck, loadSharedDeck } from './components/sharedDeck.js';
 import { setupPriceMonitoring } from './components/priceMonitoring.js';
+import { setupTrades, refreshTradeBadge } from './components/trades.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
 
@@ -59,6 +60,13 @@ class App {
     document.getElementById('auth-page').classList.add('hidden');
     document.getElementById('navbar').classList.remove('hidden');
     await setupUserMenu();
+
+    // A trade waiting for an answer is the one thing here that needs the
+    // user rather than the other way round, so the count is shown up front
+    // and refreshed whenever a trade is answered.
+    refreshTradeBadge();
+    window.addEventListener('trades:changed', refreshTradeBadge);
+
     this.showPage('decks');
   }
 
@@ -113,6 +121,9 @@ class App {
       case 'scan':
         window.dispatchEvent(new CustomEvent('page:scan'));
         break;
+      case 'trades':
+        window.dispatchEvent(new CustomEvent('page:trades'));
+        break;
       case 'price-monitoring':
         window.dispatchEvent(new CustomEvent('page:price-monitoring'));
         break;
@@ -145,6 +156,7 @@ class App {
     setupScan();
     setupSettings();
     setupPriceMonitoring();
+    setupTrades();
     setupSharedDeck();
   }
 }

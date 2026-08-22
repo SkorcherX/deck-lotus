@@ -8,6 +8,7 @@ import {
   refreshInventoryPanel,
   openInventoryPanelWith
 } from './inventoryPanel.js';
+import { renderDisruptionBanner } from './trades.js';
 
 let currentDeck = null;
 let currentDeckId = null;
@@ -524,6 +525,14 @@ async function loadDeck(deckId) {
 
     // Render deck cards
     renderDeckCards();
+
+    // Cards traded away while this deck still lists them. Shown as a prompt
+    // rather than applied: the deck is not edited until its owner says so.
+    renderDisruptionBanner(
+      document.getElementById('deck-traded-banner'),
+      currentDeck.disruptions,
+      () => loadDeck(deckId)
+    );
 
     // Load and render stats
     await loadDeckStats();

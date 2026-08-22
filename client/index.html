@@ -77,6 +77,11 @@
                             <i class="ph ph-archive nav-icon"></i>
                             <span class="nav-text">Inventory</span>
                         </a>
+                        <a href="#" data-page="trades" class="nav-link" title="Trades">
+                            <i class="ph ph-arrows-left-right nav-icon"></i>
+                            <span class="nav-text">Trades</span>
+                            <span id="trade-pending-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:#16a34a;color:#fff;"></span>
+                        </a>
                         <a href="#" data-page="scan" class="nav-link" title="Scan Cards">
                             <i class="ph ph-camera nav-icon"></i>
                             <span class="nav-text">Scan</span>
@@ -378,6 +383,9 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Cards traded away that this deck still lists, awaiting a decision -->
+                    <div id="deck-traded-banner" class="hidden" style="margin: 0 0 0.75rem;"></div>
 
                     <!-- Running tally against the format's targets -->
                     <div id="deck-tally" class="deck-tally">
@@ -1277,6 +1285,70 @@
                             <span id="scan-count">0 captures this session</span>
                         </div>
                         <div id="scan-recent" class="scan-recent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="trades-page" class="page hidden">
+                <div class="page-header">
+                    <h2>Trades</h2>
+                    <button id="trade-new-btn" class="btn btn-primary">
+                        <i class="ph ph-plus btn-icon"></i>
+                        <span class="btn-text">New Trade</span>
+                    </button>
+                </div>
+
+                <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
+                    A trade moves both collections at once, so nobody has to remember to
+                    remove what they handed over.
+                </div>
+
+                <div id="trades-list-section">
+                    <div id="trades-list" style="display: flex; flex-direction: column; gap: 0.75rem;"></div>
+
+                    <div id="trades-empty" class="hidden" style="text-align: center; padding: 4rem 2rem; color: var(--text-secondary);">
+                        <i class="ph ph-arrows-left-right" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+                        <p style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">No trades yet</p>
+                        <p>Click "New Trade" to swap cards with someone without either of you retyping your collection.</p>
+                    </div>
+                </div>
+
+                <div id="trade-builder" class="hidden">
+                    <div class="form-group">
+                        <label for="trade-partner-select">Trade with</label>
+                        <select id="trade-partner-select"></select>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+                        <div class="settings-section" style="padding: 1rem;">
+                            <h3 style="margin-top: 0; font-size: 1rem;">
+                                <i class="ph ph-arrow-up-right"></i> You send
+                            </h3>
+                            <input type="text" id="trade-search-give" placeholder="Search your collection…" autocomplete="off" style="width: 100%;" />
+                            <div id="trade-search-results-give" style="max-height: 220px; overflow-y: auto; margin-top: 0.5rem;"></div>
+                            <div id="trade-draft-give" style="margin-top: 0.75rem;"></div>
+                        </div>
+
+                        <div id="trade-receive-pane" class="settings-section hidden" style="padding: 1rem;">
+                            <h3 style="margin-top: 0; font-size: 1rem;">
+                                <i class="ph ph-arrow-down-left"></i> You get
+                            </h3>
+                            <input type="text" id="trade-search-receive" placeholder="Search their collection…" autocomplete="off" style="width: 100%;" />
+                            <div id="trade-search-results-receive" style="max-height: 220px; overflow-y: auto; margin-top: 0.5rem;"></div>
+                            <div id="trade-draft-receive" style="margin-top: 0.75rem;"></div>
+                        </div>
+                    </div>
+
+                    <div id="trade-warnings" style="margin-top: 1rem;"></div>
+
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label for="trade-note">Note (optional)</label>
+                        <input type="text" id="trade-note" placeholder="e.g. swapping at Sunday game night" style="width: 100%;" />
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button id="trade-send-btn" class="btn btn-primary">Send Trade</button>
+                        <button id="trade-cancel-btn" class="btn btn-secondary">Cancel</button>
                     </div>
                 </div>
             </div>

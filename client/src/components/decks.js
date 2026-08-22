@@ -117,6 +117,7 @@ function renderDecks() {
           <div>
             <h3>${deck.name}</h3>
             ${deck.format ? `<span class="deck-format">${deck.format}</span>` : ''}
+            ${deck.traded_away_count ? `<span class="deck-format" style="background:#b45309;color:#fff;" title="Traded away, still listed in this deck">${deck.traded_away_count} traded away</span>` : ''}
           </div>
         </div>
         <div class="deck-card-stats">

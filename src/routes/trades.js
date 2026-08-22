@@ -111,8 +111,7 @@ router.post('/preview', authenticate, (req, res, next) => {
 
     res.json(previewImpact(req.user.id, parseInt(toUserId, 10), items));
   } catch (error) {
-    if (error instanceof Error && !error.statusCode) return badRequest(res, error);
-    next(error);
+    badRequest(res, error);
   }
 });
 

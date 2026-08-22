@@ -609,6 +609,70 @@ class ApiClient {
       body: JSON.stringify({ names }),
     });
   }
+
+  // Trade methods
+  async getTrades(status = null) {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    return this.request(`/trades${query}`);
+  }
+
+  async getTrade(id) {
+    return this.request(`/trades/${id}`);
+  }
+
+  async getTradePartners() {
+    return this.request('/trades/partners');
+  }
+
+  async getPendingTradeCount() {
+    return this.request('/trades/pending-count');
+  }
+
+  async getPartnerInventory(userId, params = {}) {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, value]) => value !== '' && value != null)
+    ).toString();
+
+    return this.request(`/trades/partners/${userId}/inventory${query ? `?${query}` : ''}`);
+  }
+
+  async previewTrade(toUserId, items) {
+    return this.request('/trades/preview', {
+      method: 'POST',
+      body: JSON.stringify({ toUserId, items }),
+    });
+  }
+
+  async createTrade(toUserId, items, note = null) {
+    return this.request('/trades', {
+      method: 'POST',
+      body: JSON.stringify({ toUserId, items, note }),
+    });
+  }
+
+  async acceptTrade(id) {
+    return this.request(`/trades/${id}/accept`, { method: 'POST' });
+  }
+
+  async declineTrade(id) {
+    return this.request(`/trades/${id}/decline`, { method: 'POST' });
+  }
+
+  async cancelTrade(id) {
+    return this.request(`/trades/${id}/cancel`, { method: 'POST' });
+  }
+
+  async getTradeDisruptions(deckId = null) {
+    const query = deckId ? `?deckId=${deckId}` : '';
+    return this.request(`/trades/disruptions${query}`);
+  }
+
+  async acknowledgeDisruption(id, resolution) {
+    return this.request(`/trades/disruptions/${id}/acknowledge`, {
+      method: 'POST',
+      body: JSON.stringify({ resolution }),
+    });
+  }
 }
 
 export default new ApiClient();
