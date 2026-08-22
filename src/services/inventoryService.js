@@ -892,6 +892,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   const {
     name,
     type,
+    colors = [],
     colorIdentity,
     onlyFree = false,
     format,
@@ -913,6 +914,29 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   if (type && type.trim() && type !== 'all') {
     where.push('type_line LIKE ?');
     params.push(`%${type}%`);
+  }
+
+  // Colour filter, matching how the inventory page reads: picking two colours
+  // means cards carrying both, and 'C' means colourless. Distinct from the
+  // colour-identity filter below, which is about what a commander permits.
+  const colorList = Array.isArray(colors) ? colors : String(colors).split(',').filter(Boolean);
+
+  if (colorList.length > 0) {
+    const wantsColorless = colorList.includes('C');
+    const actual = colorList.filter((c) => c !== 'C');
+    const COLORLESS = `(colors IS NULL OR colors = '' OR colors = '[]')`;
+
+    if (wantsColorless && actual.length === 0) {
+      where.push(COLORLESS);
+    } else if (wantsColorless) {
+      where.push(`((${actual.map(() => 'colors LIKE ?').join(' AND ')}) OR ${COLORLESS})`);
+      params.push(...actual.map((c) => `%${c}%`));
+    } else {
+      for (const color of actual) {
+        where.push('colors LIKE ?');
+        params.push(`%${color}%`);
+      }
+    }
   }
 
   // Commander colour identity: every colour on the card must be one the

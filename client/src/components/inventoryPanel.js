@@ -13,7 +13,7 @@ import { debounce, formatMana, showToast } from '../utils/ui.js';
  */
 
 let ctx = null;              // { getDeck, refreshDeck }
-let filters = { name: '', type: 'all', onlyFree: false, formatLegal: false, identityOnly: false };
+let filters = { name: '', type: 'all', colors: [], onlyFree: false, formatLegal: false, identityOnly: false };
 let page = 1;
 let feed = { items: [], total: 0, totalPages: 1 };
 let undoStack = [];
@@ -81,6 +81,24 @@ export function setupInventoryPanel(context) {
     });
   }
 
+  const colorBar = el('inventory-panel-colors');
+  if (colorBar) {
+    colorBar.addEventListener('click', (event) => {
+      const chip = event.target.closest('[data-color]');
+      if (!chip) return;
+
+      const color = chip.dataset.color;
+      filters.colors = filters.colors.includes(color)
+        ? filters.colors.filter((c) => c !== color)
+        : [...filters.colors, color];
+
+      chip.classList.toggle('is-on', filters.colors.includes(color));
+      chip.setAttribute('aria-pressed', String(filters.colors.includes(color)));
+      page = 1;
+      loadFeed();
+    });
+  }
+
   const undoBtn = el('inventory-panel-undo');
   if (undoBtn) undoBtn.addEventListener('click', undoLast);
 
@@ -94,7 +112,12 @@ export function setupInventoryPanel(context) {
 export function resetInventoryPanel() {
   undoStack = [];
   page = 1;
-  filters = { name: '', type: 'all', onlyFree: false, formatLegal: false, identityOnly: false };
+  filters = { name: '', type: 'all', colors: [], onlyFree: false, formatLegal: false, identityOnly: false };
+
+  document.querySelectorAll('#inventory-panel-colors [data-color]').forEach((chip) => {
+    chip.classList.remove('is-on');
+    chip.setAttribute('aria-pressed', 'false');
+  });
 
   const panel = el('inventory-panel');
   if (panel) panel.classList.add('hidden');
@@ -150,6 +173,7 @@ async function loadFeed() {
       deckId: deck.id,
       name: filters.name,
       type: filters.type,
+      colors: filters.colors,
       onlyFree: filters.onlyFree,
       format: filters.formatLegal ? deck.format : null,
       colorIdentity: identity,
@@ -199,32 +223,56 @@ function renderFeed() {
       No cards in your collection match these filters.
     </div>`;
   } else {
-    list.innerHTML = feed.items.map((item) => `
-      <div class="inventory-panel-row${item.free < 0 ? ' is-over' : ''}"
-           data-printing-id="${item.printingId}"
-           data-is-foil="${item.isFoil ? '1' : '0'}">
-        <div class="ip-name">
-          ${escapeHtml(item.cardName)}
-          ${item.isFoil ? '<span class="ip-foil">foil</span>' : ''}
+    list.innerHTML = feed.items.map((item) => {
+      const name = escapeHtml(item.cardName);
+
+      // The card image is how most people recognise a card, so it leads. The
+      // stored URL is the "normal" size; "large" is the same path.
+      // A stale or unreachable image should degrade to the card's name, not a
+      // broken-image icon — the tile still has to be usable offline.
+      const art = item.imageUrl
+        ? `<img class="ip-art" src="${escapeHtml(item.imageUrl)}" alt="${name}" loading="lazy" decoding="async">
+           <div class="ip-art ip-art-missing" hidden><span>${name}</span></div>`
+        : `<div class="ip-art ip-art-missing"><span>${name}</span></div>`;
+
+      return `
+        <div class="inventory-panel-card${item.free < 0 ? ' is-over' : ''}${item.inThisDeck > 0 ? ' in-deck' : ''}"
+             data-printing-id="${item.printingId}"
+             data-is-foil="${item.isFoil ? '1' : '0'}">
+          <div class="ip-art-wrap">
+            ${art}
+            ${item.isFoil ? '<span class="ip-foil">foil</span>' : ''}
+            ${item.inThisDeck > 0 ? `<span class="ip-in-deck">${item.inThisDeck}</span>` : ''}
+          </div>
+          <div class="ip-body">
+            <div class="ip-name" title="${name}">${name}</div>
+            <div class="ip-meta">
+              <span class="ip-set">${escapeHtml(item.setCode || '')} ${escapeHtml(item.collectorNumber || '')}</span>
+              <span class="ip-mana">${formatMana(item.manaCost)}</span>
+            </div>
+            <div class="ip-avail">${availabilityLine(item)}</div>
+            <div class="ip-controls">
+              <button class="ip-btn" data-action="minus" aria-label="Remove one ${name}"
+                      ${item.inThisDeck > 0 ? '' : 'disabled'}>−</button>
+              <span class="ip-qty" aria-live="polite">${item.inThisDeck}</span>
+              <button class="ip-btn" data-action="plus" aria-label="Add one ${name}">+</button>
+            </div>
+          </div>
         </div>
-        <div class="ip-meta">
-          ${escapeHtml(item.typeLine || '')}
-          <span class="ip-set">${escapeHtml(item.setCode || '')} ${escapeHtml(item.collectorNumber || '')}</span>
-        </div>
-        <div class="ip-avail">${availabilityLine(item)}</div>
-        <div class="ip-mana">${formatMana(item.manaCost)}</div>
-        <div class="ip-controls">
-          <button class="ip-btn" data-action="minus" aria-label="Remove one ${escapeHtml(item.cardName)}"
-                  ${item.inThisDeck > 0 ? '' : 'disabled'}>−</button>
-          <span class="ip-qty" aria-live="polite">${item.inThisDeck}</span>
-          <button class="ip-btn" data-action="plus" aria-label="Add one ${escapeHtml(item.cardName)}">+</button>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
+
+    list.querySelectorAll('img.ip-art').forEach((img) => {
+      img.addEventListener('error', () => {
+        const fallback = img.nextElementSibling;
+        img.hidden = true;
+        if (fallback) fallback.hidden = false;
+      });
+    });
 
     list.querySelectorAll('.ip-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const row = btn.closest('.inventory-panel-row');
+        const row = btn.closest('.inventory-panel-card');
         adjust(
           parseInt(row.dataset.printingId, 10),
           row.dataset.isFoil === '1',

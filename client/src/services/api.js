@@ -490,11 +490,12 @@ class ApiClient {
     });
   }
 
-  async getBuilderInventory({ deckId, name, type, onlyFree, format, colorIdentity, page = 1, limit = 60 } = {}) {
+  async getBuilderInventory({ deckId, name, type, colors, onlyFree, format, colorIdentity, page = 1, limit = 60 } = {}) {
     const params = new URLSearchParams();
     if (deckId) params.set('deckId', deckId);
     if (name) params.set('name', name);
     if (type && type !== 'all') params.set('type', type);
+    if (colors && colors.length) params.set('colors', colors.join(','));
     if (onlyFree) params.set('onlyFree', 'true');
     if (format) params.set('format', format);
     // An empty string is meaningful here: a colourless commander confines the

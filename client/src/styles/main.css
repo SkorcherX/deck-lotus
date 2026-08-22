@@ -5011,58 +5011,124 @@ button.btn-icon.active {
 
 .inventory-panel-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
-  gap: 0.5rem;
-  max-height: 26rem;
-  overflow-y: auto;
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+  gap: 0.85rem;
+  /* Deliberately no inner scroll container: a nested scroller inside a page
+     that also scrolls makes the wheel land on whichever the pointer happens to
+     be over. The gallery grows and the page scrolls, which is also what makes
+     browsing the art feel like browsing. */
 }
 
-.inventory-panel-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas:
-    "name    mana"
-    "meta    meta"
-    "avail   controls";
-  gap: 0.15rem 0.75rem;
-  align-items: center;
-  padding: 0.6rem 0.75rem;
+.inventory-panel-card {
+  display: flex;
+  flex-direction: column;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s;
 }
 
-.inventory-panel-row.is-over {
-  border-color: var(--danger);
+.inventory-panel-card:hover { transform: translateY(-2px); }
+.inventory-panel-card.in-deck { border-color: var(--success); }
+.inventory-panel-card.is-over { border-color: var(--danger); }
+
+.ip-art-wrap {
+  position: relative;
+  aspect-ratio: 488 / 680; /* Magic card proportions */
+  background: var(--bg-secondary);
+  /* Grid stretches every tile to the tallest in its row; without this the art
+     box absorbs the slack and the card comes out squashed. */
+  flex: none;
 }
 
-.ip-name { grid-area: name; font-weight: 600; }
-.ip-mana { grid-area: mana; }
-.ip-meta {
-  grid-area: meta;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  display: flex;
-  gap: 0.5rem;
-  justify-content: space-between;
+/* Both art layers are absolutely positioned so neither can add height to the
+   tile — the wrap's aspect-ratio is what sizes it. */
+.ip-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
-.ip-avail { grid-area: avail; font-size: 0.8rem; color: var(--text-secondary); }
-.ip-controls {
-  grid-area: controls;
+
+.ip-art-missing {
   display: flex;
   align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* These class rules outrank the UA's [hidden] { display: none }, so the
+   fallback would render alongside the image without this. */
+.ip-art[hidden] { display: none; }
+
+.ip-in-deck {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  min-width: 1.6rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--success);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.55rem 0.6rem 0.65rem;
+}
+
+.ip-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ip-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.ip-avail { font-size: 0.75rem; color: var(--text-secondary); }
+
+.ip-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
 }
 
 .ip-foil {
-  font-size: 0.7rem;
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--warning, #d9a84a);
+  color: #f5d17a;
+  background: rgba(0, 0, 0, 0.7);
   border: 1px solid currentColor;
   border-radius: 3px;
-  padding: 0 0.25rem;
-  margin-left: 0.35rem;
+  padding: 0 0.3rem;
 }
 
 .ip-set { font-variant-numeric: tabular-nums; }
@@ -5071,8 +5137,8 @@ button.btn-icon.active {
 .avail-unlimited { font-style: italic; }
 
 .ip-btn {
-  /* 2.25rem keeps the target usable on touch without dominating the row */
-  min-width: 2.25rem;
+  /* 2.25rem keeps the target usable on touch without dominating the tile */
+  flex: 1;
   min-height: 2.25rem;
   border-radius: 6px;
   border: 1px solid var(--border);
@@ -5091,6 +5157,35 @@ button.btn-icon.active {
   text-align: center;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+.inventory-panel-colors {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.ip-color {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text);
+  font-size: 1.05rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.ip-color:hover { opacity: 0.85; }
+.ip-color.is-on {
+  opacity: 1;
+  border-color: var(--primary);
+  background: var(--primary-soft);
 }
 
 .inventory-panel-empty {
@@ -5120,8 +5215,10 @@ button.btn-icon.active {
   }
 
   .inventory-panel-list {
-    grid-template-columns: 1fr;
-    max-height: none;
+    /* Two across on a phone: still recognisable as card art, and it beats
+       scrolling one tile at a time through a whole collection. */
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
   }
 }
 
