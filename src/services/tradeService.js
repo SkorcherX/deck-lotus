@@ -500,10 +500,33 @@ export function listTradePartners(userId) {
   );
 }
 
+/**
+ * Price of one traded copy, honouring its finish.
+ *
+ * Deliberately the same rule as inventoryService's OWNED_COPY_PRICE: foil
+ * copies price off the foil row, falling back to normal where a printing has
+ * no foil price synced. A trade valued differently from the collection it
+ * came out of would make the two screens disagree about the same card.
+ *
+ * Expects `ti` (trade_items) and `p` (printings) to be in scope.
+ */
+const TRADE_COPY_PRICE = `
+  COALESCE(
+    (SELECT price FROM prices
+      WHERE printing_uuid = p.uuid AND provider = 'tcgplayer'
+        AND price_type = CASE WHEN ti.is_foil = 1 THEN 'foil' ELSE 'normal' END
+      LIMIT 1),
+    (SELECT price FROM prices
+      WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal'
+      LIMIT 1)
+  )
+`;
+
 const TRADE_ITEM_COLUMNS = `
   ti.id, ti.trade_id, ti.printing_id, ti.is_foil, ti.quantity, ti.direction,
   p.set_code, p.collector_number, p.image_url,
-  c.id AS card_id, c.name AS card_name, c.mana_cost, c.type_line
+  c.id AS card_id, c.name AS card_name, c.mana_cost, c.type_line, c.colors,
+  ${TRADE_COPY_PRICE} AS unit_price
 `;
 
 /** A trade with its cards, as seen by one of the two participants. */
@@ -550,12 +573,22 @@ function shapeTrade(trade, items, userId) {
     cardName: item.card_name,
     manaCost: item.mana_cost,
     typeLine: item.type_line,
+    // Stored comma-separated; an empty string means colourless, not unknown.
+    colors: item.colors ? item.colors.split(',').filter(Boolean) : [],
     setCode: item.set_code,
     collectorNumber: item.collector_number,
     imageUrl: item.image_url,
+    unitPrice: item.unit_price,
+    // Null where the printing has no synced price. Kept null rather than
+    // zeroed so a side's total can say how much of it is unpriced instead of
+    // quietly reporting a card as free.
+    linePrice: item.unit_price == null ? null : item.unit_price * item.quantity,
     // 'out' leaves the viewer's collection, 'in' enters it.
     flow: (item.direction === 'give') === viewerIsProposer ? 'out' : 'in'
   }));
+
+  const giving = shaped.filter((item) => item.flow === 'out');
+  const receiving = shaped.filter((item) => item.flow === 'in');
 
   return {
     id: trade.id,
@@ -571,8 +604,31 @@ function shapeTrade(trade, items, userId) {
     counterpartyName: viewerIsProposer ? trade.to_username : trade.from_username,
     canAccept: trade.status === 'pending' && !viewerIsProposer,
     canCancel: trade.status === 'pending' && viewerIsProposer,
-    giving: shaped.filter((item) => item.flow === 'out'),
-    receiving: shaped.filter((item) => item.flow === 'in')
+    giving,
+    receiving,
+    givingTotals: totalsFor(giving),
+    receivingTotals: totalsFor(receiving),
+    // A trade with nothing coming back the other way. Perfectly valid — it is
+    // how somebody evens up a lopsided swap, or just hands a card over — and
+    // worth naming so the UI can say "gift" rather than showing an empty
+    // column and leaving the reader to wonder what went wrong.
+    isGift: giving.length === 0 || receiving.length === 0
+  };
+}
+
+/**
+ * Card count and value for one side of a trade.
+ *
+ * `unpriced` is reported rather than folded into the total: a side worth
+ * "$12.40 across 4 cards, 1 unpriced" is a different thing from one worth
+ * $12.40 flat, and treating a card with no synced price as free is how a
+ * lopsided trade looks fair.
+ */
+function totalsFor(items) {
+  return {
+    cards: items.reduce((sum, item) => sum + item.quantity, 0),
+    price: items.reduce((sum, item) => sum + (item.linePrice || 0), 0),
+    unpriced: items.reduce((sum, item) => sum + (item.unitPrice == null ? item.quantity : 0), 0)
   };
 }
 

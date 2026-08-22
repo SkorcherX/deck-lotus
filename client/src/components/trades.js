@@ -36,9 +36,88 @@ function finishLabel(isFoil) {
   return isFoil ? ' <span style="color:var(--accent);font-size:0.75rem;">foil</span>' : '';
 }
 
+function money(value) {
+  return value == null ? '—' : `$${Number(value).toFixed(2)}`;
+}
+
+/**
+ * Colour pips, using the same mana font the rest of the app uses.
+ *
+ * An empty list means colourless, which is a real answer and worth showing —
+ * a card with no pips at all reads as missing data.
+ */
+function colorPips(colors) {
+  if (!colors || !colors.length) return '<i class="ms ms-c ms-cost" title="Colourless"></i>';
+
+  return colors
+    .map((color) => `<i class="ms ms-${String(color).toLowerCase()} ms-cost"></i>`)
+    .join('');
+}
+
+/**
+ * The part of a type line before the em dash — "Creature", "Instant" — which
+ * is what someone weighing a trade actually scans for. Subtypes make the row
+ * long without helping.
+ */
+function shortType(typeLine) {
+  if (!typeLine) return '';
+  return typeLine.split('—')[0].trim();
+}
+
+/** Name, set and finish: the line that identifies the card. */
 function cardLine(item) {
   const set = item.setCode ? ` <span style="color:var(--text-secondary);">${escapeHtml(item.setCode.toUpperCase())}</span>` : '';
   return `${item.quantity}x ${escapeHtml(item.cardName)}${set}${finishLabel(item.isFoil)}`;
+}
+
+/**
+ * The second line: what the card is and what it is worth. Together with
+ * cardLine this is everything needed to judge a swap without opening the card.
+ */
+function cardDetail(item) {
+  const unit = item.unitPrice ?? item.price;
+  const line = unit == null ? null : unit * item.quantity;
+
+  const value = unit == null
+    ? '<span title="No synced price for this printing">unpriced</span>'
+    : (item.quantity > 1 ? `${money(unit)} ea · ${money(line)}` : money(unit));
+
+  return `
+    <div style="font-size:0.78rem;color:var(--text-secondary);display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+      <span>${colorPips(item.colors)}</span>
+      <span>${escapeHtml(shortType(item.typeLine))}</span>
+      <span>·</span>
+      <span>${value}</span>
+    </div>
+  `;
+}
+
+/**
+ * Running total for one side. Unpriced copies are called out rather than
+ * counted as free, so a total is never quietly wrong.
+ */
+function totalsLine(totals) {
+  if (!totals.cards) return '';
+
+  const unpriced = totals.unpriced
+    ? ` <span style="color:var(--text-secondary);">(${totals.unpriced} unpriced)</span>`
+    : '';
+
+  return `
+    <div style="display:flex;justify-content:space-between;gap:0.5rem;padding-top:0.4rem;margin-top:0.4rem;border-top:1px solid var(--border);font-size:0.85rem;">
+      <span>${totals.cards} card${totals.cards === 1 ? '' : 's'}</span>
+      <strong>${money(totals.price)}${unpriced}</strong>
+    </div>
+  `;
+}
+
+/** Totals for a list of draft items, matching the server's totalsFor. */
+function draftTotals(items) {
+  return {
+    cards: items.reduce((sum, item) => sum + item.quantity, 0),
+    price: items.reduce((sum, item) => sum + ((item.price ?? 0) * item.quantity), 0),
+    unpriced: items.reduce((sum, item) => sum + (item.price == null ? item.quantity : 0), 0),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -57,15 +136,21 @@ function statusBadge(status) {
   return `<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:${style.background};color:${style.color};">${style.label}</span>`;
 }
 
+/** One side's cards, or a note saying this side of the trade is empty. */
+function tradeSide(items, emptyLabel) {
+  if (!items.length) {
+    return `<div style="color:var(--text-secondary);font-size:0.875rem;">${emptyLabel}</div>`;
+  }
+
+  return items.map((item) => `
+    <div style="padding:0.3rem 0;">
+      <div style="font-size:0.9rem;">${cardLine(item)}</div>
+      ${cardDetail(item)}
+    </div>
+  `).join('');
+}
+
 function tradeCard(trade) {
-  const giving = trade.giving.length
-    ? trade.giving.map((item) => `<li>${cardLine(item)}</li>`).join('')
-    : '<li style="color:var(--text-secondary);">Nothing</li>';
-
-  const receiving = trade.receiving.length
-    ? trade.receiving.map((item) => `<li>${cardLine(item)}</li>`).join('')
-    : '<li style="color:var(--text-secondary);">Nothing</li>';
-
   const actions = [];
 
   if (trade.canAccept) {
@@ -76,6 +161,14 @@ function tradeCard(trade) {
     actions.push(`<button class="btn btn-secondary btn-sm trade-cancel" data-id="${trade.id}">Cancel</button>`);
   }
 
+  // A one-sided trade is a gift, and saying so reads better than showing an
+  // empty column next to a full one.
+  const giftLabel = trade.isGift
+    ? (trade.giving.length
+      ? `<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--bg-tertiary);color:var(--text-secondary);"><i class="ph ph-gift"></i> Gift</span>`
+      : `<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--bg-tertiary);color:var(--text-secondary);"><i class="ph ph-gift"></i> Gift to you</span>`)
+    : '';
+
   const heading = trade.viewerIsProposer
     ? `You offered ${escapeHtml(trade.counterpartyName)}`
     : `${escapeHtml(trade.counterpartyName)} offered you`;
@@ -85,22 +178,25 @@ function tradeCard(trade) {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
         <strong>${heading}</strong>
         <div style="display:flex;gap:0.5rem;align-items:center;">
+          ${giftLabel}
           ${statusBadge(trade.status)}
           ${actions.join('')}
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;">
         <div>
           <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.25rem;">
             <i class="ph ph-arrow-up-right"></i> You send
           </div>
-          <ul style="margin:0;padding-left:1.1rem;font-size:0.9rem;">${giving}</ul>
+          ${tradeSide(trade.giving, 'Nothing — this is a gift to you.')}
+          ${totalsLine(trade.givingTotals)}
         </div>
         <div>
           <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.25rem;">
             <i class="ph ph-arrow-down-left"></i> You get
           </div>
-          <ul style="margin:0;padding-left:1.1rem;font-size:0.9rem;">${receiving}</ul>
+          ${tradeSide(trade.receiving, 'Nothing back — this is a gift.')}
+          ${totalsLine(trade.receivingTotals)}
         </div>
       </div>
       ${trade.note ? `<div style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-secondary);font-style:italic;">${escapeHtml(trade.note)}</div>` : ''}
@@ -149,9 +245,19 @@ function renderTrades() {
  */
 async function respond(tradeId, action) {
   if (action === 'accept') {
+    // Restate the swap in the confirmation. Accepting is the irreversible
+    // step, so it is the right moment to see the two totals next to each
+    // other one last time.
+    const trade = state.trades.find((entry) => String(entry.id) === String(tradeId));
+
+    const summary = trade
+      ? `You send ${trade.givingTotals.cards} card${trade.givingTotals.cards === 1 ? '' : 's'} (${money(trade.givingTotals.price)})`
+        + ` and get ${trade.receivingTotals.cards} (${money(trade.receivingTotals.price)}). `
+      : '';
+
     const ok = await confirmDialog({
-      title: 'Accept this trade?',
-      message: 'Both collections update straight away. Any deck left short will tell you.',
+      title: trade && trade.isGift ? 'Accept this gift?' : 'Accept this trade?',
+      message: `${summary}Both collections update straight away. Any deck left short will tell you.`,
       confirmText: 'Accept',
     });
     if (!ok) return;
@@ -226,13 +332,24 @@ function renderDraftSide(side) {
   const items = state.draft[side];
 
   if (!items.length) {
-    container.innerHTML = '<div style="color:var(--text-secondary);font-size:0.875rem;padding:0.5rem 0;">Nothing yet.</div>';
+    // Naming the consequence turns an empty column into an offer: a one-sided
+    // trade is the way to even up a lopsided swap, and it should not need
+    // explaining anywhere else.
+    container.innerHTML = `
+      <div style="color:var(--text-secondary);font-size:0.875rem;padding:0.5rem 0;">
+        Nothing yet — leave this side empty to make it a gift.
+      </div>
+    `;
+    updateGiftSummary();
     return;
   }
 
   container.innerHTML = items.map((item) => `
-    <div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0;border-bottom:1px solid var(--border);">
-      <div style="flex:1;font-size:0.9rem;">${cardLine(item)}</div>
+    <div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.9rem;">${cardLine(item)}</div>
+        ${cardDetail(item)}
+      </div>
       <input type="number" min="1" max="${item.available}" value="${item.quantity}"
              class="trade-qty" data-side="${side}" data-key="${itemKey(item)}"
              style="width:60px;" />
@@ -240,7 +357,9 @@ function renderDraftSide(side) {
         <i class="ph ph-x"></i>
       </button>
     </div>
-  `).join('');
+  `).join('') + totalsLine(draftTotals(items));
+
+  updateGiftSummary();
 
   container.querySelectorAll('.trade-qty').forEach((input) => {
     input.addEventListener('change', () => {
@@ -269,12 +388,19 @@ function renderDraftSide(side) {
 }
 
 /** Add a printing to one side, or bump it if it is already there. */
-function addToDraft(side, printing, cardName) {
+function addToDraft(side, printing, card) {
   const item = {
     printingId: printing.printing_id,
     isFoil: printing.is_foil === 1,
-    cardName,
+    cardName: card.name,
     setCode: printing.set_code,
+    // Carried from the search result so the draft row can show what the card
+    // is and what it costs without a second round trip. The price is the
+    // printing's, in the finish being traded — the server values it the same
+    // way when the trade is read back.
+    typeLine: card.type_line,
+    colors: card.colors ? String(card.colors).split(',').filter(Boolean) : [],
+    price: printing.price,
     available: printing.quantity,
     quantity: 1,
   };
@@ -319,27 +445,44 @@ async function runSearch(side, term) {
       return;
     }
 
-    results.innerHTML = data.cards.map((card) => `
-      <div style="padding:0.4rem 0;border-bottom:1px solid var(--border);">
-        <div style="font-size:0.9rem;font-weight:600;">${escapeHtml(card.name)}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-top:0.25rem;">
-          ${card.printings.map((printing) => `
-            <button class="btn btn-secondary btn-sm trade-add"
-                    data-side="${side}"
-                    data-card="${escapeHtml(card.name)}"
-                    data-printing='${escapeHtml(JSON.stringify(printing))}'>
-              ${escapeHtml((printing.set_code || '').toUpperCase())}
-              ${printing.is_foil === 1 ? '★' : ''}
-              &times;${printing.quantity}
-            </button>
-          `).join('')}
+    results.innerHTML = data.cards.map((card) => {
+      const summary = {
+        name: card.name,
+        type_line: card.type_line,
+        colors: card.colors,
+      };
+
+      return `
+        <div style="padding:0.4rem 0;border-bottom:1px solid var(--border);">
+          <div style="font-size:0.9rem;font-weight:600;">${escapeHtml(card.name)}</div>
+          <div style="font-size:0.78rem;color:var(--text-secondary);display:flex;align-items:center;gap:0.4rem;">
+            <span>${colorPips(card.colors ? String(card.colors).split(',').filter(Boolean) : [])}</span>
+            <span>${escapeHtml(shortType(card.type_line))}</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-top:0.25rem;">
+            ${card.printings.map((printing) => `
+              <button class="btn btn-secondary btn-sm trade-add"
+                      data-side="${side}"
+                      data-card='${escapeHtml(JSON.stringify(summary))}'
+                      data-printing='${escapeHtml(JSON.stringify(printing))}'>
+                ${escapeHtml((printing.set_code || '').toUpperCase())}
+                ${printing.is_foil === 1 ? '★' : ''}
+                &times;${printing.quantity}
+                <span style="color:var(--text-secondary);">${money(printing.price)}</span>
+              </button>
+            `).join('')}
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     results.querySelectorAll('.trade-add').forEach((btn) => {
       btn.addEventListener('click', () => {
-        addToDraft(btn.dataset.side, JSON.parse(btn.dataset.printing), btn.dataset.card);
+        addToDraft(
+          btn.dataset.side,
+          JSON.parse(btn.dataset.printing),
+          JSON.parse(btn.dataset.card)
+        );
       });
     });
   } catch (error) {
@@ -374,6 +517,78 @@ const refreshImpact = debounce(async () => {
     warnings.innerHTML = `<div style="color:var(--danger,#dc2626);font-size:0.875rem;">${escapeHtml(error.message)}</div>`;
   }
 }, 350);
+
+/**
+ * The line above the send button: what this trade actually is, in a sentence,
+ * with both totals side by side so a lopsided swap is obvious before it is
+ * sent rather than after.
+ *
+ * A one-sided trade is named as a gift here and on the button, which is the
+ * whole affordance — there is no separate gift mode to find, you just leave
+ * one side empty.
+ */
+function updateGiftSummary() {
+  const summary = document.getElementById('trade-summary');
+  const sendBtn = document.getElementById('trade-send-btn');
+
+  if (!summary || !state.draft) return;
+
+  const give = draftTotals(state.draft.give);
+  const receive = draftTotals(state.draft.receive);
+
+  if (!give.cards && !receive.cards) {
+    summary.innerHTML = '';
+    sendBtn.textContent = 'Send Trade';
+    return;
+  }
+
+  const who = escapeHtml(partnerName());
+
+  if (give.cards && !receive.cards) {
+    summary.innerHTML = giftSummary(
+      `<i class="ph ph-gift"></i> Gift: you give ${give.cards} card${give.cards === 1 ? '' : 's'}
+       worth ${money(give.price)} and get nothing back.`
+    );
+    sendBtn.textContent = 'Send Gift';
+    return;
+  }
+
+  if (receive.cards && !give.cards) {
+    summary.innerHTML = giftSummary(
+      `<i class="ph ph-gift"></i> Gift: ${who} gives you ${receive.cards} card${receive.cards === 1 ? '' : 's'}
+       worth ${money(receive.price)} and gets nothing back.`
+    );
+    sendBtn.textContent = 'Ask for Gift';
+    return;
+  }
+
+  // Both sides have cards: show the gap, which is the number people actually
+  // argue about. Unpriced copies make the gap unreliable, so say so instead of
+  // presenting a difference that quietly excludes them.
+  const gap = give.price - receive.price;
+  const unpriced = give.unpriced + receive.unpriced;
+
+  const balance = unpriced
+    ? `${unpriced} card${unpriced === 1 ? '' : 's'} here ${unpriced === 1 ? 'has' : 'have'} no price, so the difference is incomplete.`
+    : (Math.abs(gap) < 0.005
+      ? 'Even, to the cent.'
+      : `${gap > 0 ? 'You are giving' : `${who} is giving`} ${money(Math.abs(gap))} more.`);
+
+  summary.innerHTML = giftSummary(`
+    You send ${give.cards} (${money(give.price)}) · you get ${receive.cards} (${money(receive.price)}).
+    <strong>${balance}</strong>
+  `);
+
+  sendBtn.textContent = 'Send Trade';
+}
+
+function giftSummary(inner) {
+  return `
+    <div style="padding:0.6rem 0.85rem;border-radius:8px;background:var(--bg-tertiary);font-size:0.875rem;">
+      ${inner}
+    </div>
+  `;
+}
 
 function partnerName() {
   const partner = state.partners.find((entry) => entry.id === Number(state.draft.partnerId));
@@ -544,6 +759,7 @@ export function setupTrades() {
     state.draft = newDraft('');
     document.getElementById('trade-note').value = '';
     document.getElementById('trade-warnings').innerHTML = '';
+    document.getElementById('trade-summary').innerHTML = '';
     partnerSelect.value = '';
 
     renderDraftSide('give');
@@ -572,6 +788,8 @@ export function setupTrades() {
     document.getElementById('trade-receive-pane')
       .classList.toggle('hidden', !partnerSelect.value);
 
+    // The summary names the partner, so it goes stale when they change.
+    updateGiftSummary();
     refreshImpact();
   });
 
