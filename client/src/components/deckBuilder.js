@@ -1,5 +1,5 @@
 import api from '../services/api.js';
-import { canBeCommander, isCommanderDeck, setCommander } from '../utils/commander.js';
+import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/commander.js';
 import { showLoading, hideLoading, debounce, formatMana, showToast, hideModal } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
 import {
@@ -804,7 +804,9 @@ function renderCardsList(cards) {
 }
 
 function renderCardItem(card) {
-  const showCommanderIcon = isCommanderDeck(currentDeck) && canBeCommander(card) && isMainboardCard(card);
+  const showCommanderIcon = deckUsesCommanders(currentDeck) &&
+    isMainboardCard(card) &&
+    (canBeCommander(card) || card.is_commander);
 
   // Ultra-compact view - minimal text-only with dropdown
   if (layoutView === 'ultra-compact') {
@@ -865,13 +867,6 @@ function renderCardItem(card) {
         <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.card_id}" style="position: absolute; top: 4px; left: 4px; background: ${card.is_owned ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)'}; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
           <i class="ph ${card.is_owned ? 'ph-check-circle' : 'ph-circle'}"></i>
         </button>
-        ${showCommanderIcon ? `
-          <button class="commander-toggle-btn ${card.is_commander ? 'active' : ''}"
-                  data-deck-card-id="${card.deck_card_id}"
-                  title="${card.is_commander ? 'Remove as Commander' : 'Set as Commander'}">
-            ⚔️
-          </button>
-        ` : ''}
         <img src="${card.image_url}"
              class="deck-card-image-compact"
              alt="${card.name}"
@@ -881,6 +876,13 @@ function renderCardItem(card) {
           <span class="card-mana">${formatMana(card.mana_cost || '')}</span>
         </div>
         <div class="deck-card-controls">
+          ${showCommanderIcon ? `
+            <button class="commander-toggle-btn ${card.is_commander ? 'active' : ''}"
+                    data-deck-card-id="${card.deck_card_id}"
+                    title="${card.is_commander ? 'Remove as Commander' : 'Set as Commander'}">
+              ⚔️
+            </button>
+          ` : ''}
           <div class="quantity-control">
             <button class="quantity-btn btn-decrease" data-deck-card-id="${card.deck_card_id}">-</button>
             <input type="number" class="quantity-input" data-deck-card-id="${card.deck_card_id}" value="${card.quantity}" min="1" max="99">
@@ -902,13 +904,6 @@ function renderCardItem(card) {
       <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.card_id}" style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)'}; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
         <i class="ph ${card.is_owned ? 'ph-check-circle' : 'ph-circle'}"></i>
       </button>
-      ${showCommanderIcon ? `
-        <button class="commander-toggle-btn ${card.is_commander ? 'active' : ''}"
-                data-deck-card-id="${card.deck_card_id}"
-                title="${card.is_commander ? 'Remove as Commander' : 'Set as Commander'}">
-          ⚔️
-        </button>
-      ` : ''}
       <img src="${card.image_url}"
            class="deck-card-image"
            alt="${card.name}"
@@ -924,6 +919,13 @@ function renderCardItem(card) {
         </div>
       </div>
       <div class="deck-card-controls">
+        ${showCommanderIcon ? `
+          <button class="commander-toggle-btn ${card.is_commander ? 'active' : ''}"
+                  data-deck-card-id="${card.deck_card_id}"
+                  title="${card.is_commander ? 'Remove as Commander' : 'Set as Commander'}">
+            ⚔️
+          </button>
+        ` : ''}
         <div class="quantity-control">
           <button class="quantity-btn btn-decrease" data-deck-card-id="${card.deck_card_id}">-</button>
           <input type="number" class="quantity-input" data-deck-card-id="${card.deck_card_id}" value="${card.quantity}" min="1" max="99">

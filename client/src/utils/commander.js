@@ -67,6 +67,18 @@ export const isCommanderDeck = (deck) =>
   (deck?.format || '').toLowerCase() === 'commander';
 
 /**
+ * Should this deck offer the commander toggle?
+ *
+ * Format is the obvious answer, but it is not the only one: a deck imported
+ * with a Commander section carries a flagged commander whatever its format
+ * says, and the deck list renders a "Commander" heading for it. Refusing the
+ * toggle there leaves that commander unremovable, so any deck already naming
+ * one gets the control too.
+ */
+export const deckUsesCommanders = (deck) =>
+  isCommanderDeck(deck) || (deck?.cards || []).some((c) => c.is_commander);
+
+/**
  * Flag or unflag one deck card as the commander.
  *
  * When setting one, an existing commander survives only if the two form a legal

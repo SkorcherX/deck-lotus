@@ -2846,12 +2846,9 @@ button.btn-icon.active {
 }
 
 .commander-toggle-btn {
-  position: absolute;
-  left: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
   width: 32px;
   height: 32px;
+  flex: 0 0 auto;
   background: var(--bg);
   border: 2px solid var(--border);
   border-radius: 0.5rem;
@@ -2864,27 +2861,18 @@ button.btn-icon.active {
   font-size: 1.125rem;
 }
 
-/* Ultra-compact rows are too short for the absolutely-positioned button, so
-   there it sits in the flow beside the quantity badge instead. */
+/* Ultra-compact rows are tighter, so the button shrinks to match. */
 .commander-toggle-btn.inline {
-  position: static;
-  transform: none;
   width: 24px;
   height: 24px;
-  flex: 0 0 auto;
   font-size: 0.875rem;
   margin-left: 1.25rem;
-}
-
-.commander-toggle-btn.inline:hover,
-.commander-toggle-btn.inline.active:hover {
-  transform: scale(1.1);
 }
 
 .commander-toggle-btn:hover {
   background: var(--bg-tertiary);
   border-color: var(--warning);
-  transform: translateY(-50%) scale(1.1);
+  transform: scale(1.1);
   box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
 }
 
@@ -2897,7 +2885,7 @@ button.btn-icon.active {
 .commander-toggle-btn.active:hover {
   background: #d97706;
   border-color: #d97706;
-  transform: translateY(-50%) scale(1.15);
+  transform: scale(1.15);
   box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
 }
 

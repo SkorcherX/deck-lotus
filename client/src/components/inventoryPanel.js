@@ -1,6 +1,6 @@
 import api from '../services/api.js';
 import { debounce, formatMana, showToast } from '../utils/ui.js';
-import { canBeCommander, isCommanderDeck, setCommander } from '../utils/commander.js';
+import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/commander.js';
 
 /**
  * Build a deck from cards you already own.
@@ -286,7 +286,7 @@ function renderFeed() {
   }
 
   const deck = ctx?.getDeck?.();
-  const showCommander = isCommanderDeck(deck);
+  const showCommander = deckUsesCommanders(deck);
   const commanderIds = new Set(
     (deck?.cards || []).filter((c) => c.is_commander).map((c) => c.printing_id)
   );
