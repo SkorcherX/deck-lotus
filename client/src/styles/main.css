@@ -5316,3 +5316,71 @@ button.btn-icon.active {
     margin-left: 0;
   }
 }
+
+/* ---- Deck check (format hard rules) ---- */
+
+.deck-rules {
+  margin-bottom: 1.25rem;
+}
+
+.deck-rules-note {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.deck-rules-ok {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.deck-rules-head {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--danger);
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.deck-rules-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.deck-rules-item {
+  border-left: 3px solid var(--danger);
+  padding-left: 0.6rem;
+}
+
+.deck-rules-message {
+  display: block;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.deck-rules-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+}
+
+.deck-rules-card,
+.deck-rules-more {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.deck-rules-more { font-style: italic; }

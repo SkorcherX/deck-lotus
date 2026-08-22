@@ -16,6 +16,7 @@ import {
   importSharedDeck,
   checkDeckLegality,
 } from '../services/deckService.js';
+import { checkFormatRules } from '../services/formatRulesService.js';
 import { getDeckPrice } from '../services/pricingService.js';
 import { parseDeckList, importDeck } from '../services/importService.js';
 import {
@@ -363,6 +364,22 @@ router.get('/:id/legality/:format', authenticate, (req, res, next) => {
 
     const result = checkDeckLegality(deckId, req.user.id, format);
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/decks/:id/rules
+ * Check the deck against its format's hard rules. Pass ?format= to check
+ * against a format other than the one saved on the deck.
+ */
+router.get('/:id/rules', authenticate, (req, res, next) => {
+  try {
+    const deckId = parseInt(req.params.id);
+    const { format } = req.query;
+
+    res.json(checkFormatRules(deckId, req.user.id, format || null));
   } catch (error) {
     next(error);
   }

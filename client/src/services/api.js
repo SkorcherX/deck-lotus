@@ -490,6 +490,11 @@ class ApiClient {
     });
   }
 
+  async getDeckRules(deckId, format = null) {
+    const query = format ? `?format=${encodeURIComponent(format)}` : '';
+    return this.request(`/decks/${deckId}/rules${query}`);
+  }
+
   async getBuilderInventory({ deckId, name, type, colors, onlyFree, format, colorIdentity, page = 1, limit = 60 } = {}) {
     const params = new URLSearchParams();
     if (deckId) params.set('deckId', deckId);

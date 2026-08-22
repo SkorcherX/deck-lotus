@@ -18,6 +18,7 @@ let pricingMode = false; // Track if pricing mode is enabled
 let setGroupMode = false; // Track if set grouping mode is enabled
 let currentPriceData = null; // Store current price data for cards
 let lastStats = null; // Last stats payload, so the tally can re-render without refetching
+let lastRules = null; // Last format-rules check, shared by the tally and the deck check
 let optimizerState = {
   suggestions: [],
   currentIndex: 0,
@@ -119,9 +120,10 @@ export function setupDeckBuilder() {
 
   // Picking a format changes what the tally counts toward, so reflect it
   // immediately rather than waiting for Save.
-  deckFormatSelect.addEventListener('change', () => {
+  deckFormatSelect.addEventListener('change', async () => {
     if (!currentDeck) return;
     currentDeck.format = deckFormatSelect.value;
+    await loadDeckRules();
     renderTally(lastStats);
   });
 
@@ -1474,7 +1476,13 @@ function switchTab(tab) {
 
 async function loadDeckStats() {
   try {
-    const stats = await api.getDeckStats(currentDeckId);
+    // The rules check has to land before the stats render, since the tally
+    // reads its targets from it.
+    const [stats] = await Promise.all([
+      api.getDeckStats(currentDeckId),
+      loadDeckRules()
+    ]);
+
     renderStats(stats);
 
     // Load deck price and store globally
@@ -1960,21 +1968,72 @@ function calculateActualCMC(card) {
 }
 
 /**
- * Deck-size targets per format.
+ * Check the deck against its format's hard rules and paint the result.
  *
- * Only what the tally needs to say whether the count is there yet. The full
- * rule set — copy limits, singleton, colour identity — belongs to the format
- * coach, which will own this once it lands, and this should read from it then
- * rather than keeping a second copy.
+ * These are the rules that make a deck unplayable — size, copy limits,
+ * singleton, colour identity, bans. Advice about land counts and curve is a
+ * separate thing and deliberately not mixed in here.
  */
-const FORMAT_TARGETS = {
-  standard:  { mainboard: 60, exact: false, sideboard: 15 },
-  modern:    { mainboard: 60, exact: false, sideboard: 15 },
-  legacy:    { mainboard: 60, exact: false, sideboard: 15 },
-  vintage:   { mainboard: 60, exact: false, sideboard: 15 },
-  pauper:    { mainboard: 60, exact: false, sideboard: 15 },
-  commander: { mainboard: 100, exact: true, sideboard: 0 }
-};
+async function loadDeckRules() {
+  if (!currentDeckId) return;
+
+  try {
+    lastRules = await api.getDeckRules(currentDeckId, currentDeck?.format || null);
+  } catch (error) {
+    lastRules = null;
+    console.error('Failed to check deck rules:', error);
+  }
+
+  renderRules();
+}
+
+function renderRules() {
+  const container = document.getElementById('deck-rules');
+  if (!container) return;
+
+  if (!lastRules || !lastRules.known) {
+    container.innerHTML = `<div class="deck-rules-note">
+      Choose a format to check this deck against its rules.
+    </div>`;
+    return;
+  }
+
+  if (lastRules.isLegal) {
+    container.innerHTML = `<div class="deck-rules-ok">
+      <i class="ph ph-check-circle"></i> Legal in ${escapeHtml(lastRules.formatLabel)}
+    </div>`;
+    return;
+  }
+
+  const count = lastRules.violations.length;
+
+  container.innerHTML = `
+    <div class="deck-rules-head">
+      ${count} ${count === 1 ? 'issue' : 'issues'} for ${escapeHtml(lastRules.formatLabel)}
+    </div>
+    <ul class="deck-rules-list">
+      ${lastRules.violations.map((v) => `
+        <li class="deck-rules-item">
+          <span class="deck-rules-message">${escapeHtml(v.message)}</span>
+          ${v.cards && v.cards.length ? `
+            <span class="deck-rules-cards">${v.cards.slice(0, 8).map((c) => {
+              const detail = c.quantity ? ` ×${c.quantity}` : c.identity !== undefined ? ` (${escapeHtml(c.identity || 'colourless')})` : c.rarity ? ` (${escapeHtml(c.rarity)})` : '';
+              return `<span class="deck-rules-card">${escapeHtml(c.name)}${detail}</span>`;
+            }).join('')}${v.cards.length > 8 ? `<span class="deck-rules-more">+${v.cards.length - 8} more</span>` : ''}</span>
+          ` : ''}
+        </li>
+      `).join('')}
+    </ul>
+  `;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 /**
  * The running count against the format's targets, plus what the deck is made
@@ -1989,17 +2048,20 @@ function renderTally(stats) {
 
   const mainboard = sum(cards.filter(isMainboardCard));
   const sideboard = sum(cards.filter(isSideboardCard));
-  const target = FORMAT_TARGETS[currentDeck.format] || null;
 
-  applyCount('mainboard', mainboard, target ? target.mainboard : null, target ? target.exact : false);
+  // Targets come from the rules service, so the tally and the deck check
+  // cannot disagree about what the format requires.
+  const targets = lastRules && lastRules.known ? lastRules.targets : null;
+
+  applyCount('mainboard', mainboard, targets ? targets.mainboard : null, targets ? targets.mainboardExact : false);
 
   // Commander has no sideboard, so showing an empty 0 / 0 would be noise.
   const sideboardBlock = document.getElementById('tally-sideboard-block');
-  const showSideboard = !target || target.sideboard > 0 || sideboard > 0;
+  const showSideboard = !targets || targets.sideboardMax > 0 || sideboard > 0;
   sideboardBlock.classList.toggle('hidden', !showSideboard);
 
   if (showSideboard) {
-    applyCount('sideboard', sideboard, target ? target.sideboard : null, false, true);
+    applyCount('sideboard', sideboard, targets ? targets.sideboardMax : null, false, true);
   }
 
   // Types come from the deck stats query, so this breakout and the one in the
