@@ -853,7 +853,7 @@ function canPairCommanders(a, b) {
 }
 
 function renderCardItem(card) {
-  const isCommanderDeck = currentDeck.format === 'commander';
+  const isCommanderDeck = (currentDeck.format || '').toLowerCase() === 'commander';
   const showCommanderIcon = isCommanderDeck && canBeCommander(card) && isMainboardCard(card);
 
   // Ultra-compact view - minimal text-only with dropdown
@@ -878,6 +878,12 @@ function renderCardItem(card) {
               <span class="quantity-adjuster-value">${card.quantity}</span>
               <button class="quantity-adjuster-btn quantity-btn btn-increase" data-deck-card-id="${card.deck_card_id}">+</button>
             </div>
+            ${showCommanderIcon ? `
+              <div class="card-actions-menu-item commander-menu-item ${card.is_commander ? 'active' : ''}" data-deck-card-id="${card.deck_card_id}">
+                <i class="ph ph-crown-simple"></i>
+                ${card.is_commander ? 'Remove as Commander' : 'Set as Commander'}
+              </div>
+            ` : ''}
             <div class="card-actions-menu-item move-card-submenu">
               <i class="ph ph-arrows-left-right"></i>
               Move to...
@@ -1104,7 +1110,7 @@ function setupCardControls() {
   });
 
   // Commander toggle
-  document.querySelectorAll('.commander-toggle-btn').forEach(btn => {
+  document.querySelectorAll('.commander-toggle-btn, .commander-menu-item').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const deckCardId = btn.dataset.deckCardId;

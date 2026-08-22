@@ -2873,6 +2873,11 @@ button.btn-icon.active {
   box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
 }
 
+.commander-menu-item.active {
+  color: var(--warning);
+  font-weight: 600;
+}
+
 .deck-card-item.is-commander {
   background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05));
   border: 2px solid var(--warning);
