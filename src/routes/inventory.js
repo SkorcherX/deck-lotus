@@ -5,6 +5,7 @@ import {
   searchCardsForInventoryAdd,
   bulkAddToInventory,
   resolveBulkAddItems,
+  getAvailability,
   getOwnedSets,
 } from '../services/inventoryService.js';
 import { setOwnedPrintingQuantity } from '../services/cardService.js';
@@ -106,6 +107,31 @@ router.post('/bulk-add', authenticate, (req, res, next) => {
 
     const result = bulkAddToInventory(req.user.id, items);
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/inventory/availability
+ * How many copies of each printing and finish are still free to spend.
+ * Pass deckId to exclude the deck being edited from the committed count.
+ */
+router.get('/availability', authenticate, (req, res, next) => {
+  try {
+    const { deckId, printingIds } = req.query;
+
+    const ids = printingIds
+      ? String(printingIds).split(',').map((id) => parseInt(id, 10)).filter(Number.isInteger)
+      : null;
+
+    const items = getAvailability(
+      req.user.id,
+      deckId ? parseInt(deckId, 10) : null,
+      ids
+    );
+
+    res.json({ items });
   } catch (error) {
     next(error);
   }

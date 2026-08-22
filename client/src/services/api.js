@@ -490,6 +490,15 @@ class ApiClient {
     });
   }
 
+  async getAvailability({ deckId = null, printingIds = null } = {}) {
+    const params = new URLSearchParams();
+    if (deckId) params.set('deckId', deckId);
+    if (printingIds && printingIds.length) params.set('printingIds', printingIds.join(','));
+
+    const query = params.toString();
+    return this.request(`/inventory/availability${query ? `?${query}` : ''}`);
+  }
+
   async resolveBulkAddItems(items) {
     return this.request('/inventory/bulk-resolve', {
       method: 'POST',

@@ -701,3 +701,118 @@ export function getOwnedSets(userId) {
     ORDER BY s.release_date DESC, s.name
   `, [userId, userId]);
 }
+
+/**
+ * Basic lands are exempt from availability accounting. Nobody tracks how many
+ * Islands they own, and a deck asking for 24 of them is not over-allocated.
+ */
+const IS_BASIC_LAND = `(
+  (c.supertypes IS NOT NULL AND c.supertypes LIKE '%Basic%' AND c.type_line LIKE '%Land%')
+  OR c.type_line LIKE 'Basic %Land%'
+)`;
+
+/** Stable key for one printing in one finish. */
+export function availabilityKey(printingId, isFoil) {
+  return `${printingId}:${isFoil ? 1 : 0}`;
+}
+
+/**
+ * How many copies of each printing-and-finish the user can still spend.
+ *
+ * Allocation is advisory: `free` is allowed to go negative, and that is the
+ * point. Listing the same card in three decks is normal collection behaviour,
+ * not an error, so this reports the shortfall and leaves the decision to the
+ * user rather than clamping quantities.
+ *
+ * `committed` deliberately excludes `deckId`, so the deck being edited is
+ * counted once — as `inThisDeck` — instead of appearing to compete with
+ * itself.
+ *
+ * Covers every printing the user owns, plus any the deck lists but they do not
+ * own (which come back owned: 0 and free negative).
+ */
+export function getAvailability(userId, deckId = null, printingIds = null) {
+  // -1 never matches a real deck id, so a null deckId needs no NULL handling:
+  // nothing lands in inThisDeck and everything counts as committed.
+  const currentDeck = deckId ?? -1;
+
+  const filter = printingIds && printingIds.length > 0
+    ? `AND k.printing_id IN (${printingIds.map(() => '?').join(', ')})`
+    : '';
+  const filterParams = filter ? printingIds : [];
+
+  const rows = db.all(
+    `WITH keys AS (
+       SELECT printing_id, is_foil FROM owned_printings WHERE user_id = ?
+       UNION
+       SELECT dc.printing_id, dc.is_foil
+         FROM deck_cards dc
+         JOIN decks d ON d.id = dc.deck_id
+        WHERE d.user_id = ?
+     ),
+     usage AS (
+       SELECT dc.printing_id,
+              dc.is_foil,
+              SUM(CASE WHEN dc.deck_id =  ? THEN dc.quantity ELSE 0 END) AS in_this_deck,
+              SUM(CASE WHEN dc.deck_id <> ? THEN dc.quantity ELSE 0 END) AS committed
+         FROM deck_cards dc
+         JOIN decks d ON d.id = dc.deck_id
+        WHERE d.user_id = ?
+        GROUP BY dc.printing_id, dc.is_foil
+     )
+     SELECT
+       k.printing_id,
+       k.is_foil,
+       c.id   AS card_id,
+       c.name AS card_name,
+       p.set_code,
+       p.collector_number,
+       COALESCE(o.quantity, 0)     AS owned,
+       COALESCE(u.committed, 0)    AS committed,
+       COALESCE(u.in_this_deck, 0) AS in_this_deck,
+       CASE WHEN ${IS_BASIC_LAND} THEN 1 ELSE 0 END AS is_basic_land
+     FROM keys k
+     JOIN printings p ON p.id = k.printing_id
+     JOIN cards c ON c.id = p.card_id
+     LEFT JOIN owned_printings o
+       ON o.user_id = ? AND o.printing_id = k.printing_id AND o.is_foil = k.is_foil
+     LEFT JOIN usage u
+       ON u.printing_id = k.printing_id AND u.is_foil = k.is_foil
+     WHERE 1 = 1 ${filter}
+     ORDER BY c.name, p.set_code, p.collector_number, k.is_foil`,
+    [userId, userId, currentDeck, currentDeck, userId, userId, ...filterParams]
+  );
+
+  return rows.map((row) => {
+    const unlimited = row.is_basic_land === 1;
+
+    return {
+      printingId: row.printing_id,
+      isFoil: row.is_foil === 1,
+      cardId: row.card_id,
+      cardName: row.card_name,
+      setCode: row.set_code,
+      collectorNumber: row.collector_number,
+      owned: row.owned,
+      committed: row.committed,
+      inThisDeck: row.in_this_deck,
+      // Negative means over-allocated across decks — reported, never blocked.
+      free: unlimited ? null : row.owned - row.committed - row.in_this_deck,
+      unlimited
+    };
+  });
+}
+
+/**
+ * The same figures keyed by printing and finish, for callers rendering a list
+ * and looking each row up as they go.
+ */
+export function getAvailabilityMap(userId, deckId = null, printingIds = null) {
+  const map = new Map();
+
+  for (const entry of getAvailability(userId, deckId, printingIds)) {
+    map.set(availabilityKey(entry.printingId, entry.isFoil), entry);
+  }
+
+  return map;
+}

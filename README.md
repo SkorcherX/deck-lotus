@@ -368,6 +368,7 @@ All endpoints require authentication via `Authorization: Bearer <token>` or `X-A
 | `GET` | `/api/inventory/stats` | Totals and value |
 | `GET` | `/api/inventory/search?q=&limit=` | Quick-add search (punctuation- and typo-tolerant) |
 | `GET` | `/api/inventory/sets` | Sets you own cards from |
+| `GET` | `/api/inventory/availability?deckId=&printingIds=` | Copies of each printing and finish still free to spend |
 | `POST` | `/api/inventory/bulk-resolve` | Resolve bulk-add lines to printings without saving |
 | `POST` | `/api/inventory/bulk-add` | Bulk add cards to inventory |
 | `POST` | `/api/inventory/quick-add` | Add a single printing |
@@ -387,6 +388,13 @@ All endpoints require authentication via `Authorization: Bearer <token>` or `X-A
 `bulk-resolve` returns each line with `resolved`, the `cardName` and
 `printingId` it maps to, or an `error` — use it to preview an import before
 committing it.
+
+`availability` reports, per printing and finish, how many copies you `owned`,
+how many are `committed` to your other decks, how many are `inThisDeck`, and
+how many are `free`. Pass `deckId` for the deck being edited so it is not
+counted as competing with itself. Allocation is advisory: `free` goes negative
+when a card is spread across more decks than you own copies. Basic lands come
+back `unlimited: true` with `free: null`.
 
 ### Decks
 
