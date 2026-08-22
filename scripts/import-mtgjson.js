@@ -6,6 +6,7 @@ import { pipeline } from 'stream/promises';
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { normalizeForSearch } from '../src/utils/cardNameMatch.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -114,12 +115,12 @@ async function importCards(sourceDb, targetDb) {
 
   const insertCard = targetDb.prepare(`
     INSERT OR REPLACE INTO cards (
-      name, mana_cost, cmc, colors, color_identity,
+      name, name_normalized, mana_cost, cmc, colors, color_identity,
       type_line, oracle_text, power, toughness, loyalty,
       keywords, legalities, is_reserved, edhrec_rank,
       subtypes, supertypes, types, leadership_skills,
       edhrec_saltiness, first_printing, layout
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertMany = targetDb.transaction((cards) => {
@@ -213,6 +214,8 @@ async function importCards(sourceDb, targetDb) {
 
       insertCard.run(
         card.name,
+        // Search matches on this; nothing else maintains it.
+        normalizeForSearch(card.name),
         card.manaCost,
         card.manaValue,
         colors,
@@ -452,8 +455,9 @@ async function importCards(sourceDb, targetDb) {
 
   const insertForeign = targetDb.prepare(`
     INSERT OR IGNORE INTO card_foreign_data
-    (card_name, language, foreign_name, foreign_text, foreign_type, foreign_flavor_text)
-    VALUES (?, ?, ?, ?, ?, ?)
+    (card_name, language, foreign_name, foreign_name_normalized,
+     foreign_text, foreign_type, foreign_flavor_text)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertForeignMany = targetDb.transaction((data) => {
@@ -466,6 +470,7 @@ async function importCards(sourceDb, targetDb) {
           fd.english_name,  // card_name: English card name
           fd.language,
           fd.faceName,      // foreign_name: translated name
+          fd.faceName ? normalizeForSearch(fd.faceName) : null,
           fd.text,
           fd.type,
           fd.flavorText

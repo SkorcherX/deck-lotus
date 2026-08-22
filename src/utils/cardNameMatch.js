@@ -47,21 +47,32 @@ export function normalizeForSearch(value) {
 }
 
 /**
- * The same normalization as a SQL expression, for the generated column.
- * Takes the column (or any SQL expression) to wrap.
+ * Backfill a normalized column in JavaScript, in batches.
+ *
+ * This deliberately does not happen in SQL. Expressing the normalization as
+ * one expression means nesting a REPLACE per accent and punctuation mark, and
+ * at ~60 deep SQLite's parser gives up with "parser stack overflow" — a limit
+ * on expression nesting, not on data. Doing it here keeps one definition of
+ * what normalization means, in JavaScript, where the search code reads it.
+ *
+ * `db` is a raw better-sqlite3 handle (what migrations are handed).
  */
-export function normalizeSql(expression) {
-  let sql = expression;
-  for (const [from, to] of ACCENTS) sql = `REPLACE(${sql}, '${from}', '${to}')`;
-  for (const mark of PUNCTUATION) {
-    // Single quotes are escaped by doubling them in SQL string literals.
-    const literal = mark === "'" ? "''''" : `'${mark}'`;
-    sql = `REPLACE(${sql}, ${literal}, '')`;
+export function backfillNormalizedColumn(db, { table, sourceColumn, targetColumn, idColumn = 'id' }) {
+  const rows = db.prepare(
+    `SELECT ${idColumn} AS id, ${sourceColumn} AS source
+       FROM ${table}
+      WHERE ${sourceColumn} IS NOT NULL`
+  ).all();
+
+  const update = db.prepare(
+    `UPDATE ${table} SET ${targetColumn} = ? WHERE ${idColumn} = ?`
+  );
+
+  for (const row of rows) {
+    update.run(normalizeForSearch(row.source), row.id);
   }
-  // Collapse the runs of spaces that dropping punctuation leaves behind
-  // ("Fire // Ice"). Twice is enough for the gaps card names actually have.
-  sql = `REPLACE(REPLACE(${sql}, '  ', ' '), '  ', ' ')`;
-  return `TRIM(LOWER(${sql}))`;
+
+  return rows.length;
 }
 
 /**
