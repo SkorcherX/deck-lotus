@@ -2834,6 +2834,17 @@ button.btn-icon.active {
 }
 
 /* Commander Support */
+.ip-btn.ip-commander {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+.ip-btn.ip-commander.active {
+  background: var(--warning);
+  border-color: var(--warning);
+}
+
 .commander-toggle-btn {
   position: absolute;
   left: 0.5rem;
@@ -2851,6 +2862,23 @@ button.btn-icon.active {
   transition: all 0.2s;
   z-index: 2;
   font-size: 1.125rem;
+}
+
+/* Ultra-compact rows are too short for the absolutely-positioned button, so
+   there it sits in the flow beside the quantity badge instead. */
+.commander-toggle-btn.inline {
+  position: static;
+  transform: none;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  font-size: 0.875rem;
+  margin-left: 1.25rem;
+}
+
+.commander-toggle-btn.inline:hover,
+.commander-toggle-btn.inline.active:hover {
+  transform: scale(1.1);
 }
 
 .commander-toggle-btn:hover {
@@ -2871,11 +2899,6 @@ button.btn-icon.active {
   border-color: #d97706;
   transform: translateY(-50%) scale(1.15);
   box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
-}
-
-.commander-menu-item.active {
-  color: var(--warning);
-  font-weight: 600;
 }
 
 .deck-card-item.is-commander {

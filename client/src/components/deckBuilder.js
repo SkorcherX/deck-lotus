@@ -1,4 +1,5 @@
 import api from '../services/api.js';
+import { canBeCommander, isCommanderDeck, setCommander } from '../utils/commander.js';
 import { showLoading, hideLoading, debounce, formatMana, showToast, hideModal } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
 import {
@@ -60,6 +61,9 @@ export function setupDeckBuilder() {
       currentDeck = result.deck;
       renderDeckCards();
       await loadDeckStats();
+      // Returned so a caller that must act on the refreshed rows — naming a
+      // commander it has just added, say — does not have to re-fetch.
+      return currentDeck;
     }
   });
 
@@ -799,62 +803,8 @@ function renderCardsList(cards) {
   return html;
 }
 
-// Commander eligibility. A legendary creature qualifies; so does any card whose rules
-// text says "... can be your commander" — which is how planeswalker commanders (Daretti,
-// Teferi, Freyalise, etc.) are printed, so those now get the "Set as Commander" toggle.
-// If MTGJSON leadership-skills data is present on the card it wins (also covers edge cases
-// like Grist that lack the printed text), but the oracle-text check is the reliable signal.
-function canBeCommander(card) {
-  if (card.leadership_skills) {
-    try {
-      const skills = typeof card.leadership_skills === 'string'
-        ? JSON.parse(card.leadership_skills)
-        : card.leadership_skills;
-      if (skills && skills.commander) return true;
-    } catch { /* fall through to heuristic */ }
-  }
-  const type = card.type_line || '';
-  const isLegendaryCreature = /legendary/i.test(type) && /creature/i.test(type);
-  if (isLegendaryCreature) return true;
-  // Backgrounds are commanders (paired with a "Choose a Background" legend).
-  if (/\bBackground\b/i.test(type)) return true;
-  if (card.oracle_text && /can be your commander/i.test(card.oracle_text)) return true;
-  return false;
-}
-
-// ---- Two-commander pairings (Partner / Backgrounds / Doctor's companion) ----
-const cmdrText = (c) => (c.oracle_text || '').replace(/\r/g, '');
-const hasPartner = (c) =>
-  /(^|\n)Partner\b(?!\s+with)/i.test(cmdrText(c)) ||
-  /have two commanders if both have partner/i.test(cmdrText(c).replace(/\n/g, ' '));
-const partnerWithName = (c) => {
-  const m = cmdrText(c).match(/Partner with ([^\n(.]+)/i);
-  return m ? m[1].trim().replace(/[.,]+$/, '') : null;
-};
-const hasFriendsForever = (c) => /friends forever/i.test(cmdrText(c));
-const hasChooseABackground = (c) => /choose a background/i.test(cmdrText(c));
-const isBackground = (c) => /\bBackground\b/i.test(c.type_line || '');
-const hasDoctorsCompanion = (c) => /doctor.?s companion/i.test(cmdrText(c));
-const isTimeLordDoctor = (c) => /Time Lord/i.test(c.type_line || '') && /Doctor/i.test(c.type_line || '');
-
-// May cards `a` and `b` legally be commanders together?
-function canPairCommanders(a, b) {
-  if (!a || !b || a.deck_card_id === b.deck_card_id) return false;
-  if (hasPartner(a) && hasPartner(b)) return true;
-  const aw = partnerWithName(a), bw = partnerWithName(b);
-  if (aw && (b.name || '').toLowerCase().includes(aw.toLowerCase())) return true;
-  if (bw && (a.name || '').toLowerCase().includes(bw.toLowerCase())) return true;
-  if (hasFriendsForever(a) && hasFriendsForever(b)) return true;
-  if (hasChooseABackground(a) && isBackground(b)) return true;
-  if (hasChooseABackground(b) && isBackground(a)) return true;
-  if (hasDoctorsCompanion(a) && isTimeLordDoctor(b)) return true;
-  if (hasDoctorsCompanion(b) && isTimeLordDoctor(a)) return true;
-  return false;
-}
-
 function renderCardItem(card) {
-  const isCommanderDeck = (currentDeck.format || '').toLowerCase() === 'commander';
-  const showCommanderIcon = isCommanderDeck && canBeCommander(card) && isMainboardCard(card);
+  const showCommanderIcon = isCommanderDeck(currentDeck) && canBeCommander(card) && isMainboardCard(card);
 
   // Ultra-compact view - minimal text-only with dropdown
   if (layoutView === 'ultra-compact') {
@@ -863,6 +813,13 @@ function renderCardItem(card) {
         <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.card_id}" style="position: absolute; top: 2px; left: 2px; background: ${card.is_owned ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)'}; color: white; border: none; border-radius: 50%; width: 16px; height: 16px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
           <i class="ph ${card.is_owned ? 'ph-check-circle' : 'ph-circle'}"></i>
         </button>
+        ${showCommanderIcon ? `
+          <button class="commander-toggle-btn inline ${card.is_commander ? 'active' : ''}"
+                  data-deck-card-id="${card.deck_card_id}"
+                  title="${card.is_commander ? 'Remove as Commander' : 'Set as Commander'}">
+            ⚔️
+          </button>
+        ` : ''}
         <span class="card-quantity-badge">${card.quantity}</span>
         <div class="deck-card-info-ultra-compact">
           <span class="card-name">${card.name}</span>
@@ -878,12 +835,6 @@ function renderCardItem(card) {
               <span class="quantity-adjuster-value">${card.quantity}</span>
               <button class="quantity-adjuster-btn quantity-btn btn-increase" data-deck-card-id="${card.deck_card_id}">+</button>
             </div>
-            ${showCommanderIcon ? `
-              <div class="card-actions-menu-item commander-menu-item ${card.is_commander ? 'active' : ''}" data-deck-card-id="${card.deck_card_id}">
-                <i class="ph ph-crown-simple"></i>
-                ${card.is_commander ? 'Remove as Commander' : 'Set as Commander'}
-              </div>
-            ` : ''}
             <div class="card-actions-menu-item move-card-submenu">
               <i class="ph ph-arrows-left-right"></i>
               Move to...
@@ -1110,7 +1061,7 @@ function setupCardControls() {
   });
 
   // Commander toggle
-  document.querySelectorAll('.commander-toggle-btn, .commander-menu-item').forEach(btn => {
+  document.querySelectorAll('.commander-toggle-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const deckCardId = btn.dataset.deckCardId;
@@ -1393,31 +1344,13 @@ async function toggleCommander(deckCardId) {
   try {
     showLoading();
 
-    // Find the card being toggled
     const card = currentDeck.cards.find(c => c.deck_card_id == deckCardId);
     const newCommanderStatus = !card.is_commander;
 
-    // When setting a commander, keep an existing commander only if the two form a
-    // valid pair (Partner / Partner with / Friends forever / Background / Doctor's
-    // companion). Otherwise the new pick replaces whatever was there.
-    let pairedWithPartner = false;
-    if (newCommanderStatus) {
-      const existing = currentDeck.cards.filter(
-        c => c.is_commander && c.deck_card_id != deckCardId
-      );
-      const partner = existing.find(c => canPairCommanders(c, card));
-      pairedWithPartner = !!partner;
-      const toUnmark = partner
-        ? existing.filter(c => c.deck_card_id != partner.deck_card_id)
-        : existing;
-      for (const c of toUnmark) {
-        await api.updateDeckCard(currentDeckId, c.deck_card_id, { isCommander: false });
-      }
-    }
+    const { deck, pairedWithPartner } =
+      await setCommander(currentDeckId, currentDeck, deckCardId, newCommanderStatus);
 
-    // Toggle the commander status on the target card
-    const updatedDeck = await api.updateDeckCard(currentDeckId, deckCardId, { isCommander: newCommanderStatus });
-    currentDeck = updatedDeck.deck;
+    currentDeck = deck;
     renderDeckCards();
     await loadDeckStats();
     hideLoading();

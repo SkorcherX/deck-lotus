@@ -751,6 +751,7 @@ const AVAILABILITY_CTE = `
       c.colors,
       c.color_identity,
       c.type_line,
+      c.oracle_text,
       c.legalities,
       p.set_code,
       p.collector_number,
@@ -1037,6 +1038,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
       colors: row.colors,
       colorIdentity: row.color_identity,
       typeLine: row.type_line,
+      oracleText: row.oracle_text,
       rarity: row.rarity,
       imageUrl: row.image_url
     })),

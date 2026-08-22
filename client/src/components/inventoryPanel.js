@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { debounce, formatMana, showToast } from '../utils/ui.js';
+import { canBeCommander, isCommanderDeck, setCommander } from '../utils/commander.js';
 
 /**
  * Build a deck from cards you already own.
@@ -284,6 +285,12 @@ function renderFeed() {
     count.textContent = feed.total === 1 ? '1 card' : `${feed.total} cards`;
   }
 
+  const deck = ctx?.getDeck?.();
+  const showCommander = isCommanderDeck(deck);
+  const commanderIds = new Set(
+    (deck?.cards || []).filter((c) => c.is_commander).map((c) => c.printing_id)
+  );
+
   if (feed.items.length === 0) {
     list.innerHTML = `<div class="inventory-panel-empty">
       No cards in your collection match these filters.
@@ -322,6 +329,13 @@ function renderFeed() {
                       ${item.inThisDeck > 0 ? '' : 'disabled'}>−</button>
               <span class="ip-qty" aria-live="polite">${item.inThisDeck}</span>
               <button class="ip-btn" data-action="plus" aria-label="Add one ${name}">+</button>
+              ${showCommander && canBeCommander(item) ? `
+                <button class="ip-btn ip-commander${commanderIds.has(item.printingId) ? ' active' : ''}"
+                        data-action="commander"
+                        title="${commanderIds.has(item.printingId) ? 'Remove as Commander' : 'Set as Commander'}"
+                        aria-pressed="${commanderIds.has(item.printingId)}"
+                        aria-label="${commanderIds.has(item.printingId) ? 'Remove' : 'Set'} ${name} as commander">⚔️</button>
+              ` : ''}
             </div>
           </div>
         </div>
@@ -339,12 +353,15 @@ function renderFeed() {
     list.querySelectorAll('.ip-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const row = btn.closest('.inventory-panel-card');
-        adjust(
-          parseInt(row.dataset.printingId, 10),
-          row.dataset.isFoil === '1',
-          btn.dataset.action === 'plus' ? 1 : -1,
-          true
-        );
+        const printingId = parseInt(row.dataset.printingId, 10);
+        const isFoil = row.dataset.isFoil === '1';
+
+        if (btn.dataset.action === 'commander') {
+          toggleCommanderFromPanel(printingId, isFoil);
+          return;
+        }
+
+        adjust(printingId, isFoil, btn.dataset.action === 'plus' ? 1 : -1, true);
       });
     });
   }
@@ -403,6 +420,56 @@ async function adjust(printingId, isFoil, delta, recordUndo) {
     await loadFeed();
   } catch (error) {
     showToast('Could not update the deck: ' + error.message, 'error');
+  } finally {
+    busy = false;
+  }
+}
+
+/**
+ * Name a card in the collection as the deck's commander.
+ *
+ * The flag lives on a deck_cards row, so a card that is not in the deck yet has
+ * to be added before it can be flagged — which is what someone picking a
+ * commander from their collection means anyway.
+ */
+async function toggleCommanderFromPanel(printingId, isFoil) {
+  const deck = ctx?.getDeck?.();
+  if (!deck || busy) return;
+
+  busy = true;
+
+  try {
+    const inDeck = (d) => (d.cards || []).find((c) =>
+      c.printing_id === printingId &&
+      !!c.is_foil === isFoil &&
+      (c.board_type || 'mainboard') === 'mainboard'
+    );
+
+    let current = deck;
+    let row = inDeck(current);
+
+    if (!row) {
+      await api.addCardToDeck(deck.id, printingId, 1, false, false, 'mainboard', isFoil);
+      current = await ctx.refreshDeck();
+      row = inDeck(current || {});
+      if (!row) throw new Error('the card could not be added to the deck');
+    }
+
+    const { pairedWithPartner } =
+      await setCommander(deck.id, current, row.deck_card_id, !row.is_commander);
+
+    await ctx.refreshDeck();
+    await loadFeed();
+
+    showToast(
+      row.is_commander
+        ? 'Commander removed'
+        : (pairedWithPartner ? '⚔️ Partner commander set!' : '⚔️ Commander set!'),
+      'success',
+      2000
+    );
+  } catch (error) {
+    showToast('Could not set the commander: ' + error.message, 'error');
   } finally {
     busy = false;
   }
