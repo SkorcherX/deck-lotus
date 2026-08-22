@@ -849,6 +849,37 @@ export function getAvailabilityMap(userId, deckId = null, printingIds = null) {
 const COLORS = ['W', 'U', 'B', 'R', 'G'];
 
 /**
+ * Cards in the collection within a typo's reach of the query, closest first.
+ *
+ * Scoped to the rows the panel's other filters already allow, so a fuzzy match
+ * cannot smuggle in a card the user filtered out — or one they do not own.
+ */
+function fuzzyOwnedCardIds(baseParams, otherClauses, otherParams, normalizedName) {
+  const { tolerance, minLength, likePatterns } = fuzzyPlan(normalizedName);
+  const chunkFilter = likePatterns.map(() => 'name_normalized LIKE ?').join(' OR ');
+
+  const clauses = [
+    ...otherClauses,
+    'LENGTH(name_normalized) >= ?',
+    `(${chunkFilter})`
+  ];
+
+  const candidates = db.all(
+    `${AVAILABILITY_CTE}
+     SELECT DISTINCT card_id AS id, name_normalized AS text
+       FROM availability
+      WHERE ${clauses.join(' AND ')}
+      LIMIT ?`,
+    [...baseParams, ...otherParams, minLength, ...likePatterns, FUZZY_CANDIDATE_CAP]
+  );
+
+  return rankFuzzyCandidates(normalizedName, candidates, FUZZY_NAME_MATCHES, tolerance);
+}
+
+/** How many distinct cards a typo may resolve to before it stops being helpful. */
+const FUZZY_NAME_MATCHES = 25;
+
+/**
  * The feed behind the deck builder's inventory panel: owned printings, with
  * their availability and enough detail to render, narrowed by the filters the
  * builder offers.
@@ -875,10 +906,9 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   // deck list, not in a panel offering cards to add.
   where.push('owned > 0');
 
-  if (name && name.trim()) {
-    where.push('name_normalized LIKE ?');
-    params.push(`%${normalizeForSearch(name)}%`);
-  }
+  // The name filter is kept out of `where` so the fuzzy fallback below can
+  // swap it out for a card-id list while keeping every other filter intact.
+  const normalizedName = name && name.trim() ? normalizeForSearch(name) : '';
 
   if (type && type.trim() && type !== 'all') {
     where.push('type_line LIKE ?');
@@ -909,13 +939,41 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     params.push(`%"${format.toLowerCase()}":"Legal"%`);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const baseParams = availabilityParams(userId, deckId);
 
-  const total = db.get(
-    `${AVAILABILITY_CTE} SELECT COUNT(*) AS total FROM availability ${whereSql}`,
-    [...baseParams, ...params]
+  const buildWhere = (clauses) => (clauses.length ? `WHERE ${clauses.join(' AND ')}` : '');
+  const countRows = (clauses, clauseParams) => db.get(
+    `${AVAILABILITY_CTE} SELECT COUNT(*) AS total FROM availability ${buildWhere(clauses)}`,
+    [...baseParams, ...clauseParams]
   ).total;
+
+  const NAME_ORDER = 'card_name, set_code, collector_number, is_foil';
+
+  // Substring match first, on the normalized name, so punctuation and accents
+  // are optional.
+  let clauses = normalizedName ? [...where, 'name_normalized LIKE ?'] : where;
+  let queryParams = normalizedName ? [...params, `%${normalizedName}%`] : params;
+  let order = NAME_ORDER;
+  let total = countRows(clauses, queryParams);
+
+  // Nothing contained what they typed, so assume a typo rather than a card
+  // they do not own — matching how the card searches behave. The fallback
+  // keeps every other filter, so it can only ever narrow.
+  if (total === 0 && normalizedName) {
+    const ids = fuzzyOwnedCardIds(baseParams, where, params, normalizedName);
+
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(', ');
+
+      clauses = [...where, `card_id IN (${placeholders})`];
+      queryParams = [...params, ...ids];
+      // Closest match first, as the fuzzy pass ranked them.
+      order = `CASE card_id ${ids.map((id, i) => `WHEN ${id} THEN ${i}`).join(' ')} ELSE ${ids.length} END, ${NAME_ORDER}`;
+      total = countRows(clauses, queryParams);
+    }
+  }
+
+  const whereSql = buildWhere(clauses);
 
   const offset = (page - 1) * limit;
 
@@ -923,9 +981,9 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     `${AVAILABILITY_CTE}
      SELECT * FROM availability
      ${whereSql}
-     ORDER BY card_name, set_code, collector_number, is_foil
+     ORDER BY ${order}
      LIMIT ? OFFSET ?`,
-    [...baseParams, ...params, limit, offset]
+    [...baseParams, ...queryParams, limit, offset]
   );
 
   return {
