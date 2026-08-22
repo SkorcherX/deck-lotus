@@ -1009,7 +1009,7 @@ async function main() {
         // than let it stand in a shape nobody agreed to.
         const orphaned = targetDb.prepare(`
           UPDATE trades SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP
-           WHERE status = 'pending'
+           WHERE status IN ('pending', 'awaiting_counter')
              AND (SELECT COUNT(*) FROM trade_items WHERE trade_id = trades.id) = 0
         `).run();
 

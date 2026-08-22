@@ -93,6 +93,40 @@ export async function sendTradeProposed(trade) {
   });
 }
 
+/**
+ * Somebody has been shopping your collection and wants an answer.
+ *
+ * Shaped from the initiator's point of view, so `receiving` is what they have
+ * asked you for. Worded to the owner, because the next move is theirs: they
+ * pick what they want back.
+ */
+export async function sendTradeRequested(trade) {
+  await push({
+    title: `${trade.fromUsername} wants to trade`,
+    message:
+      `${trade.fromUsername} has picked out ${summarise(trade.receiving)} from your collection.` +
+      ` Have a look through theirs and choose what you want back.`,
+    tags: 'shopping_cart,card_index',
+  });
+}
+
+/**
+ * A shopping request came back with a second half, so the trade is now whole
+ * and waiting on whoever started it.
+ *
+ * Shaped from the counter-offerer's point of view: `receiving` is what they
+ * picked out of the initiator's collection.
+ */
+export async function sendTradeCountered(trade) {
+  await push({
+    title: `${trade.toUsername} answered your request`,
+    message:
+      `They want ${summarise(trade.receiving)} for the ${summarise(trade.giving)} you asked for.` +
+      ` It is yours to accept or turn down.`,
+    tags: 'handshake,card_index',
+  });
+}
+
 /** A trade went through, and both collections have already moved. */
 export async function sendTradeAccepted(trade) {
   await push({

@@ -636,6 +636,24 @@ class ApiClient {
     return this.request(`/trades/partners/${userId}/inventory${query ? `?${query}` : ''}`);
   }
 
+  async getPartnerStats(userId) {
+    return this.request(`/trades/partners/${userId}/stats`);
+  }
+
+  async createTradeRequest(toUserId, items, note = null) {
+    return this.request('/trades/request', {
+      method: 'POST',
+      body: JSON.stringify({ toUserId, items, note }),
+    });
+  }
+
+  async counterTrade(id, items, note = null) {
+    return this.request(`/trades/${id}/counter`, {
+      method: 'POST',
+      body: JSON.stringify({ items, note }),
+    });
+  }
+
   async previewTrade(toUserId, items) {
     return this.request('/trades/preview', {
       method: 'POST',

@@ -10,6 +10,7 @@ import { setupScan } from './components/scan.js';
 import { setupSharedDeck, loadSharedDeck } from './components/sharedDeck.js';
 import { setupPriceMonitoring } from './components/priceMonitoring.js';
 import { setupTrades, refreshTradeBadge } from './components/trades.js';
+import { setupTradeShop } from './components/tradeShop.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
 
@@ -157,6 +158,7 @@ class App {
     setupSettings();
     setupPriceMonitoring();
     setupTrades();
+    setupTradeShop();
     setupSharedDeck();
   }
 }

@@ -3728,6 +3728,50 @@ button.btn-icon.active {
   color: var(--danger);
 }
 
+/* Trade shopping — the inventory grid, used to pick cards out of someone
+   else's collection. Only the two affordances the inventory page has no need
+   for are new; everything else is deliberately the same. */
+
+.trade-shop-add {
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+
+.inventory-card-item:hover .trade-shop-add {
+  color: var(--success);
+}
+
+/* How many copies of this card are already in the cart. Sits where the
+   inventory page puts its selection checkbox. */
+.trade-shop-picked {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 5;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--success);
+  color: #fff;
+  font-size: 0.813rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trade-cart-count {
+  margin-left: 0.4rem;
+  min-width: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 /* Inventory List View */
 .inventory-list {
   display: flex;

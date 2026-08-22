@@ -1,5 +1,6 @@
 import db from '../db/connection.js';
 import { setOwnedPrintingQuantity } from './cardService.js';
+import { getInventory, getInventoryStats } from './inventoryService.js';
 
 /**
  * Card trades between users of the same instance.
@@ -157,19 +158,27 @@ function allocateShortfall(deckRows, shortfall) {
 }
 
 /**
- * What a proposed trade would cost each side's decks, before anyone commits
- * to it. Drives the warnings in the trade builder.
+ * What a proposed trade would cost the caller's own decks, before they commit
+ * to it. Drives the warnings in the trade builder and the counter-offer cart.
  *
- * Cards are netted per side first: sending away two copies and receiving one
- * back of the same printing is a loss of one, and warning about two would be
- * a lie.
+ * Deliberately one-sided. An earlier version also reported what the trade
+ * would cost the *partner's* decks, which is a nicer warning and a hole: ask
+ * for one copy of a card at a time and the answer tells you exactly which of
+ * their cards are committed to decks, which is the thing browsing their
+ * collection is careful not to say. They get warned about their own decks
+ * when the trade reaches them.
+ *
+ * Cards are netted first: sending away two copies and receiving one back of
+ * the same printing is a loss of one, and warning about two would be a lie.
  */
 export function previewImpact(fromUserId, toUserId, items) {
   const normalized = normalizeItems(items);
 
   return {
     from: impactForSide(fromUserId, normalized, 'give'),
-    to: impactForSide(toUserId, normalized, 'receive')
+    // Kept as an empty list rather than dropped, so a caller reading
+    // `impact.to` gets "nothing to report" instead of a crash.
+    to: []
   };
 }
 
@@ -247,14 +256,8 @@ function normalizeItems(items) {
   return [...merged.values()];
 }
 
-/**
- * Propose a trade. Nothing moves until the other side accepts.
- *
- * Quantities are sanity-checked here so the proposer is told immediately, but
- * they are checked again at accept time — the collection can change in
- * between, and the check that matters is the one inside the transaction.
- */
-export function createTrade(fromUserId, toUserId, items, note = null) {
+/** The partner in a trade, or a clear error rather than a foreign key one. */
+function resolvePartner(fromUserId, toUserId) {
   const partnerId = Number(toUserId);
   const partner = db.get(`SELECT id, username FROM users WHERE id = ?`, [partnerId]);
 
@@ -265,32 +268,139 @@ export function createTrade(fromUserId, toUserId, items, note = null) {
     throw new Error('You cannot trade with yourself');
   }
 
+  return partner;
+}
+
+function insertItems(tradeId, items) {
+  for (const item of items) {
+    db.run(
+      `INSERT INTO trade_items (trade_id, printing_id, is_foil, quantity, direction)
+       VALUES (?, ?, ?, ?, ?)`,
+      [tradeId, item.printingId, item.isFoil ? 1 : 0, item.quantity, item.direction]
+    );
+  }
+}
+
+/**
+ * Propose a complete trade: both halves filled in by one person, sent for the
+ * other to accept or refuse. Nothing moves until they accept.
+ *
+ * Quantities are sanity-checked here so the proposer is told immediately, but
+ * they are checked again at accept time — the collection can change in
+ * between, and the check that matters is the one inside the transaction.
+ */
+export function createTrade(fromUserId, toUserId, items, note = null) {
+  const partner = resolvePartner(fromUserId, toUserId);
   const normalized = normalizeItems(items);
 
   for (const item of normalized) {
-    assertHasCopies(item.direction === 'give' ? fromUserId : partnerId, item);
+    assertHasCopies(item.direction === 'give' ? fromUserId : partner.id, item);
   }
 
   const tradeId = db.transaction(() => {
     const result = db.run(
-      `INSERT INTO trades (from_user_id, to_user_id, status, note) VALUES (?, ?, 'pending', ?)`,
-      [fromUserId, partnerId, note || null]
+      `INSERT INTO trades (from_user_id, to_user_id, status, note, awaiting_user_id)
+       VALUES (?, ?, 'pending', ?, ?)`,
+      [fromUserId, partner.id, note || null, partner.id]
     );
 
-    const id = result.lastInsertRowid;
+    insertItems(result.lastInsertRowid, normalized);
 
-    for (const item of normalized) {
-      db.run(
-        `INSERT INTO trade_items (trade_id, printing_id, is_foil, quantity, direction)
-         VALUES (?, ?, ?, ?, ?)`,
-        [id, item.printingId, item.isFoil ? 1 : 0, item.quantity, item.direction]
-      );
-    }
-
-    return id;
+    return result.lastInsertRowid;
   });
 
   return getTradeById(tradeId, fromUserId);
+}
+
+/**
+ * Start a trade by shopping: pick what you want out of someone's collection
+ * and send that across on its own.
+ *
+ * Deliberately incomplete. The other half is not the initiator's to guess —
+ * they have not seen what the partner would actually part with, and a trade
+ * where one person picks both halves is a demand rather than an offer. The
+ * partner answers by shopping the initiator's collection in turn, which is
+ * what counterTrade does.
+ *
+ * Every item here is direction 'receive': cards moving from the partner to
+ * the initiator. The give side is added later.
+ */
+export function createTradeRequest(fromUserId, toUserId, items, note = null) {
+  const partner = resolvePartner(fromUserId, toUserId);
+
+  const normalized = normalizeItems(items).map((item) => ({ ...item, direction: 'receive' }));
+
+  for (const item of normalized) {
+    assertHasCopies(partner.id, item);
+  }
+
+  const tradeId = db.transaction(() => {
+    const result = db.run(
+      `INSERT INTO trades (from_user_id, to_user_id, status, note, awaiting_user_id)
+       VALUES (?, ?, 'awaiting_counter', ?, ?)`,
+      [fromUserId, partner.id, note || null, partner.id]
+    );
+
+    insertItems(result.lastInsertRowid, normalized);
+
+    return result.lastInsertRowid;
+  });
+
+  return getTradeById(tradeId, fromUserId);
+}
+
+/**
+ * Answer a shopping request by naming your own half: the cards you want out
+ * of the initiator's collection in exchange.
+ *
+ * This replaces the give side outright rather than adding to it, so a partner
+ * who changes their mind and re-sends simply overwrites their previous pick.
+ * The request side is left exactly as the initiator sent it — countering is
+ * choosing what you want back, not editing what they asked for. Wanting to
+ * change their side means declining and starting a request of your own.
+ *
+ * Sending a counter is that person's half of the agreement; the trade then
+ * needs the initiator's acceptance to move anything, so both people have said
+ * yes to the same set of cards before a single copy changes hands.
+ */
+export function counterTrade(tradeId, userId, items, note = null) {
+  const trade = loadTrade(tradeId);
+
+  if (!trade) throw new Error('Trade not found');
+  if (trade.status !== 'awaiting_counter') {
+    throw new Error(
+      trade.status === 'pending'
+        ? 'This trade already has both halves — accept or decline it instead'
+        : `This trade is already ${trade.status}`
+    );
+  }
+  if (trade.awaiting_user_id !== userId) {
+    throw new Error('This request is not waiting on you');
+  }
+
+  // The counter picks from the initiator's collection, so those cards leave
+  // the initiator: direction 'give'.
+  const normalized = normalizeItems(items).map((item) => ({ ...item, direction: 'give' }));
+
+  for (const item of normalized) {
+    assertHasCopies(trade.from_user_id, item);
+  }
+
+  db.transaction(() => {
+    db.run(`DELETE FROM trade_items WHERE trade_id = ? AND direction = 'give'`, [tradeId]);
+    insertItems(tradeId, normalized);
+
+    db.run(
+      `UPDATE trades
+          SET status = 'pending',
+              awaiting_user_id = ?,
+              note = COALESCE(?, note)
+        WHERE id = ?`,
+      [trade.from_user_id, note || null, tradeId]
+    );
+  });
+
+  return getTradeById(tradeId, userId);
 }
 
 /** Refuse to build a trade out of cards somebody does not have. */
@@ -364,11 +474,16 @@ export function acceptTrade(tradeId, userId) {
   const trade = loadTrade(tradeId);
 
   if (!trade) throw new Error('Trade not found');
-  if (trade.to_user_id !== userId) {
-    throw new Error('Only the person a trade was sent to can accept it');
+  if (trade.status === 'awaiting_counter') {
+    throw new Error('This request has no second half yet — pick what you want back first');
   }
   if (trade.status !== 'pending') {
     throw new Error(`This trade is already ${trade.status}`);
+  }
+  // Whose turn it is, not who received it: after a counter-offer the ball is
+  // back with the person who started the trade.
+  if (trade.awaiting_user_id !== userId) {
+    throw new Error('This trade is not waiting on you');
   }
 
   const items = loadItems(tradeId);
@@ -386,7 +501,9 @@ export function acceptTrade(tradeId, userId) {
     }
 
     db.run(
-      `UPDATE trades SET status = 'accepted', resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE trades
+          SET status = 'accepted', resolved_at = CURRENT_TIMESTAMP, awaiting_user_id = NULL
+        WHERE id = ?`,
       [tradeId]
     );
 
@@ -444,19 +561,30 @@ function recordDisruptions(userId, items, losingDirection, tradeId) {
 // Declining and cancelling
 // ---------------------------------------------------------------------------
 
+/** Trade states where the cards have not moved and either side can still walk. */
+const OPEN_STATUSES = new Set(['pending', 'awaiting_counter']);
+
+/**
+ * Turn down something that is waiting on you. Symmetric with cancelTrade:
+ * whoever holds the ball declines, the other one cancels. Which of the two it
+ * is stops tracking the original roles once a counter-offer sends the trade
+ * back the other way.
+ */
 export function declineTrade(tradeId, userId) {
   return closeTrade(
     tradeId, userId, 'declined',
-    (trade) => trade.to_user_id === userId,
-    'Only the person a trade was sent to can decline it'
+    (trade) => trade.awaiting_user_id === userId,
+    'This trade is not waiting on you — cancel it instead'
   );
 }
 
+/** Withdraw something you sent and are waiting on an answer to. */
 export function cancelTrade(tradeId, userId) {
   return closeTrade(
     tradeId, userId, 'cancelled',
-    (trade) => trade.from_user_id === userId,
-    'Only the person who proposed a trade can cancel it'
+    (trade) => trade.awaiting_user_id !== userId
+      && (trade.from_user_id === userId || trade.to_user_id === userId),
+    'This trade is waiting on you — accept or decline it instead'
   );
 }
 
@@ -465,10 +593,12 @@ function closeTrade(tradeId, userId, status, allowed, message) {
 
   if (!trade) throw new Error('Trade not found');
   if (!allowed(trade)) throw new Error(message);
-  if (trade.status !== 'pending') throw new Error(`This trade is already ${trade.status}`);
+  if (!OPEN_STATUSES.has(trade.status)) throw new Error(`This trade is already ${trade.status}`);
 
   db.run(
-    `UPDATE trades SET status = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    `UPDATE trades
+        SET status = ?, resolved_at = CURRENT_TIMESTAMP, awaiting_user_id = NULL
+      WHERE id = ?`,
     [status, tradeId]
   );
 
@@ -485,6 +615,70 @@ function loadTrade(tradeId) {
 
 function loadItems(tradeId) {
   return db.all(`SELECT * FROM trade_items WHERE trade_id = ? ORDER BY id`, [tradeId]);
+}
+
+// ---------------------------------------------------------------------------
+// Browsing somebody else's collection
+// ---------------------------------------------------------------------------
+
+/**
+ * Somebody else's collection, as a shopper is allowed to see it.
+ *
+ * Everything a card is and how many they hold, and nothing about what they
+ * have done with it. `total_in_decks` and `available` are stripped, because
+ * between them they say "two of these four are spoken for" — and from there
+ * it is a short step to knowing what somebody is building, which is theirs to
+ * share or not. Cards sitting in decks are shown and can be asked for, with
+ * no hint that they are in one; the owner decides what to part with when they
+ * answer, and if it costs them a deck slot the trade tells them so then.
+ *
+ * The availability filter is dropped for the same reason: "available only"
+ * would separate the decked cards from the loose ones just as plainly as a
+ * label would.
+ */
+function withoutDeckUsage(result) {
+  return {
+    ...result,
+    cards: result.cards.map(({ total_in_decks, available, ...card }) => card)
+  };
+}
+
+export function browsePartnerInventory(viewerId, partnerId, filters = {}) {
+  assertTradeable(viewerId, partnerId);
+
+  return withoutDeckUsage(getInventory(partnerId, {
+    ...filters,
+    availability: 'all',
+    commander: filters.commander || 'all'
+  }));
+}
+
+/**
+ * Headline figures for a collection being shopped. Deliberately three of the
+ * five the owner sees: "in decks" and "available" are the two that describe
+ * their decks rather than their collection.
+ */
+export function browsePartnerStats(viewerId, partnerId) {
+  assertTradeable(viewerId, partnerId);
+
+  const stats = getInventoryStats(partnerId);
+
+  return {
+    uniqueCards: stats.uniqueCards,
+    totalCopies: stats.totalCopies,
+    estimatedValue: stats.estimatedValue
+  };
+}
+
+/** Refuse to browse anyone who is not a real, different user on this instance. */
+function assertTradeable(viewerId, partnerId) {
+  if (Number(viewerId) === Number(partnerId)) {
+    throw new Error('That is your own collection');
+  }
+
+  const partner = db.get(`SELECT id FROM users WHERE id = ?`, [Number(partnerId)]);
+
+  if (!partner) throw new Error('User not found');
 }
 
 /** Everyone else on this instance — the people you can trade with. */
@@ -590,6 +784,9 @@ function shapeTrade(trade, items, userId) {
   const giving = shaped.filter((item) => item.flow === 'out');
   const receiving = shaped.filter((item) => item.flow === 'in');
 
+  const isOpen = OPEN_STATUSES.has(trade.status);
+  const waitingOnViewer = isOpen && trade.awaiting_user_id === userId;
+
   return {
     id: trade.id,
     status: trade.status,
@@ -602,8 +799,19 @@ function shapeTrade(trade, items, userId) {
     toUsername: trade.to_username,
     viewerIsProposer,
     counterpartyName: viewerIsProposer ? trade.to_username : trade.from_username,
-    canAccept: trade.status === 'pending' && !viewerIsProposer,
-    canCancel: trade.status === 'pending' && viewerIsProposer,
+    awaitingUserId: trade.awaiting_user_id,
+    isMyTurn: waitingOnViewer,
+    // A shopping request: one person has picked what they want and the other
+    // has not yet said what they want back. Not a gift, and not something
+    // that can be accepted — it is half a trade by design.
+    needsCounter: trade.status === 'awaiting_counter',
+    canAccept: trade.status === 'pending' && waitingOnViewer,
+    canCounter: trade.status === 'awaiting_counter' && waitingOnViewer,
+    canDecline: isOpen && waitingOnViewer,
+    // Whoever is not holding the trade can withdraw it; whoever is holding it
+    // declines instead. Which of the two a person is stops matching the
+    // original roles once a counter-offer sends the trade back.
+    canCancel: isOpen && !waitingOnViewer,
     giving,
     receiving,
     givingTotals: totalsFor(giving),
@@ -612,7 +820,10 @@ function shapeTrade(trade, items, userId) {
     // how somebody evens up a lopsided swap, or just hands a card over — and
     // worth naming so the UI can say "gift" rather than showing an empty
     // column and leaving the reader to wonder what went wrong.
-    isGift: giving.length === 0 || receiving.length === 0
+    // Excludes shopping requests: those are one-sided because the second half
+    // has not been chosen yet, which is the opposite of giving something away.
+    isGift: trade.status !== 'awaiting_counter'
+      && (giving.length === 0 || receiving.length === 0)
   };
 }
 
@@ -665,10 +876,15 @@ export function listTrades(userId, { status = null } = {}) {
   return trades.map((t) => shapeTrade(t, byTrade.get(t.id) || [], userId));
 }
 
-/** How many trades are sitting in the user's inbox awaiting their answer. */
+/**
+ * How many trades need something from this user — an answer to a proposal, or
+ * a counter-offer to a shopping request. Both are "your move", which is what
+ * the navbar badge is telling them.
+ */
 export function countPendingIncoming(userId) {
   return db.get(
-    `SELECT COUNT(*) AS count FROM trades WHERE to_user_id = ? AND status = 'pending'`,
+    `SELECT COUNT(*) AS count FROM trades
+      WHERE awaiting_user_id = ? AND status IN ('pending', 'awaiting_counter')`,
     [userId]
   ).count;
 }

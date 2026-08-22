@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, showToast, debounce, confirmDialog } from '../utils/ui.js';
+import { openTradeShop } from './tradeShop.js';
 
 /**
  * Trading cards between users of the same instance.
@@ -125,6 +126,7 @@ function draftTotals(items) {
 // ---------------------------------------------------------------------------
 
 const STATUS_STYLE = {
+  awaiting_counter: { label: 'Shopping list sent', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' },
   pending: { label: 'Awaiting reply', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' },
   accepted: { label: 'Done', background: '#16a34a', color: '#fff' },
   declined: { label: 'Declined', background: '#71717a', color: '#fff' },
@@ -153,8 +155,13 @@ function tradeSide(items, emptyLabel) {
 function tradeCard(trade) {
   const actions = [];
 
+  if (trade.canCounter) {
+    actions.push(`<button class="btn btn-primary btn-sm trade-counter" data-id="${trade.id}">Choose what you want</button>`);
+  }
   if (trade.canAccept) {
     actions.push(`<button class="btn btn-primary btn-sm trade-accept" data-id="${trade.id}">Accept</button>`);
+  }
+  if (trade.canDecline) {
     actions.push(`<button class="btn btn-secondary btn-sm trade-decline" data-id="${trade.id}">Decline</button>`);
   }
   if (trade.canCancel) {
@@ -188,14 +195,18 @@ function tradeCard(trade) {
           <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.25rem;">
             <i class="ph ph-arrow-up-right"></i> You send
           </div>
-          ${tradeSide(trade.giving, 'Nothing — this is a gift to you.')}
+          ${tradeSide(trade.giving, trade.needsCounter
+            ? 'Waiting on their pick from your collection.'
+            : 'Nothing — this is a gift to you.')}
           ${totalsLine(trade.givingTotals)}
         </div>
         <div>
           <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.25rem;">
             <i class="ph ph-arrow-down-left"></i> You get
           </div>
-          ${tradeSide(trade.receiving, 'Nothing back — this is a gift.')}
+          ${tradeSide(trade.receiving, trade.needsCounter
+            ? 'Nothing chosen yet — pick what you want back.'
+            : 'Nothing back — this is a gift.')}
           ${totalsLine(trade.receivingTotals)}
         </div>
       </div>
@@ -228,6 +239,9 @@ function renderTrades() {
 
   list.innerHTML = section('Open', pending) + section('History', history);
 
+  list.querySelectorAll('.trade-counter').forEach((btn) => {
+    btn.addEventListener('click', () => startCounter(btn.dataset.id));
+  });
   list.querySelectorAll('.trade-accept').forEach((btn) => {
     btn.addEventListener('click', () => respond(btn.dataset.id, 'accept'));
   });
@@ -282,6 +296,72 @@ async function respond(tradeId, action) {
     hideLoading();
     showToast(error.message, 'error');
   }
+}
+
+/**
+ * Answer a shopping request by shopping back.
+ *
+ * The initiator's collection is what gets browsed, and what they asked for
+ * travels along so the choice is made against something concrete rather than
+ * from memory.
+ */
+function startCounter(tradeId) {
+  const trade = state.trades.find((entry) => String(entry.id) === String(tradeId));
+  if (!trade) return;
+
+  openTradeShop({
+    mode: 'counter',
+    tradeId: trade.id,
+    partner: { id: trade.fromUserId, username: trade.fromUsername },
+    askedFor: trade.giving,
+    onDone: () => {
+      showBuilder(false);
+      loadTrades();
+    },
+  });
+}
+
+/**
+ * Start a trade by shopping somebody's collection. The picker is a plain list
+ * of everyone else — with only a handful of family members on an instance,
+ * anything more elaborate would be scaffolding around three names.
+ */
+function showPartnerPicker() {
+  const modalBody = document.getElementById('modal-body');
+  const modal = document.getElementById('modal');
+
+  modalBody.innerHTML = `
+    <h2>Whose collection?</h2>
+    <p style="color:var(--text-secondary);font-size:0.9rem;margin:0.5rem 0 1rem;">
+      Browse their cards and pick out what you would like. They choose what they
+      want from yours before anything is agreed.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:0.5rem;">
+      ${state.partners.map((partner) => `
+        <button class="btn btn-secondary trade-pick-partner" data-id="${partner.id}"
+                style="display:flex;justify-content:space-between;align-items:center;gap:1rem;">
+          <span>${escapeHtml(partner.username)}</span>
+          <span style="color:var(--text-secondary);font-size:0.85rem;">${partner.card_count} cards</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+
+  modalBody.querySelectorAll('.trade-pick-partner').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const partner = state.partners.find((entry) => String(entry.id) === btn.dataset.id);
+
+      modal.classList.add('hidden');
+
+      openTradeShop({
+        mode: 'request',
+        partner,
+        onDone: () => loadTrades(),
+      });
+    });
+  });
 }
 
 async function loadTrades() {
@@ -622,16 +702,10 @@ function renderImpact(impact) {
     `);
   }
 
-  if (impact.to.length) {
-    blocks.push(`
-      <div style="padding:0.75rem;border-radius:8px;background:var(--bg-tertiary);margin-bottom:0.5rem;">
-        <div style="font-weight:600;margin-bottom:0.25rem;">
-          <i class="ph ph-warning"></i> This takes cards out of ${escapeHtml(partnerName())}'s decks
-        </div>
-        <ul style="margin:0;padding-left:1.1rem;font-size:0.875rem;">${describe(impact.to, 'their')}</ul>
-      </div>
-    `);
-  }
+  // What the trade would cost the *other* side's decks is deliberately not
+  // reported — see previewImpact. They find out when it reaches them, and
+  // showing it here would tell you which of their cards are in decks, which
+  // browsing their collection is careful not to.
 
   return blocks.join('');
 }
@@ -745,6 +819,15 @@ export function renderDisruptionBanner(container, disruptions, onResolved) {
 // ---------------------------------------------------------------------------
 
 export function setupTrades() {
+  document.getElementById('trade-shop-btn').addEventListener('click', () => {
+    if (!state.partners.length) {
+      showToast('Nobody else has an account on this instance yet', 'error');
+      return;
+    }
+
+    showPartnerPicker();
+  });
+
   const startBtn = document.getElementById('trade-new-btn');
   const cancelBtn = document.getElementById('trade-cancel-btn');
   const sendBtn = document.getElementById('trade-send-btn');

@@ -1289,18 +1289,189 @@
                 </div>
             </div>
 
+            <!--
+                Shopping someone else's collection. Mirrors the inventory page
+                deliberately — same grid, same filters, same classes — because
+                it is the same act. The one difference is what is missing:
+                there is no "in decks" or "available" anywhere, and no
+                availability filter, so nothing here says which of their cards
+                are spoken for.
+            -->
+            <div id="trade-shop-page" class="page hidden">
+                <div class="page-header">
+                    <h2 id="trade-shop-title">Collection</h2>
+                    <div class="page-header-actions">
+                        <button id="trade-shop-back" class="btn btn-secondary">
+                            <i class="ph ph-arrow-left btn-icon"></i>
+                            <span class="btn-text">Back</span>
+                        </button>
+                        <button id="trade-shop-review" class="btn btn-primary">
+                            <i class="ph ph-shopping-cart btn-icon"></i>
+                            <span class="btn-text">Review picks</span>
+                            <span id="trade-shop-count" class="trade-cart-count">0</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="trade-shop-brief" style="margin-bottom: 1rem;"></div>
+
+                <div id="trade-shop-stats" class="inventory-stats"></div>
+
+                <div class="inventory-filters">
+                    <div class="inventory-filter-row">
+                        <div class="filter-group">
+                            <label>Search</label>
+                            <input type="text" id="trade-shop-search" placeholder="Filter by name..." class="filter-input" />
+                        </div>
+                        <div class="filter-group">
+                            <label>Sort By</label>
+                            <select id="trade-shop-sort" class="filter-select">
+                                <option value="name">Name</option>
+                                <option value="quantity">Quantity</option>
+                                <option value="cmc">Mana Value</option>
+                                <option value="color">Color</option>
+                                <option value="type">Type</option>
+                                <option value="price_desc">Price: High to Low</option>
+                                <option value="price_asc">Price: Low to High</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Card Type</label>
+                            <select id="trade-shop-type" class="filter-select">
+                                <option value="all">All Types</option>
+                                <option value="Creature">Creature</option>
+                                <option value="Instant">Instant</option>
+                                <option value="Sorcery">Sorcery</option>
+                                <option value="Enchantment">Enchantment</option>
+                                <option value="Artifact">Artifact</option>
+                                <option value="Planeswalker">Planeswalker</option>
+                                <option value="Land">Land</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Commander</label>
+                            <select id="trade-shop-commander" class="filter-select">
+                                <option value="all">All Cards</option>
+                                <option value="eligible">Commander Eligible</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Colors</label>
+                            <div id="trade-shop-colors" class="color-filter-group">
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="W" />
+                                    <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="U" />
+                                    <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="B" />
+                                    <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="R" />
+                                    <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="G" />
+                                    <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="C" />
+                                    <span class="color-checkbox-box"><i class="ms ms-c ms-cost"></i></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label>Prices</label>
+                            <div class="view-toggle">
+                                <button id="trade-shop-price-toggle" class="btn-icon" title="Show prices" aria-pressed="false">
+                                    <i class="ph ph-currency-dollar"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label>View</label>
+                            <div class="view-toggle">
+                                <button id="trade-shop-grid-view-btn" class="btn-icon active" title="Grid view">
+                                    <i class="ph ph-squares-four"></i>
+                                </button>
+                                <button id="trade-shop-list-view-btn" class="btn-icon" title="List view">
+                                    <i class="ph ph-list"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="trade-shop-pagination-top" class="pagination">
+                    <button id="trade-shop-prev-top" class="btn btn-secondary" disabled>Previous</button>
+                    <span id="trade-shop-page-info-top" style="font-weight: 600">Page 1 of 1</span>
+                    <button id="trade-shop-next-top" class="btn btn-secondary" disabled>Next</button>
+                </div>
+
+                <div id="trade-shop-grid" class="inventory-grid"></div>
+
+                <div id="trade-shop-pagination" class="pagination">
+                    <button id="trade-shop-prev" class="btn btn-secondary" disabled>Previous</button>
+                    <span id="trade-shop-page-info" style="font-weight: 600">Page 1 of 1</span>
+                    <button id="trade-shop-next" class="btn btn-secondary" disabled>Next</button>
+                </div>
+            </div>
+
+            <!-- Which printing and finish a pick refers to -->
+            <div id="trade-shop-printing-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 480px">
+                    <span class="modal-close" id="trade-shop-printing-close">&times;</span>
+                    <h2 id="trade-shop-printing-title" style="margin-bottom: 1rem;">Which copy?</h2>
+                    <div id="trade-shop-printing-list"></div>
+                </div>
+            </div>
+
+            <!-- The cart: what you have picked out, and sending it -->
+            <div id="trade-cart-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 640px">
+                    <span class="modal-close" id="trade-cart-close">&times;</span>
+                    <h2 id="trade-cart-title" style="margin-bottom: 0.5rem;">Your picks</h2>
+                    <div id="trade-cart-subtitle" style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;"></div>
+
+                    <div id="trade-cart-items" style="max-height: 320px; overflow-y: auto;"></div>
+
+                    <div id="trade-cart-warnings" style="margin-top: 1rem;"></div>
+
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label for="trade-cart-note">Note (optional)</label>
+                        <input type="text" id="trade-cart-note" placeholder="e.g. swapping at Sunday game night" style="width: 100%;" />
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button id="trade-cart-send" class="btn btn-primary" style="flex: 1;">Send request</button>
+                        <button id="trade-cart-keep-shopping" class="btn btn-secondary">Keep shopping</button>
+                    </div>
+                </div>
+            </div>
+
             <div id="trades-page" class="page hidden">
                 <div class="page-header">
                     <h2>Trades</h2>
-                    <button id="trade-new-btn" class="btn btn-primary">
-                        <i class="ph ph-plus btn-icon"></i>
-                        <span class="btn-text">New Trade</span>
-                    </button>
+                    <div class="page-header-actions">
+                        <button id="trade-shop-btn" class="btn btn-primary">
+                            <i class="ph ph-shopping-cart btn-icon"></i>
+                            <span class="btn-text">Shop a Collection</span>
+                        </button>
+                        <button id="trade-new-btn" class="btn btn-secondary">
+                            <i class="ph ph-plus btn-icon"></i>
+                            <span class="btn-text">Build a Trade</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
                     A trade moves both collections at once, so nobody has to remember to
-                    remove what they handed over.
+                    remove what they handed over. Shop someone's collection to start one,
+                    or build both halves yourself if you already know the swap.
                 </div>
 
                 <div id="trades-list-section">

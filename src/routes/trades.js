@@ -3,18 +3,26 @@ import {
   listTrades,
   getTradeById,
   createTrade,
+  createTradeRequest,
+  counterTrade,
   acceptTrade,
   declineTrade,
   cancelTrade,
   listTradePartners,
+  browsePartnerInventory,
+  browsePartnerStats,
   previewImpact,
   countPendingIncoming,
   getDisruptions,
   acknowledgeDisruption,
 } from '../services/tradeService.js';
-import { getInventory } from '../services/inventoryService.js';
 import { authenticate } from '../middleware/auth.js';
-import { sendTradeProposed, sendTradeAccepted } from '../services/notificationService.js';
+import {
+  sendTradeProposed,
+  sendTradeAccepted,
+  sendTradeRequested,
+  sendTradeCountered,
+} from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -66,34 +74,39 @@ router.get('/pending-count', authenticate, (req, res, next) => {
 /**
  * GET /api/trades/partners/:userId/inventory
  * Browse what somebody else owns, so a trade can be built from their
- * collection instead of from memory. Read-only: the same inventory query the
- * user runs against their own cards, scoped to the partner.
+ * collection instead of from memory. Read-only, and stripped of anything
+ * saying which of their cards are committed to decks — see
+ * browsePartnerInventory.
  */
 router.get('/partners/:userId/inventory', authenticate, (req, res, next) => {
   try {
-    const partnerId = parseInt(req.params.userId, 10);
+    const { name, colors, type, sets, sort, commander, page = 1, limit = 54 } = req.query;
 
-    if (!listTradePartners(req.user.id).some((p) => p.id === partnerId)) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const { name, colors, type, sets, sort, page = 1, limit = 50 } = req.query;
-
-    res.json(getInventory(partnerId, {
+    res.json(browsePartnerInventory(req.user.id, parseInt(req.params.userId, 10), {
       name,
       colors: colors ? colors.split(',') : [],
       type,
       sets: sets ? sets.split(',') : [],
       sort: sort || 'name',
-      // Availability and commander filters describe the viewer's own deck
-      // commitments, which mean nothing when looking at someone else's cards.
-      availability: 'all',
-      commander: 'all',
+      commander: commander || 'all',
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
     }));
   } catch (error) {
-    next(error);
+    badRequest(res, error);
+  }
+});
+
+/**
+ * GET /api/trades/partners/:userId/stats
+ * Headline figures for the collection being shopped, minus the two that
+ * describe their decks.
+ */
+router.get('/partners/:userId/stats', authenticate, (req, res, next) => {
+  try {
+    res.json(browsePartnerStats(req.user.id, parseInt(req.params.userId, 10)));
+  } catch (error) {
+    badRequest(res, error);
   }
 });
 
@@ -178,6 +191,52 @@ router.post('/', authenticate, async (req, res, next) => {
     });
 
     res.status(201).json(trade);
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+/**
+ * POST /api/trades/request
+ * Start a trade by shopping: send across what you want out of somebody's
+ * collection and let them name their own half.
+ */
+router.post('/request', authenticate, async (req, res, next) => {
+  try {
+    const { toUserId, items, note } = req.body;
+
+    if (!toUserId) {
+      return res.status(400).json({ error: 'A trade partner is required' });
+    }
+
+    const trade = createTradeRequest(req.user.id, parseInt(toUserId, 10), items, note);
+
+    await sendTradeRequested(trade).catch((error) => {
+      console.warn('Trade notification failed:', error.message);
+    });
+
+    res.status(201).json(trade);
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+/**
+ * POST /api/trades/:id/counter
+ * Answer a shopping request with your own half, which turns it into a
+ * complete trade for the initiator to accept.
+ */
+router.post('/:id/counter', authenticate, async (req, res, next) => {
+  try {
+    const { items, note } = req.body;
+
+    const trade = counterTrade(parseInt(req.params.id, 10), req.user.id, items, note);
+
+    await sendTradeCountered(trade).catch((error) => {
+      console.warn('Trade notification failed:', error.message);
+    });
+
+    res.json(trade);
   } catch (error) {
     badRequest(res, error);
   }

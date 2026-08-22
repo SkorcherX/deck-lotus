@@ -75,6 +75,17 @@ taken on GitHub — only do it when explicitly asked.
   users' `owned_printings` inside one transaction, so a card cannot be added by
   one person without being removed from the other. Never move inventory for a
   trade outside that transaction.
+- Browsing another user's collection must never reveal deck membership. That
+  is why `browsePartnerInventory` strips `total_in_decks` and `available`,
+  forces `availability: 'all'`, and why `previewImpact` reports only the
+  caller's own decks — returning the partner's shortfalls let a shopper probe
+  one card at a time to learn what they had built. Any new field on the
+  partner-browse or preview paths has to be checked against this.
+- Trades have two shapes: a complete proposal (`pending`) and a shopping
+  request (`awaiting_counter`) where one person has picked what they want and
+  the other has yet to pick theirs. `trades.awaiting_user_id` says whose turn
+  it is — the old "only the recipient can accept" rule stops holding the
+  moment a counter-offer sends the trade back the other way.
 - A trade that leaves a deck short writes a `deck_card_disruptions` row instead
   of editing the deck. The deck is shown exactly as listed until its owner
   acknowledges it and picks `removed` (deck shrinks; `checkFormatRules` then
