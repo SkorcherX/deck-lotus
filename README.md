@@ -52,7 +52,8 @@
 - **Advanced Card Browser** — filter by color, type, CMC range, set, subtype, and rarity
 - **Inventory Management** — track cards you own with quantity per printing
 - **Bulk Add** — paste a list by card name, or by set code and collector number
-- **Forgiving Search** — punctuation and accents are optional, and typos still match
+- **Forgiving Search** — punctuation and accents are optional, and typos still
+  match, in both the deck builder and inventory search (foreign names included)
 - **Owned Card Badges** — see which cards in your decks you already own
 - **Card Detail Modal** — all printings with prices, artist, set, legality, and rulings
 - **Hover Previews** — full card image on hover throughout the app

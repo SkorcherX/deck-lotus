@@ -1,10 +1,8 @@
 import db from '../db/connection.js';
 import {
   normalizeForSearch,
-  fuzzySubstringDistance,
-  fuzzyTolerance,
-  sharesEnoughCharacters,
-  pigeonholeChunks
+  fuzzyPlan,
+  rankFuzzyCandidates
 } from '../utils/cardNameMatch.js';
 
 // Price of one owned copy, honouring its finish. Foil copies are worth their
@@ -412,45 +410,21 @@ const INVENTORY_SEARCH_COLUMNS = `
  * the vast majority of names before the edit-distance matrix runs.
  */
 function fuzzyCardIdsByName(normalizedQuery, limit) {
-  const tolerance = fuzzyTolerance(normalizedQuery.length);
-
-  // Any name within `tolerance` edits contains one of these chunks verbatim,
+  // Any name within `tolerance` edits contains one of these patterns verbatim,
   // so this narrows to a shortlist without discarding a real match.
-  const chunks = pigeonholeChunks(normalizedQuery, tolerance);
-  const chunkFilter = chunks.map(() => 'name_normalized LIKE ?').join(' OR ');
+  const { tolerance, minLength, likePatterns } = fuzzyPlan(normalizedQuery);
+  const chunkFilter = likePatterns.map(() => 'name_normalized LIKE ?').join(' OR ');
 
   const candidates = db.all(
-    `SELECT id, name_normalized FROM cards
+    `SELECT id, name_normalized AS text FROM cards
      WHERE name_normalized IS NOT NULL
        AND LENGTH(name_normalized) >= ?
        AND (${chunkFilter})
      LIMIT ?`,
-    [
-      normalizedQuery.length - tolerance,
-      ...chunks.map((chunk) => `%${chunk}%`),
-      FUZZY_CANDIDATE_CAP
-    ]
+    [minLength, ...likePatterns, FUZZY_CANDIDATE_CAP]
   );
 
-  const scored = [];
-
-  for (const candidate of candidates) {
-    const name = candidate.name_normalized;
-    if (!sharesEnoughCharacters(normalizedQuery, name, tolerance)) continue;
-
-    const distance = fuzzySubstringDistance(normalizedQuery, name, tolerance);
-    if (distance > tolerance) continue;
-
-    scored.push({ id: candidate.id, distance, length: name.length, name });
-  }
-
-  scored.sort((a, b) =>
-    a.distance - b.distance ||
-    a.length - b.length ||
-    a.name.localeCompare(b.name)
-  );
-
-  return scored.slice(0, limit).map((row) => row.id);
+  return rankFuzzyCandidates(normalizedQuery, candidates, limit, tolerance);
 }
 
 /**

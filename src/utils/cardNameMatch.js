@@ -89,6 +89,44 @@ export function pigeonholeChunks(query, tolerance) {
   return chunks;
 }
 
+/** Chunks shorter than this match so much of the card table they filter nothing. */
+const MIN_CHUNK = 3;
+
+/**
+ * How many edits we can forgive while still splitting the query into chunks
+ * worth filtering on.
+ *
+ * Forgiving one more edit costs one more chunk, and a query only has so many
+ * characters to divide up. Two-character chunks appear in thousands of card
+ * names, so the shortlist fills with noise and the real match can fall off the
+ * end — better to forgive one edit fewer and actually find the card.
+ */
+export function effectiveTolerance(length) {
+  let tolerance = fuzzyTolerance(length);
+
+  while (tolerance > 1 && Math.floor(length / (tolerance + 1)) < MIN_CHUNK) {
+    tolerance--;
+  }
+
+  return tolerance;
+}
+
+/**
+ * The SQL-side narrowing for a fuzzy pass: the tolerance in force, the length
+ * floor, and the LIKE patterns a candidate must satisfy. Callers build their
+ * own query around these, since the table and the id column differ, and pass
+ * `tolerance` back to rankFuzzyCandidates so both stages agree.
+ */
+export function fuzzyPlan(normalizedQuery) {
+  const tolerance = effectiveTolerance(normalizedQuery.length);
+
+  return {
+    tolerance,
+    minLength: normalizedQuery.length - tolerance,
+    likePatterns: pigeonholeChunks(normalizedQuery, tolerance).map((chunk) => `%${chunk}%`)
+  };
+}
+
 /**
  * Levenshtein distance, abandoned once every path exceeds `max`.
  * Returns max + 1 to signal "further away than you care about".
@@ -166,6 +204,45 @@ export function fuzzyTolerance(length) {
   if (length <= 4) return 1;
   if (length <= 8) return 2;
   return 3;
+}
+
+/**
+ * Score candidates against the query and return their ids, closest first.
+ * `candidates` are { id, text } with text already normalized. An id may
+ * appear more than once (a card with several foreign names); its best score
+ * wins and the id is returned once.
+ *
+ * `tolerance` must be the one fuzzyPlan handed the caller, so the shortlist
+ * and the scoring forgive the same number of edits.
+ */
+export function rankFuzzyCandidates(normalizedQuery, candidates, limit, tolerance) {
+  const best = new Map();
+
+  for (const candidate of candidates) {
+    const text = candidate.text;
+    if (!text) continue;
+    if (!sharesEnoughCharacters(normalizedQuery, text, tolerance)) continue;
+
+    const distance = fuzzySubstringDistance(normalizedQuery, text, tolerance);
+    if (distance > tolerance) continue;
+
+    const scored = { id: candidate.id, distance, length: text.length, text };
+    const previous = best.get(candidate.id);
+
+    if (!previous || distance < previous.distance ||
+        (distance === previous.distance && text.length < previous.length)) {
+      best.set(candidate.id, scored);
+    }
+  }
+
+  return [...best.values()]
+    .sort((a, b) =>
+      a.distance - b.distance ||
+      a.length - b.length ||
+      a.text.localeCompare(b.text)
+    )
+    .slice(0, limit)
+    .map((row) => row.id);
 }
 
 /**

@@ -1,4 +1,14 @@
 import db from '../db/connection.js';
+import {
+  normalizeForSearch,
+  fuzzyPlan,
+  rankFuzzyCandidates
+} from '../utils/cardNameMatch.js';
+
+// Ceiling on how many near-miss candidates the edit-distance pass considers,
+// per name table. Only reached when every chunk of the query is a common
+// substring.
+const FUZZY_CANDIDATE_CAP = 3000;
 
 /**
  * Generate Scryfall CDN image URLs (no rate limits on *.scryfall.io domains)
@@ -17,51 +27,136 @@ function generateImageUrls(uuid) {
   };
 }
 
+const SEARCH_COLUMNS = `
+  c.id, c.name, c.mana_cost, c.cmc, c.colors, c.type_line, c.oracle_text,
+  p.image_url,
+  p.set_code,
+  s.name as set_name,
+  p.collector_number,
+  p.rarity,
+  p.uuid as sample_uuid
+`;
+
+/**
+ * Card ids whose English or foreign name is within a typo's reach of the
+ * query, best match first. Only worth running when the direct search found
+ * nothing, since it scans a shortlist of both name tables.
+ */
+function fuzzyCardIds(normalizedQuery, limit) {
+  const { tolerance, minLength, likePatterns } = fuzzyPlan(normalizedQuery);
+
+  const englishFilter = likePatterns.map(() => 'c.name_normalized LIKE ?').join(' OR ');
+  const foreignFilter = likePatterns.map(() => 'f.foreign_name_normalized LIKE ?').join(' OR ');
+
+  const candidates = db.all(
+    `SELECT c.id AS id, c.name_normalized AS text
+       FROM cards c
+      WHERE c.name_normalized IS NOT NULL
+        AND LENGTH(c.name_normalized) >= ?
+        AND (${englishFilter})
+      LIMIT ?`,
+    [minLength, ...likePatterns, FUZZY_CANDIDATE_CAP]
+  );
+
+  const foreignCandidates = db.all(
+    `SELECT c.id AS id, f.foreign_name_normalized AS text
+       FROM card_foreign_data f
+       JOIN cards c ON c.name = f.card_name
+      WHERE f.foreign_name_normalized IS NOT NULL
+        AND LENGTH(f.foreign_name_normalized) >= ?
+        AND (${foreignFilter})
+      LIMIT ?`,
+    [minLength, ...likePatterns, FUZZY_CANDIDATE_CAP]
+  );
+
+  return rankFuzzyCandidates(
+    normalizedQuery,
+    [...candidates, ...foreignCandidates],
+    limit,
+    tolerance
+  );
+}
+
 /**
  * Search cards by name (autocomplete) - returns individual printings
  * Supports English and foreign names, plus second parts of split cards.
+ *
+ * Matching is on the normalized names, so punctuation and accents are
+ * optional ("urzas tower", "epee du corps"). A query that matches nothing
+ * outright falls back to an edit-distance pass, so a typo still finds the
+ * card.
  */
 export function searchCards(query, limit = 20, typeFilter = null) {
-  const prefix = `${query}%`;
-  const infix = `%${query}%`;
+  if (!query || !query.trim()) {
+    return [];
+  }
+
+  const normalized = normalizeForSearch(query);
+  if (!normalized) {
+    return [];
+  }
+
+  const prefix = `${normalized}%`;
+  const infix = `%${normalized}%`;
   // Optional card-type filter (used by the price-watch type filter) must apply to the
   // whole name-match group, hence the parenthesised OR block below.
   const typeClause = typeFilter ? 'AND c.type_line LIKE ?' : '';
 
   // Placeholder order: 4 for match_priority CASE, 4 for the WHERE name group,
   // then [type filter], then LIMIT.
-  const params = [prefix, infix, prefix, infix, prefix, infix, prefix, infix];
+  const params = [prefix, infix, prefix, infix, infix, infix, infix, infix];
   if (typeFilter) params.push(`%${typeFilter}%`);
   params.push(limit);
 
-  const rows = db.all(
-    `SELECT c.id, c.name, c.mana_cost, c.cmc, c.colors, c.type_line, c.oracle_text,
-            p.image_url,
-            p.set_code,
-            s.name as set_name,
-            p.collector_number,
-            p.rarity,
-            p.uuid as sample_uuid,
+  let rows = db.all(
+    `SELECT ${SEARCH_COLUMNS},
             CASE
-              WHEN c.name LIKE ? THEN 0
-              WHEN c.name LIKE '%//%' AND c.name LIKE ? THEN 1
-              WHEN EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name LIKE ?) THEN 2
-              WHEN EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name LIKE '%//%' AND f.foreign_name LIKE ?) THEN 3
+              WHEN c.name_normalized LIKE ? THEN 0
+              WHEN c.name LIKE '%//%' AND c.name_normalized LIKE ? THEN 1
+              WHEN EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name_normalized LIKE ?) THEN 2
+              WHEN EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name LIKE '%//%' AND f.foreign_name_normalized LIKE ?) THEN 3
               ELSE 4
             END as match_priority
      FROM cards c
      LEFT JOIN printings p ON p.card_id = c.id
      LEFT JOIN sets s ON p.set_code = s.code
      WHERE (
-            c.name LIKE ?
-         OR (c.name LIKE '%//%' AND c.name LIKE ?)
-         OR EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name LIKE ?)
-         OR EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name LIKE '%//%' AND f.foreign_name LIKE ?)
+            c.name_normalized LIKE ?
+         OR (c.name LIKE '%//%' AND c.name_normalized LIKE ?)
+         OR EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name_normalized LIKE ?)
+         OR EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name LIKE '%//%' AND f.foreign_name_normalized LIKE ?)
        ) ${typeClause}
      ORDER BY match_priority, c.name, p.set_code, p.collector_number
      LIMIT ?`,
     params
   );
+
+  if (rows.length === 0) {
+    // Nothing contains what they typed — assume a typo rather than a card
+    // that does not exist.
+    const ids = fuzzyCardIds(normalized, limit);
+
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(', ');
+      // Preserve the ranking the fuzzy pass worked out.
+      const rankCase = ids.map((_, index) => `WHEN ? THEN ${index}`).join(' ');
+      const fuzzyParams = [...ids, ...ids];
+      if (typeFilter) fuzzyParams.push(`%${typeFilter}%`);
+      fuzzyParams.push(limit);
+
+      rows = db.all(
+        `SELECT ${SEARCH_COLUMNS},
+                CASE c.id ${rankCase} ELSE ${ids.length} END as match_priority
+         FROM cards c
+         LEFT JOIN printings p ON p.card_id = c.id
+         LEFT JOIN sets s ON p.set_code = s.code
+         WHERE c.id IN (${placeholders}) ${typeClause}
+         ORDER BY match_priority, c.name, p.set_code, p.collector_number
+         LIMIT ?`,
+        fuzzyParams
+      );
+    }
+  }
 
   return rows.map(row => ({
     ...row,
