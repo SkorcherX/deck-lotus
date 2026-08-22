@@ -11,7 +11,11 @@ let currentPage = 1;
 let totalPages = 1;
 let viewMode = 'grid'; // 'grid' or 'list'
 let filters = {
-  name: '',
+  // One entry per committed chip. `names` all have to match (narrowing);
+  // `sets` match any of the listed codes (widening) — a card is only ever
+  // printed in one set per printing, so ANDing them would match nothing.
+  names: [],
+  sets: [],
   colors: [],
   type: 'all',
   sort: 'name',
@@ -19,8 +23,10 @@ let filters = {
   commander: 'all',
 };
 let showPrices = localStorage.getItem('inventoryShowPrices') === 'true';
-let searchTimeout = null;
 let quickSearchTimeout = null;
+// code -> set name, for labelling set chips. Empty until the sets the user
+// owns have loaded; an unrecognised code still filters, it just shows bare.
+let ownedSetNames = new Map();
 let selectedCards = new Set(); // Track selected card IDs for multi-select
 let selectMode = false; // Whether multi-select mode is active
 
@@ -35,7 +41,7 @@ export function setupInventory() {
   // Load inventory data when page is shown
   window.addEventListener('page:inventory', async () => {
     await setupAdminUserFilter();
-    await loadInventoryData();
+    await Promise.all([loadOwnedSetOptions(), loadInventoryData()]);
   });
 
   // Setup filter listeners
@@ -61,18 +67,7 @@ export function setupInventory() {
 }
 
 function setupFilterListeners() {
-  // Name search with debounce
-  const searchInput = document.getElementById('inventory-search');
-  if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-      if (searchTimeout) clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => {
-        filters.name = e.target.value;
-        currentPage = 1;
-        loadInventoryData();
-      }, 300);
-    });
-  }
+  setupSearchChips();
 
   // Sort
   const sortSelect = document.getElementById('inventory-sort');
@@ -129,6 +124,155 @@ function setupFilterListeners() {
       loadInventoryData();
     });
   });
+}
+
+// The search box filters by card name or by set code depending on the mode
+// dropdown beside it. Pressing Enter commits the term as a chip, so terms
+// stack: filter to a set, flip the dropdown, then search names within it.
+function setupSearchChips() {
+  const input = document.getElementById('inventory-search');
+  const mode = document.getElementById('inventory-search-mode');
+  const chips = document.getElementById('inventory-filter-chips');
+  if (!input || !mode || !chips) return;
+
+  const applyMode = () => {
+    const isSet = mode.value === 'set';
+    input.placeholder = isSet
+      ? 'Filter by set code, press Enter...'
+      : 'Filter by name, press Enter...';
+    // The set list is only a useful suggestion in set mode; leaving it
+    // attached in name mode offers set codes while typing a card name.
+    if (isSet) {
+      input.setAttribute('list', 'inventory-set-codes');
+    } else {
+      input.removeAttribute('list');
+    }
+  };
+
+  mode.addEventListener('change', () => {
+    applyMode();
+    input.focus();
+  });
+  applyMode();
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (addFilterChip(mode.value, input.value)) {
+        input.value = '';
+      }
+      return;
+    }
+
+    // Backspace in an empty box takes back the chip you just added.
+    if (e.key === 'Backspace' && input.value === '') {
+      const last = activeChips().pop();
+      if (last) {
+        e.preventDefault();
+        removeFilterChip(last.kind, last.value);
+      }
+    }
+  });
+
+  chips.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-chip-remove]');
+    if (!btn) return;
+    removeFilterChip(btn.dataset.kind, btn.dataset.value);
+  });
+
+  renderFilterChips();
+}
+
+// Chips in the order they were committed, so backspace removes the newest.
+function activeChips() {
+  return [
+    ...filters.sets.map((value) => ({ kind: 'set', value })),
+    ...filters.names.map((value) => ({ kind: 'name', value })),
+  ];
+}
+
+// Returns true when the term was accepted, so the caller knows to clear the
+// box. A blank or already-present term is a no-op rather than a duplicate.
+function addFilterChip(kind, rawValue) {
+  const value = kind === 'set'
+    ? String(rawValue).trim().toUpperCase()
+    : String(rawValue).trim();
+  if (!value) return false;
+
+  const list = kind === 'set' ? filters.sets : filters.names;
+  const exists = list.some((entry) => entry.toLowerCase() === value.toLowerCase());
+  if (exists) return true;
+
+  list.push(value);
+  currentPage = 1;
+  renderFilterChips();
+  loadInventoryData();
+  return true;
+}
+
+function removeFilterChip(kind, value) {
+  const list = kind === 'set' ? filters.sets : filters.names;
+  const index = list.findIndex((entry) => entry === value);
+  if (index === -1) return;
+
+  list.splice(index, 1);
+  currentPage = 1;
+  renderFilterChips();
+  loadInventoryData();
+}
+
+function renderFilterChips() {
+  const container = document.getElementById('inventory-filter-chips');
+  if (!container) return;
+
+  const chips = activeChips();
+  container.classList.toggle('hidden', chips.length === 0);
+
+  container.innerHTML = chips.map(({ kind, value }) => {
+    const setName = kind === 'set' ? ownedSetNames.get(value) : null;
+    const label = kind === 'set'
+      ? `Set: ${escapeHtml(value)}${setName ? ` <span class="filter-chip-note">${escapeHtml(setName)}</span>` : ''}`
+      : `Name: ${escapeHtml(value)}`;
+
+    return `
+      <span class="filter-chip filter-chip-${kind}">
+        ${label}
+        <button
+          type="button"
+          class="filter-chip-remove"
+          data-chip-remove
+          data-kind="${kind}"
+          data-value="${escapeHtml(value)}"
+          aria-label="Remove filter ${escapeHtml(value)}"
+        >&times;</button>
+      </span>
+    `;
+  }).join('');
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[char]));
+}
+
+// Suggestions for the set-code box, and the code -> name map the set chips
+// label themselves with. Failure is not worth surfacing: the filter still
+// works when typed by hand, it just loses the autocomplete.
+async function loadOwnedSetOptions() {
+  const datalist = document.getElementById('inventory-set-codes');
+  if (!datalist) return;
+
+  try {
+    const { sets = [] } = await api.getInventorySets();
+    ownedSetNames = new Map(sets.map((set) => [set.code.toUpperCase(), set.name]));
+    datalist.innerHTML = sets.map((set) => `
+      <option value="${escapeHtml(set.code.toUpperCase())}">${escapeHtml(set.name)}</option>
+    `).join('');
+    renderFilterChips();
+  } catch (error) {
+    console.error('Failed to load owned sets for filter:', error);
+  }
 }
 
 // Fetches the current user's admin status once per page visit and, for

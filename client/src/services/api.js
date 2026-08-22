@@ -436,7 +436,10 @@ class ApiClient {
   // Inventory methods
   async getInventory(filters = {}) {
     const params = new URLSearchParams();
-    if (filters.name) params.append('name', filters.name);
+    // One `name` param per chip; the server ANDs them together.
+    for (const term of [].concat(filters.names || filters.name || [])) {
+      if (term) params.append('name', term);
+    }
     if (filters.colors && filters.colors.length > 0) params.append('colors', filters.colors.join(','));
     if (filters.type && filters.type !== 'all') params.append('type', filters.type);
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));
@@ -458,7 +461,10 @@ class ApiClient {
   async getAdminInventory(userIds, filters = {}) {
     const params = new URLSearchParams();
     params.append('userIds', userIds.join(','));
-    if (filters.name) params.append('name', filters.name);
+    // One `name` param per chip; the server ANDs them together.
+    for (const term of [].concat(filters.names || filters.name || [])) {
+      if (term) params.append('name', term);
+    }
     if (filters.colors && filters.colors.length > 0) params.append('colors', filters.colors.join(','));
     if (filters.type && filters.type !== 'all') params.append('type', filters.type);
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));

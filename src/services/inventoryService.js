@@ -54,6 +54,7 @@ function userScopeSql(userIds) {
 export function getInventory(userIds, filters = {}) {
   const {
     name,
+    names,
     colors = [],
     type,
     sets = [],
@@ -128,12 +129,18 @@ export function getInventory(userIds, filters = {}) {
   `;
   countParams.push(...scope.params);
 
-  // Name filter
-  if (name && name.trim()) {
+  // Name filter. The inventory view sends one term per name chip and every
+  // one has to match, so "bolt" + "lightning" narrows rather than widens.
+  // `name` stays accepted as a single string for the callers that pass one.
+  const nameTerms = (Array.isArray(names) ? names : name ? [name] : [])
+    .map((term) => String(term).trim())
+    .filter(Boolean);
+
+  for (const term of nameTerms) {
     sql += ` AND c.name LIKE ?`;
     countSql += ` AND c.name LIKE ?`;
-    params.push(`%${name}%`);
-    countParams.push(`%${name}%`);
+    params.push(`%${term}%`);
+    countParams.push(`%${term}%`);
   }
 
   // Color filter. The rule for what counts as a colour — including that a land

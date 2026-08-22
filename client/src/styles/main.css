@@ -3621,6 +3621,83 @@ button.btn-icon.active {
   min-width: 150px;
 }
 
+/* Search box: mode dropdown and term input read as one control */
+.inventory-filters .filter-group-search {
+  min-width: 320px;
+  flex: 1 1 320px;
+}
+
+.search-combo {
+  display: flex;
+}
+
+.search-combo .search-combo-mode {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.search-combo .search-combo-input {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Committed search terms, one removable chip each */
+.inventory-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.65rem;
+  border-radius: var(--radius-full, 9999px);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+.filter-chip-set {
+  border-color: var(--primary);
+  background: var(--primary-soft, var(--bg-tertiary));
+}
+
+.filter-chip-note {
+  color: var(--text-muted);
+  margin-left: 0.25rem;
+}
+
+.filter-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.filter-chip-remove:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
 .inventory-filters .color-filter-group {
   display: flex;
   gap: 0.375rem;
@@ -3922,6 +3999,10 @@ button.btn-icon.active {
   .inventory-filters .filter-group {
     width: 100%;
     min-width: auto;
+  }
+
+  .inventory-filters .filter-group-search {
+    flex-basis: auto;
   }
 
   .inventory-grid {

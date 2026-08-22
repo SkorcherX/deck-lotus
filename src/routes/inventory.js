@@ -33,7 +33,9 @@ router.get('/', authenticate, (req, res, next) => {
     } = req.query;
 
     const filters = {
-      name,
+      // The inventory filter bar sends one `name` param per chip, so express
+      // hands us either a string or an array. Both collapse to a list here.
+      names: name ? [].concat(name) : [],
       colors: colors ? colors.split(',') : [],
       type,
       sets: sets ? sets.split(',') : [],

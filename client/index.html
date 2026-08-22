@@ -934,14 +934,23 @@
                 <!-- Filters -->
                 <div class="inventory-filters">
                     <div class="inventory-filter-row">
-                        <div class="filter-group">
+                        <div class="filter-group filter-group-search">
                             <label>Search</label>
-                            <input
-                                type="text"
-                                id="inventory-search"
-                                placeholder="Filter by name..."
-                                class="filter-input"
-                            />
+                            <div class="search-combo">
+                                <select id="inventory-search-mode" class="filter-select search-combo-mode">
+                                    <option value="name">Card Name</option>
+                                    <option value="set">Set Code</option>
+                                </select>
+                                <input
+                                    type="text"
+                                    id="inventory-search"
+                                    placeholder="Filter by name, press Enter..."
+                                    class="filter-input search-combo-input"
+                                    autocomplete="off"
+                                    list="inventory-set-codes"
+                                />
+                                <datalist id="inventory-set-codes"></datalist>
+                            </div>
                         </div>
                         <div class="filter-group">
                             <label>Sort By</label>
@@ -1032,6 +1041,9 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Active search terms, one removable chip each -->
+                    <div id="inventory-filter-chips" class="inventory-filter-chips hidden"></div>
 
                     <!-- Admin only: cross-user inventory filter -->
                     <div id="inventory-admin-user-filter" class="inventory-filter-row hidden" style="margin-top: 0.75rem;">
