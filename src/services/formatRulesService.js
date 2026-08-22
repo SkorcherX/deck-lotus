@@ -1,6 +1,7 @@
 import db from '../db/connection.js';
 import { checkDeckLegality } from './deckService.js';
 import { adviseDeck } from './deckAdvisorService.js';
+import { getDisruptions } from './tradeService.js';
 
 /**
  * The hard rules of a format: the things that make a deck unplayable rather
@@ -153,6 +154,7 @@ export function checkFormatRules(deckId, userId, formatOverride = null) {
       // Advice does not need a known format — a deck still wants lands. The
       // advisor falls back to permissive, format-agnostic expectations.
       ...adviceFor(mainboard, sideboard, null),
+      unresolvedTrades: getDisruptions(userId, deckId),
       isLegal: true
     };
   }
@@ -305,6 +307,12 @@ export function checkFormatRules(deckId, userId, formatOverride = null) {
     },
     violations,
     ...adviceFor(mainboard, sideboard, format),
+    // Cards traded away that the owner has not yet decided about. The counts
+    // and violations above describe the deck as listed; once those cards are
+    // removed the deck shrinks and the size violation appears on its own.
+    // Reported separately so the caller can say which of the two it is
+    // looking at rather than pre-empting a decision the user has not made.
+    unresolvedTrades: getDisruptions(userId, deckId),
     // Legality is about the rules only. Ignoring advice never makes a deck
     // illegal, and folding it in here would make the two indistinguishable.
     isLegal: violations.length === 0

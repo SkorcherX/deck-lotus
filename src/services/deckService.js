@@ -1,5 +1,6 @@
 import db from '../db/connection.js';
 import crypto from 'crypto';
+import { getDisruptionCounts, getDisruptions } from './tradeService.js';
 
 /**
  * Get all decks for a user
@@ -15,6 +16,11 @@ export function getUserDecks(userId) {
      ORDER BY updated_at DESC`,
     [userId]
   );
+
+  // Cards traded away that the owner has not dealt with yet, so the deck list
+  // can badge the decks that need attention. One query for every deck rather
+  // than one per deck.
+  const disruptions = getDisruptionCounts(userId);
 
   // Get a random card image for each deck (prefer creatures)
   return decks.map(deck => {
@@ -33,7 +39,8 @@ export function getUserDecks(userId) {
 
     return {
       ...deck,
-      preview_image: randomCard?.image_url || null
+      preview_image: randomCard?.image_url || null,
+      traded_away_count: disruptions.get(deck.id)?.cards || 0
     };
   });
 }
@@ -99,6 +106,10 @@ export function getDeckById(deckId, userId) {
   return {
     ...deck,
     cards,
+    // Cards that left this collection in a trade while the deck still lists
+    // them. The deck is returned exactly as it stands — nothing is filtered
+    // out — because the owner has not yet said whether it should shrink.
+    disruptions: getDisruptions(userId, deckId),
   };
 }
 
@@ -428,6 +439,11 @@ export function getDeckStats(deckId, userId) {
     manaCurve,
     colorDistribution,
     typeDistribution,
+    // The figures above count the deck as it is listed, which is still the
+    // right thing to show: the owner has not decided to remove these cards
+    // yet. Reporting a shrunken deck before they choose would describe a deck
+    // that does not exist. The caller shows this as a caveat over the stats.
+    disruptions: deck.disruptions,
   };
 }
 
