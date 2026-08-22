@@ -746,10 +746,29 @@ function setupBulkAddModal() {
   }
 
   if (previewBtn) {
-    previewBtn.addEventListener('click', () => {
+    previewBtn.addEventListener('click', async () => {
       const text = document.getElementById('bulk-add-text').value;
       const items = parseBulkAddText(text);
-      renderBulkAddPreview(items);
+
+      if (items.length === 0) {
+        renderBulkAddPreview([]);
+        return;
+      }
+
+      try {
+        previewBtn.disabled = true;
+        previewBtn.textContent = 'Looking up...';
+
+        // Resolve server-side: lines given as set code + collector number
+        // carry no card name, so the preview has to show what they resolve to.
+        const result = await api.resolveBulkAddItems(items);
+        renderBulkAddPreview(result.items);
+      } catch (error) {
+        showError('Lookup failed: ' + error.message);
+      } finally {
+        previewBtn.disabled = false;
+        previewBtn.textContent = 'Preview';
+      }
     });
   }
 
@@ -777,7 +796,7 @@ function setupBulkAddModal() {
             <div style="color: var(--danger); margin-top: 0.5rem;">
               Failed: ${result.failed}
               <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
-                ${result.errors.map(e => `<li>${e.cardName}: ${e.error}</li>`).join('')}
+                ${result.errors.map(e => `<li>${e.cardName || [e.setCode, e.collectorNumber].filter(Boolean).join(' ') || 'Unknown card'}: ${e.error}</li>`).join('')}
               </ul>
             </div>
           ` : ''}
@@ -801,24 +820,56 @@ function parseBulkAddText(text) {
   const lines = text.split('\n').filter(line => line.trim());
   const items = [];
 
-  for (const line of lines) {
+  for (const rawLine of lines) {
     // Parse formats like:
     // 4 Lightning Bolt
     // 4x Lightning Bolt
     // 4 Lightning Bolt [M21]
     // Lightning Bolt
+    // 4 DSK 123          (set code + collector number, no name)
+    // dsk 123 *F*        (same, foil, quantity defaults to 1)
+    let line = rawLine.trim();
 
-    const match = line.match(/^(\d+)?x?\s*(.+?)(?:\s*\[(\w+)\])?$/i);
+    // Foil marker, anywhere on the line
+    const isFoil = /\*F\*/i.test(line) || /\(F\)/i.test(line);
+    line = line.replace(/\*F\*/ig, '').replace(/\(F\)/ig, '').trim();
 
-    if (match) {
-      const quantity = match[1] ? parseInt(match[1]) : 1;
-      const cardName = match[2].trim();
-      const setCode = match[3] || null;
+    const quantityMatch = line.match(/^(\d+)\s*x?\s+(.+)$/i);
+    const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+    const remainder = (quantityMatch ? quantityMatch[2] : line).trim();
 
-      if (cardName) {
-        items.push({ cardName, setCode, quantity });
-      }
+    if (!remainder) continue;
+
+    // Set code + collector number, with no card name. The second token must
+    // contain a digit so real two-word card names ("Sol Ring") don't match,
+    // and the set code is short enough that a leading word of a card name
+    // ("Borrowing 100,000 Arrows") won't be mistaken for one.
+    const setNumberMatch = remainder.match(/^([A-Za-z0-9]{2,6})[\s-]+([A-Za-z0-9★†\-]*\d[A-Za-z0-9★†\-]*)$/);
+
+    if (setNumberMatch) {
+      items.push({
+        setCode: setNumberMatch[1].toUpperCase(),
+        collectorNumber: setNumberMatch[2],
+        quantity,
+        isFoil
+      });
+      continue;
     }
+
+    // Card name, optionally with a bracketed set code
+    const nameMatch = remainder.match(/^(.+?)(?:\s*\[(\w+)\])?$/);
+    if (!nameMatch) continue;
+
+    const cardName = nameMatch[1].trim();
+    if (!cardName) continue;
+
+    items.push({
+      cardName,
+      setCode: nameMatch[2] ? nameMatch[2].toUpperCase() : null,
+      collectorNumber: null,
+      quantity,
+      isFoil
+    });
   }
 
   return items;
@@ -833,12 +884,31 @@ function renderBulkAddPreview(items) {
   if (items.length === 0) {
     contentDiv.innerHTML = '<div style="color: var(--text-secondary);">No valid cards found</div>';
   } else {
-    contentDiv.innerHTML = items.map(item => `
-      <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; border-bottom: 1px solid var(--border);">
-        <span>${item.quantity}x ${item.cardName}</span>
-        ${item.setCode ? `<span style="color: var(--text-secondary);">[${item.setCode.toUpperCase()}]</span>` : ''}
-      </div>
-    `).join('');
+    const describeInput = (input) => {
+      if (!input) return '';
+      if (input.cardName) return input.cardName;
+      return `${input.setCode || '?'} ${input.collectorNumber || '?'}`;
+    };
+
+    contentDiv.innerHTML = items.map(item => {
+      if (!item.resolved) {
+        return `
+          <div style="display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; border-bottom: 1px solid var(--border);">
+            <span style="color: var(--danger);">${item.quantity}x ${describeInput(item.input)}</span>
+            <span style="color: var(--danger);">${item.error}</span>
+          </div>
+        `;
+      }
+
+      const printing = [item.setCode, item.collectorNumber].filter(Boolean).join(' ');
+
+      return `
+        <div style="display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; border-bottom: 1px solid var(--border);">
+          <span>${item.quantity}x ${item.cardName}${item.isFoil ? ' <span style="color: var(--text-secondary);">(foil)</span>' : ''}</span>
+          <span style="color: var(--text-secondary);">${printing}</span>
+        </div>
+      `;
+    }).join('');
   }
 
   previewDiv.classList.remove('hidden');

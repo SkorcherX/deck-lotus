@@ -415,8 +415,145 @@ export function searchCardsForInventoryAdd(userId, query, limit = 10) {
 }
 
 /**
+ * Resolve one bulk-add item to a concrete printing.
+ *
+ * Two ways in:
+ *  - set code + collector number, with no card name at all. This pair
+ *    identifies exactly one printing, so we can skip name matching entirely.
+ *  - card name, optionally narrowed by set code, falling back to the
+ *    cheapest printing of that card.
+ *
+ * Returns { printing, cardId, cardName, setCode, collectorNumber } on success
+ * or { error } describing why the line could not be resolved.
+ */
+function resolveBulkItem(item) {
+  const { cardName, collectorNumber } = item;
+  // Set codes are stored the way MTGJSON emits them: uppercase.
+  const setCode = item.setCode ? item.setCode.toUpperCase() : null;
+
+  // Set code + collector number identifies a single printing on its own.
+  if (setCode && collectorNumber) {
+    const printing = db.get(
+      `SELECT p.id, p.card_id, p.set_code, p.collector_number, c.name
+       FROM printings p
+       JOIN cards c ON c.id = p.card_id
+       WHERE p.set_code = ? AND p.collector_number = ? COLLATE NOCASE
+       LIMIT 1`,
+      [setCode, String(collectorNumber)]
+    );
+
+    if (!printing) {
+      return { error: `No printing found for ${setCode} ${collectorNumber}` };
+    }
+
+    return {
+      printing,
+      cardId: printing.card_id,
+      cardName: printing.name,
+      setCode: printing.set_code,
+      collectorNumber: printing.collector_number
+    };
+  }
+
+  if (!cardName) {
+    return { error: 'Card name, or set code and collector number, is required' };
+  }
+
+  // Find the card
+  let card = db.get(`SELECT id, name FROM cards WHERE name = ?`, [cardName]);
+
+  if (!card) {
+    // Try fuzzy match
+    card = db.get(
+      `SELECT id, name FROM cards WHERE name LIKE ? LIMIT 1`,
+      [`%${cardName}%`]
+    );
+
+    if (!card) {
+      return { error: 'Card not found' };
+    }
+  }
+
+  // Find the printing
+  let printing;
+  if (setCode) {
+    printing = db.get(
+      `SELECT id, card_id, set_code, collector_number FROM printings
+       WHERE card_id = ? AND set_code = ? LIMIT 1`,
+      [card.id, setCode]
+    );
+  }
+
+  if (!printing) {
+    // Get cheapest printing
+    printing = db.get(`
+      SELECT p.id, p.card_id, p.set_code, p.collector_number
+      FROM printings p
+      WHERE p.card_id = ?
+      ORDER BY
+        CASE WHEN (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1) IS NULL THEN 999999
+        ELSE (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1) END ASC
+      LIMIT 1
+    `, [card.id]);
+  }
+
+  if (!printing) {
+    return { error: 'Printing not found' };
+  }
+
+  return {
+    printing,
+    cardId: card.id,
+    cardName: card.name,
+    setCode: printing.set_code,
+    collectorNumber: printing.collector_number
+  };
+}
+
+/**
+ * Resolve bulk-add items without writing anything, so the UI can show what
+ * each line actually maps to. Matters most for set-code + collector-number
+ * lines, where the user never typed a card name to check against.
+ */
+export function resolveBulkAddItems(items) {
+  return items.map((item) => {
+    const quantity = item.quantity ?? 1;
+    const isFoil = !!item.isFoil;
+
+    let resolved;
+    try {
+      resolved = resolveBulkItem(item);
+    } catch (error) {
+      resolved = { error: error.message };
+    }
+
+    if (resolved.error) {
+      return {
+        input: item,
+        quantity,
+        isFoil,
+        resolved: false,
+        error: resolved.error
+      };
+    }
+
+    return {
+      input: item,
+      quantity,
+      isFoil,
+      resolved: true,
+      printingId: resolved.printing.id,
+      cardName: resolved.cardName,
+      setCode: resolved.setCode,
+      collectorNumber: resolved.collectorNumber
+    };
+  });
+}
+
+/**
  * Bulk add cards to inventory
- * Accepts array of items: { cardName, setCode (optional), quantity }
+ * Accepts array of items: { cardName, setCode, collectorNumber, quantity, isFoil }
+ * Either cardName or (setCode + collectorNumber) must be present.
  */
 export function bulkAddToInventory(userId, items) {
   const results = {
@@ -427,61 +564,23 @@ export function bulkAddToInventory(userId, items) {
 
   for (const item of items) {
     try {
-      const { cardName, setCode, quantity = 1, isFoil = false } = item;
+      const { quantity = 1, isFoil = false } = item;
       const foilFlag = isFoil ? 1 : 0;
 
-      if (!cardName) {
+      const resolved = resolveBulkItem(item);
+
+      if (resolved.error) {
         results.failed++;
-        results.errors.push({ cardName, error: 'Card name is required' });
+        results.errors.push({
+          cardName: item.cardName,
+          setCode: item.setCode,
+          collectorNumber: item.collectorNumber,
+          error: resolved.error
+        });
         continue;
       }
 
-      // Find the card
-      const card = db.get(`SELECT id FROM cards WHERE name = ?`, [cardName]);
-
-      if (!card) {
-        // Try fuzzy match
-        const fuzzyCard = db.get(
-          `SELECT id FROM cards WHERE name LIKE ? LIMIT 1`,
-          [`%${cardName}%`]
-        );
-
-        if (!fuzzyCard) {
-          results.failed++;
-          results.errors.push({ cardName, error: 'Card not found' });
-          continue;
-        }
-
-        card.id = fuzzyCard.id;
-      }
-
-      // Find the printing
-      let printing;
-      if (setCode) {
-        printing = db.get(
-          `SELECT id FROM printings WHERE card_id = ? AND set_code = ? LIMIT 1`,
-          [card.id, setCode.toLowerCase()]
-        );
-      }
-
-      if (!printing) {
-        // Get cheapest printing
-        printing = db.get(`
-          SELECT p.id
-          FROM printings p
-          WHERE p.card_id = ?
-          ORDER BY
-            CASE WHEN (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1) IS NULL THEN 999999
-            ELSE (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1) END ASC
-          LIMIT 1
-        `, [card.id]);
-      }
-
-      if (!printing) {
-        results.failed++;
-        results.errors.push({ cardName, setCode, error: 'Printing not found' });
-        continue;
-      }
+      const { printing, cardId } = resolved;
 
       // Add or update owned_printings
       const existing = db.get(
@@ -505,7 +604,7 @@ export function bulkAddToInventory(userId, items) {
       db.run(
         `INSERT INTO owned_cards (user_id, card_id, quantity) VALUES (?, ?, 1)
          ON CONFLICT(user_id, card_id) DO UPDATE SET quantity = 1`,
-        [userId, card.id]
+        [userId, cardId]
       );
 
       results.added += quantity;

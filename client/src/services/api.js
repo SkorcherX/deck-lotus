@@ -490,6 +490,13 @@ class ApiClient {
     });
   }
 
+  async resolveBulkAddItems(items) {
+    return this.request('/inventory/bulk-resolve', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+  }
+
   async quickAddToInventory(printingId, quantity = 1, isFoil = false) {
     return this.request('/inventory/quick-add', {
       method: 'POST',

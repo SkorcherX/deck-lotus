@@ -4,6 +4,7 @@ import {
   getInventoryStats,
   searchCardsForInventoryAdd,
   bulkAddToInventory,
+  resolveBulkAddItems,
   getOwnedSets,
 } from '../services/inventoryService.js';
 import { setOwnedPrintingQuantity } from '../services/cardService.js';
@@ -105,6 +106,25 @@ router.post('/bulk-add', authenticate, (req, res, next) => {
 
     const result = bulkAddToInventory(req.user.id, items);
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/bulk-resolve
+ * Resolve bulk-add lines to printings without writing anything, so the
+ * preview can show which card each line maps to.
+ */
+router.post('/bulk-resolve', authenticate, (req, res, next) => {
+  try {
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Items array is required' });
+    }
+
+    res.json({ items: resolveBulkAddItems(items) });
   } catch (error) {
     next(error);
   }
