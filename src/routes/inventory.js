@@ -6,6 +6,7 @@ import {
   bulkAddToInventory,
   resolveBulkAddItems,
   getAvailability,
+  getBuilderInventory,
   getOwnedSets,
 } from '../services/inventoryService.js';
 import { setOwnedPrintingQuantity } from '../services/cardService.js';
@@ -132,6 +133,34 @@ router.get('/availability', authenticate, (req, res, next) => {
     );
 
     res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/inventory/builder
+ * Owned printings with availability, for the deck builder's inventory panel.
+ */
+router.get('/builder', authenticate, (req, res, next) => {
+  try {
+    const { deckId, name, type, colorIdentity, onlyFree, format, page, limit } = req.query;
+
+    const result = getBuilderInventory(
+      req.user.id,
+      deckId ? parseInt(deckId, 10) : null,
+      {
+        name,
+        type,
+        colorIdentity,
+        onlyFree: onlyFree === 'true' || onlyFree === '1',
+        format,
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? Math.min(parseInt(limit, 10), 200) : 60
+      }
+    );
+
+    res.json(result);
   } catch (error) {
     next(error);
   }

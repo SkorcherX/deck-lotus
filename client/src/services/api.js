@@ -212,10 +212,10 @@ class ApiClient {
     });
   }
 
-  async addCardToDeck(deckId, printingId, quantity = 1, isSideboard = false, isCommander = false, boardType = null) {
+  async addCardToDeck(deckId, printingId, quantity = 1, isSideboard = false, isCommander = false, boardType = null, isFoil = false) {
     return this.request(`/decks/${deckId}/cards`, {
       method: 'POST',
-      body: JSON.stringify({ printingId, quantity, isSideboard, isCommander, boardType }),
+      body: JSON.stringify({ printingId, quantity, isSideboard, isCommander, boardType, isFoil }),
     });
   }
 
@@ -488,6 +488,22 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ items }),
     });
+  }
+
+  async getBuilderInventory({ deckId, name, type, onlyFree, format, colorIdentity, page = 1, limit = 60 } = {}) {
+    const params = new URLSearchParams();
+    if (deckId) params.set('deckId', deckId);
+    if (name) params.set('name', name);
+    if (type && type !== 'all') params.set('type', type);
+    if (onlyFree) params.set('onlyFree', 'true');
+    if (format) params.set('format', format);
+    // An empty string is meaningful here: a colourless commander confines the
+    // deck to colourless cards, so it must be sent rather than dropped.
+    if (colorIdentity !== null && colorIdentity !== undefined) params.set('colorIdentity', colorIdentity);
+    params.set('page', page);
+    params.set('limit', limit);
+
+    return this.request(`/inventory/builder?${params.toString()}`);
   }
 
   async getAvailability({ deckId = null, printingIds = null } = {}) {

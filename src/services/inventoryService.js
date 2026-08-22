@@ -711,6 +711,91 @@ const IS_BASIC_LAND = `(
   OR c.type_line LIKE 'Basic %Land%'
 )`;
 
+
+/**
+ * The availability calculation, as a CTE other queries can build on.
+ *
+ * Ends with an `availability` table holding one row per printing-and-finish,
+ * carrying enough card detail to render a list without a second query.
+ * Expects six leading parameters, in order:
+ *   userId, userId, currentDeckId, currentDeckId, userId, userId
+ */
+const AVAILABILITY_CTE = `
+  WITH keys AS (
+    SELECT printing_id, is_foil FROM owned_printings WHERE user_id = ?
+    UNION
+    SELECT dc.printing_id, dc.is_foil
+      FROM deck_cards dc
+      JOIN decks d ON d.id = dc.deck_id
+     WHERE d.user_id = ?
+  ),
+  usage AS (
+    SELECT dc.printing_id,
+           dc.is_foil,
+           SUM(CASE WHEN dc.deck_id =  ? THEN dc.quantity ELSE 0 END) AS in_this_deck,
+           SUM(CASE WHEN dc.deck_id <> ? THEN dc.quantity ELSE 0 END) AS committed
+      FROM deck_cards dc
+      JOIN decks d ON d.id = dc.deck_id
+     WHERE d.user_id = ?
+     GROUP BY dc.printing_id, dc.is_foil
+  ),
+  availability AS (
+    SELECT
+      k.printing_id,
+      k.is_foil,
+      c.id   AS card_id,
+      c.name AS card_name,
+      c.name_normalized,
+      c.mana_cost,
+      c.cmc,
+      c.colors,
+      c.color_identity,
+      c.type_line,
+      c.legalities,
+      p.set_code,
+      p.collector_number,
+      p.rarity,
+      p.image_url,
+      COALESCE(o.quantity, 0)     AS owned,
+      COALESCE(u.committed, 0)    AS committed,
+      COALESCE(u.in_this_deck, 0) AS in_this_deck,
+      CASE WHEN ${IS_BASIC_LAND} THEN 1 ELSE 0 END AS is_basic_land
+    FROM keys k
+    JOIN printings p ON p.id = k.printing_id
+    JOIN cards c ON c.id = p.card_id
+    LEFT JOIN owned_printings o
+      ON o.user_id = ? AND o.printing_id = k.printing_id AND o.is_foil = k.is_foil
+    LEFT JOIN usage u
+      ON u.printing_id = k.printing_id AND u.is_foil = k.is_foil
+  )
+`;
+
+/** -1 never matches a real deck id, so a null deckId needs no NULL handling. */
+function availabilityParams(userId, deckId) {
+  const currentDeck = deckId ?? -1;
+  return [userId, userId, currentDeck, currentDeck, userId, userId];
+}
+
+/** Shape one availability row for callers. */
+function toAvailability(row) {
+  const unlimited = row.is_basic_land === 1;
+
+  return {
+    printingId: row.printing_id,
+    isFoil: row.is_foil === 1,
+    cardId: row.card_id,
+    cardName: row.card_name,
+    setCode: row.set_code,
+    collectorNumber: row.collector_number,
+    owned: row.owned,
+    committed: row.committed,
+    inThisDeck: row.in_this_deck,
+    // Negative means over-allocated across decks — reported, never blocked.
+    free: unlimited ? null : row.owned - row.committed - row.in_this_deck,
+    unlimited
+  };
+}
+
 /** Stable key for one printing in one finish. */
 export function availabilityKey(printingId, isFoil) {
   return `${printingId}:${isFoil ? 1 : 0}`;
@@ -732,75 +817,19 @@ export function availabilityKey(printingId, isFoil) {
  * own (which come back owned: 0 and free negative).
  */
 export function getAvailability(userId, deckId = null, printingIds = null) {
-  // -1 never matches a real deck id, so a null deckId needs no NULL handling:
-  // nothing lands in inThisDeck and everything counts as committed.
-  const currentDeck = deckId ?? -1;
-
   const filter = printingIds && printingIds.length > 0
-    ? `AND k.printing_id IN (${printingIds.map(() => '?').join(', ')})`
+    ? `WHERE printing_id IN (${printingIds.map(() => '?').join(', ')})`
     : '';
-  const filterParams = filter ? printingIds : [];
 
   const rows = db.all(
-    `WITH keys AS (
-       SELECT printing_id, is_foil FROM owned_printings WHERE user_id = ?
-       UNION
-       SELECT dc.printing_id, dc.is_foil
-         FROM deck_cards dc
-         JOIN decks d ON d.id = dc.deck_id
-        WHERE d.user_id = ?
-     ),
-     usage AS (
-       SELECT dc.printing_id,
-              dc.is_foil,
-              SUM(CASE WHEN dc.deck_id =  ? THEN dc.quantity ELSE 0 END) AS in_this_deck,
-              SUM(CASE WHEN dc.deck_id <> ? THEN dc.quantity ELSE 0 END) AS committed
-         FROM deck_cards dc
-         JOIN decks d ON d.id = dc.deck_id
-        WHERE d.user_id = ?
-        GROUP BY dc.printing_id, dc.is_foil
-     )
-     SELECT
-       k.printing_id,
-       k.is_foil,
-       c.id   AS card_id,
-       c.name AS card_name,
-       p.set_code,
-       p.collector_number,
-       COALESCE(o.quantity, 0)     AS owned,
-       COALESCE(u.committed, 0)    AS committed,
-       COALESCE(u.in_this_deck, 0) AS in_this_deck,
-       CASE WHEN ${IS_BASIC_LAND} THEN 1 ELSE 0 END AS is_basic_land
-     FROM keys k
-     JOIN printings p ON p.id = k.printing_id
-     JOIN cards c ON c.id = p.card_id
-     LEFT JOIN owned_printings o
-       ON o.user_id = ? AND o.printing_id = k.printing_id AND o.is_foil = k.is_foil
-     LEFT JOIN usage u
-       ON u.printing_id = k.printing_id AND u.is_foil = k.is_foil
-     WHERE 1 = 1 ${filter}
-     ORDER BY c.name, p.set_code, p.collector_number, k.is_foil`,
-    [userId, userId, currentDeck, currentDeck, userId, userId, ...filterParams]
+    `${AVAILABILITY_CTE}
+     SELECT * FROM availability
+     ${filter}
+     ORDER BY card_name, set_code, collector_number, is_foil`,
+    [...availabilityParams(userId, deckId), ...(filter ? printingIds : [])]
   );
 
-  return rows.map((row) => {
-    const unlimited = row.is_basic_land === 1;
-
-    return {
-      printingId: row.printing_id,
-      isFoil: row.is_foil === 1,
-      cardId: row.card_id,
-      cardName: row.card_name,
-      setCode: row.set_code,
-      collectorNumber: row.collector_number,
-      owned: row.owned,
-      committed: row.committed,
-      inThisDeck: row.in_this_deck,
-      // Negative means over-allocated across decks — reported, never blocked.
-      free: unlimited ? null : row.owned - row.committed - row.in_this_deck,
-      unlimited
-    };
-  });
+  return rows.map(toAvailability);
 }
 
 /**
@@ -815,4 +844,104 @@ export function getAvailabilityMap(userId, deckId = null, printingIds = null) {
   }
 
   return map;
+}
+
+const COLORS = ['W', 'U', 'B', 'R', 'G'];
+
+/**
+ * The feed behind the deck builder's inventory panel: owned printings, with
+ * their availability and enough detail to render, narrowed by the filters the
+ * builder offers.
+ *
+ * Filters here rather than in the client because the list is paginated — a
+ * client-side filter would give the wrong totals and page through the wrong
+ * rows.
+ */
+export function getBuilderInventory(userId, deckId, filters = {}) {
+  const {
+    name,
+    type,
+    colorIdentity,
+    onlyFree = false,
+    format,
+    page = 1,
+    limit = 60
+  } = filters;
+
+  const where = [];
+  const params = [];
+
+  // Only what they actually own — a deck card they do not own belongs in the
+  // deck list, not in a panel offering cards to add.
+  where.push('owned > 0');
+
+  if (name && name.trim()) {
+    where.push('name_normalized LIKE ?');
+    params.push(`%${normalizeForSearch(name)}%`);
+  }
+
+  if (type && type.trim() && type !== 'all') {
+    where.push('type_line LIKE ?');
+    params.push(`%${type}%`);
+  }
+
+  // Commander colour identity: every colour on the card must be one the
+  // commander allows, so exclude any card carrying a colour outside the set.
+  if (colorIdentity) {
+    const allowed = String(colorIdentity).toUpperCase();
+    for (const color of COLORS) {
+      if (!allowed.includes(color)) {
+        where.push(`(color_identity IS NULL OR color_identity NOT LIKE ?)`);
+        params.push(`%${color}%`);
+      }
+    }
+  }
+
+  if (onlyFree) {
+    where.push('(is_basic_land = 1 OR owned - committed - in_this_deck > 0)');
+  }
+
+  if (format && format.trim()) {
+    // legalities is a JSON object built by the importer with lowercase format
+    // keys and no whitespace, e.g. {"modern":"Legal",...}. Matching the pair as
+    // text avoids depending on the JSON1 extension being compiled in.
+    where.push('legalities LIKE ?');
+    params.push(`%"${format.toLowerCase()}":"Legal"%`);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const baseParams = availabilityParams(userId, deckId);
+
+  const total = db.get(
+    `${AVAILABILITY_CTE} SELECT COUNT(*) AS total FROM availability ${whereSql}`,
+    [...baseParams, ...params]
+  ).total;
+
+  const offset = (page - 1) * limit;
+
+  const rows = db.all(
+    `${AVAILABILITY_CTE}
+     SELECT * FROM availability
+     ${whereSql}
+     ORDER BY card_name, set_code, collector_number, is_foil
+     LIMIT ? OFFSET ?`,
+    [...baseParams, ...params, limit, offset]
+  );
+
+  return {
+    items: rows.map((row) => ({
+      ...toAvailability(row),
+      manaCost: row.mana_cost,
+      cmc: row.cmc,
+      colors: row.colors,
+      colorIdentity: row.color_identity,
+      typeLine: row.type_line,
+      rarity: row.rarity,
+      imageUrl: row.image_url
+    })),
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit))
+  };
 }

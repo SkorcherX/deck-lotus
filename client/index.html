@@ -393,6 +393,67 @@
                                 class="search-results hidden"
                             ></div>
                         </div>
+                        <button
+                            id="inventory-panel-toggle"
+                            class="btn btn-secondary"
+                            aria-expanded="false"
+                            aria-controls="inventory-panel"
+                        >
+                            From Inventory
+                        </button>
+                    </div>
+
+                    <!-- Build from cards you own -->
+                    <div id="inventory-panel" class="inventory-panel hidden">
+                        <div class="inventory-panel-head">
+                            <h3>Your Collection</h3>
+                            <span id="inventory-panel-count" class="inventory-panel-total"></span>
+                            <div class="inventory-panel-head-actions">
+                                <button id="inventory-panel-undo" class="btn btn-secondary btn-sm" disabled>Undo</button>
+                                <button id="inventory-panel-close" class="btn-icon" aria-label="Close collection panel">
+                                    <i class="ph ph-x"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="inventory-panel-filters">
+                            <input
+                                type="text"
+                                id="inventory-panel-search"
+                                placeholder="Filter your cards..."
+                                autocomplete="off"
+                            />
+                            <select id="inventory-panel-type">
+                                <option value="all">All types</option>
+                                <option value="Creature">Creature</option>
+                                <option value="Land">Land</option>
+                                <option value="Instant">Instant</option>
+                                <option value="Sorcery">Sorcery</option>
+                                <option value="Artifact">Artifact</option>
+                                <option value="Enchantment">Enchantment</option>
+                                <option value="Planeswalker">Planeswalker</option>
+                            </select>
+                            <label class="inventory-panel-check">
+                                <input type="checkbox" id="inventory-panel-only-free" />
+                                Still available
+                            </label>
+                            <label class="inventory-panel-check">
+                                <input type="checkbox" id="inventory-panel-format-legal" />
+                                Legal in format
+                            </label>
+                            <label class="inventory-panel-check">
+                                <input type="checkbox" id="inventory-panel-identity" />
+                                Commander colors
+                            </label>
+                        </div>
+
+                        <div id="inventory-panel-list" class="inventory-panel-list"></div>
+
+                        <div id="inventory-panel-pager" class="inventory-panel-pager hidden">
+                            <button id="inventory-panel-prev" class="btn btn-secondary btn-sm">Previous</button>
+                            <span id="inventory-panel-page"></span>
+                            <button id="inventory-panel-next" class="btn btn-secondary btn-sm">Next</button>
+                        </div>
                     </div>
 
                     <div class="deck-builder-content">

@@ -4924,3 +4924,201 @@ button.btn-icon.active {
   stroke-dasharray: 2 1.5;
   vector-effect: non-scaling-stroke;
 }
+
+/* ---- Build from inventory panel ---- */
+
+.search-panel-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.search-panel-row .search-box {
+  flex: 1;
+  min-width: 0;
+}
+
+#inventory-panel-toggle {
+  white-space: nowrap;
+  padding: 1rem 1.25rem;
+}
+
+.inventory-panel {
+  background: var(--bg-secondary);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.inventory-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.inventory-panel-head h3 {
+  margin: 0;
+}
+
+.inventory-panel-total {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.inventory-panel-head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inventory-panel-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.inventory-panel-filters input[type="text"],
+.inventory-panel-filters select {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.inventory-panel-filters input[type="text"] {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.inventory-panel-check {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.inventory-panel-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 0.5rem;
+  max-height: 26rem;
+  overflow-y: auto;
+}
+
+.inventory-panel-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "name    mana"
+    "meta    meta"
+    "avail   controls";
+  gap: 0.15rem 0.75rem;
+  align-items: center;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.inventory-panel-row.is-over {
+  border-color: var(--danger);
+}
+
+.ip-name { grid-area: name; font-weight: 600; }
+.ip-mana { grid-area: mana; }
+.ip-meta {
+  grid-area: meta;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+.ip-avail { grid-area: avail; font-size: 0.8rem; color: var(--text-secondary); }
+.ip-controls {
+  grid-area: controls;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ip-foil {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--warning, #d9a84a);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 0.25rem;
+  margin-left: 0.35rem;
+}
+
+.ip-set { font-variant-numeric: tabular-nums; }
+.avail-free { color: var(--success); }
+.avail-over { color: var(--danger); font-weight: 600; }
+.avail-unlimited { font-style: italic; }
+
+.ip-btn {
+  /* 2.25rem keeps the target usable on touch without dominating the row */
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ip-btn:hover:not(:disabled) { background: var(--bg-primary); }
+.ip-btn:disabled { opacity: 0.4; cursor: default; }
+
+.ip-qty {
+  min-width: 1.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.inventory-panel-empty {
+  grid-column: 1 / -1;
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.inventory-panel-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .search-panel-row {
+    flex-direction: column;
+  }
+
+  #inventory-panel-toggle {
+    width: 100%;
+  }
+
+  .inventory-panel-list {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+}

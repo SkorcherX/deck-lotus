@@ -1,6 +1,11 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, debounce, formatMana, showToast, hideModal } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
+import {
+  setupInventoryPanel,
+  resetInventoryPanel,
+  refreshInventoryPanel
+} from './inventoryPanel.js';
 
 let currentDeck = null;
 let currentDeckId = null;
@@ -42,6 +47,18 @@ export function setupDeckBuilder() {
   const buyDeckBtn = document.getElementById('buy-deck-btn');
   const deckNameInput = document.getElementById('deck-name');
   const deckFormatSelect = document.getElementById('deck-format');
+
+  // Building from the collection. The panel writes straight to the deck, so it
+  // needs to read the current deck and ask for a re-render afterwards.
+  setupInventoryPanel({
+    getDeck: () => currentDeck,
+    refreshDeck: async () => {
+      const result = await api.getDeck(currentDeckId);
+      currentDeck = result.deck;
+      renderDeckCards();
+      await loadDeckStats();
+    }
+  });
 
   // Tab switching
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -475,6 +492,9 @@ async function loadDeck(deckId) {
     activeTab = 'mainboard';
     switchTab('mainboard');
 
+    // A different deck means a different collection view and a stale undo stack
+    resetInventoryPanel();
+
     // Clear previous example hand
     exampleHand = [];
 
@@ -570,6 +590,7 @@ async function addCardToDeck(cardId) {
     currentDeck = updatedDeck.deck;
     renderDeckCards();
     await loadDeckStats();
+    refreshInventoryPanel();
     hideLoading();
     showToast(`Card added to ${activeTab}`, 'success', 2000);
   } catch (error) {
@@ -1325,6 +1346,7 @@ async function updateCardQuantity(deckCardId, newQuantity) {
     currentDeck = updatedDeck.deck;
     renderDeckCards();
     await loadDeckStats();
+    refreshInventoryPanel();
     hideLoading();
     showToast('Quantity updated', 'success', 2000);
   } catch (error) {
@@ -1340,6 +1362,7 @@ async function removeCard(deckCardId) {
     currentDeck = updatedDeck.deck;
     renderDeckCards();
     await loadDeckStats();
+    refreshInventoryPanel();
     hideLoading();
     showToast('Card removed', 'success', 2000);
   } catch (error) {
