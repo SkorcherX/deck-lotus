@@ -118,11 +118,17 @@ export async function sendTradeRequested(trade) {
  * picked out of the initiator's collection.
  */
 export async function sendTradeCountered(trade) {
+  // Cards they kept back are worth naming here rather than leaving the asker
+  // to spot what is missing from their own list.
+  const turnedDown = trade.declinedItems.length
+    ? ` They are hanging on to ${summarise(trade.declinedItems)}.`
+    : '';
+
   await push({
     title: `${trade.toUsername} answered your request`,
     message:
       `They want ${summarise(trade.receiving)} for the ${summarise(trade.giving)} you asked for.` +
-      ` It is yours to accept or turn down.`,
+      `${turnedDown} It is yours to accept or turn down.`,
     tags: 'handshake,card_index',
   });
 }

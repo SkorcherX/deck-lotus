@@ -210,7 +210,30 @@ function tradeCard(trade) {
           ${totalsLine(trade.receivingTotals)}
         </div>
       </div>
+      ${declinedBlock(trade)}
       ${trade.note ? `<div style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-secondary);font-style:italic;">${escapeHtml(trade.note)}</div>` : ''}
+    </div>
+  `;
+}
+
+/**
+ * Cards the other side kept back when they answered.
+ *
+ * Shown rather than dropped: somebody who asked for six cards and got four
+ * should be able to see which two were refused without diffing their own
+ * request against the reply.
+ */
+function declinedBlock(trade) {
+  if (!trade.declinedItems || !trade.declinedItems.length) return '';
+
+  const who = trade.viewerIsProposer
+    ? `${escapeHtml(trade.counterpartyName)} kept`
+    : 'You kept';
+
+  return `
+    <div style="margin-top:0.75rem;padding-top:0.6rem;border-top:1px solid var(--border);font-size:0.85rem;color:var(--text-secondary);">
+      <i class="ph ph-hand-palm"></i> ${who} back:
+      ${trade.declinedItems.map((item) => `<span style="text-decoration:line-through;">${item.quantity}x ${escapeHtml(item.cardName)}</span>`).join(', ')}
     </div>
   `;
 }
@@ -309,16 +332,103 @@ function startCounter(tradeId) {
   const trade = state.trades.find((entry) => String(entry.id) === String(tradeId));
   if (!trade) return;
 
-  openTradeShop({
-    mode: 'counter',
-    tradeId: trade.id,
-    partner: { id: trade.fromUserId, username: trade.fromUsername },
-    askedFor: trade.giving,
-    onDone: () => {
-      showBuilder(false);
-      loadTrades();
-    },
-  });
+  showRequestReview(trade);
+}
+
+/**
+ * Step one of answering: which of these are you actually willing to part with?
+ *
+ * Asked for six and happy to give four is an ordinary answer, and it used to
+ * have nowhere to go — the choice was the whole list or nothing. Turning
+ * cards down here keeps the negotiation alive instead of ending it, and the
+ * asker is told which ones rather than left comparing lists.
+ */
+function showRequestReview(trade) {
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+
+  // Declines are held here while the modal is open, then handed to the shop.
+  const declined = new Set();
+
+  const render = () => {
+    const keeping = trade.giving.filter((item) => !declined.has(item.id));
+
+    modalBody.innerHTML = `
+      <h2>${escapeHtml(trade.fromUsername)} asked for these</h2>
+      <p style="color:var(--text-secondary);font-size:0.9rem;margin:0.5rem 0 1rem;">
+        Turn down anything you would rather keep. You will pick what you want
+        in return next.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:0.35rem;">
+        ${trade.giving.map((item) => {
+          const isDeclined = declined.has(item.id);
+
+          return `
+            <div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem;border-radius:8px;background:var(--bg-tertiary);${isDeclined ? 'opacity:0.55;' : ''}">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:0.9rem;${isDeclined ? 'text-decoration:line-through;' : ''}">
+                  ${cardLine(item)}
+                </div>
+                ${cardDetail(item)}
+              </div>
+              <button class="btn btn-sm ${isDeclined ? 'btn-secondary' : 'btn-primary'} review-toggle"
+                      data-id="${item.id}">
+                ${isDeclined ? 'Keeping' : 'Willing'}
+              </button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div style="margin-top:1rem;font-size:0.875rem;color:var(--text-secondary);">
+        ${keeping.length
+          ? `Willing to trade ${keeping.length} of ${trade.giving.length}.`
+          : 'You have turned down everything — that is a decline, not a counter-offer.'}
+      </div>
+      <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+        <button id="review-continue" class="btn btn-primary" style="flex:1;" ${keeping.length ? '' : 'disabled'}>
+          Now pick what you want
+        </button>
+        <button id="review-cancel" class="btn btn-secondary">Cancel</button>
+      </div>
+    `;
+
+    modalBody.querySelectorAll('.review-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.id);
+
+        if (declined.has(id)) declined.delete(id);
+        else declined.add(id);
+
+        render();
+      });
+    });
+
+    document.getElementById('review-cancel').addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+
+    document.getElementById('review-continue').addEventListener('click', () => {
+      modal.classList.add('hidden');
+
+      openTradeShop({
+        mode: 'counter',
+        tradeId: trade.id,
+        partner: { id: trade.fromUserId, username: trade.fromUsername },
+        // Only the cards they agreed to. The declined ones cost them nothing,
+        // so they must not appear in the "this empties your decks" warning.
+        askedFor: trade.giving.filter((item) => !declined.has(item.id)),
+        declinedItems: trade.giving.filter((item) => declined.has(item.id)),
+        declinedItemIds: [...declined],
+        onDone: () => {
+          showBuilder(false);
+          loadTrades();
+        },
+      });
+    });
+  };
+
+  render();
+  modal.classList.remove('hidden');
 }
 
 /**

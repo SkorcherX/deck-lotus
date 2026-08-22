@@ -692,9 +692,21 @@ async function main() {
         `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`
       ).get(name);
 
+      // `declined` is part of what a trade item is, not decoration: restoring
+      // it as 0 would silently put every card someone refused back into the
+      // trade. The column check keeps this working on a database that has
+      // trade_items but has not migrated that far.
+      const hasColumn = (table, column) => targetDb.prepare(
+        `SELECT COUNT(*) as count FROM pragma_table_info(?) WHERE name = ?`
+      ).get(table, column).count > 0;
+
+      const tradeItemsDeclined = hasTable('trade_items') && hasColumn('trade_items', 'declined');
+
       const tradeItemsBackup = hasTable('trade_items')
         ? targetDb.prepare(`
-            SELECT ti.trade_id, ti.quantity, ti.is_foil, ti.direction, p.uuid as printing_uuid
+            SELECT ti.trade_id, ti.quantity, ti.is_foil, ti.direction,
+                   ${tradeItemsDeclined ? 'ti.declined' : '0 as declined'},
+                   p.uuid as printing_uuid
             FROM trade_items ti
             JOIN printings p ON ti.printing_id = p.id
           `).all()
@@ -962,8 +974,8 @@ async function main() {
       console.log('\n🔄 Restoring trade data...');
 
       const insertTradeItem = targetDb.prepare(`
-        INSERT INTO trade_items (trade_id, printing_id, is_foil, quantity, direction)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO trade_items (trade_id, printing_id, is_foil, quantity, direction, declined)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
 
       const getTradePrintingId = targetDb.prepare(`
@@ -983,7 +995,8 @@ async function main() {
                 printing.id,
                 entry.is_foil ?? 0,
                 entry.quantity,
-                entry.direction
+                entry.direction,
+                entry.declined ?? 0
               );
               restored++;
             } catch (e) {

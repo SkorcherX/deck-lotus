@@ -647,10 +647,10 @@ class ApiClient {
     });
   }
 
-  async counterTrade(id, items, note = null) {
+  async counterTrade(id, items, note = null, declinedItemIds = []) {
     return this.request(`/trades/${id}/counter`, {
       method: 'POST',
-      body: JSON.stringify({ items, note }),
+      body: JSON.stringify({ items, note, declinedItemIds }),
     });
   }
 

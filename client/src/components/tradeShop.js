@@ -30,9 +30,13 @@ const state = {
   mode: 'request',
   partner: null,
   tradeId: null,
-  // What the other side already asked for, shown while countering so the
-  // choice is made against something rather than in the abstract.
+  // What the other side asked for and this user agreed to, shown while
+  // countering so the choice is made against something rather than in the
+  // abstract. Cards they turned down are held separately: they are not part
+  // of the swap, but the cart still says so out loud before it is sent.
   askedFor: [],
+  declinedItems: [],
+  declinedItemIds: [],
   cart: new Map(),
   data: null,
   page: 1,
@@ -401,8 +405,9 @@ function renderCart() {
     state.mode === 'counter' ? 'What you want back' : 'Your picks';
 
   document.getElementById('trade-cart-subtitle').innerHTML = state.mode === 'counter'
-    ? `${escapeHtml(state.partner.username)} asked you for ${summariseAsked()}.
-       Pick what you want from their collection in return — they still have to accept.`
+    ? `You are giving ${summariseAsked()}${declinedNote()}.
+       Pick what you want from ${escapeHtml(state.partner.username)}'s collection in
+       return — they still have to accept.`
     : `Picked from ${escapeHtml(state.partner.username)}'s collection.
        They will choose what they want from yours before anything is agreed.`;
 
@@ -466,16 +471,30 @@ function renderCart() {
   });
 }
 
-function summariseAsked() {
-  if (!state.askedFor.length) return 'nothing';
+function summariseList(items) {
+  if (!items.length) return 'nothing';
 
-  const names = state.askedFor.map((item) => (
+  const names = items.map((item) => (
     item.quantity > 1 ? `${item.quantity}x ${item.cardName}` : item.cardName
   ));
 
   return escapeHtml(names.length > 3
     ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`
     : names.join(', '));
+}
+
+function summariseAsked() {
+  return summariseList(state.askedFor);
+}
+
+/**
+ * Cards turned down at the review step, said out loud rather than left as a
+ * gap in the list the other person wrote.
+ */
+function declinedNote() {
+  if (!state.declinedItems.length) return '';
+
+  return `, and keeping ${summariseList(state.declinedItems)}`;
 }
 
 /**
@@ -549,7 +568,7 @@ async function sendCart() {
     showLoading();
 
     if (state.mode === 'counter') {
-      await api.counterTrade(state.tradeId, items, note);
+      await api.counterTrade(state.tradeId, items, note, state.declinedItemIds);
     } else {
       await api.createTradeRequest(state.partner.id, items, note);
     }
@@ -583,11 +602,21 @@ async function sendCart() {
  * `partner` is whose collection is being browsed. In counter mode that is the
  * person who sent the request, and `askedFor` is what they want from you.
  */
-export function openTradeShop({ mode, partner, tradeId = null, askedFor = [], onDone = null }) {
+export function openTradeShop({
+  mode,
+  partner,
+  tradeId = null,
+  askedFor = [],
+  declinedItems = [],
+  declinedItemIds = [],
+  onDone = null,
+}) {
   state.mode = mode;
   state.partner = partner;
   state.tradeId = tradeId;
   state.askedFor = askedFor;
+  state.declinedItems = declinedItems;
+  state.declinedItemIds = declinedItemIds;
   state.cart = new Map();
   state.page = 1;
   state.filters = { name: '', sort: 'name', type: 'all', commander: 'all', colors: [] };
@@ -605,7 +634,7 @@ export function openTradeShop({ mode, partner, tradeId = null, askedFor = [], on
 
   document.getElementById('trade-shop-brief').innerHTML = mode === 'counter'
     ? `<div style="padding:0.75rem 1rem;border-radius:8px;background:var(--bg-tertiary);font-size:0.9rem;">
-         <strong>${escapeHtml(partner.username)}</strong> asked you for ${summariseAsked()}.
+         You are giving <strong>${escapeHtml(partner.username)}</strong> ${summariseAsked()}${declinedNote()}.
          Pick what you want from their collection in return.
        </div>`
     : `<div style="font-size:0.875rem;color:var(--text-secondary);">

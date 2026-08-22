@@ -350,20 +350,24 @@ export function createTradeRequest(fromUserId, toUserId, items, note = null) {
 }
 
 /**
- * Answer a shopping request by naming your own half: the cards you want out
- * of the initiator's collection in exchange.
+ * Answer a shopping request: say which of the asked-for cards you are willing
+ * to part with, and name what you want out of the initiator's collection in
+ * exchange.
  *
- * This replaces the give side outright rather than adding to it, so a partner
- * who changes their mind and re-sends simply overwrites their previous pick.
- * The request side is left exactly as the initiator sent it — countering is
- * choosing what you want back, not editing what they asked for. Wanting to
- * change their side means declining and starting a request of your own.
+ * `declinedItemIds` are asked-for cards you are keeping. They are marked, not
+ * deleted, so the person who asked can see which two of their six were the
+ * problem — a card quietly disappearing from your own request is the version
+ * of this that makes people ask "did it not save?". Declining everything is
+ * not a counter-offer, it is a no, so at least one card has to survive.
  *
- * Sending a counter is that person's half of the agreement; the trade then
+ * The give side is replaced outright rather than added to, so changing your
+ * mind and re-sending simply overwrites your previous pick.
+ *
+ * Sending a counter is this person's half of the agreement; the trade then
  * needs the initiator's acceptance to move anything, so both people have said
  * yes to the same set of cards before a single copy changes hands.
  */
-export function counterTrade(tradeId, userId, items, note = null) {
+export function counterTrade(tradeId, userId, items, note = null, declinedItemIds = []) {
   const trade = loadTrade(tradeId);
 
   if (!trade) throw new Error('Trade not found');
@@ -378,6 +382,26 @@ export function counterTrade(tradeId, userId, items, note = null) {
     throw new Error('This request is not waiting on you');
   }
 
+  const asked = db.all(
+    `SELECT id FROM trade_items WHERE trade_id = ? AND direction = 'receive'`,
+    [tradeId]
+  );
+
+  const askedIds = new Set(asked.map((row) => row.id));
+  const declined = [...new Set((declinedItemIds || []).map(Number))];
+
+  for (const id of declined) {
+    if (!askedIds.has(id)) {
+      throw new Error('You can only turn down cards this trade actually asks you for');
+    }
+  }
+
+  if (declined.length >= askedIds.size) {
+    throw new Error(
+      'That turns down everything they asked for — decline the whole trade instead'
+    );
+  }
+
   // The counter picks from the initiator's collection, so those cards leave
   // the initiator: direction 'give'.
   const normalized = normalizeItems(items).map((item) => ({ ...item, direction: 'give' }));
@@ -389,6 +413,21 @@ export function counterTrade(tradeId, userId, items, note = null) {
   db.transaction(() => {
     db.run(`DELETE FROM trade_items WHERE trade_id = ? AND direction = 'give'`, [tradeId]);
     insertItems(tradeId, normalized);
+
+    // Set both ways round, so re-answering a request can un-decline a card
+    // the person changed their mind about rather than leaving it stuck.
+    db.run(
+      `UPDATE trade_items SET declined = 0 WHERE trade_id = ? AND direction = 'receive'`,
+      [tradeId]
+    );
+
+    if (declined.length > 0) {
+      db.run(
+        `UPDATE trade_items SET declined = 1
+          WHERE trade_id = ? AND id IN (${declined.map(() => '?').join(',')})`,
+        [tradeId, ...declined]
+      );
+    }
 
     db.run(
       `UPDATE trades
@@ -613,8 +652,16 @@ function loadTrade(tradeId) {
   return db.get(`SELECT * FROM trades WHERE id = ?`, [tradeId]);
 }
 
+/**
+ * The cards a trade would actually move. Excludes anything the other side
+ * turned down: a declined row is kept for the record, not for the swap, and
+ * an accept that moved one would hand over a card its owner said no to.
+ */
 function loadItems(tradeId) {
-  return db.all(`SELECT * FROM trade_items WHERE trade_id = ? ORDER BY id`, [tradeId]);
+  return db.all(
+    `SELECT * FROM trade_items WHERE trade_id = ? AND declined = 0 ORDER BY id`,
+    [tradeId]
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -717,7 +764,7 @@ const TRADE_COPY_PRICE = `
 `;
 
 const TRADE_ITEM_COLUMNS = `
-  ti.id, ti.trade_id, ti.printing_id, ti.is_foil, ti.quantity, ti.direction,
+  ti.id, ti.trade_id, ti.printing_id, ti.is_foil, ti.quantity, ti.direction, ti.declined,
   p.set_code, p.collector_number, p.image_url,
   c.id AS card_id, c.name AS card_name, c.mana_cost, c.type_line, c.colors,
   ${TRADE_COPY_PRICE} AS unit_price
@@ -777,12 +824,20 @@ function shapeTrade(trade, items, userId) {
     // zeroed so a side's total can say how much of it is unpriced instead of
     // quietly reporting a card as free.
     linePrice: item.unit_price == null ? null : item.unit_price * item.quantity,
+    declined: item.declined === 1,
     // 'out' leaves the viewer's collection, 'in' enters it.
     flow: (item.direction === 'give') === viewerIsProposer ? 'out' : 'in'
   }));
 
-  const giving = shaped.filter((item) => item.flow === 'out');
-  const receiving = shaped.filter((item) => item.flow === 'in');
+  // Declined cards are held apart from both sides. They are not part of the
+  // swap and must not reach the totals — a trade that counts cards its owner
+  // refused would report a value nobody agreed to — but they are still shown,
+  // so the person who asked can see which of their picks were turned down.
+  const live = shaped.filter((item) => !item.declined);
+
+  const giving = live.filter((item) => item.flow === 'out');
+  const receiving = live.filter((item) => item.flow === 'in');
+  const declinedItems = shaped.filter((item) => item.declined);
 
   const isOpen = OPEN_STATUSES.has(trade.status);
   const waitingOnViewer = isOpen && trade.awaiting_user_id === userId;
@@ -814,6 +869,7 @@ function shapeTrade(trade, items, userId) {
     canCancel: isOpen && !waitingOnViewer,
     giving,
     receiving,
+    declinedItems,
     givingTotals: totalsFor(giving),
     receivingTotals: totalsFor(receiving),
     // A trade with nothing coming back the other way. Perfectly valid — it is

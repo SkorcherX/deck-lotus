@@ -81,6 +81,11 @@ taken on GitHub — only do it when explicitly asked.
   caller's own decks — returning the partner's shortfalls let a shopper probe
   one card at a time to learn what they had built. Any new field on the
   partner-browse or preview paths has to be checked against this.
+- Answering a shopping request is per-card: `trade_items.declined` marks the
+  ones the owner would rather keep. Declined rows are never deleted — the
+  person who asked has to be able to see what was turned down — so anything
+  that moves cards or totals a side must filter on `declined = 0`. `loadItems`
+  already does; new queries need to.
 - Trades have two shapes: a complete proposal (`pending`) and a shopping
   request (`awaiting_counter`) where one person has picked what they want and
   the other has yet to pick theirs. `trades.awaiting_user_id` says whose turn

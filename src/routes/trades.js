@@ -223,14 +223,17 @@ router.post('/request', authenticate, async (req, res, next) => {
 
 /**
  * POST /api/trades/:id/counter
- * Answer a shopping request with your own half, which turns it into a
- * complete trade for the initiator to accept.
+ * Answer a shopping request: turn down any of the cards you would rather
+ * keep, name what you want in return, and hand the trade back to the
+ * initiator to accept.
  */
 router.post('/:id/counter', authenticate, async (req, res, next) => {
   try {
-    const { items, note } = req.body;
+    const { items, note, declinedItemIds } = req.body;
 
-    const trade = counterTrade(parseInt(req.params.id, 10), req.user.id, items, note);
+    const trade = counterTrade(
+      parseInt(req.params.id, 10), req.user.id, items, note, declinedItemIds
+    );
 
     await sendTradeCountered(trade).catch((error) => {
       console.warn('Trade notification failed:', error.message);
