@@ -20,6 +20,33 @@ const PRICES_PATH = path.join(DATA_DIR, 'AllPricesToday.json');
 const TARGET_DB_PATH = process.env.DATABASE_PATH || path.join(DATA_DIR, 'deck-lotus.db');
 
 /**
+ * Runs a targetDb.transaction() function over `items` in chunks instead of
+ * one transaction for the whole array. This app's own writes (a card added
+ * to inventory, a deck saved) share this same database file and block behind
+ * whichever transaction currently holds the write lock — a single
+ * multi-hundred-thousand-row transaction (e.g. prices) would starve them for
+ * as long as the import takes. Chunking keeps each lock hold brief so live
+ * traffic can interleave between batches.
+ *
+ * Sums numeric returns from transactionFn across chunks, for the call sites
+ * that report a count back to the caller.
+ */
+function runBatched(transactionFn, items, batchSize = 1000) {
+  let total = 0;
+  let sawNumber = false;
+
+  for (let i = 0; i < items.length; i += batchSize) {
+    const result = transactionFn(items.slice(i, i + batchSize));
+    if (typeof result === 'number') {
+      total += result;
+      sawNumber = true;
+    }
+  }
+
+  return sawNumber ? total : undefined;
+}
+
+/**
  * Download file from URL
  */
 async function downloadFile(url, dest) {
@@ -240,7 +267,7 @@ async function importCards(sourceDb, targetDb) {
     }
   });
 
-  insertMany(sourceCards);
+  runBatched(insertMany, sourceCards);
   console.log(`✓ Imported ${sourceCards.length} unique cards`);
 
   // Import printings
@@ -317,7 +344,7 @@ async function importCards(sourceDb, targetDb) {
     }
   });
 
-  insertPrintingsMany(sourcePrintings);
+  runBatched(insertPrintingsMany, sourcePrintings);
   console.log(`✓ Imported ${sourcePrintings.length} card printings`);
 
   // Import sets
@@ -377,7 +404,7 @@ async function importCards(sourceDb, targetDb) {
     }
   });
 
-  updateUrlsMany(purchaseUrls);
+  runBatched(updateUrlsMany, purchaseUrls);
   console.log(`✓ Updated purchase URLs for ${purchaseUrls.length} printings`);
 
   // Import rulings
@@ -399,7 +426,7 @@ async function importCards(sourceDb, targetDb) {
     }
   });
 
-  insertRulingsMany(rulings);
+  runBatched(insertRulingsMany, rulings);
   console.log(`✓ Imported ${rulings.length} card rulings`);
 
   // Import related cards
@@ -441,7 +468,7 @@ async function importCards(sourceDb, targetDb) {
     return count;
   });
 
-  const relatedCount = insertRelatedMany(relatedCards);
+  const relatedCount = runBatched(insertRelatedMany, relatedCards);
   console.log(`✓ Imported ${relatedCount} related card relationships`);
 
   // Import foreign data
@@ -481,7 +508,7 @@ async function importCards(sourceDb, targetDb) {
     return inserted;
   });
 
-  const insertedCount = insertForeignMany(foreignData);
+  const insertedCount = runBatched(insertForeignMany, foreignData);
   console.log(`✓ Imported ${insertedCount} foreign card translations`);
 
   srcDb.close();
@@ -581,7 +608,7 @@ async function importPricing(targetDb) {
     }
   });
 
-  insertPricesMany(Object.entries(data));
+  runBatched(insertPricesMany, Object.entries(data));
   console.log(`\n✓ Imported pricing for ${Object.keys(data).length} printings`);
 }
 

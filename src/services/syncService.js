@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import cron from 'node-cron';
@@ -23,10 +23,24 @@ export async function runSync() {
 
     const scriptPath = join(__dirname, '../../scripts/import-mtgjson.js');
 
+    // spawn, not execSync: execSync blocks Node's single event loop thread for
+    // the whole import (a multi-minute download + bulk insert), which freezes
+    // every other request across every user for as long as it runs. spawn
+    // starts a real child process and lets the loop keep serving requests
+    // while we asynchronously wait for it to finish.
+    //
     // Always use FORCE_REIMPORT=true for syncs to preserve user data while updating MTGJSON data
-    execSync(`node "${scriptPath}"`, {
-      stdio: 'inherit',
-      env: { ...process.env, FORCE_REIMPORT: 'true' }
+    await new Promise((resolve, reject) => {
+      const child = spawn('node', [scriptPath], {
+        stdio: 'inherit',
+        env: { ...process.env, FORCE_REIMPORT: 'true' }
+      });
+
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Sync process exited with code ${code}`));
+      });
     });
 
     lastRun = new Date();
