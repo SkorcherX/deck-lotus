@@ -5407,6 +5407,86 @@ button.btn-icon.active {
 
 .deck-guidance-action:hover { background: var(--primary); color: #fff; }
 
+/* Severity is carried by a left rule rather than by colouring the text, so a
+   warning reads as "look here first" without turning the panel into an error
+   list. A suggestion is still not a failure. */
+.deck-guidance-warn {
+  border-left: 3px solid var(--warning, #d98324);
+  padding-left: 0.6rem;
+}
+
+.deck-guidance-consider {
+  border-left: 3px solid var(--border);
+  padding-left: 0.6rem;
+}
+
+.deck-guidance-info {
+  border-left: 3px solid var(--success, #3fa66a);
+  padding-left: 0.6rem;
+}
+
+.deck-guidance-head-strength { margin-top: 1rem; }
+
+/* The cards a finding was built from. The role classification behind these is
+   heuristic, so showing its working is what lets someone disagree with it. */
+.deck-guidance-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.deck-guidance-card {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+/* ---- Deck snapshot: the numbers the suggestions were measured from ---- */
+
+.deck-snapshot {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.deck-snapshot-archetype {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.6rem;
+}
+
+.deck-snapshot-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 0.5rem;
+}
+
+.deck-snapshot-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+
+.deck-snapshot-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.deck-snapshot-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
 .inventory-panel-cmc-note {
   padding: 0.35rem 0.6rem;
   border-radius: 999px;

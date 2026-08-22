@@ -146,7 +146,7 @@ router.get('/availability', authenticate, (req, res, next) => {
  */
 router.get('/builder', authenticate, (req, res, next) => {
   try {
-    const { deckId, name, type, colors, colorIdentity, maxCmc, onlyFree, format, page, limit } = req.query;
+    const { deckId, name, type, colors, colorIdentity, maxCmc, onlyFree, format, role, page, limit } = req.query;
 
     const result = getBuilderInventory(
       req.user.id,
@@ -159,6 +159,7 @@ router.get('/builder', authenticate, (req, res, next) => {
         maxCmc,
         onlyFree: onlyFree === 'true' || onlyFree === '1',
         format,
+        role,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? Math.min(parseInt(limit, 10), 200) : 60
       }

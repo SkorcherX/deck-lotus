@@ -1,5 +1,6 @@
 import db from '../db/connection.js';
 import { checkDeckLegality } from './deckService.js';
+import { adviseDeck } from './deckAdvisorService.js';
 
 /**
  * The hard rules of a format: the things that make a deck unplayable rather
@@ -9,6 +10,9 @@ import { checkDeckLegality } from './deckService.js';
  * played; a deck that ignores advice may simply be doing something deliberate,
  * and conflating the two is what makes a deck checker nagging rather than
  * useful.
+ *
+ * The advice itself lives in deckAdvisorService.js. This file only calls it
+ * and passes the result through under a separate key.
  */
 
 export const FORMAT_RULES = {
@@ -74,123 +78,26 @@ function boardOf(card) {
   return card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard');
 }
 
-const isLand = (card) => /land/i.test(card.type_line || '');
-
 /**
- * How many lands a deck of this size usually wants.
+ * Run the advisor and shape it for the response.
  *
- * A heuristic, not a rule. The received wisdom is around 17 in a 60-card deck
- * and 36 in Commander, shifted by how expensive the spells are — a deck full
- * of one-drops floods on 18, and a deck full of five-drops stumbles on 16.
+ * `guidance` keeps the name and the item shape it has always had, so the
+ * existing client keeps working; the findings simply carry more fields now.
+ * `advice` is the new part — the archetype and the measurements behind the
+ * findings, for callers that want to show the numbers rather than the prose.
  */
-function suggestedLandCount(deckSize, averageSpellCost) {
-  const base = deckSize >= 100 ? 36 : 17;
+function adviceFor(mainboard, sideboard, format) {
+  const advice = adviseDeck(mainboard, sideboard, format);
 
-  if (averageSpellCost <= 1.9) return base - 1;
-  if (averageSpellCost <= 2.6) return base;
-  if (averageSpellCost <= 3.3) return base + 1;
-  return base + 2;
+  return {
+    guidance: advice.findings,
+    advice: {
+      archetype: advice.archetype,
+      snapshot: advice.snapshot
+    }
+  };
 }
 
-/**
- * Which colours a card's mana cost actually asks for, as opposed to its
- * colour identity, which also counts reminder text and abilities.
- */
-function costColors(manaCost) {
-  const found = new Set();
-  for (const match of String(manaCost || '').matchAll(/\{([^}]+)\}/g)) {
-    for (const color of match[1].toUpperCase().split('/')) {
-      if ('WUBRG'.includes(color) && color.length === 1) found.add(color);
-    }
-  }
-  return [...found];
-}
-
-/**
- * Advice, kept firmly apart from the rules above. Every item says what to
- * consider and carries the filter that would show the cards to consider it
- * with, so the client can offer a way to act rather than just a sentence.
- */
-function buildGuidance(mainboard, rules) {
-  const guidance = [];
-  const total = mainboard.reduce((sum, c) => sum + c.quantity, 0);
-
-  // Nothing useful to say about a deck that has barely been started.
-  if (total < 20) return guidance;
-
-  const lands = mainboard.filter(isLand);
-  const spells = mainboard.filter((c) => !isLand(c));
-  const landCount = lands.reduce((sum, c) => sum + c.quantity, 0);
-  const spellCount = spells.reduce((sum, c) => sum + c.quantity, 0);
-
-  const deckSize = rules?.exactDeck || rules?.minDeck || 60;
-  const averageCost = spellCount > 0
-    ? spells.reduce((sum, c) => sum + (c.cmc || 0) * c.quantity, 0) / spellCount
-    : 0;
-
-  // The colours this deck actually casts, so land advice points somewhere.
-  const deckColors = [...new Set(spells.flatMap((c) => costColors(c.mana_cost)))];
-
-  // --- Land count ----------------------------------------------------------
-  const wantedLands = suggestedLandCount(deckSize, averageCost);
-  const landGap = wantedLands - landCount;
-
-  // Two off is noise; three is worth mentioning.
-  if (Math.abs(landGap) >= 3) {
-    guidance.push({
-      code: 'land-count',
-      message: landGap > 0
-        ? `Consider ${landGap} more land${landGap === 1 ? '' : 's'} — around ${wantedLands} suits an average cost of ${averageCost.toFixed(1)}.`
-        : `Consider ${-landGap} fewer lands — around ${wantedLands} suits an average cost of ${averageCost.toFixed(1)}.`,
-      // No colour filter here on purpose: picking colours means "produces all
-      // of these", so a three-colour deck would match no single land. Show
-      // every land they own and let them narrow with the colour chips.
-      action: landGap > 0 ? { label: 'Show your lands', filter: { type: 'Land' } } : null
-    });
-  }
-
-  // --- Curve ---------------------------------------------------------------
-  if (spellCount >= 15) {
-    const expensive = spells.filter((c) => (c.cmc || 0) >= 4).reduce((sum, c) => sum + c.quantity, 0);
-    const cheap = spells.filter((c) => (c.cmc || 0) <= 2).reduce((sum, c) => sum + c.quantity, 0);
-
-    if (expensive / spellCount > 0.4 && cheap / spellCount < 0.3) {
-      guidance.push({
-        code: 'curve-top-heavy',
-        message: `Top-heavy: ${expensive} of ${spellCount} spells cost 4 or more, and only ${cheap} cost 2 or less.`,
-        // Same reason as the land action: colours here would AND together.
-        action: { label: 'Show cheap spells', filter: { maxCmc: 2 } }
-      });
-    }
-  }
-
-  // --- Colour support ------------------------------------------------------
-  // A land is treated as producing the colours in its identity, which is a
-  // decent proxy without parsing oracle text.
-  for (const color of deckColors) {
-    const needing = spells
-      .filter((c) => costColors(c.mana_cost).includes(color))
-      .reduce((sum, c) => sum + c.quantity, 0);
-
-    if (needing < 3) continue;
-
-    const sources = lands
-      .filter((c) => (c.color_identity || '').includes(color))
-      .reduce((sum, c) => sum + c.quantity, 0);
-
-    // Rough guide: a colour you cast from regularly wants a decent share of
-    // the mana base behind it.
-    if (landCount > 0 && sources / landCount < 0.25) {
-      guidance.push({
-        code: 'color-support',
-        message: `${needing} cards need ${color}, but only ${sources} of ${landCount} lands produce it.`,
-        action: { label: `Show ${color} lands`, filter: { type: 'Land', colors: [color] } }
-      });
-    }
-  }
-
-  return guidance;
-}
 
 /**
  * Check a deck against its format's hard rules.
@@ -216,6 +123,7 @@ export function checkFormatRules(deckId, userId, formatOverride = null) {
     `SELECT dc.quantity, dc.is_sideboard, dc.is_commander, dc.board_type,
             c.name, c.type_line, c.supertypes, c.color_identity,
             c.oracle_text, c.leadership_skills, c.cmc, c.mana_cost,
+            c.keywords, c.power,
             p.rarity
        FROM deck_cards dc
        JOIN printings p ON dc.printing_id = p.id
@@ -242,8 +150,9 @@ export function checkFormatRules(deckId, userId, formatOverride = null) {
       counts,
       targets: null,
       violations: [],
-      // Advice does not need a known format — a deck still wants lands.
-      guidance: buildGuidance(mainboard, null),
+      // Advice does not need a known format — a deck still wants lands. The
+      // advisor falls back to permissive, format-agnostic expectations.
+      ...adviceFor(mainboard, sideboard, null),
       isLegal: true
     };
   }
@@ -395,7 +304,7 @@ export function checkFormatRules(deckId, userId, formatOverride = null) {
       sideboardMax: rules.sideboardMax ?? null
     },
     violations,
-    guidance: buildGuidance(mainboard, rules),
+    ...adviceFor(mainboard, sideboard, format),
     // Legality is about the rules only. Ignoring advice never makes a deck
     // illegal, and folding it in here would make the two indistinguishable.
     isLegal: violations.length === 0

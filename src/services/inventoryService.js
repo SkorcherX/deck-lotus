@@ -4,6 +4,7 @@ import {
   fuzzyPlan,
   rankFuzzyCandidates
 } from '../utils/cardNameMatch.js';
+import { ROLE_FILTERS } from './cardRoleService.js';
 
 // Price of one owned copy, honouring its finish. Foil copies are worth their
 // foil price; where a printing has no foil price synced we fall back to the
@@ -915,6 +916,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     maxCmc,
     onlyFree = false,
     format,
+    role,
     page = 1,
     limit = 60
   } = filters;
@@ -986,6 +988,14 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   if (maxCmc !== undefined && maxCmc !== null && maxCmc !== '') {
     where.push('cmc <= ?');
     params.push(Number(maxCmc));
+  }
+
+  // What a card does, for the deck advisor's suggestions — "show me removal
+  // that isn't creature removal" is not something the type and colour filters
+  // can express. The SQL approximates the oracle-text predicate it is named
+  // after; it only has to put plausible cards in front of someone.
+  if (role && ROLE_FILTERS[role]) {
+    where.push(ROLE_FILTERS[role].sql);
   }
 
   if (onlyFree) {

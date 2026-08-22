@@ -497,7 +497,7 @@ class ApiClient {
     return this.request(`/decks/${deckId}/rules${query}`);
   }
 
-  async getBuilderInventory({ deckId, name, type, colors, maxCmc, onlyFree, format, colorIdentity, page = 1, limit = 60 } = {}) {
+  async getBuilderInventory({ deckId, name, type, colors, maxCmc, onlyFree, format, colorIdentity, role, page = 1, limit = 60 } = {}) {
     const params = new URLSearchParams();
     if (deckId) params.set('deckId', deckId);
     if (name) params.set('name', name);
@@ -506,6 +506,7 @@ class ApiClient {
     if (maxCmc !== null && maxCmc !== undefined) params.set('maxCmc', maxCmc);
     if (onlyFree) params.set('onlyFree', 'true');
     if (format) params.set('format', format);
+    if (role) params.set('role', role);
     // An empty string is meaningful here: a colourless commander confines the
     // deck to colourless cards, so it must be sent rather than dropped.
     if (colorIdentity !== null && colorIdentity !== undefined) params.set('colorIdentity', colorIdentity);

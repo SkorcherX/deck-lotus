@@ -14,13 +14,24 @@ import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/comma
  */
 
 let ctx = null;              // { getDeck, refreshDeck }
-let filters = { name: '', type: 'all', colors: [], maxCmc: null, onlyFree: false, formatLegal: false, identityOnly: false };
+let filters = { name: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
 let page = 1;
 let feed = { items: [], total: 0, totalPages: 1 };
 let undoStack = [];
 let busy = false;
 
 const PAGE_SIZE = 60;
+
+// Human wording for the role filters the deck advisor can hand us, so the chip
+// reads as a sentence rather than as the key the API expects.
+const ROLE_LABELS = {
+  'removal-permanent': 'removal that hits non-creatures',
+  'graveyard-hate': 'graveyard hate',
+  'card-advantage': 'card advantage',
+  'interaction': 'interaction',
+  'instant-sorcery': 'instants and sorceries',
+  'finisher': 'ways to win'
+};
 
 const el = (id) => document.getElementById(id);
 
@@ -112,6 +123,18 @@ export function setupInventoryPanel(context) {
     });
   }
 
+  // Same story for the role filter: it can only arrive from a suggestion, so
+  // the only control it needs is a way to drop it again.
+  const roleNote = el('inventory-panel-role-note');
+  if (roleNote) {
+    roleNote.addEventListener('click', () => {
+      filters.role = null;
+      syncFilterControls();
+      page = 1;
+      loadFeed();
+    });
+  }
+
   const undoBtn = el('inventory-panel-undo');
   if (undoBtn) undoBtn.addEventListener('click', undoLast);
 
@@ -125,7 +148,7 @@ export function setupInventoryPanel(context) {
 export function resetInventoryPanel() {
   undoStack = [];
   page = 1;
-  filters = { name: '', type: 'all', colors: [], maxCmc: null, onlyFree: false, formatLegal: false, identityOnly: false };
+  filters = { name: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
 
   syncFilterControls();
 
@@ -144,12 +167,13 @@ export function resetInventoryPanel() {
  * you. Replaces the current filters rather than adding to them, so the
  * result always matches what was asked for.
  */
-export function openInventoryPanelWith({ type = 'all', colors = [], maxCmc = null } = {}) {
+export function openInventoryPanelWith({ type = 'all', colors = [], maxCmc = null, role = null } = {}) {
   filters = {
     name: '',
     type: type || 'all',
     colors: [...colors],
     maxCmc,
+    role,
     onlyFree: false,
     formatLegal: false,
     identityOnly: false
@@ -194,6 +218,12 @@ function syncFilterControls() {
   if (cmcNote) {
     cmcNote.classList.toggle('hidden', !filters.maxCmc);
     cmcNote.textContent = filters.maxCmc ? `mana value ${filters.maxCmc} or less ✕` : '';
+  }
+
+  const roleNote = el('inventory-panel-role-note');
+  if (roleNote) {
+    roleNote.classList.toggle('hidden', !filters.role);
+    roleNote.textContent = filters.role ? `${ROLE_LABELS[filters.role] || filters.role} ✕` : '';
   }
 }
 
@@ -241,6 +271,7 @@ async function loadFeed() {
       type: filters.type,
       colors: filters.colors,
       maxCmc: filters.maxCmc,
+      role: filters.role,
       onlyFree: filters.onlyFree,
       format: filters.formatLegal ? deck.format : null,
       colorIdentity: identity,

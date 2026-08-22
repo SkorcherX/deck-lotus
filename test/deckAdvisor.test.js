@@ -1,0 +1,217 @@
+/**
+ * Checks for the deck advisor.
+ *
+ * The advisor is deliberately pure — card rows in, findings out — so it is the
+ * one part of the deck pipeline that can be exercised on a machine where the
+ * SQLite driver will not build. That makes these worth keeping honest: they
+ * are the only automated coverage this logic gets before it reaches a running
+ * container.
+ *
+ * Run with: npm test
+ */
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { adviseDeck, analyzeDeck } from '../src/services/deckAdvisorService.js';
+import {
+  isGraveyardHate, isSelection, isCardAdvantage, isPermanentRemoval,
+  hasAlternativeCost, costPips
+} from '../src/services/cardRoleService.js';
+
+const card = (name, overrides = {}) => ({
+  name,
+  quantity: 4,
+  cmc: 0,
+  mana_cost: '',
+  type_line: '',
+  oracle_text: '',
+  color_identity: '',
+  power: null,
+  keywords: null,
+  ...overrides
+});
+
+const codes = (result) => result.findings.map((f) => f.code);
+const find = (result, code) => result.findings.find((f) => f.code === code);
+
+// --- Role classification ---------------------------------------------------
+
+test('card selection and card advantage are told apart', () => {
+  const ponder = card('Ponder', {
+    cmc: 1, type_line: 'Sorcery',
+    oracle_text: 'Look at the top three cards of your library, then put them back in any order. You may shuffle. Draw a card.'
+  });
+  const divination = card('Divination', {
+    cmc: 3, type_line: 'Sorcery', oracle_text: 'Draw two cards.'
+  });
+
+  assert.ok(isSelection(ponder), 'Ponder digs');
+  assert.ok(isCardAdvantage(divination), 'Divination draws extra cards');
+  assert.ok(!isCardAdvantage(ponder), 'a cantrip is not card advantage');
+});
+
+test('removal that only hits creatures is not counted as broader removal', () => {
+  const murder = card('Murder', { type_line: 'Instant', oracle_text: 'Destroy target creature.' });
+  const naturalize = card('Naturalize', {
+    type_line: 'Instant', oracle_text: 'Destroy target artifact or enchantment.'
+  });
+
+  assert.ok(!isPermanentRemoval(murder));
+  assert.ok(isPermanentRemoval(naturalize));
+});
+
+test('graveyard hate is distinguished from merely mentioning graveyards', () => {
+  const rip = card('Rest in Peace', {
+    type_line: 'Enchantment',
+    oracle_text: 'When Rest in Peace enters, exile all graveyards. If a card would be put into a graveyard from anywhere, exile it instead.'
+  });
+  const goyf = card('Tarmogoyf', {
+    type_line: 'Creature — Lhurgoyf',
+    oracle_text: "Tarmogoyf's power is equal to the number of card types among cards in all graveyards."
+  });
+
+  assert.ok(isGraveyardHate(rip));
+  assert.ok(!isGraveyardHate(goyf), 'a graveyard payoff is not graveyard hate');
+});
+
+test('a pitch spell is recognised as having an alternative cost', () => {
+  const fow = card('Force of Will', {
+    cmc: 5, mana_cost: '{3}{U}{U}', type_line: 'Instant',
+    oracle_text: "You may pay 1 life and exile a blue card from your hand rather than pay this spell's mana cost. Counter target spell."
+  });
+  assert.ok(hasAlternativeCost(fow));
+});
+
+test('hybrid pips demand no single colour', () => {
+  assert.deepEqual(costPips('{1}{U}{U}'), { U: 2 });
+  assert.deepEqual(costPips('{W/U}{W/U}'), {});
+});
+
+// --- Deck-level findings ---------------------------------------------------
+
+test('a symmetric lock reports how many of your own cards it would hit', () => {
+  const deck = [
+    card('Chalice of the Void', {
+      quantity: 4, cmc: 0, mana_cost: '{X}{X}', type_line: 'Artifact',
+      oracle_text: 'Whenever a player casts a spell with mana value equal to the number of charge counters on Chalice of the Void, counter that spell.'
+    }),
+    card('Lightning Bolt', {
+      quantity: 20, cmc: 1, mana_cost: '{R}', type_line: 'Instant',
+      oracle_text: 'Lightning Bolt deals 3 damage to any target.'
+    }),
+    card('Mountain', { quantity: 20, type_line: 'Basic Land — Mountain', color_identity: 'R' })
+  ];
+
+  const hazard = find(adviseDeck(deck, [], 'legacy'), 'symmetry-mana-value-lock');
+  assert.ok(hazard, 'the hazard is reported');
+  assert.equal(hazard.severity, 'warn');
+  assert.match(hazard.message, /20 of your own cards/);
+});
+
+test('a payoff short of its critical mass is flagged, and met when it is not', () => {
+  const delver = card('Delver of Secrets', {
+    quantity: 4, cmc: 1, mana_cost: '{U}', type_line: 'Creature — Human Wizard', power: '1',
+    oracle_text: 'At the beginning of your upkeep, look at the top card of your library. You may reveal an instant or sorcery card from it. If you do, transform Delver of Secrets.'
+  });
+  const island = card('Island', { quantity: 20, type_line: 'Basic Land — Island', color_identity: 'U' });
+  const bear = card('Grizzly Bears', { quantity: 36, cmc: 2, mana_cost: '{1}{G}', type_line: 'Creature — Bear', power: '2' });
+  const brainstorm = card('Brainstorm', {
+    quantity: 36, cmc: 1, mana_cost: '{U}', type_line: 'Instant',
+    oracle_text: 'Draw three cards, then put two cards from your hand on top of your library in any order.'
+  });
+
+  const short = adviseDeck([delver, island, bear], [], 'legacy');
+  assert.ok(codes(short).includes('requirement-instants-sorceries'));
+
+  const supported = adviseDeck([delver, island, brainstorm], [], 'legacy');
+  assert.ok(codes(supported).includes('requirement-met-instants-sorceries'));
+  assert.ok(!codes(supported).includes('requirement-instants-sorceries'));
+});
+
+test('creature-only answers are called out', () => {
+  const deck = [
+    card('Murder', { quantity: 12, cmc: 3, mana_cost: '{1}{B}{B}', type_line: 'Instant', oracle_text: 'Destroy target creature.' }),
+    card('Grizzly Bears', { quantity: 24, cmc: 2, mana_cost: '{1}{B}', type_line: 'Creature — Bear', power: '2' }),
+    card('Swamp', { quantity: 24, type_line: 'Basic Land — Swamp', color_identity: 'B' })
+  ];
+
+  const breadth = find(adviseDeck(deck, [], 'standard'), 'answer-breadth');
+  assert.ok(breadth, 'a creature-only removal suite is reported');
+  assert.equal(breadth.severity, 'warn');
+});
+
+test('combo decks are not nagged about interaction they deliberately lack', () => {
+  // A deck whose payoff demands critical mass, is very cheap, and interacts
+  // barely at all — Part 5's "no plan B by design".
+  const deck = [
+    card('Storm Payoff', {
+      quantity: 4, cmc: 2, mana_cost: '{1}{B}', type_line: 'Sorcery',
+      oracle_text: 'Storm. Target player loses 2 life and you gain 2 life.'
+    }),
+    card('Dark Ritual', { quantity: 32, cmc: 1, mana_cost: '{B}', type_line: 'Instant', oracle_text: 'Add {B}{B}{B}.' }),
+    card('Swamp', { quantity: 24, type_line: 'Basic Land — Swamp', color_identity: 'B' })
+  ];
+
+  const result = adviseDeck(deck, [], 'legacy');
+  assert.equal(result.archetype, 'combo');
+  assert.ok(!codes(result).includes('loss-mode-threat'), 'combo is spared the interaction nag');
+  assert.ok(!codes(result).includes('answer-breadth'));
+});
+
+test('a few copies of one lock piece is not a prison deck', () => {
+  const deck = [
+    card('Chalice of the Void', {
+      quantity: 4, cmc: 0, mana_cost: '{X}{X}', type_line: 'Artifact',
+      oracle_text: 'Whenever a player casts a spell with mana value equal to the number of charge counters on Chalice of the Void, counter that spell.'
+    }),
+    card('Grizzly Bears', { quantity: 32, cmc: 2, mana_cost: '{1}{G}', type_line: 'Creature — Bear', power: '2' }),
+    card('Forest', { quantity: 24, type_line: 'Basic Land — Forest', color_identity: 'G' })
+  ];
+
+  assert.notEqual(adviseDeck(deck, [], 'legacy').archetype, 'prison');
+});
+
+test('pitch spells do not create a demand on the mana base', () => {
+  const deck = [
+    card('Force of Will', {
+      quantity: 8, cmc: 5, mana_cost: '{3}{U}{U}', type_line: 'Instant',
+      oracle_text: "You may pay 1 life and exile a blue card from your hand rather than pay this spell's mana cost. Counter target spell."
+    }),
+    card('Mountain', { quantity: 24, type_line: 'Basic Land — Mountain', color_identity: 'R' }),
+    card('Lightning Bolt', { quantity: 28, cmc: 1, mana_cost: '{R}', type_line: 'Instant', oracle_text: 'Lightning Bolt deals 3 damage to any target.' })
+  ];
+
+  const blue = analyzeDeck(deck, [], 'legacy').colors.find((c) => c.color === 'U');
+  assert.equal(blue, undefined, 'a pitched {U}{U} is never actually paid');
+});
+
+test('a deck barely started is left alone', () => {
+  const deck = [card('Grizzly Bears', { quantity: 8, cmc: 2, mana_cost: '{1}{G}', type_line: 'Creature — Bear', power: '2' })];
+  assert.deepEqual(adviseDeck(deck, [], 'standard').findings, []);
+});
+
+test('opening-hand odds are withheld until the deck is nearly built', () => {
+  const partial = [
+    card('Grizzly Bears', { quantity: 20, cmc: 2, mana_cost: '{1}{G}', type_line: 'Creature — Bear', power: '2' }),
+    card('Forest', { quantity: 20, type_line: 'Basic Land — Forest', color_identity: 'G' })
+  ];
+
+  const found = codes(adviseDeck(partial, [], 'standard'));
+  assert.ok(!found.includes('keepable-hands'), 'a 40-card work in progress is not judged on its opening hands');
+  assert.ok(!found.includes('turn-one'));
+});
+
+test('cantrip density lowers the suggested land count', () => {
+  const lands = card('Island', { quantity: 17, type_line: 'Basic Land — Island', color_identity: 'U' });
+  const filler = card('Grizzly Bears', { quantity: 43, cmc: 2, mana_cost: '{1}{U}', type_line: 'Creature — Bear', power: '2' });
+  const cantrip = card('Brainstorm', {
+    quantity: 43, cmc: 1, mana_cost: '{U}', type_line: 'Instant',
+    oracle_text: 'Draw three cards, then put two cards from your hand on top of your library in any order.'
+  });
+
+  const plain = analyzeDeck([lands, filler], [], 'legacy').suggestedLands;
+  const digging = analyzeDeck([lands, cantrip], [], 'legacy').suggestedLands;
+
+  assert.ok(digging < plain, `expected fewer lands with cantrips (${digging} vs ${plain})`);
+});

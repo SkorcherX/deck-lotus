@@ -1965,21 +1965,43 @@ function renderRules() {
   // suggestions, and a deck that ignores them is still perfectly legal.
   const guidance = lastRules.guidance || [];
 
+  // Findings arrive sorted by severity. Splitting the strengths out means the
+  // panel reads as "here is what to look at, and here is what you already have
+  // right" rather than as an undifferentiated list of complaints.
+  const issues = guidance.filter((g) => g.severity !== 'info');
+  const strengths = guidance.filter((g) => g.severity === 'info');
+
+  const item = (g, index) => `
+    <li class="deck-guidance-item deck-guidance-${escapeHtml(g.severity || 'consider')}">
+      <span class="deck-guidance-message">${escapeHtml(g.message)}</span>
+      ${g.evidence && g.evidence.length ? `
+        <span class="deck-guidance-evidence">${g.evidence.slice(0, 6).map((c) =>
+          `<span class="deck-guidance-card">${escapeHtml(c.name)}${c.quantity > 1 ? ` ×${c.quantity}` : ''}</span>`
+        ).join('')}${g.evidence.length > 6 ? `<span class="deck-rules-more">+${g.evidence.length - 6} more</span>` : ''}</span>
+      ` : ''}
+      ${g.action ? `
+        <button class="deck-guidance-action" data-guidance="${index}">
+          ${escapeHtml(g.action.label)}
+        </button>
+      ` : ''}
+    </li>
+  `;
+
   const guidanceHtml = guidance.length === 0 ? '' : `
+    ${renderSnapshot(lastRules.advice)}
     <div class="deck-guidance">
-      <div class="deck-guidance-head">Suggestions</div>
-      <ul class="deck-guidance-list">
-        ${guidance.map((g, index) => `
-          <li class="deck-guidance-item">
-            <span class="deck-guidance-message">${escapeHtml(g.message)}</span>
-            ${g.action ? `
-              <button class="deck-guidance-action" data-guidance="${index}">
-                ${escapeHtml(g.action.label)}
-              </button>
-            ` : ''}
-          </li>
-        `).join('')}
-      </ul>
+      ${issues.length ? `
+        <div class="deck-guidance-head">Suggestions</div>
+        <ul class="deck-guidance-list">
+          ${issues.map((g) => item(g, guidance.indexOf(g))).join('')}
+        </ul>
+      ` : ''}
+      ${strengths.length ? `
+        <div class="deck-guidance-head deck-guidance-head-strength">What's working</div>
+        <ul class="deck-guidance-list">
+          ${strengths.map((g) => item(g, guidance.indexOf(g))).join('')}
+        </ul>
+      ` : ''}
     </div>
   `;
 
@@ -1993,6 +2015,45 @@ function renderRules() {
       if (item?.action?.filter) openInventoryPanelWith(item.action.filter);
     });
   });
+}
+
+/**
+ * The numbers behind the suggestions.
+ *
+ * Shown above them because the advice is far easier to weigh when you can see
+ * what it was measured from — and because a player who disagrees with a
+ * suggestion should be able to see exactly which number produced it.
+ */
+function renderSnapshot(advice) {
+  if (!advice || !advice.snapshot) return '';
+
+  const s = advice.snapshot;
+  const percent = (value) => `${Math.round((value || 0) * 100)}%`;
+
+  const stats = [
+    { label: 'Avg cost', value: s.averageCost?.toFixed(1) ?? '—' },
+    { label: 'Lands', value: `${s.lands} / ${s.suggestedLands}` },
+    { label: 'Turn-1 play', value: percent(s.turnOneChance) },
+    { label: 'Interaction', value: s.interaction },
+    { label: 'Card draw', value: s.cardAdvantage },
+    { label: 'Ways to win', value: s.winConditions }
+  ];
+
+  return `
+    <div class="deck-snapshot">
+      ${advice.archetype && advice.archetype !== 'unknown'
+        ? `<div class="deck-snapshot-archetype">Reads as a <strong>${escapeHtml(advice.archetype)}</strong> deck</div>`
+        : ''}
+      <div class="deck-snapshot-stats">
+        ${stats.map((stat) => `
+          <div class="deck-snapshot-stat">
+            <span class="deck-snapshot-value">${escapeHtml(String(stat.value))}</span>
+            <span class="deck-snapshot-label">${escapeHtml(stat.label)}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
 
 function escapeHtml(value) {
