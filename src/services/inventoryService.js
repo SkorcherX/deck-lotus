@@ -1,4 +1,11 @@
 import db from '../db/connection.js';
+import {
+  normalizeForSearch,
+  fuzzySubstringDistance,
+  fuzzyTolerance,
+  sharesEnoughCharacters,
+  pigeonholeChunks
+} from '../utils/cardNameMatch.js';
 
 // Price of one owned copy, honouring its finish. Foil copies are worth their
 // foil price; where a printing has no foil price synced we fall back to the
@@ -375,43 +382,127 @@ export function getInventoryStats(userIds) {
   };
 }
 
+// Ceiling on how many near-miss candidates the edit-distance pass considers.
+// Only reached when every chunk of the query is a common substring.
+const FUZZY_CANDIDATE_CAP = 3000;
+
+const INVENTORY_SEARCH_COLUMNS = `
+  c.id as card_id,
+  c.name,
+  c.mana_cost,
+  c.type_line,
+  (SELECT p.image_url FROM printings p WHERE p.card_id = c.id AND p.image_url IS NOT NULL LIMIT 1) as image_url,
+  (SELECT p.id FROM printings p WHERE p.card_id = c.id ORDER BY
+    CASE WHEN (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1) IS NULL THEN 999999
+    ELSE (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1) END ASC
+    LIMIT 1) as cheapest_printing_id,
+  (
+    SELECT COALESCE(SUM(op.quantity), 0)
+    FROM owned_printings op
+    JOIN printings p ON op.printing_id = p.id
+    WHERE op.user_id = ? AND p.card_id = c.id
+  ) as total_owned
+`;
+
+/**
+ * Card ids within a typo's reach of the query, best match first.
+ *
+ * Only worth running when the substring search found nothing, since it walks
+ * the card table. The length filter and the shared-character check throw out
+ * the vast majority of names before the edit-distance matrix runs.
+ */
+function fuzzyCardIdsByName(normalizedQuery, limit) {
+  const tolerance = fuzzyTolerance(normalizedQuery.length);
+
+  // Any name within `tolerance` edits contains one of these chunks verbatim,
+  // so this narrows to a shortlist without discarding a real match.
+  const chunks = pigeonholeChunks(normalizedQuery, tolerance);
+  const chunkFilter = chunks.map(() => 'name_normalized LIKE ?').join(' OR ');
+
+  const candidates = db.all(
+    `SELECT id, name_normalized FROM cards
+     WHERE name_normalized IS NOT NULL
+       AND LENGTH(name_normalized) >= ?
+       AND (${chunkFilter})
+     LIMIT ?`,
+    [
+      normalizedQuery.length - tolerance,
+      ...chunks.map((chunk) => `%${chunk}%`),
+      FUZZY_CANDIDATE_CAP
+    ]
+  );
+
+  const scored = [];
+
+  for (const candidate of candidates) {
+    const name = candidate.name_normalized;
+    if (!sharesEnoughCharacters(normalizedQuery, name, tolerance)) continue;
+
+    const distance = fuzzySubstringDistance(normalizedQuery, name, tolerance);
+    if (distance > tolerance) continue;
+
+    scored.push({ id: candidate.id, distance, length: name.length, name });
+  }
+
+  scored.sort((a, b) =>
+    a.distance - b.distance ||
+    a.length - b.length ||
+    a.name.localeCompare(b.name)
+  );
+
+  return scored.slice(0, limit).map((row) => row.id);
+}
+
 /**
  * Search cards for quick-add to inventory
  * Returns cards with their ownership status
+ *
+ * Matches on the normalized name, so punctuation and accents are optional
+ * ("urzas tower", "jotun grunt"). If that finds nothing, falls back to an
+ * edit-distance pass that forgives a typo or two.
  */
 export function searchCardsForInventoryAdd(userId, query, limit = 10) {
-  if (!query || query.length < 2) {
+  if (!query || query.trim().length < 2) {
     return [];
   }
 
-  const searchTerm = `%${query}%`;
+  const normalizedQuery = normalizeForSearch(query);
+  if (!normalizedQuery) {
+    return [];
+  }
 
   const cards = db.all(`
-    SELECT
-      c.id as card_id,
-      c.name,
-      c.mana_cost,
-      c.type_line,
-      (SELECT p.image_url FROM printings p WHERE p.card_id = c.id AND p.image_url IS NOT NULL LIMIT 1) as image_url,
-      (SELECT p.id FROM printings p WHERE p.card_id = c.id ORDER BY
-        CASE WHEN (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1) IS NULL THEN 999999
-        ELSE (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1) END ASC
-        LIMIT 1) as cheapest_printing_id,
-      (
-        SELECT COALESCE(SUM(op.quantity), 0)
-        FROM owned_printings op
-        JOIN printings p ON op.printing_id = p.id
-        WHERE op.user_id = ? AND p.card_id = c.id
-      ) as total_owned
+    SELECT ${INVENTORY_SEARCH_COLUMNS}
     FROM cards c
-    WHERE c.name LIKE ?
+    WHERE c.name_normalized LIKE ?
     ORDER BY
-      CASE WHEN c.name LIKE ? THEN 0 ELSE 1 END,
+      CASE WHEN c.name_normalized LIKE ? THEN 0 ELSE 1 END,
+      LENGTH(c.name),
       c.name
     LIMIT ?
-  `, [userId, searchTerm, `${query}%`, limit]);
+  `, [userId, `%${normalizedQuery}%`, `${normalizedQuery}%`, limit]);
 
-  return cards;
+  if (cards.length > 0) {
+    return cards;
+  }
+
+  // Nothing contained what they typed — assume a typo rather than a card
+  // that does not exist.
+  const ids = fuzzyCardIdsByName(normalizedQuery, limit);
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const placeholders = ids.map(() => '?').join(', ');
+  const matches = db.all(`
+    SELECT ${INVENTORY_SEARCH_COLUMNS}
+    FROM cards c
+    WHERE c.id IN (${placeholders})
+  `, [userId, ...ids]);
+
+  // Restore the ranking the fuzzy pass worked out; SQL gave it back in id order.
+  const order = new Map(ids.map((id, index) => [id, index]));
+  return matches.sort((a, b) => order.get(a.card_id) - order.get(b.card_id));
 }
 
 /**

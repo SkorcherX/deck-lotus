@@ -51,6 +51,8 @@
 ### Card Browsing & Inventory
 - **Advanced Card Browser** — filter by color, type, CMC range, set, subtype, and rarity
 - **Inventory Management** — track cards you own with quantity per printing
+- **Bulk Add** — paste a list by card name, or by set code and collector number
+- **Forgiving Search** — punctuation and accents are optional, and typos still match
 - **Owned Card Badges** — see which cards in your decks you already own
 - **Card Detail Modal** — all printings with prices, artist, set, legality, and rulings
 - **Hover Previews** — full card image on hover throughout the app
@@ -271,6 +273,52 @@ Click the chart icon on any watch to see the full price history graph with your 
    - `1 Black Lotus (LEA)` (set code in parentheses)
 4. Click **Import Deck**
 
+### Bulk Adding Cards to Inventory
+
+Go to **Inventory** → **Bulk Add** and paste one card per line. Everything is
+case-insensitive.
+
+Two line formats are accepted:
+
+| Format | Example | What it does |
+| --- | --- | --- |
+| `[qty] SET NUMBER` | `4 DSK 123` | Adds that exact printing — no card name needed |
+| `[qty] Card Name [SET]` | `4 Counterspell [DMR]` | Looks the card up by name |
+
+Quantity is optional and defaults to `1`. Write it as `4` or `4x`, followed by
+a space. Add `*F*` (or `(F)`) anywhere on the line for foils — foils are
+tracked as separate copies from non-foils.
+
+```
+4 DSK 123
+2x blb 84a
+1 M21 55 *F*
+mh3-201
+4 Lightning Bolt
+2 Counterspell [DMR]
+1 Sol Ring (F)
+```
+
+That list adds four copies of Duskmourn #123; two of Bloomburrow #84a; one foil
+M21 #55; one Modern Horizons 3 #201 (a hyphen works as the separator too); four
+Lightning Bolt; two Counterspell from Dominaria Remastered; and one foil Sol
+Ring.
+
+Notes:
+
+- **Collector numbers are matched as text**, so suffixes work: `84a`, `S1`,
+  `★123`. Keep any leading zero the set actually uses.
+- **A line with no set code gets the cheapest printing** of that card. Give a
+  set code and collector number when you care which printing lands in your
+  inventory.
+- A line is read as set + collector number when it is two tokens, the first is
+  2–6 characters and the second contains a digit — so `Sol Ring` stays a card
+  name.
+- **Click Preview before adding.** It resolves every line against the card
+  database and shows the actual card name each one maps to, with failures in
+  red. This is the check that a set/number line is the printing you meant,
+  since you never typed a name.
+
 ### API Keys
 
 Generate API keys for external integrations:
@@ -310,6 +358,34 @@ All endpoints require authentication via `Authorization: Bearer <token>` or `X-A
 | `GET` | `/api/cards/:id` | Card details |
 | `GET` | `/api/cards/:id/printings` | All printings with prices |
 | `POST` | `/api/cards/:id/owned` | Toggle card ownership |
+
+### Inventory
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/inventory` | Paginated inventory with filters |
+| `GET` | `/api/inventory/stats` | Totals and value |
+| `GET` | `/api/inventory/search?q=&limit=` | Quick-add search (punctuation- and typo-tolerant) |
+| `GET` | `/api/inventory/sets` | Sets you own cards from |
+| `POST` | `/api/inventory/bulk-resolve` | Resolve bulk-add lines to printings without saving |
+| `POST` | `/api/inventory/bulk-add` | Bulk add cards to inventory |
+| `POST` | `/api/inventory/quick-add` | Add a single printing |
+
+`bulk-add` and `bulk-resolve` take the same body. Identify a card either by
+`cardName` (with optional `setCode`) or by `setCode` plus `collectorNumber`:
+
+```json
+{
+  "items": [
+    { "setCode": "DSK", "collectorNumber": "123", "quantity": 4 },
+    { "cardName": "Sol Ring", "quantity": 1, "isFoil": true }
+  ]
+}
+```
+
+`bulk-resolve` returns each line with `resolved`, the `cardName` and
+`printingId` it maps to, or an `error` — use it to preview an import before
+committing it.
 
 ### Decks
 
