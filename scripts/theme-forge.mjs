@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * Theme forge — art prompt generator.
+ * Theme forge — art prompt generator (command line).
  *
- * Emits a paste-ready Gemini prompt for one art slot, built from the SAME slot
- * spec the CSS and the loader consume (client/src/themes/slots.js). Change a
- * dimension there and the prompt changes with it; nothing is written twice.
+ * This is the admin-shaped front end. The one built for everyone else is the
+ * wizard at /tools/theme-forge.html, which walks the whole theme through in
+ * order and needs no terminal; both call the same buildPrompt() in
+ * client/src/themes/prompt.js, so neither can drift from the other.
  *
  *   node scripts/theme-forge.mjs prompt <slug> --mood "..." [--slot banner]
+ *   node scripts/theme-forge.mjs prompt <slug> --mood "..." --ground "#0a0711"
  *   node scripts/theme-forge.mjs prompt <slug> --mood "..." --with-palette
  *   node scripts/theme-forge.mjs slots
  *
@@ -22,8 +24,8 @@ import { dirname, join, resolve } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
-const { ART_SLOTS, ANCHOR_SLOT } = await import(
-  new URL('../client/src/themes/slots.js', import.meta.url)
+const { ART_SLOTS, ANCHOR_SLOT, buildPrompt } = await import(
+  new URL('../client/src/themes/prompt.js', import.meta.url)
 );
 
 function parseArgs(argv) {
@@ -54,87 +56,6 @@ function readPalette(slug) {
   };
 }
 
-const NEGATIVES = [
-  'text', 'letters', 'words', 'numbers', 'glyphs', 'runes', 'calligraphy',
-  'watermarks', 'signatures', 'logos', 'UI elements', 'buttons', 'borders',
-  'frames', 'card frames', 'any decorative edge treatment',
-];
-
-function buildPrompt(slot, { mood, palette, isAnchor }) {
-  const lines = [];
-  const shape = slot.shape === 'spot'
-    ? 'Square spot illustration'
-    : slot.tiles === 'vertical' ? 'Vertical decorative panel' : 'Wide decorative banner illustration';
-  lines.push(`${shape}, exactly ${slot.width}x${slot.height} pixels, ${simplifyRatio(slot.width, slot.height)} aspect ratio.`);
-  lines.push('');
-  lines.push(`SUBJECT: ${mood}`);
-  lines.push('MEDIUM: painted digital illustration, Magic: The Gathering card-art character,');
-  lines.push('        visible brushwork, no photographic realism.');
-  lines.push('');
-  lines.push(`COMPOSITION: ${slot.safeArea}.`);
-  if (slot.id === 'empty') {
-    lines.push('INTENT: this appears wherever the app has nothing to show yet. It should');
-    lines.push('read as a calm, inviting "nothing here yet" — not as an error, and not');
-    lines.push('naming what is missing, since one image serves every empty screen.');
-  }
-  if (slot.id === 'celebration') {
-    lines.push('INTENT: this appears the moment someone records a win. It should read as a');
-    lines.push('flourish — triumphant and energetic, the opposite of the empty-state spot.');
-  }
-  if (slot.overlaidText) {
-    lines.push('Interface text sits directly on top of this image, so the area named above');
-    lines.push('must stay quiet, low-detail and uncluttered.');
-  }
-  lines.push('');
-  if (slot.shape === 'spot') {
-    lines.push('VALUE: This sits on a dark surface and is the only thing on it, so it may');
-    lines.push('carry real light and colour — unlike the banner, it competes with nothing.');
-    lines.push('');
-    lines.push('BACKGROUND: fully transparent. No backdrop, no vignette, no card, no circle');
-    lines.push('behind the subject. Deliver with an alpha channel.');
-  } else {
-    lines.push('VALUE: This is a dark UI. Keep the image in the lower half of the value');
-    lines.push('range. Highlights are permitted only away from the area named above.');
-    lines.push('');
-    lines.push(`EDGES: The ${listEdges(slot.edgeFade)} must fade toward flat near-black so the`);
-    lines.push('image dissolves into the page rather than ending in a hard line.');
-  }
-  if (slot.tiles === 'vertical') {
-    lines.push('');
-    lines.push('TILING: This panel repeats vertically. The top and bottom edges must match');
-    lines.push('so the seam is invisible when it repeats.');
-  }
-  if (palette) {
-    lines.push('');
-    lines.push('PALETTE: build the image from these colours, which the interface around it');
-    lines.push('already uses:');
-    lines.push(`  background ${palette.bg}   surfaces ${palette.bgSecondary}`);
-    lines.push(`  accent ${palette.primary}   highlight ${palette.highlight}`);
-  }
-  if (!isAnchor) {
-    lines.push('');
-    lines.push('MATCH THE ATTACHED IMAGE: same palette, same lighting, same brush character.');
-    lines.push('This belongs to the same set as the banner, not merely the same idea.');
-  }
-  lines.push('');
-  lines.push(`DO NOT INCLUDE: ${NEGATIVES.join(', ')}.`);
-  lines.push('');
-  lines.push(`Deliver as ${slot.filename.split('.').pop().toUpperCase()}, exactly ${slot.width}x${slot.height}.`);
-  return lines.join('\n');
-}
-
-function simplifyRatio(w, h) {
-  const gcd = (a, b) => (b ? gcd(b, a % b) : a);
-  const g = gcd(w, h);
-  return `${w / g}:${h / g}`;
-}
-
-function listEdges(edges) {
-  if (!edges || !edges.length) return 'outer edges';
-  const names = edges.map((e) => `${e} edge`);
-  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.slice(-1)}`;
-}
-
 const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0];
 
@@ -147,8 +68,11 @@ if (cmd === 'slots') {
 }
 
 if (cmd !== 'prompt') {
-  console.error('usage: node scripts/theme-forge.mjs prompt <slug> --mood "..." [--slot <id>] [--with-palette]');
+  console.error('usage: node scripts/theme-forge.mjs prompt <slug> --mood "..." [--slot <id>] [--ground "#rrggbb"] [--with-palette]');
   console.error('       node scripts/theme-forge.mjs slots');
+  console.error('');
+  console.error('Or skip the terminal entirely: open /tools/theme-forge.html, which walks');
+  console.error('the whole theme through one step at a time.');
   process.exit(1);
 }
 
@@ -166,6 +90,21 @@ if (args['with-palette'] && !palette) {
   console.error(`error: --with-palette needs client/public/themes/${slug}/theme.css to exist.`);
   console.error('       Generate the banner first, then extract the palette, then come back.');
   process.exit(1);
+}
+
+/* The ground colour is the exact page background the art has to fade into.
+   Once a palette exists it is simply --bg; before that it has to be declared,
+   and art generated without it comes back fading to some other near-black,
+   which shows as a lighter band down the side of the window. */
+let ground = null;
+if (args.ground && args.ground !== true) {
+  ground = String(args.ground).trim().toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(ground)) {
+    console.error(`error: --ground must be a six-digit hex like "#0a0711" (got "${args.ground}").`);
+    process.exit(1);
+  }
+} else if (palette && /^#[0-9a-f]{6}$/i.test(palette.bg || '')) {
+  ground = palette.bg.toLowerCase();
 }
 
 let wanted;
@@ -186,11 +125,18 @@ if (args.all && !palette) {
   console.log('the banner first, extract, then re-run with --with-palette.\n');
 }
 
+if (!ground && wanted.some((id) => (ART_SLOTS.find((s) => s.id === id) || {}).shape !== 'spot')) {
+  console.log('NOTE: no --ground given, so the edge fades below can only ask for');
+  console.log('"near-black". That is how art ends up fading to a colour a few shades off');
+  console.log('the page and showing a seam. Pass --ground "#rrggbb" with the page');
+  console.log('background you intend to use.\n');
+}
+
 for (const id of wanted) {
   const slot = ART_SLOTS.find((s) => s.id === id);
   if (!slot) { console.error(`error: unknown slot "${id}". Run \`slots\` to list them.`); process.exit(1); }
   console.log(`${'='.repeat(72)}\n${slug} / ${slot.id}  ->  client/public/themes/${slug}/${'art/' + slot.filename}\n${'='.repeat(72)}\n`);
-  console.log(buildPrompt(slot, { mood: args.mood, palette, isAnchor: slot.id === ANCHOR_SLOT }));
+  console.log(buildPrompt(slot, { mood: args.mood, palette, ground, isAnchor: slot.id === ANCHOR_SLOT }));
   console.log('');
 }
 

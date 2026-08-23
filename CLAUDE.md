@@ -154,5 +154,19 @@ taken on GitHub — only do it when explicitly asked.
   come back as `unresolved` so the import modal can list them; a deck import
   never fails as a whole, because a partial list is a legitimate starting
   point that `cloneDeck` is built to copy.
+- The theme wizard (`client/public/tools/theme-forge.html`) is a plain static
+  page outside the bundle, but it imports `slots.js` and `prompt.js` from
+  `/tools/`, which do not exist there on disk: the `theme-forge-modules` plugin
+  in `client/vite.config.js` serves them in dev and copies them at build. That
+  indirection is what keeps the slot spec and the prompt wording in one place
+  instead of pasted into the page. Adding another module the page needs means
+  adding it to `FORGE_MODULES`, or the page dies on load with its own message.
+- Art prompts name the page background as an exact hex, repeatedly. That is not
+  verbosity: the rails are opaque `background-image`s with no mask over them, so
+  art that faded to a generic near-black shows as a lighter stripe down the side
+  of the window and nothing downstream can fix it. The colour therefore has to be
+  chosen *before* the anchor art exists, which is why the wizard asks for it in
+  step 3 and why palette extraction then takes the surface hue from that choice
+  rather than from the artwork.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.

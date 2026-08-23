@@ -3,93 +3,344 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Theme forge — palette extractor</title>
+<title>Theme forge</title>
 <style>
   :root {
-    --bg: #0a0711; --panel: #14101f; --line: #302845;
+    --bg: #0a0711; --panel: #14101f; --line: #302845; --line-soft: #221c33;
     --text: #f2eefb; --dim: #948aad; --accent: #8348ec; --cyan: #38d6ec;
     --ok: #10b981; --bad: #ef4444; --warn: #f59e0b;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 980px; margin: 0 auto; padding: 2rem 1.5rem 5rem; }
-  h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
-  p.lede { color: var(--dim); margin: 0 0 2rem; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; }
-  h2 { font-size: 1rem; margin: 0 0 .75rem; }
+  main { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  p.lede { color: var(--dim); margin: 0 0 1.5rem; }
+  h2 { font-size: 1.15rem; margin: 0 0 .25rem; }
+  h3 { font-size: .95rem; margin: 1.5rem 0 .5rem; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  label.drop { display: block; border: 1px dashed var(--line); border-radius: 8px; padding: 2rem; text-align: center; color: var(--dim); cursor: pointer; }
+  .note { color: var(--dim); font-size: .8125rem; }
+  .hide { display: none !important; }
+
+  /* Progress rail */
+  ol.rail { list-style: none; display: flex; flex-wrap: wrap; gap: .35rem; padding: 0; margin: 0 0 1.5rem; }
+  ol.rail li { font-size: .75rem; color: var(--dim); border: 1px solid var(--line-soft); border-radius: 999px; padding: .2rem .7rem; white-space: nowrap; }
+  ol.rail li.done { color: var(--ok); border-color: rgb(16 185 129 / .4); }
+  ol.rail li.now { color: var(--text); border-color: var(--accent); background: rgb(131 72 236 / .15); font-weight: 600; }
+
+  section.step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.5rem; }
+  .steplabel { color: var(--accent); font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .why { color: var(--dim); margin: .25rem 0 1.25rem; }
+
+  label.field { display: block; margin: 1rem 0 .35rem; font-weight: 600; font-size: .9rem; }
+  input[type=text], textarea, select {
+    width: 100%; background: #0a0711; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: .6rem .7rem; font-size: .9rem; font-family: inherit;
+  }
+  input[type=text]:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  textarea { min-height: 90px; resize: vertical; }
+  textarea.out { min-height: 300px; font-family: ui-monospace, Menlo, monospace; font-size: .78rem; line-height: 1.5; }
+
+  .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+  .btn { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: .6rem 1.1rem; font-weight: 600; cursor: pointer; font-size: .875rem; font-family: inherit; }
+  .btn:hover { background: #6d2fd6; }
+  .btn:disabled { background: var(--line); color: var(--dim); cursor: not-allowed; }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+  .btn.ghost:hover { border-color: var(--accent); background: transparent; }
+  .btn.big { font-size: 1rem; padding: .75rem 1.4rem; }
+
+  nav.steps { display: flex; justify-content: space-between; gap: 1rem; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--line-soft); }
+
+  label.drop { display: block; border: 1px dashed var(--line); border-radius: 8px; padding: 1.75rem; text-align: center; color: var(--dim); cursor: pointer; }
   label.drop:hover, label.drop.over { border-color: var(--accent); color: var(--text); }
+  label.drop.ok { border-style: solid; border-color: rgb(16 185 129 / .5); }
   input[type=file] { display: none; }
   canvas { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: 6px; margin-top: 1rem; }
-  .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-  .sw { width: 44px; height: 44px; border-radius: 6px; border: 1px solid var(--line); flex: none; }
-  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
-  th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); }
+
+  .sw { width: 46px; height: 46px; border-radius: 6px; border: 1px solid var(--line); flex: none; }
+  .swatches { display: flex; gap: .6rem; flex-wrap: wrap; }
+  .swatches figure { margin: 0; text-align: center; }
+  .swatches figcaption { font-size: .7rem; color: var(--dim); font-family: ui-monospace, Menlo, monospace; margin-top: .25rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line-soft); }
   th { color: var(--dim); font-weight: 600; }
   td.n { text-align: right; font-family: ui-monospace, Menlo, monospace; }
   .pill { font-size: .7rem; font-weight: 700; padding: .1rem .45rem; border-radius: 3px; }
   .pass { color: var(--ok); background: rgb(16 185 129 / .14); }
   .fail { color: var(--bad); background: rgb(239 68 68 / .14); }
   .known { color: var(--warn); background: rgb(245 158 11 / .14); }
-  textarea { width: 100%; min-height: 320px; background: #0a0711; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: .75rem; font-family: ui-monospace, Menlo, monospace; font-size: .8rem; }
-  button { background: var(--accent); color: #fff; border: 0; border-radius: 4px; padding: .55rem 1rem; font-weight: 600; cursor: pointer; font-size: .875rem; }
-  button:hover { background: #6d2fd6; }
-  .note { color: var(--dim); font-size: .8125rem; }
-  .hide { display: none; }
+
+  .callout { border-left: 3px solid var(--accent); background: rgb(131 72 236 / .08); padding: .75rem 1rem; border-radius: 0 6px 6px 0; margin: 1rem 0; font-size: .875rem; }
+  .callout.bad { border-color: var(--bad); background: rgb(239 68 68 / .08); }
+  .callout.good { border-color: var(--ok); background: rgb(16 185 129 / .08); }
+  .callout.warn { border-color: var(--warn); background: rgb(245 158 11 / .08); }
+  .callout p { margin: 0 0 .5rem; }
+  .callout p:last-child { margin: 0; }
+
+  /* Ground picker */
+  .grounds { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .6rem; }
+  .grounds button { border: 1px solid var(--line); border-radius: 8px; padding: .6rem; cursor: pointer; color: var(--text); font: inherit; font-size: .8rem; text-align: left; background: transparent; }
+  .grounds button:hover { border-color: var(--accent); }
+  .grounds button[aria-pressed=true] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .grounds .chip { display: block; height: 34px; border-radius: 5px; border: 1px solid var(--line-soft); margin-bottom: .4rem; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  /* Seam preview: the whole point of picking a ground colour */
+  .seam { display: flex; height: 90px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); margin-top: .75rem; }
+  .seam div { flex: 1; display: flex; align-items: center; justify-content: center; font-size: .7rem; color: var(--dim); }
+
+  .slotcard { border: 1px solid var(--line-soft); border-radius: 8px; padding: 1rem; margin-bottom: .85rem; }
+  .slotcard > summary { cursor: pointer; font-weight: 600; font-size: .9rem; list-style: none; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+  .slotcard > summary::-webkit-details-marker { display: none; }
+  .slotcard[open] > summary { margin-bottom: .85rem; }
+  .status { font-size: .72rem; font-weight: 700; padding: .12rem .5rem; border-radius: 3px; color: var(--dim); background: var(--line-soft); }
+  .status.ok { color: var(--ok); background: rgb(16 185 129 / .14); }
+  .status.bad { color: var(--bad); background: rgb(239 68 68 / .14); }
+  .path { font-family: ui-monospace, Menlo, monospace; font-size: .78rem; color: var(--cyan); word-break: break-all; }
+  ul.checks { padding-left: 1.2rem; margin: .5rem 0; }
+  ul.checks li { margin: .25rem 0; font-size: .875rem; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .85em; background: #0a0711; padding: .1rem .3rem; border-radius: 3px; }
+  .copied { color: var(--ok); font-size: .8rem; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Theme forge — palette extractor</h1>
-  <p class="lede">Drop a theme's <span class="mono">banner</span> art here. It reads the image, proposes a palette, corrects it against the accessibility rules, and writes the <span class="mono">theme.css</span> for you.</p>
+  <h1>Theme forge</h1>
+  <p class="lede">Make a Deck Lotus theme, one step at a time. No terminal. Nothing to remember —
+    each step tells you exactly what to do and checks the result before letting you move on.</p>
 
-  <section>
-    <h2>1 · The banner</h2>
+  <ol class="rail" id="rail"></ol>
+
+  <!-- ─────────────────────────── 1 · Name ─────────────────────────── -->
+  <section class="step" data-step="0" data-title="Name">
+    <p class="steplabel">Step 1 of 7</p>
+    <h2>Name your theme</h2>
+    <p class="why">The name is what you will see in the theme picker. The slug is the folder it
+      lives in — lowercase, no spaces. It is generated for you, so you can ignore it.</p>
+
+    <label class="field" for="name">Theme name</label>
+    <input type="text" id="name" placeholder="e.g. Stormreach" autocomplete="off">
+
+    <label class="field" for="slug">Folder name (slug)</label>
+    <input type="text" id="slug" class="mono" placeholder="stormreach" autocomplete="off">
+    <p class="note" id="slugnote">Filled in from the name. Change it only if you have a reason.</p>
+
+    <label class="field" for="desc">One-line description</label>
+    <input type="text" id="desc" placeholder="e.g. Storm-lit marble and cold blue aether." autocomplete="off">
+    <p class="note">Shown under the name in the picker.</p>
+
+    <nav class="steps"><span></span><button class="btn" data-next>Next</button></nav>
+  </section>
+
+  <!-- ─────────────────────────── 2 · Mood ─────────────────────────── -->
+  <section class="step hide" data-step="1" data-title="Mood">
+    <p class="steplabel">Step 2 of 7</p>
+    <h2>Describe the picture you want</h2>
+    <p class="why">One or two sentences. Name a place, a weather condition and a light source.
+      Light is the part the colour extractor reads, so being concrete about it is what decides
+      whether your theme gets a palette or a puddle.</p>
+
+    <label class="field" for="mood">Mood line</label>
+    <textarea id="mood" placeholder="Storm-wracked Azorius skyline at dusk; fractured aether arcs between marble spires; cold blue-white light against deep indigo cloud."></textarea>
+    <p class="note" id="moodnote"></p>
+
+    <h3>Not sure? Start from one of these and edit it</h3>
+    <div class="row" id="moodpresets"></div>
+
+    <div class="callout">
+      <p><strong>Good:</strong> “Sunken Amonkhet necropolis at noon; heat haze over bleached
+        sandstone; hard gold light and long violet shadows.”</p>
+      <p><strong>Too vague to extract from:</strong> “Blue and magical, kind of cool looking.”</p>
+    </div>
+
+    <nav class="steps"><button class="btn ghost" data-back>Back</button><button class="btn" data-next>Next</button></nav>
+  </section>
+
+  <!-- ─────────────────────────── 3 · Ground ─────────────────────────── -->
+  <section class="step hide" data-step="2" data-title="Background">
+    <p class="steplabel">Step 3 of 7</p>
+    <h2>Pick how dark the app should be</h2>
+    <p class="why">This is the flat colour behind every page — and, more importantly, the exact
+      colour your artwork will be told to fade into at its edges. Choosing it <em>now</em>, before
+      any art exists, is the whole trick: art asked to fade to “near-black” comes back a few
+      shades off and shows as a lighter stripe down the side of the window.</p>
+
+    <h3>Colour family</h3>
+    <div class="grounds" id="grounds"></div>
+
+    <label class="field" for="hue">Fine tune the hue</label>
+    <input type="range" id="hue" min="0" max="359" value="300">
+    <label class="field" for="chroma">How much colour is in the black</label>
+    <input type="range" id="chroma" min="0" max="45" value="20">
+    <p class="note">All the way left is a true neutral black. All the way right is as tinted as a
+      background can be before it starts competing with the artwork.</p>
+
+    <div class="callout" id="groundout"></div>
+
+    <p class="note">This is what a rail looks like beside the page when its art fades to the right
+      colour — and when it fades to a generic near-black instead:</p>
+    <div class="seam" id="seam"></div>
+
+    <nav class="steps"><button class="btn ghost" data-back>Back</button><button class="btn" data-next>Next</button></nav>
+  </section>
+
+  <!-- ─────────────────────────── 4 · Banner prompt ─────────────────────────── -->
+  <section class="step hide" data-step="3" data-title="Banner">
+    <p class="steplabel">Step 4 of 7</p>
+    <h2>Make the banner</h2>
+    <p class="why">The banner comes first and everything else is generated to match it. Copy the
+      text below, paste it into an image generator, and keep regenerating until you like it.</p>
+
+    <div class="row">
+      <button class="btn big" data-copy="bannerprompt">Copy the prompt</button>
+      <a class="btn ghost" href="https://gemini.google.com/" target="_blank" rel="noopener">Open Gemini ↗</a>
+      <span class="copied" data-copied="bannerprompt"></span>
+    </div>
+    <textarea class="out" id="bannerprompt" spellcheck="false" readonly style="margin-top:.75rem"></textarea>
+
+    <h3>Then save it here</h3>
+    <p class="path" id="bannerpath"></p>
+    <p class="note">Create the folders if they do not exist. The file must be named exactly
+      <span class="mono">banner.webp</span>.</p>
+
+    <h3>Before you move on, check three things</h3>
+    <ul class="checks">
+      <li>Is the middle quiet enough that white page titles will read over it?</li>
+      <li>Is it genuinely dark — no bright sky filling the whole band?</li>
+      <li>Did it smuggle in any lettering? Image models love adding fake runes. Regenerate if so.</li>
+    </ul>
+
+    <nav class="steps"><button class="btn ghost" data-back>Back</button><button class="btn" data-next>I saved the banner →</button></nav>
+  </section>
+
+  <!-- ─────────────────────────── 5 · Extract ─────────────────────────── -->
+  <section class="step hide" data-step="4" data-title="Palette">
+    <p class="steplabel">Step 5 of 7</p>
+    <h2>Turn the banner into a palette</h2>
+    <p class="why">Drop the banner back in. This reads the artwork, builds a palette from it,
+      corrects that palette against the accessibility rules, and checks that the art's edges
+      actually fade to the background colour you picked.</p>
+
     <label class="drop" id="drop">
-      Click or drop the banner image
+      Click here, or drag <span class="mono">banner.webp</span> onto this box
       <input type="file" id="file" accept="image/*">
     </label>
     <canvas id="preview" class="hide"></canvas>
     <p class="note" id="imginfo"></p>
-  </section>
 
-  <section id="s2" class="hide">
-    <h2>2 · What the art contains</h2>
-    <div class="row" id="clusters"></div>
-    <p class="note">Clustered in OKLCH, not HSL — HSL lightness is inconsistent across hues and will confidently hand you a "dark" violet that is visually glaring.</p>
-  </section>
+    <div id="results" class="hide">
+      <h3>Does the art meet the page?</h3>
+      <div id="edgeout"></div>
 
-  <section id="s3" class="hide">
-    <h2>3 · The corrected palette</h2>
-    <p class="note">Extraction donates <strong>hue and chroma only</strong>. Surface lightness is forced to the fixed ladder so art always separates from content, and text is solved for contrast rather than sampled — a colour taken from artwork has no idea what it will sit on.</p>
-    <div class="row" id="final"></div>
-  </section>
+      <h3>What the artwork contains</h3>
+      <div class="swatches" id="clusters"></div>
+      <p class="note">Clustered in OKLCH, not HSL — HSL lightness is inconsistent across hues and
+        will confidently hand you a “dark” violet that is visually glaring.</p>
 
-  <section id="s4" class="hide">
-    <h2>4 · Contrast</h2>
-    <table id="contrast"><thead><tr><th>check</th><th>ratio</th><th>need</th><th></th></tr></thead><tbody></tbody></table>
-    <p class="note" id="verdict"></p>
-  </section>
+      <h3>Your corrected palette</h3>
+      <p class="note">The artwork donates <strong>hue and colourfulness only</strong>. Depth is
+        forced onto a fixed ladder so art always separates from content, and text is solved for
+        contrast rather than sampled — a colour taken from a painting has no idea what it will
+        end up sitting on.</p>
+      <div class="swatches" id="final"></div>
 
-  <section id="s5" class="hide">
-    <h2>5 · theme.css</h2>
-    <p class="row" style="margin:0 0 .75rem">
-      <label for="slug" class="note" style="margin:0">Theme slug (the folder name):</label>
-      <input id="slug" class="mono" value="" placeholder="e.g. strixhaven"
-             style="background:#0a0711;color:var(--text);border:1px solid var(--line);border-radius:4px;padding:.4rem .6rem;font-size:.85rem">
-    </p>
-    <p class="note" id="slugwarn" style="color:var(--warn)"></p>
-    <p class="note">Save as <span class="mono">client/public/themes/&lt;slug&gt;/theme.css</span>. Then three more steps, all easy to forget: write a <span class="mono">theme.json</span> listing the art files (without it no art is wired up), add an entry to <span class="mono">client/src/themes/registry.js</span> (without it the theme cannot be selected), and add the slug to the pre-paint list in <span class="mono">index.html</span>. Run <span class="mono">npm run check:themes</span> to catch the first two.</p>
-    <textarea id="out" spellcheck="false"></textarea>
-    <div class="row" style="margin-top:.75rem">
-      <button id="copy">Copy</button>
-      <span class="note" id="copied"></span>
+      <h3>Is it readable?</h3>
+      <table id="contrast"><thead><tr><th>check</th><th>ratio</th><th>need</th><th></th></tr></thead><tbody></tbody></table>
+      <div id="verdict"></div>
     </div>
+
+    <nav class="steps"><button class="btn ghost" data-back>Back</button><button class="btn" data-next disabled>Next</button></nav>
+  </section>
+
+  <!-- ─────────────────────────── 6 · Remaining art ─────────────────────────── -->
+  <section class="step hide" data-step="5" data-title="Rest of the art">
+    <p class="steplabel">Step 6 of 7</p>
+    <h2>Make the rest of the art</h2>
+    <p class="why">Now that the colours are fixed, these prompts carry your real hex values.
+      Do them <strong>one at a time, attaching your banner to each one</strong> as a reference
+      image — five pictures generated separately from the same sentence look like five ideas,
+      not one theme.</p>
+
+    <div class="callout">
+      <p>Every one of these is optional. A theme with only a banner works fine; the rest of the
+        chrome just stays plain. Skip any you do not want and it will be left out of the manifest.</p>
+    </div>
+
+    <div id="slotlist"></div>
+
+    <nav class="steps"><button class="btn ghost" data-back>Back</button><button class="btn" data-next>Next</button></nav>
+  </section>
+
+  <!-- ─────────────────────────── 7 · Install ─────────────────────────── -->
+  <section class="step hide" data-step="6" data-title="Install">
+    <p class="steplabel">Step 7 of 7</p>
+    <h2>Put it in the app</h2>
+    <p class="why">Two files to download and two one-line edits. Then your theme shows up in
+      Settings for everyone.</p>
+
+    <h3>1 · Download the two files</h3>
+    <p class="note">Save both into <span class="path" id="themedir"></span></p>
+    <div class="row">
+      <button class="btn" id="dl-css">Download theme.css</button>
+      <button class="btn" id="dl-json">Download theme.json</button>
+    </div>
+    <details class="slotcard" style="margin-top:1rem">
+      <summary><span>See the theme.css contents</span></summary>
+      <textarea class="out" id="out" spellcheck="false" readonly></textarea>
+      <div class="row" style="margin-top:.5rem"><button class="btn ghost" data-copy="out">Copy</button><span class="copied" data-copied="out"></span></div>
+    </details>
+    <details class="slotcard">
+      <summary><span>See the theme.json contents</span></summary>
+      <textarea class="out" id="outjson" spellcheck="false" readonly style="min-height:200px"></textarea>
+      <div class="row" style="margin-top:.5rem"><button class="btn ghost" data-copy="outjson">Copy</button><span class="copied" data-copied="outjson"></span></div>
+    </details>
+
+    <h3>2 · Register it</h3>
+    <p class="note">Paste this into the <code>THEMES</code> list in
+      <span class="path">client/src/themes/registry.js</span>. Without it the theme cannot be
+      selected.</p>
+    <textarea class="out" id="outreg" spellcheck="false" readonly style="min-height:150px"></textarea>
+    <div class="row" style="margin-top:.5rem"><button class="btn ghost" data-copy="outreg">Copy</button><span class="copied" data-copied="outreg"></span></div>
+
+    <h3>3 · Add the slug to the pre-paint list</h3>
+    <p class="note">In <span class="path">client/index.html</span>, find the line starting
+      <code>var KNOWN =</code> and add your slug to it. Without this, anyone who picks your theme
+      sees one frame of the default theme on every page load.</p>
+    <textarea class="out" id="outknown" spellcheck="false" readonly style="min-height:60px"></textarea>
+    <div class="row" style="margin-top:.5rem"><button class="btn ghost" data-copy="outknown">Copy</button><span class="copied" data-copied="outknown"></span></div>
+
+    <h3>4 · Rebuild and look at it</h3>
+    <p class="note">Rebuild the client, then pick your theme in Settings. Walk a chart-heavy page
+      (Deck Builder, Cards, Price Monitoring) — a grey or wrong-coloured chart means a hardcoded
+      colour escaped somewhere and is worth reporting. Rails only appear on windows wider than
+      1700px, so check at the screen and scaling you actually use.</p>
+
+    <div class="callout good">
+      <p><strong>That is the whole thing.</strong> If something looked wrong at any step you can
+        walk back through with the buttons — nothing is lost, and this page remembers where you
+        were if you close it.</p>
+    </div>
+
+    <nav class="steps"><button class="btn ghost" data-back>Back</button><button class="btn ghost" id="reset">Start a different theme</button></nav>
   </section>
 </main>
 
 <script type="module">
+/* The slot spec and the prompt wording are owned by src/themes/. vite.config.js
+   serves and copies them next to this page so there is exactly one copy of
+   both — resize a slot there and this wizard changes with it. */
+let ART_SLOTS, ANCHOR_SLOT, buildPrompt;
+try {
+  ({ ART_SLOTS, ANCHOR_SLOT, buildPrompt } = await import('./prompt.js'));
+} catch (err) {
+  document.querySelector('main').innerHTML =
+    '<h1>Theme forge</h1><p>Could not load the slot spec from <code>/tools/prompt.js</code>. ' +
+    'That file is written by the client build, so this page needs to be opened from the running ' +
+    'app (or <code>npm run client:dev</code>) rather than off the filesystem.</p>' +
+    '<pre>' + String(err) + '</pre>';
+  throw err;
+}
+
 /* ---------- colour maths ---------- */
 const srgbToLin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
 const linToSrgb = c => { const v = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; return Math.max(0, Math.min(255, Math.round(v * 255))); };
@@ -127,12 +378,15 @@ function solveForContrast(bgRgb, hue, chroma, target) {
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
     const rgb = oklchToRgb(mid, chroma, hue);
-    const c = contrast(rgb, bgRgb);
-    if (c >= target) { best = rgb; hi = mid; } else lo = mid;
+    if (contrast(rgb, bgRgb) >= target) { best = rgb; hi = mid; } else lo = mid;
   }
-  // If even white cannot reach it, hand back the lightest we managed.
   return best || oklchToRgb(1, chroma * 0.3, hue);
 }
+
+/* Fixed ladders. The theme picks hue and chroma; these decide depth. */
+const SURFACE_L = { bg: 0.155, secondary: 0.205, tertiary: 0.265, hover: 0.325 };
+const SURFACE_C_MAX = 0.045;
+const ACCENT = { L: [0.48, 0.62], C: [0.13, 0.24] };
 
 /* ---------- extraction ---------- */
 function medianCut(pixels, depth) {
@@ -152,12 +406,16 @@ function medianCut(pixels, depth) {
   return [...medianCut(pixels.slice(0, mid), depth - 1), ...medianCut(pixels.slice(mid), depth - 1)];
 }
 
-/* Fixed ladders. The theme picks hue and chroma; these decide depth. */
-const SURFACE_L = { bg: 0.155, secondary: 0.205, tertiary: 0.265, hover: 0.325 };
-const SURFACE_C_MAX = 0.045;
-const ACCENT = { L: [0.48, 0.62], C: [0.13, 0.24] };
-
-function buildPalette(clusters) {
+/**
+ * Build the palette.
+ *
+ * `ground` is the background the user committed to in step 3 and that the art
+ * was explicitly told to fade into. When it is present the surface hue comes
+ * from it rather than from the artwork: extracting a surface hue that differs
+ * from the one the art faded to would reintroduce the seam this whole flow
+ * exists to remove.
+ */
+function buildPalette(clusters, ground) {
   const scored = clusters.map(c => ({ ...c, ok: rgbToOklch(...c.rgb) }));
   const total = scored.reduce((a, c) => a + c.count, 0) || 1;
   for (const c of scored) c.freq = c.count / total;
@@ -169,13 +427,13 @@ function buildPalette(clusters) {
     .filter(c => hueDist(c.ok.h, accentSeed.ok.h) > 60)
     .sort((a, b) => b.ok.C - a.ok.C)[0] || accentSeed;
 
-  const sHue = surfaceSeed.ok.h;
-  const sChroma = Math.min(surfaceSeed.ok.C, SURFACE_C_MAX);
+  const groundOk = ground ? rgbToOklch(...hexToRgb(ground)) : null;
+  const sHue = groundOk ? groundOk.h : surfaceSeed.ok.h;
+  const sChroma = Math.min(groundOk ? groundOk.C : surfaceSeed.ok.C, SURFACE_C_MAX);
   const surf = k => hex(oklchToRgb(SURFACE_L[k], sChroma, sHue));
 
   const clamp = (v, [lo, hi]) => Math.max(lo, Math.min(hi, v));
   const aL = clamp(accentSeed.ok.L, ACCENT.L), aC = clamp(accentSeed.ok.C, ACCENT.C);
-  const primary = hex(oklchToRgb(aL, aC, accentSeed.ok.h));
   const hL = clamp(highlightSeed.ok.L, [0.68, 0.85]), hC = clamp(highlightSeed.ok.C, [0.09, 0.17]);
   const highlight = hex(oklchToRgb(hL, hC, highlightSeed.ok.h));
 
@@ -186,7 +444,6 @@ function buildPalette(clusters) {
   const borderStrong = hex(solveForContrast(bgRgb, sHue, 0.04, 3.1));
   const border = hex(oklchToRgb(SURFACE_L.secondary + 0.07, sChroma + 0.01, sHue));
 
-  const primaryRgb = hexToRgb(primary);
   const btnL = (() => { let L = aL; while (L > 0.2 && contrast([255, 255, 255], oklchToRgb(L, aC, accentSeed.ok.h)) < 4.5) L -= 0.005; return L; })();
 
   return {
@@ -207,10 +464,8 @@ function buildPalette(clusters) {
 }
 
 /* Locked: never extracted, identical in every theme. */
-const LOCKED = { success: '#10b981', danger: '#ef4444', warning: '#f59e0b',
-  rarityRare: '#ca8a04', rarityMythic: '#ea580c', rarityUncommon: '#71717a',
-  successBtn: '#047857', dangerBtn: '#dc2626', warningBtn: '#f5a623' };
-
+const LOCKED = { successBtn: '#047857', dangerBtn: '#dc2626',
+  rarityRare: '#ca8a04', rarityMythic: '#ea580c', rarityUncommon: '#71717a' };
 const KNOWN_SHORTFALLS = new Set(['uncommon rarity on card']);
 
 function contrastRows(p) {
@@ -232,7 +487,8 @@ function contrastRows(p) {
   ].map(([name, fg, bg, min]) => ({ name, ratio: contrast(fg, bg), min }));
 }
 
-function css(p, slug) {
+/* ---------- file templates ---------- */
+function cssFor(p, slug) {
   return `/* ${slug} — generated by /tools/theme-forge.html
  * Source artwork: banner, extracted ${new Date().toISOString().slice(0, 10)}.
  *
@@ -287,48 +543,369 @@ function css(p, slug) {
 `;
 }
 
-/* ---------- wiring ---------- */
+function jsonFor(state) {
+  const art = {};
+  for (const s of ART_SLOTS) if (state.have[s.id]) art[s.id] = `art/${s.filename}`;
+  return JSON.stringify({
+    slug: state.slug, name: state.name || state.slug,
+    appearance: 'dark',
+    art,
+  }, null, 2) + '\n';
+}
+
+function registryFor(state, p) {
+  return `  {
+    slug: '${state.slug}',
+    name: '${(state.name || state.slug).replace(/'/g, "\\'")}',
+    description: '${(state.desc || '').replace(/'/g, "\\'")}',
+    // Shown as the picker preview; order is surface, surface, accent, highlight.
+    swatches: ['${p.bg}', '${p.bgSecondary}', '${p.primary}', '${p.highlight}'],
+  },`;
+}
+
+/* ---------- state ---------- */
 const $ = id => document.getElementById(id);
+const STORE = 'themeForgeDraft';
+const state = {
+  step: 0, name: '', slug: '', desc: '', author: '', mood: '',
+  hue: 300, chroma: 20, ground: null, palette: null,
+  have: { banner: true },
+};
+try { Object.assign(state, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch { /* ignore */ }
+// A palette is only ever produced by dropping the banner in, so it never
+// survives a reload — carrying a stale one forward would silently generate a
+// theme.css for artwork that is no longer on screen.
+state.palette = null;
+if (state.step > 4) state.step = 4;
+
+function save() {
+  try { localStorage.setItem(STORE, JSON.stringify({ ...state, palette: null })); } catch { /* ignore */ }
+}
+
+/* ---------- ground colour ---------- */
+const FAMILIES = [
+  { name: 'Obsidian violet', hue: 300, chroma: 20 },
+  { name: 'Deep indigo', hue: 265, chroma: 22 },
+  { name: 'Midnight blue', hue: 240, chroma: 22 },
+  { name: 'Abyssal teal', hue: 195, chroma: 20 },
+  { name: 'Forest black', hue: 150, chroma: 18 },
+  { name: 'Ink and amber', hue: 70, chroma: 16 },
+  { name: 'Dried blood', hue: 25, chroma: 22 },
+  { name: 'True neutral', hue: 300, chroma: 0 },
+];
+
+function groundHex() {
+  return hex(oklchToRgb(SURFACE_L.bg, Math.min(state.chroma / 1000, SURFACE_C_MAX), state.hue));
+}
+
+function renderGround() {
+  state.ground = groundHex();
+  const surface = hex(oklchToRgb(SURFACE_L.secondary, Math.min(state.chroma / 1000, SURFACE_C_MAX), state.hue));
+  $('groundout').innerHTML =
+    `<p>Your page background will be exactly <strong class="mono">${state.ground}</strong>, with cards
+      sitting on <span class="mono">${surface}</span>.</p>
+     <p class="note">Every art prompt from here on names that hex, repeatedly, as the colour to fade
+      into. That is the difference between art that dissolves into the page and art that ends in a
+      visible line.</p>`;
+  $('seam').innerHTML =
+    `<div style="background:linear-gradient(to right, ${surface}, ${state.ground});color:${surface}">art fading to #14101f-ish</div>
+     <div style="background:${state.ground}">the page</div>
+     <div style="background:linear-gradient(to left, ${surface}, ${state.ground})">art fading to ${state.ground}</div>`;
+  // The left panel deliberately stops one shade short, which is exactly what a
+  // generic "near-black" instruction produces.
+  $('seam').children[0].style.background = `linear-gradient(to right, ${surface}, #131118)`;
+  $('grounds').querySelectorAll('button').forEach((b, i) => {
+    const f = FAMILIES[i];
+    b.setAttribute('aria-pressed', String(f.hue === state.hue && f.chroma === state.chroma));
+  });
+  refreshPrompts();
+  save();
+}
+
+$('grounds').innerHTML = FAMILIES.map((f, i) => {
+  const c = hex(oklchToRgb(SURFACE_L.bg, Math.min(f.chroma / 1000, SURFACE_C_MAX), f.hue));
+  const c2 = hex(oklchToRgb(SURFACE_L.tertiary, Math.min(f.chroma / 1000, SURFACE_C_MAX), f.hue));
+  return `<button type="button" data-i="${i}" aria-pressed="false">
+      <span class="chip" style="background:linear-gradient(135deg, ${c} 50%, ${c2} 50%)"></span>${f.name}
+    </button>`;
+}).join('');
+$('grounds').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const f = FAMILIES[+b.dataset.i];
+  state.hue = f.hue; state.chroma = f.chroma;
+  $('hue').value = f.hue; $('chroma').value = f.chroma;
+  renderGround();
+});
+$('hue').addEventListener('input', () => { state.hue = +$('hue').value; renderGround(); });
+$('chroma').addEventListener('input', () => { state.chroma = +$('chroma').value; renderGround(); });
+
+/* ---------- step 1 & 2 fields ---------- */
+const slugify = s => s.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
+let slugEdited = false;
+
+$('name').addEventListener('input', () => {
+  state.name = $('name').value;
+  if (!slugEdited) { state.slug = slugify(state.name); $('slug').value = state.slug; }
+  validate(); save();
+});
+$('slug').addEventListener('input', () => {
+  slugEdited = true;
+  const raw = $('slug').value;
+  state.slug = slugify(raw);
+  $('slugnote').textContent = raw && state.slug !== raw
+    ? `Will be used as “${state.slug}”.`
+    : 'Filled in from the name. Change it only if you have a reason.';
+  validate(); save();
+});
+$('desc').addEventListener('input', () => { state.desc = $('desc').value; save(); });
+
+const MOOD_PRESETS = [
+  'Storm-wracked Azorius skyline at dusk; fractured aether arcs between marble spires; cold blue-white light against deep indigo cloud.',
+  'Sunken Amonkhet necropolis at noon; heat haze over bleached sandstone; hard gold light and long violet shadows.',
+  'Innistrad hillside under a full harvest moon; low mist through bare birches; cold silver light and rot-brown earth.',
+  'Ravnican undercity at night; wet stone and copper pipework lit only by guild lanterns; green-gold glow on black water.',
+];
+$('moodpresets').innerHTML = MOOD_PRESETS
+  .map((m, i) => `<button type="button" class="btn ghost" data-mood="${i}" style="font-size:.78rem">${m.split(';')[0]}…</button>`).join('');
+$('moodpresets').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $('mood').value = state.mood = MOOD_PRESETS[+b.dataset.mood];
+  moodChanged();
+});
+$('mood').addEventListener('input', () => { state.mood = $('mood').value; moodChanged(); });
+
+/* The extractor needs light and place, not adjectives. This is a nudge, not a
+   gate — a short mood line that happens to be concrete is fine, and refusing
+   to continue over a word count would just teach people to pad it. */
+function moodChanged() {
+  const m = state.mood.trim();
+  const words = m ? m.split(/\s+/).length : 0;
+  const concrete = /\b(dusk|dawn|noon|night|moon|sun|lantern|lamp|torch|storm|mist|fog|rain|snow|haze|glow|light|lit|shadow|candle|fire|ember|star)\w*/i.test(m);
+  $('moodnote').innerHTML = !m ? 'Required.'
+    : words < 8 ? '<span style="color:var(--warn)">That is very short. Add where it is and what the light is doing.</span>'
+    : !concrete ? '<span style="color:var(--warn)">Nothing here names a light source. The extractor reads light — add a time of day, a lamp, a storm, a moon.</span>'
+    : '<span style="color:var(--ok)">Good — that gives the extractor something to read.</span>';
+  validate(); save(); refreshPrompts();
+}
+
+/* ---------- prompts ---------- */
+function refreshPrompts() {
+  const banner = ART_SLOTS.find(s => s.id === ANCHOR_SLOT);
+  if (banner && state.mood) {
+    $('bannerprompt').value = buildPrompt(banner, {
+      mood: state.mood, ground: state.ground || groundHex(), isAnchor: true,
+    });
+  }
+  $('bannerpath').textContent = `client/public/themes/${state.slug || '<slug>'}/art/banner.webp`;
+  $('themedir').textContent = `client/public/themes/${state.slug || '<slug>'}/`;
+  renderSlotList();
+  renderOutputs();
+}
+
+function renderSlotList() {
+  const rest = ART_SLOTS.filter(s => s.id !== ANCHOR_SLOT);
+  const p = state.palette;
+  $('slotlist').innerHTML = rest.map(s => {
+    const prompt = p && state.mood ? buildPrompt(s, {
+      mood: state.mood, palette: p, ground: state.ground, isAnchor: false,
+    }) : '';
+    const have = !!state.have[s.id];
+    return `<details class="slotcard" data-slot="${s.id}">
+      <summary>
+        <span>${slotTitle(s)} <span class="note">${s.width}×${s.height}</span></span>
+        <span class="status ${have ? 'ok' : ''}" data-status="${s.id}">${have ? 'done' : 'not yet'}</span>
+      </summary>
+      <p class="note">${slotBlurb(s)}</p>
+      <div class="row">
+        <button class="btn" data-copy="prompt-${s.id}">Copy the prompt</button>
+        <span class="copied" data-copied="prompt-${s.id}"></span>
+      </div>
+      <p class="note" style="margin-top:.5rem">Attach your <span class="mono">banner.webp</span> to this
+        prompt as a reference image before sending it.</p>
+      <textarea class="out" id="prompt-${s.id}" spellcheck="false" readonly>${prompt}</textarea>
+      <p class="note" style="margin-top:.75rem">Save as <span class="path">client/public/themes/${state.slug || '<slug>'}/art/${s.filename}</span></p>
+      <label class="drop" data-drop="${s.id}" style="padding:1rem;margin-top:.5rem">
+        Drop the finished image here to check it
+        <input type="file" accept="image/*" data-slotfile="${s.id}">
+      </label>
+      <div data-check="${s.id}"></div>
+      <p class="note" style="margin-top:.5rem">
+        <label><input type="checkbox" data-have="${s.id}" ${have ? 'checked' : ''}> I made this one — include it in the theme</label>
+      </p>
+    </details>`;
+  }).join('');
+}
+
+function slotTitle(s) {
+  return ({
+    'rail-left': 'Left gutter rail', 'rail-right': 'Right gutter rail',
+    footer: 'Footer band', empty: 'Empty-state spot', celebration: 'Win-recorded spot',
+  })[s.id] || s.id;
+}
+function slotBlurb(s) {
+  return ({
+    'rail-left': 'A tall tapestry down the left edge of wide windows. It repeats vertically, so its top and bottom must match, and its inner edge has to disappear into the page.',
+    'rail-right': 'The mirror of the left rail. Generate it separately so the two are not identical.',
+    footer: 'A shallow band under the page, fading upward into the background.',
+    empty: 'Shown wherever there is nothing to display yet. Calm and inviting — and it must not name what is missing, because one image serves every empty screen. Needs a transparent background.',
+    celebration: 'Shown the moment someone records a win. A flourish. Also transparent.',
+  })[s.id] || '';
+}
+
+/* ---------- outputs ---------- */
+function renderOutputs() {
+  const p = state.palette;
+  if (!p || !state.slug) return;
+  $('out').value = cssFor(p, state.slug);
+  $('outjson').value = jsonFor(state);
+  $('outreg').value = registryFor(state, p);
+  const known = ['arcane', 'classic', 'strixhaven'];
+  if (!known.includes(state.slug)) known.push(state.slug);
+  $('outknown').value = `var KNOWN = { ${known.map(s => `${s}: 1`).join(', ')} };`;
+}
+
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$('dl-css').addEventListener('click', () => download('theme.css', $('out').value, 'text/css'));
+$('dl-json').addEventListener('click', () => download('theme.json', $('outjson').value, 'application/json'));
+
+/* ---------- banner extraction ---------- */
 const drop = $('drop'), fileInput = $('file');
 ['dragover', 'dragenter'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(e => drop.addEventListener(e, () => drop.classList.remove('over')));
-drop.addEventListener('drop', ev => { ev.preventDefault(); if (ev.dataTransfer.files[0]) handle(ev.dataTransfer.files[0]); });
-fileInput.addEventListener('change', () => fileInput.files[0] && handle(fileInput.files[0]));
+drop.addEventListener('drop', ev => { ev.preventDefault(); if (ev.dataTransfer.files[0]) loadBanner(ev.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => fileInput.files[0] && loadBanner(fileInput.files[0]));
 
-function handle(file) {
+function loadBanner(file) {
   const img = new Image();
-  img.onload = () => run(img, file.name);
+  img.onload = () => { runBanner(img, file.name); URL.revokeObjectURL(img.src); };
+  img.onerror = () => { $('imginfo').innerHTML = '<span style="color:var(--bad)">That file could not be read as an image.</span>'; };
   img.src = URL.createObjectURL(file);
 }
 
-function run(img, name) {
+/**
+ * Average the outermost band of each faded edge, at full resolution.
+ *
+ * This is the check that catches the failure the ground colour exists to
+ * prevent: art that faded to some other near-black. Sampling the downscaled
+ * copy would not do — the resample pulls interior colour into the edge row and
+ * hides exactly the mismatch we are looking for.
+ */
+function edgeReport(img, ground) {
+  const c = document.createElement('canvas');
+  const W = Math.min(img.width, 1200), H = Math.round(W * img.height / img.width);
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, W, H);
+  const band = (x, y, w, h) => {
+    const d = ctx.getImageData(x, y, w, h).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 128) continue; r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+    return n ? [r, g, b].map(v => Math.round(v / n)) : null;
+  };
+  const t = Math.max(1, Math.round(H * 0.01)), s = Math.max(1, Math.round(W * 0.01));
+  const edges = {
+    top: band(0, 0, W, t), bottom: band(0, H - t, W, t),
+    left: band(0, 0, s, H), right: band(W - s, 0, s, H),
+  };
+  const gr = hexToRgb(ground);
+  const out = {};
+  for (const [k, rgb] of Object.entries(edges)) {
+    if (!rgb) continue;
+    /* Full OKLab distance, including hue. Comparing lightness and chroma alone
+       scores a violet near-black and a blue near-black as identical, which is
+       precisely the pair that shows as a seam. The ×100 scale puts the
+       just-noticeable difference for two large flat areas meeting at around 1. */
+    const a = rgbToOklab(...rgb), b = rgbToOklab(...gr);
+    out[k] = {
+      hex: hex(rgb),
+      off: Math.hypot(a.L - b.L, a.a - b.a, a.b - b.b) * 100,
+      lighter: a.L > b.L,
+    };
+  }
+  return out;
+}
+
+/** OKLab, for distances. rgbToOklch drops the sign of the hue components. */
+function rgbToOklab(r, g, b) {
+  const R = srgbToLin(r), G = srgbToLin(g), B = srgbToLin(b);
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+  return {
+    L: 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    a: 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    b: 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+  };
+}
+
+function runBanner(img, name) {
+  const ground = state.ground || groundHex();
+  const banner = ART_SLOTS.find(s => s.id === ANCHOR_SLOT);
+
   const W = 100, H = Math.max(1, Math.round(W * img.height / img.width));
   const c = $('preview');
   c.width = W; c.height = H; c.classList.remove('hide');
   c.style.width = '100%'; c.style.imageRendering = 'pixelated';
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, 0, 0, W, H);
-  $('imginfo').textContent = `${name} — ${img.width}x${img.height}, sampled at ${W}x${H}`;
+
+  const sizeOk = img.width === banner.width && img.height === banner.height;
+  const ratioOk = Math.abs((img.width / img.height) - (banner.width / banner.height)) < 0.05;
+  $('imginfo').innerHTML = `${name} — ${img.width}×${img.height}. ` + (sizeOk
+    ? '<span style="color:var(--ok)">Exactly the size the banner slot wants.</span>'
+    : ratioOk
+      ? `<span style="color:var(--warn)">Not ${banner.width}×${banner.height}, but the right shape — it will scale, so this is fine.</span>`
+      : `<span style="color:var(--bad)">Wrong shape. The banner slot is ${banner.width}×${banner.height} (${(banner.width / banner.height).toFixed(1)}:1) and this will be cropped. Consider regenerating.</span>`);
 
   const data = ctx.getImageData(0, 0, W, H).data;
   const px = [];
   for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 128) px.push([data[i], data[i + 1], data[i + 2]]);
+  const clusters = medianCut(px, 3).filter(k => k.count > 0);
 
-  const clusters = medianCut(px, 3).filter(c => c.count > 0);
+  /* Edge check */
+  const edges = edgeReport(img, ground);
+  const faded = banner.edgeFade || [];
+  const rows = faded.filter(k => edges[k]).map(k => ({ edge: k, ...edges[k] }));
+  const worst = rows.reduce((a, r) => (a && a.off > r.off ? a : r), null);
+  $('edgeout').innerHTML = !worst ? '' : (() => {
+    const list = rows.map(r => `<li>The <strong>${r.edge}</strong> edge averages
+      <span class="mono">${r.hex}</span> ${r.off < 1 ? '— a match.' :
+        `— ${r.lighter ? 'lighter' : 'darker'} than the page's <span class="mono">${ground}</span>.`}</li>`).join('');
+    if (worst.off < 1) {
+      return `<div class="callout good"><p><strong>The edges meet the page.</strong></p><ul class="checks">${list}</ul></div>`;
+    }
+    if (worst.off < 2.5) {
+      return `<div class="callout warn"><p><strong>Close, but not exact.</strong> You may see a faint
+        band where the art meets the page.</p><ul class="checks">${list}</ul>
+        <p class="note">Worth one more regeneration if you are fussy; the scrim over the banner hides
+        a lot. On the rails, which have no scrim, this same gap would show.</p></div>`;
+    }
+    return `<div class="callout bad"><p><strong>The edges do not meet the page.</strong> This is the
+      one that shows: the art will end in a visible line rather than dissolving.</p>
+      <ul class="checks">${list}</ul>
+      <p>Send the prompt again and add: <em>“the outermost pixels along the ${faded.join(' and ')}
+      edge must be exactly ${ground}, flat, with no texture”</em>. It usually takes one retry.</p></div>`;
+  })();
+
   $('clusters').innerHTML = clusters.sort((a, b) => b.count - a.count)
-    .map(c => `<div><div class="sw" style="background:${hex(c.rgb)}"></div><div class="note mono">${hex(c.rgb)}</div></div>`).join('');
-  $('s2').classList.remove('hide');
+    .map(k => `<figure><div class="sw" style="background:${hex(k.rgb)}"></div><figcaption>${hex(k.rgb)}</figcaption></figure>`).join('');
 
-  const p = buildPalette(clusters);
+  const p = buildPalette(clusters, ground);
+  state.palette = p;
   $('final').innerHTML = [
-    ['bg', p.bg], ['surface', p.bgSecondary], ['raised', p.bgTertiary],
-    ['primary', p.primary], ['highlight', p.highlight], ['text', p.text], ['muted', p.textMuted],
-  ].map(([k, v]) => `<div><div class="sw" style="background:${v}"></div><div class="note mono">${k}<br>${v}</div></div>`).join('');
-  $('s3').classList.remove('hide');
+    ['page', p.bg], ['cards', p.bgSecondary], ['raised', p.bgTertiary],
+    ['accent', p.primary], ['highlight', p.highlight], ['text', p.text], ['muted', p.textMuted],
+  ].map(([k, v]) => `<figure><div class="sw" style="background:${v}"></div><figcaption>${k}<br>${v}</figcaption></figure>`).join('');
 
-  const rows = contrastRows(p);
+  const checks = contrastRows(p);
   let hardFails = 0;
-  $('contrast').querySelector('tbody').innerHTML = rows.map(r => {
+  $('contrast').querySelector('tbody').innerHTML = checks.map(r => {
     const ok = r.ratio >= r.min;
     const known = !ok && KNOWN_SHORTFALLS.has(r.name);
     if (!ok && !known) hardFails++;
@@ -337,36 +914,159 @@ function run(img, name) {
     return `<tr><td>${r.name}</td><td class="n">${r.ratio.toFixed(2)}:1</td><td class="n">${r.min}</td><td><span class="pill ${cls}">${label}</span></td></tr>`;
   }).join('');
   $('verdict').innerHTML = hardFails
-    ? `<strong style="color:var(--bad)">${hardFails} failure(s).</strong> Do not ship this. Nudge the accent chroma or pick different artwork — never relax the threshold.`
-    : `<strong style="color:var(--ok)">No failures.</strong> KNOWN rows already fall short on the stock palette and are not caused by this theme.`;
-  $('s4').classList.remove('hide');
+    ? `<div class="callout bad"><p><strong>${hardFails} thing${hardFails > 1 ? 's are' : ' is'} too hard to read.</strong>
+        Do not ship this. Regenerate the banner with more colour in it, or pick a different image —
+        never relax the threshold, because these are the checks that keep the app usable for
+        someone whose eyes are worse than yours.</p></div>`
+    : `<div class="callout good"><p><strong>Everything is readable.</strong> Rows marked KNOWN already
+        fall short on the app's own default palette and are not caused by your theme.</p></div>`;
 
-  lastPalette = p;
-  $('s5').classList.remove('hide');
-  renderCss();
+  $('results').classList.remove('hide');
+  drop.classList.add('ok');
+  document.querySelector('[data-step="4"] [data-next]').disabled = false;
+  refreshPrompts();
+  save();
 }
 
-/* The slug names the folder the pack lives in and MUST match the [data-theme]
-   selector, or the theme silently never applies. It is deliberately NOT taken
-   from the dropped filename: the anchor art is always called banner.webp, so
-   guessing from it produced :root[data-theme="banner"] every time. */
-let lastPalette = null;
-function renderCss() {
-  if (!lastPalette) return;
-  const raw = $('slug').value.trim();
-  const slug = raw.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
-  $('slugwarn').textContent = !raw
-    ? 'Enter the slug before saving — it must match the folder under client/public/themes/.'
-    : (slug !== raw ? `Will be written as "${slug}".` : '');
-  $('out').value = css(lastPalette, slug || 'SET-A-SLUG');
-}
-document.getElementById('slug').addEventListener('input', renderCss);
-
-$('copy').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('out').value); $('copied').textContent = 'copied'; }
-  catch { $('copied').textContent = 'select the text and copy manually'; }
-  setTimeout(() => { $('copied').textContent = ''; }, 2500);
+/* ---------- per-slot verification ---------- */
+$('slotlist').addEventListener('change', e => {
+  const have = e.target.dataset.have;
+  if (have) {
+    state.have[have] = e.target.checked;
+    const badge = document.querySelector(`[data-status="${have}"]`);
+    badge.textContent = e.target.checked ? 'done' : 'not yet';
+    badge.className = `status ${e.target.checked ? 'ok' : ''}`;
+    renderOutputs(); save();
+    return;
+  }
+  const id = e.target.dataset.slotfile;
+  if (id && e.target.files[0]) checkSlotImage(id, e.target.files[0]);
 });
+$('slotlist').addEventListener('dragover', e => { if (e.target.closest('[data-drop]')) e.preventDefault(); });
+$('slotlist').addEventListener('drop', e => {
+  const box = e.target.closest('[data-drop]');
+  if (!box || !e.dataTransfer.files[0]) return;
+  e.preventDefault();
+  checkSlotImage(box.dataset.drop, e.dataTransfer.files[0]);
+});
+
+function checkSlotImage(id, file) {
+  const slot = ART_SLOTS.find(s => s.id === id);
+  const out = document.querySelector(`[data-check="${id}"]`);
+  const img = new Image();
+  img.onload = () => {
+    const notes = [];
+    let bad = false;
+    const sizeOk = img.width === slot.width && img.height === slot.height;
+    const ratioOk = Math.abs((img.width / img.height) - (slot.width / slot.height)) < 0.05;
+    if (sizeOk) notes.push(`<li>Size is exactly ${slot.width}×${slot.height}.</li>`);
+    else if (ratioOk) notes.push(`<li>${img.width}×${img.height} — not the exact size, but the right shape. It will scale.</li>`);
+    else { bad = true; notes.push(`<li><strong>${img.width}×${img.height} is the wrong shape.</strong> This slot is ${slot.width}×${slot.height}, so the image will be cropped.</li>`); }
+
+    if (slot.shape === 'spot') {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, 64, 64);
+      const d = ctx.getImageData(0, 0, 64, 64).data;
+      const corners = [0, 63, 64 * 63, 64 * 64 - 1].map(i => d[i * 4 + 3]);
+      if (corners.some(a => a > 40)) {
+        bad = true;
+        notes.push('<li><strong>The background is not transparent.</strong> A baked-in backdrop shows as a visible square on the page. Ask for “transparent background, PNG with alpha” and convert to webp afterwards.</li>');
+      } else notes.push('<li>Background is transparent.</li>');
+    } else {
+      const edges = edgeReport(img, state.ground || groundHex());
+      for (const k of (slot.edgeFade || [])) {
+        const r = edges[k]; if (!r) continue;
+        if (r.off < 1) notes.push(`<li>The ${k} edge averages <span class="mono">${r.hex}</span> — it meets the page.</li>`);
+        else {
+          if (r.off >= 2.5) bad = true;
+          notes.push(`<li>The ${k} edge averages <span class="mono">${r.hex}</span>, ${r.lighter ? 'lighter' : 'darker'} than <span class="mono">${state.ground}</span>${r.off >= 2.5 ? ' — <strong>this will show as a line</strong>' : ' — close enough that only a careful eye will see it'}.</li>`);
+        }
+      }
+    }
+    out.innerHTML = `<div class="callout ${bad ? 'bad' : 'good'}"><ul class="checks">${notes.join('')}</ul>${bad ? '<p>Worth one more regeneration.</p>' : '<p class="note">Good to keep.</p>'}</div>`;
+    if (!bad) {
+      const box = document.querySelector(`[data-have="${id}"]`);
+      if (box && !box.checked) { box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+    URL.revokeObjectURL(img.src);
+  };
+  img.onerror = () => { out.innerHTML = '<div class="callout bad"><p>That file could not be read as an image.</p></div>'; };
+  img.src = URL.createObjectURL(file);
+}
+
+/* ---------- step navigation ---------- */
+const steps = [...document.querySelectorAll('.step')];
+$('rail').innerHTML = steps.map((s, i) => `<li data-r="${i}">${i + 1}. ${s.dataset.title}</li>`).join('');
+
+function show(i) {
+  state.step = Math.max(0, Math.min(steps.length - 1, i));
+  steps.forEach((s, n) => s.classList.toggle('hide', n !== state.step));
+  $('rail').querySelectorAll('li').forEach((li, n) => {
+    li.className = n === state.step ? 'now' : (n < state.step ? 'done' : '');
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  refreshPrompts();
+  save();
+}
+
+document.addEventListener('click', e => {
+  if (e.target.matches('[data-next]')) show(state.step + 1);
+  if (e.target.matches('[data-back]')) show(state.step - 1);
+  const copy = e.target.closest('[data-copy]');
+  if (copy) copyFrom(copy.dataset.copy);
+});
+
+/* Copy has to work on a page served over plain http on a LAN address, where
+   navigator.clipboard is not available. The textarea fallback is not legacy
+   cruft — it is the path most people here will actually take. */
+async function copyFrom(id) {
+  const el = $(id);
+  const flag = document.querySelector(`[data-copied="${id}"]`);
+  const done = (msg) => { if (flag) { flag.textContent = msg; setTimeout(() => { flag.textContent = ''; }, 2500); } };
+  try {
+    await navigator.clipboard.writeText(el.value);
+    done('copied');
+  } catch {
+    el.focus(); el.select();
+    const ok = document.execCommand && document.execCommand('copy');
+    done(ok ? 'copied' : 'select the text above and copy it');
+  }
+}
+$('rail').addEventListener('click', e => {
+  const li = e.target.closest('li');
+  // Only backwards: jumping ahead past the banner leaves later steps with
+  // nothing to render, which reads as the tool being broken.
+  if (li && +li.dataset.r < state.step) show(+li.dataset.r);
+});
+
+/** Gate Next on the things later steps cannot work without. */
+function validate() {
+  const gates = [!!state.slug, !!state.mood.trim(), true, true, !!state.palette, true, true];
+  steps.forEach((s, i) => {
+    const next = s.querySelector('[data-next]');
+    if (next) next.disabled = !gates[i];
+  });
+}
+
+$('reset').addEventListener('click', () => {
+  localStorage.removeItem(STORE);
+  location.reload();
+});
+
+/* ---------- boot ---------- */
+$('name').value = state.name;
+$('slug').value = state.slug;
+$('desc').value = state.desc;
+$('mood').value = state.mood;
+$('hue').value = state.hue;
+$('chroma').value = state.chroma;
+if (state.slug) slugEdited = true;
+renderGround();
+moodChanged();
+show(state.step);
+validate();
 </script>
 </body>
 </html>

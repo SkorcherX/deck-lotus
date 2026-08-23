@@ -2,9 +2,21 @@
 
 How to produce a new theme — artwork and palette — from a one-line idea.
 
+## Just want to make a theme? Open the wizard
+
+**`/tools/theme-forge.html`** on the running site walks the whole thing through
+one step at a time: name it, describe it, pick how dark the app should be, copy
+a prompt, drop the result back in, and download the two files at the end. It
+checks each step before letting you move on, needs no terminal, and remembers
+where you were if you close the tab.
+
+The rest of this document is the reference behind it — why each rule exists,
+and what the command line offers on top. Read it if the wizard tells you
+something you want to argue with, or if you are changing how themes work.
+
 > **Status: every step below works today.** The pack format, the loader, the
-> chrome that consumes the art, the prompt generator and the palette extractor
-> are all built.
+> chrome that consumes the art, the wizard, the prompt generator and the
+> palette extractor are all built.
 >
 > The one thing still outstanding: Arcane ships **SVG placeholder art**, not
 > generated art. Running this guide against it is exactly how that gets fixed.
@@ -67,11 +79,22 @@ Pick a name and a slug at the same time — `stormreach`, `duskmantle`, `emberfa
 ## Step 2 — Generate the prompt
 
 ```bash
-npm run theme:prompt -- <slug> --mood "..."
+npm run theme:prompt -- <slug> --mood "..." --ground "#0a0711"
 ```
 
 That single command prints the whole banner prompt, ready to paste into Gemini —
 you write the mood line and nothing else.
+
+**`--ground` is the page background the art has to fade into, and it is worth
+supplying even though it is optional.** It is the one instruction that has to be
+decided before any art exists, because the alternative is asking for a fade to
+"near-black" and getting one a few shades off — which shows as a lighter band
+where the art meets the page. The rails are painted as opaque images with no
+mask over them, so nothing downstream can rescue it. Pass the `--bg` you intend
+to use; the wizard picks it for you in step 3 and puts it in every prompt after.
+
+Without `--ground` the command says so, loudly, rather than quietly emitting the
+weaker wording.
 
 **It prints the banner prompt only, on purpose.** The rails and footer come from
 a second run after the palette exists (step 6), so they can be generated to match
@@ -99,8 +122,11 @@ VALUE: This is a dark UI. Keep the image in the lower half of the value range.
 Nothing in the central band may exceed roughly 35% luminance. Highlights are
 permitted only in the outer thirds.
 
-EDGES: The top and bottom edges must fade toward flat near-black so the image
-dissolves into the page rather than ending in a hard line.
+BACKGROUND COLOUR — THIS IS EXACT, NOT APPROXIMATE: #0a0711
+The page behind this image is the flat colour #0a0711 (near-black violet-cast,
+RGB 10,7,17). The top and bottom edges must fade to precisely #0a0711 — not to
+black, not to a dark neutral grey, and not merely to a darker version of the
+artwork. ...
 
 DO NOT INCLUDE: text, letters, words, numbers, glyphs, runes, calligraphy,
 watermarks, signatures, logos, UI elements, buttons, borders, frames, card frames,
@@ -113,6 +139,11 @@ Two parts of that are load-bearing and should not be trimmed:
   garbled text to anything banner-shaped. Naming text five ways is what stops it.
 - **The value constraint is a hard rule, not a preference.** It is far cheaper to have
   the model paint dark than to darken a scrim afterward until the artwork disappears.
+- **The background hex is repeated numerically, several ways.** "Fade to the page
+  colour" is not an instruction an image model acts on; "the final row of pixels
+  must be flat #0a0711" is. The wizard measures the delivered art's edges against
+  that hex and tells you when it missed — a mismatch of more than about 1 unit of
+  OKLab distance is visible as a line, and the rails have no scrim to hide it.
 
 Paste it into Gemini, iterate until you like the result, save it as
 `client/public/themes/<slug>/art/banner.webp`.
@@ -160,13 +191,17 @@ the output.
 
 | Token group | Where it comes from |
 |---|---|
-| Surfaces | Hue and (clamped) chroma from the art; **lightness ladder is forced** from the Arcane spec |
+| Surfaces | Hue and (clamped) chroma from the **declared background** when there is one, otherwise from the art; **lightness ladder is forced** from the Arcane spec |
 | Text, borders | Computed, never extracted — solved for 4.5:1 body / 3:1 UI against the fixed surface |
 | Accent, highlight | Hue from the art; chroma and lightness clamped into a legible band |
 | Rarity, status | **Locked.** Identical in every theme |
 
 Why each of those:
 
+- **The surface hue follows the background you declared**, not the artwork's own
+  darkest cluster. They are usually close, but "usually" is not good enough here:
+  the art was told to fade to a specific hex, so shifting the page out from under
+  it by a few degrees of hue puts the seam back.
 - **Surfaces keep a fixed depth** because that is what guarantees the banner and rails
   separate from the content. A theme that picked its own mid-tone surfaces would mush
   the artwork into the page — which is exactly the problem the overhaul exists to fix.
