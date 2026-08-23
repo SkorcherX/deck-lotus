@@ -1,0 +1,72 @@
+/* Arcane — violet on obsidian.
+ *
+ * The signature default. Deliberately distanced from the stock indigo: a
+ * richer, less blue violet against a near-black obsidian base with a faint
+ * cool tint, plus a cyan highlight for the interactive role the original
+ * palette never had.
+ *
+ * Every value below cleared WCAG AA against this theme's own surface ladder
+ * before it shipped. Two ratios the stock palette failed are fixed here purely
+ * by the deeper base: mythic on a card goes 4.11 -> 5.25, and white on the
+ * primary button 4.47 -> 5.12.
+ *
+ * NOT overridden, deliberately: rarity, mana identity and the status colours.
+ * Those are recognition and safety cues, identical in every theme.
+ *
+ * Token overrides only — no selectors, no layout, no fonts.
+ *
+ * The :root prefix is load-bearing. A bare [data-theme="..."] has exactly
+ * the same specificity as the :root baseline in main.css (0,1,0), so which
+ * one won would come down to source order — and Vite emits main.css as a
+ * <link> in production but injects it from JS in dev. :root[data-theme]
+ * is (0,2,0) and wins in both.
+ */
+:root[data-theme="arcane"] {
+  /* Accent ramp */
+  --primary: #8348ec;
+  --primary-dark: #6d2fd6;
+  --primary-light: #b794fa;
+  --primary-rgb: 131 72 236;
+  --brand-gradient-b: #38d6ec;
+  --highlight: #38d6ec;
+
+  /* Button body. The face starts at --primary and darkens downward; lifting
+     the top stop above it is what drops white labels below 4.5:1. */
+  --primary-btn: #8348ec;
+  --primary-deep: #6425c9;
+  --primary-edge: #a87cf7;
+  --primary-plinth: #431a86;
+  --surface-btn: #262038;
+  --surface-deep: #171223;
+  --surface-plinth: #0d0a16;
+
+  /* Surface ladder — deeper and higher-contrast than stock, which is what
+     gives banner and rail artwork separation from the content above it. */
+  --bg: #0a0711;
+  --bg-secondary: #14101f;
+  --bg-tertiary: #1f1932;
+  --bg-hover: #2b2342;
+  --bg-rgb: 10 7 17;
+  --overlay-rgb: 5 3 10;
+
+  /* Text — re-derived against the deeper base rather than re-tinted. */
+  --text: #f2eefb;
+  --text-secondary: #c9c1de;
+  --text-muted: #948aad;
+
+  /* Borders. --border is a decorative separator; --border-strong is the one
+     that carries UI boundaries and clears 3:1. */
+  --border: #302845;
+  --border-strong: #6b5a92;
+  --border-color: #302845;
+
+  /* Shape */
+  --chamfer-btn: 11px;
+  --chamfer-card: 14px;
+  --chamfer-modal: 18px;
+}
+
+/* No art yet. The slot ids this theme may declare in theme.json ("banner",
+ * "rail-left", "rail-right", "footer") are defined in src/themes/slots.js
+ * with their exact dimensions. Declaring a slot whose file is missing points
+ * the CSS variable at a 404, so entries are added only once the art lands. */

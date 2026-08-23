@@ -57,7 +57,14 @@
   --primary-dark: #4f46e5;
   --primary-light: #818cf8;
   --primary-soft: rgb(var(--primary-rgb) / 0.12); /* tinted surface / active bg */
-  --brand-pink: #ec4899; /* gradient partner for the logo/title */
+  --brand-pink: #ec4899; /* legacy name, kept for anything still referencing it */
+  --brand-gradient-b: var(--brand-pink); /* second stop of the wordmark gradient */
+
+  /* A cool accent distinct from --primary, for links, focus and the first
+     chart series. The stock palette has no such role — interactive state and
+     brand colour are the same indigo — so it points at --primary here and a
+     theme gives it a life of its own. */
+  --highlight: var(--primary);
 
   /* Semantic status */
   --secondary: #64748b;
@@ -579,7 +586,7 @@ body {
 
 .nav-brand h1 {
   font-size: var(--text-xl);
-  background: linear-gradient(135deg, var(--primary), var(--brand-pink));
+  background: linear-gradient(135deg, var(--primary), var(--brand-gradient-b));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -686,7 +693,7 @@ body {
   font-size: 2.5rem;
   text-align: center;
   margin-bottom: 0.5rem;
-  background: linear-gradient(135deg, var(--primary), var(--brand-pink));
+  background: linear-gradient(135deg, var(--primary), var(--brand-gradient-b));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }

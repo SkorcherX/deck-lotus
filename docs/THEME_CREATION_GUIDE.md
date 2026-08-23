@@ -2,17 +2,19 @@
 
 How to produce a new theme — artwork and palette — from a one-line idea.
 
-> **Status:** this guide describes tooling built in Phases 1–4 of
-> [`UI_OVERHAUL_PLAN.md`](UI_OVERHAUL_PLAN.md). Until those land, read it as the
-> specification for what the tooling must do. The *method* below is valid regardless;
-> the tooling only automates it.
+> **Status.** The theme pack format, the loader and the contrast gate are built —
+> steps 4, 5 and 7 below are real today, and `npm run check:themes` runs. The art
+> pipeline (`theme-forge.js`, `/tools/theme-forge.html`) is Phase 4 and does **not**
+> exist yet, so steps 2, 3 and 6 describe tooling still to come. The *method* is
+> valid regardless; the tooling only automates it. See
+> [`UI_OVERHAUL_PLAN.md`](UI_OVERHAUL_PLAN.md) for what has shipped.
 
 A finished theme is a folder:
 
 ```
 client/public/themes/<slug>/
-  theme.json      # manifest — name, author, art filenames
-  theme.css       # token overrides only: [data-theme="<slug>"] { --x: … }
+  theme.json      # manifest — name, author, appearance, art filenames
+  theme.css       # token overrides only: :root[data-theme="<slug>"] { --x: … }
   art/
     banner.webp        2400 x 300
     rail-left.webp      400 x 2000  (tiles vertically)
@@ -169,7 +171,17 @@ hour rather than a project.
 
 ## Step 5 — Check the contrast report
 
-The tool prints a pass/fail table alongside the palette. **Do not skip a failure.**
+```bash
+npm run check:themes
+```
+
+It prints a row per check for every theme, and it grades against the stock palette
+rather than in the abstract: a theme must be **at least as legible** as `classic`.
+Three checks already fail on the stock palette (uncommon rarity, mythic rarity, and
+the highlight role) and are listed as known — a new theme is not required to fix
+them, but making any of them worse is a **regression** and fails the run.
+
+**Do not skip a real failure.**
 It is the one thing a colours-only theme pack can still get catastrophically wrong, and
 it is invisible to you if your monitor is bright and your eyes are good.
 
@@ -213,8 +225,21 @@ Slot-specific notes:
 
 ## Step 7 — Register it
 
-Add `theme.json`, then one line to `client/src/themes/registry.js` with the slug,
-display name and preview swatches. It appears in Settings → Appearance automatically.
+Add `theme.json`, then one entry to `client/src/themes/registry.js` with the slug,
+display name, description and four preview swatches (two surfaces, accent, highlight).
+
+Two things to know about the wiring:
+
+- **The slug becomes a URL path segment**, so it is validated against the registry on
+  the way in. `resolveTheme()` falls back to the default for anything unknown, and the
+  loader falls back again to `classic` if a pack's stylesheet fails to load.
+- **`index.html` carries a hardcoded copy of the default slug and the known-slug list**
+  in its pre-paint script, because nothing can be imported synchronously before first
+  paint. Adding a theme means updating that list too, or a user who selects it will see
+  one frame of the default on every load.
+
+Selecting a theme is `applyTheme(slug)` from `utils/theme.js`; the choice is mirrored to
+`localStorage`. The settings picker and the per-user server column are Phase 5.
 
 ---
 

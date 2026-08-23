@@ -15,6 +15,7 @@ import { setupTrades, refreshTradeBadge } from './components/trades.js';
 import { setupTradeShop } from './components/tradeShop.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
+import { initTheme } from './utils/theme.js';
 
 class App {
   constructor() {
@@ -23,6 +24,12 @@ class App {
   }
 
   async init() {
+    // Reconcile the theme with the registry. The inline script in index.html
+    // already stamped one before first paint from localStorage alone, so this
+    // is not what avoids the flash — it is what corrects a stored slug that no
+    // longer ships, and what wires up the art slots from the manifest.
+    initTheme();
+
     // Setup navigation and components first (before async auth check)
     // This ensures event listeners are registered before any events are dispatched
     this.setupNavigation();

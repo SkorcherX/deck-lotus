@@ -4,6 +4,38 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Deck Lotus - MTG Deck Builder</title>
+        <!--
+          Theme, applied before first paint.
+
+          This runs inline and synchronously on purpose: the module bundle
+          loads too late to stamp the theme without a visible flash of the
+          default palette, and the login page renders before any profile
+          request has happened. The stylesheet <link> is written during head
+          parsing so it blocks render the same way main.css does.
+
+          The default slug is duplicated from themes/registry.js because
+          nothing can be imported synchronously here. Keep the two in step —
+          the registry stays authoritative for everything after boot.
+        -->
+        <script>
+            (function () {
+                var DEFAULT = "arcane";
+                var KNOWN = { arcane: 1, classic: 1 };
+                var slug = DEFAULT;
+                try {
+                    var stored = localStorage.getItem("deckLotusTheme");
+                    if (stored && KNOWN[stored]) slug = stored;
+                } catch (e) {
+                    /* storage disabled — fall through to the default */
+                }
+                document.documentElement.setAttribute("data-theme", slug);
+                var link = document.createElement("link");
+                link.id = "theme-stylesheet";
+                link.rel = "stylesheet";
+                link.href = "/themes/" + slug + "/theme.css";
+                document.head.appendChild(link);
+            })();
+        </script>
         <link rel="icon" type="image/x-icon" href="/favicon.ico" />
         <link
             rel="icon"

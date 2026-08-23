@@ -1,0 +1,57 @@
+/* Classic — the original indigo-on-slate palette.
+ *
+ * These values duplicate the :root baseline in main.css on purpose. The
+ * baseline exists so a failed theme load still renders something sane; this
+ * file exists so "Classic" is a real choice a user can select and stay on,
+ * rather than the absence of a theme. If the baseline is ever retuned, Classic
+ * keeps looking like Classic.
+ *
+ * Token overrides only — no selectors, no layout, no fonts.
+ *
+ * The :root prefix is load-bearing. A bare [data-theme="..."] has exactly
+ * the same specificity as the :root baseline in main.css (0,1,0), so which
+ * one won would come down to source order — and Vite emits main.css as a
+ * <link> in production but injects it from JS in dev. :root[data-theme]
+ * is (0,2,0) and wins in both.
+ */
+:root[data-theme="classic"] {
+  /* Accent ramp */
+  --primary: #6366f1;
+  --primary-dark: #4f46e5;
+  --primary-light: #818cf8;
+  --primary-rgb: 99 102 241;
+  --brand-gradient-b: #ec4899;
+  --highlight: #6366f1;
+
+  /* Button body */
+  --primary-btn: #5f61ee;
+  --primary-deep: #4a3fd8;
+  --primary-edge: #818cf8;
+  --primary-plinth: #312e81;
+  --surface-btn: #3a4a63;
+  --surface-deep: #2b3648;
+  --surface-plinth: #131c2e;
+
+  /* Surface ladder */
+  --bg: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-hover: #3d4c63;
+  --bg-rgb: 15 23 42;
+  --overlay-rgb: 2 6 23;
+
+  /* Text */
+  --text: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+
+  /* Borders */
+  --border: #475569;
+  --border-strong: #64748b;
+  --border-color: #475569;
+
+  /* Shape */
+  --chamfer-btn: 11px;
+  --chamfer-card: 14px;
+  --chamfer-modal: 18px;
+}

@@ -11,9 +11,14 @@
     "import-cards": "node scripts/import-mtgjson.js",
     "init-db": "node scripts/init-db.js",
     "client:dev": "cd client && npm run dev",
-    "client:build": "cd client && npm run build"
+    "client:build": "cd client && npm run build",
+    "check:themes": "node scripts/check-theme-contrast.mjs"
   },
-  "keywords": ["mtg", "magic the gathering", "deck builder"],
+  "keywords": [
+    "mtg",
+    "magic the gathering",
+    "deck builder"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {

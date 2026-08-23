@@ -34,7 +34,19 @@ and a small set of celebration animations.
 
 ---
 
-> **Status:** planned, not started. Nothing in this document has been implemented.
+> **Status:** Phases 0-2 are shipped. Phases 3-6 are still planned.
+>
+> | Phase | State |
+> |---|---|
+> | 0 - palette and tone | done - Arcane defined and contrast-verified |
+> | 1 - tokenise | done - proven visually inert against 46 selectors |
+> | 2 - theme pack format | done - `arcane` (default) and `classic` ship |
+> | 3 - structural chrome | not started (button/surface shape landed early) |
+> | 4 - theme forge | not started |
+> | 5 - per-user selection | localStorage half done; server column outstanding |
+> | 6 - celebration animations | not started |
+>
+> Run `npm run check:themes` to re-check every theme's contrast.
 > **Companion:** [`THEME_CREATION_GUIDE.md`](THEME_CREATION_GUIDE.md) — the step-by-step
 > procedure for actually producing a theme once Phases 1–4 exist.
 
@@ -122,13 +134,18 @@ one manifest line — no code changes.
 
 ```
 client/public/themes/<slug>/
-  theme.json      # manifest: name, author, art slot filenames, dark/light hint
-  theme.css       # [data-theme="<slug>"] { --token: value; ... }  — tokens only
+  theme.json      # manifest: name, author, appearance, art slot filenames
+  theme.css       # :root[data-theme="<slug>"] { --token: value; }  — tokens only
   art/
     rail-left.webp      rail-right.webp
     banner.webp
     footer.webp
 ```
+
+> The `:root` prefix is load-bearing. A bare `[data-theme="..."]` has exactly the
+> same specificity as the `:root` baseline (0,1,0), so the winner would come down
+> to source order — and Vite emits `main.css` as a `<link>` in production but
+> injects it from JS in dev. `:root[data-theme]` is (0,2,0) and wins in both.
 
 - `client/src/themes/registry.js` — the list of available themes (slug, display name,
   preview swatches). Read by the settings picker.
@@ -138,8 +155,13 @@ client/public/themes/<slug>/
   missing slot degrades to no image rather than a broken one.
 - **Constraint enforced by convention and review:** `theme.css` may only declare custom
   properties. No selectors, no layout, no font swaps.
-- Build the **new signature dark default** as the first pack, `themes/default/`, and
-  strip the hardcoded palette out of `:root` down to the fallbacks.
+- `:root` in `main.css` keeps the stock indigo as a **fail-safe baseline** rather
+  than being stripped: if a theme stylesheet 404s or is slow, the app renders in a
+  working palette instead of unstyled. `classic` restates those values explicitly
+  so it is a real choice a user can stay on, not merely the absence of a theme.
+- A pre-paint inline script in `index.html` stamps the theme and injects its
+  stylesheet during head parsing. The module bundle loads too late to avoid a
+  flash, and the login page renders before any profile request happens.
 
 ---
 
