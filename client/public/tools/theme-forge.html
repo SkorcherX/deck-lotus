@@ -74,7 +74,13 @@
 
   <section id="s5" class="hide">
     <h2>5 · theme.css</h2>
-    <p class="note">Save as <span class="mono">client/public/themes/&lt;slug&gt;/theme.css</span>, then add the slug to <span class="mono">client/src/themes/registry.js</span> and to the pre-paint list in <span class="mono">index.html</span>.</p>
+    <p class="row" style="margin:0 0 .75rem">
+      <label for="slug" class="note" style="margin:0">Theme slug (the folder name):</label>
+      <input id="slug" class="mono" value="" placeholder="e.g. strixhaven"
+             style="background:#0a0711;color:var(--text);border:1px solid var(--line);border-radius:4px;padding:.4rem .6rem;font-size:.85rem">
+    </p>
+    <p class="note" id="slugwarn" style="color:var(--warn)"></p>
+    <p class="note">Save as <span class="mono">client/public/themes/&lt;slug&gt;/theme.css</span>. Then three more steps, all easy to forget: write a <span class="mono">theme.json</span> listing the art files (without it no art is wired up), add an entry to <span class="mono">client/src/themes/registry.js</span> (without it the theme cannot be selected), and add the slug to the pre-paint list in <span class="mono">index.html</span>. Run <span class="mono">npm run check:themes</span> to catch the first two.</p>
     <textarea id="out" spellcheck="false"></textarea>
     <div class="row" style="margin-top:.75rem">
       <button id="copy">Copy</button>
@@ -335,10 +341,26 @@ function run(img, name) {
     : `<strong style="color:var(--ok)">No failures.</strong> KNOWN rows already fall short on the stock palette and are not caused by this theme.`;
   $('s4').classList.remove('hide');
 
-  const slug = (name.split('.')[0] || 'new-theme').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '') || 'new-theme';
-  $('out').value = css(p, slug);
+  lastPalette = p;
   $('s5').classList.remove('hide');
+  renderCss();
 }
+
+/* The slug names the folder the pack lives in and MUST match the [data-theme]
+   selector, or the theme silently never applies. It is deliberately NOT taken
+   from the dropped filename: the anchor art is always called banner.webp, so
+   guessing from it produced :root[data-theme="banner"] every time. */
+let lastPalette = null;
+function renderCss() {
+  if (!lastPalette) return;
+  const raw = $('slug').value.trim();
+  const slug = raw.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
+  $('slugwarn').textContent = !raw
+    ? 'Enter the slug before saving — it must match the folder under client/public/themes/.'
+    : (slug !== raw ? `Will be written as "${slug}".` : '');
+  $('out').value = css(lastPalette, slug || 'SET-A-SLUG');
+}
+document.getElementById('slug').addEventListener('input', renderCss);
 
 $('copy').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('out').value); $('copied').textContent = 'copied'; }

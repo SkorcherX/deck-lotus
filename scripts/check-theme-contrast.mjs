@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
 const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
 const L = (h) => { const n = parseInt(h.slice(1), 16); return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255); };
@@ -26,9 +26,41 @@ const LOCKED = {
 // product decision about locked recognition cues, not a theming bug.
 const KNOWN = new Set(['uncommon on card', 'mythic on card', 'highlight on card']);
 
+/* Every pack on disk, not a hardcoded list — a theme that is not checked is
+   the whole failure this script exists to prevent. `classic` goes first
+   because every other theme is graded against it as the baseline. */
+const THEME_DIR = 'client/public/themes';
+const slugs = readdirSync(THEME_DIR, { withFileTypes: true })
+  .filter((e) => e.isDirectory() && existsSync(`${THEME_DIR}/${e.name}/theme.css`))
+  .map((e) => e.name)
+  .sort((a, b) => (a === 'classic' ? -1 : b === 'classic' ? 1 : a.localeCompare(b)));
+
+if (!slugs.includes('classic')) {
+  console.error('error: no classic pack found; it is the baseline every theme is graded against.');
+  process.exit(1);
+}
+console.log(`checking ${slugs.length} theme(s): ${slugs.join(', ')}`);
+
+/* A pack that declares a selector not matching its own folder name is dead —
+   it will never apply. This is easy to do: the extractor names the file after
+   the image you dropped in. */
+let structural = 0;
+for (const slug of slugs) {
+  const css = readFileSync(`${THEME_DIR}/${slug}/theme.css`, 'utf8');
+  if (!css.includes(`:root[data-theme="${slug}"]`)) {
+    const found = css.match(/\[data-theme="([^"]+)"\]/);
+    console.error(`  STRUCTURAL  ${slug}/theme.css targets ${found ? `"${found[1]}"` : 'nothing'}, not "${slug}" — it will never apply`);
+    structural++;
+  }
+  if (!existsSync(`${THEME_DIR}/${slug}/theme.json`)) {
+    console.error(`  STRUCTURAL  ${slug} has no theme.json — its art will never be wired up`);
+    structural++;
+  }
+}
+
 const results = {};
 let regressions = 0;
-for (const slug of ['classic', 'arcane']) {
+for (const slug of slugs) {
   const t = { ...base, ...parse(`client/public/themes/${slug}/theme.css`), ...LOCKED };
   console.log(`\n=== ${slug} ===`);
   const checks = [

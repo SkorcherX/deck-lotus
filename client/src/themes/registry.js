@@ -18,6 +18,12 @@ export const THEMES = [
     swatches: ['#0a0711', '#14101f', '#8348ec', '#38d6ec'],
   },
   {
+    slug: 'strixhaven',
+    name: 'Strixhaven',
+    description: 'Ink-dark stone and lamplit amber, with a lavender highlight.',
+    swatches: ['#0c0c0d', '#171718', '#8a4d00', '#a28bc7'],
+  },
+  {
     slug: 'classic',
     name: 'Classic',
     description: 'The original indigo-on-slate palette.',

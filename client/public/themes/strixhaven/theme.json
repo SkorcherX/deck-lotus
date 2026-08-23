@@ -1,0 +1,14 @@
+{
+  "slug": "strixhaven",
+  "name": "Strixhaven",
+  "author": "SkorcherX",
+  "appearance": "dark",
+  "art": {
+    "banner": "art/banner.webp",
+    "rail-left": "art/rail-left.webp",
+    "rail-right": "art/rail-right.webp",
+    "footer": "art/footer.webp",
+    "empty": "art/empty.webp",
+    "celebration": "art/celebration.webp"
+  }
+}
