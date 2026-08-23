@@ -3,8 +3,11 @@ import { showLoading, hideLoading, showModal, showToast, confirmDialog } from '.
 import { PRESET_AVATARS, getPresetAvatar, getUploadedAvatarUrl } from '../utils/avatar.js';
 import { getGravatarUrl, getUserInitials, getUserColor } from '../utils/gravatar.js';
 import { refreshUserMenu } from './userMenu.js';
+import { THEMES, DEFAULT_THEME } from '../themes/registry.js';
+import { applyTheme, currentTheme } from '../utils/theme.js';
 
 export function setupSettings() {
+  setupThemePicker();
   setupAvatarSettings();
 
   const generateApiKeyBtn = document.getElementById('generate-api-key-btn');
@@ -800,3 +803,50 @@ window.deleteBackup = async function(filename) {
     showToast('Failed to delete backup: ' + error.message, 'error');
   }
 };
+
+/**
+ * Theme picker.
+ *
+ * Applies the theme immediately on click so the choice is judged in place
+ * rather than after a save, then persists it. If the server rejects or is
+ * unreachable the local change stands for this browser — losing the theme you
+ * just picked because a request failed would be worse than a preference that
+ * has not synced yet, and the localStorage mirror will still be there on
+ * reload.
+ */
+function setupThemePicker() {
+  const host = document.getElementById('theme-picker');
+  if (!host) return;
+
+  const render = () => {
+    const active = currentTheme();
+    host.innerHTML = THEMES.map((t) => `
+      <button type="button" class="theme-option${t.slug === active ? ' is-active' : ''}"
+              data-theme-slug="${t.slug}" aria-pressed="${t.slug === active}">
+        <span class="theme-option-swatches" aria-hidden="true">
+          ${t.swatches.map((c) => `<span style="background:${c}"></span>`).join('')}
+        </span>
+        <span class="theme-option-body">
+          <span class="theme-option-name">${t.name}${t.slug === DEFAULT_THEME ? ' <em>default</em>' : ''}</span>
+          <span class="theme-option-desc">${t.description}</span>
+        </span>
+      </button>`).join('');
+  };
+
+  render();
+  document.addEventListener('theme:changed', render);
+
+  host.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-theme-slug]');
+    if (!button) return;
+    const slug = button.dataset.themeSlug;
+    if (slug === currentTheme()) return;
+
+    await applyTheme(slug);
+    try {
+      await api.updatePreferences({ theme: slug });
+    } catch (error) {
+      showToast('Theme applied here, but could not be saved to your account', 'warning');
+    }
+  });
+}

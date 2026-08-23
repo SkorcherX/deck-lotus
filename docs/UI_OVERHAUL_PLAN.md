@@ -44,7 +44,7 @@ and a small set of celebration animations.
 > | 2 - theme pack format | done - `arcane` (default) and `classic` ship |
 > | 3 - structural chrome | done - banner, gutter rails, footer, nav indicator |
 > | 4 - theme forge | done - prompt generator and browser extractor |
-> | 5 - per-user selection | localStorage half done; server column outstanding |
+> | 5 - per-user selection | done - migration 032, /auth/preferences, settings picker |
 > | 6 - celebration animations | not started (the `celebration` art slot is ready) |
 >
 > Run `npm run check:themes` to re-check every theme's contrast,

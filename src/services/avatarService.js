@@ -109,7 +109,7 @@ function deletePreviousUpload(userId) {
 
 function getUpdatedUser(userId) {
   return db.get(
-    'SELECT id, username, email, is_admin, avatar_type, avatar_value, created_at FROM users WHERE id = ?',
+    'SELECT id, username, email, is_admin, avatar_type, avatar_value, theme, created_at FROM users WHERE id = ?',
     [userId]
   );
 }

@@ -6639,3 +6639,57 @@ body.maintenance-locked #app {
   .empty-state { padding: var(--space-6) var(--space-4); }
   .empty-state-art { width: 130px; height: 130px; }
 }
+
+/* ---- Theme picker (Settings -> Appearance) --------------------------------- */
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.theme-option:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.theme-option:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
+
+.theme-option.is-active {
+  border-color: var(--highlight);
+  background: var(--primary-soft);
+}
+
+/* Four stacked chips: two surfaces, accent, highlight. Enough to tell the
+   themes apart in the list without loading each one. */
+.theme-option-swatches {
+  display: grid;
+  grid-template-columns: repeat(2, 18px);
+  grid-auto-rows: 18px;
+  gap: 2px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.theme-option-swatches span { display: block; }
+
+.theme-option-body { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.theme-option-name { font-weight: 600; }
+.theme-option-name em {
+  font-style: normal;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.theme-option-desc { color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.4; }

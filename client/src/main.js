@@ -15,7 +15,7 @@ import { setupTrades, refreshTradeBadge } from './components/trades.js';
 import { setupTradeShop } from './components/tradeShop.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
-import { initTheme, currentTheme } from './utils/theme.js';
+import { initTheme, currentTheme, applyTheme } from './utils/theme.js';
 import { getTheme } from './themes/registry.js';
 
 class App {
@@ -48,8 +48,8 @@ class App {
     if (api.token) {
       try {
         showLoading();
-        await api.getProfile();
-        await this.showApp();
+        const profile = await api.getProfile();
+        await this.showApp(profile && profile.user);
       } catch (error) {
         // A failed profile check normally means the session is done. But the
         // card tables being mid-rebuild fails it too, and throwing the user
@@ -80,7 +80,15 @@ class App {
     this.hideAllPages();
   }
 
-  async showApp() {
+  async showApp(user) {
+    // The account's theme wins over whatever this browser had stored, so the
+    // choice follows the user to a new device. Skipped when they already
+    // match; applying it also re-mirrors to localStorage, so the next
+    // pre-paint gets it right without waiting for the profile.
+    if (user && user.theme && user.theme !== currentTheme()) {
+      await applyTheme(user.theme);
+    }
+
     document.getElementById('auth-page').classList.add('hidden');
     document.getElementById('navbar').classList.remove('hidden');
     document.getElementById('app-footer').classList.remove('hidden');
@@ -195,7 +203,7 @@ class App {
 
   setupComponents() {
     setupAuth(async (user) => {
-      await this.showApp();
+      await this.showApp(user);
     });
     setupDecks();
     setupDeckBuilder();

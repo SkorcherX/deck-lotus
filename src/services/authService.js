@@ -150,7 +150,7 @@ export function revokeApiKey(userId, keyId) {
  */
 export function getUserById(userId) {
   const user = db.get(
-    'SELECT id, username, email, is_admin, avatar_type, avatar_value, created_at FROM users WHERE id = ?',
+    'SELECT id, username, email, is_admin, avatar_type, avatar_value, theme, created_at FROM users WHERE id = ?',
     [userId]
   );
 
@@ -202,7 +202,7 @@ export async function createAdminUser(username, email, password) {
  */
 export function getAllUsers() {
   return db.all(
-    'SELECT id, username, email, is_admin, avatar_type, avatar_value, created_at, updated_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, email, is_admin, avatar_type, avatar_value, theme, created_at, updated_at FROM users ORDER BY created_at DESC'
   );
 }
 
@@ -259,4 +259,19 @@ export async function resetUserPassword(userId, newPassword) {
   );
 
   return result.changes > 0;
+}
+
+/**
+ * Set a user's theme preference.
+ *
+ * The slug is validated by the caller against the packs that actually ship
+ * (see services/themeService.js) — never trust it from the request, because
+ * the client turns it straight into a URL path segment.
+ */
+export function setUserTheme(userId, slug) {
+  db.run(
+    'UPDATE users SET theme = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [slug, userId]
+  );
+  return getUserById(userId);
 }

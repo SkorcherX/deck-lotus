@@ -6,12 +6,14 @@ import {
   getUserApiKeys,
   revokeApiKey,
   getUserById,
+  setUserTheme,
 } from '../services/authService.js';
 import { setAvatarGravatar, setAvatarPreset, saveUploadedAvatar } from '../services/avatarService.js';
 import { authenticate } from '../middleware/auth.js';
 import { uploadAvatar } from '../middleware/upload.js';
 import { verifyToken, generateTokens } from '../utils/jwt.js';
 import { isRegistrationEnabled } from '../services/settingsService.js';
+import { validateTheme } from '../services/themeService.js';
 import db from '../db/connection.js';
 
 const router = express.Router();
@@ -108,6 +110,34 @@ router.get('/me', authenticate, (req, res, next) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    res.json({ user });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/auth/preferences
+ * Update the caller's own UI preferences.
+ * Body: { theme: '<slug>' }
+ *
+ * Deliberately scoped to req.user.id: there is no user id in the body, so this
+ * cannot be pointed at somebody else's row.
+ */
+router.put('/preferences', authenticate, (req, res, next) => {
+  try {
+    const { theme } = req.body;
+
+    if (theme === undefined) {
+      return res.status(400).json({ error: 'nothing to update' });
+    }
+
+    const check = validateTheme(theme);
+    if (!check.ok) {
+      return res.status(400).json({ error: check.error, ...(check.installed ? { installed: check.installed } : {}) });
+    }
+
+    const user = setUserTheme(req.user.id, check.slug);
     res.json({ user });
   } catch (error) {
     next(error);

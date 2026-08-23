@@ -46,7 +46,7 @@ export function createBackup(userId = null) {
 
   // Backup users
   backup.data.users = db.prepare(`
-    SELECT id, username, email, password_hash, is_admin, created_at, updated_at
+    SELECT id, username, email, password_hash, is_admin, theme, created_at, updated_at
     FROM users
     ${userFilter}
   `).all();
@@ -167,8 +167,8 @@ export function restoreBackup(backupData, options = {}) {
 
     // Restore users
     const insertUser = db.prepare(`
-      INSERT OR REPLACE INTO users (id, username, email, password_hash, is_admin, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO users (id, username, email, password_hash, is_admin, theme, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const user of usersToRestore) {
@@ -179,6 +179,10 @@ export function restoreBackup(backupData, options = {}) {
           user.email,
           user.password_hash,
           user.is_admin || 0,
+          // Backups taken before the theme column existed have no value here,
+          // and INSERT OR REPLACE writes the column rather than defaulting it,
+          // so the fallback has to be spelled out.
+          user.theme || 'arcane',
           user.created_at,
           user.updated_at
         );

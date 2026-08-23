@@ -73,6 +73,13 @@ class ApiClient {
     return this.request('/auth/api-keys');
   }
 
+  async updatePreferences(payload) {
+    return this.request('/auth/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async updateAvatar(payload) {
     return this.request('/auth/avatar', {
       method: 'PUT',
