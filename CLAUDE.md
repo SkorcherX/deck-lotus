@@ -101,5 +101,21 @@ taken on GitHub — only do it when explicitly asked.
   printing `uuid`, same as `deck_cards` and `owned_printings`; a pending trade
   that comes back empty is cancelled rather than left in a shape nobody agreed
   to.
+- The weekly MTGJSON sync runs on a cron in `src/services/syncService.js`,
+  and node-cron reads a bare expression in the *process's* timezone — which in
+  a container with no `TZ` is UTC. "Sundays at 3 AM" therefore fired at 8 PM
+  Saturday Pacific until `SYNC_TIMEZONE` was added. Set it (`TZ` is the
+  fallback) or the schedule does not mean what it says; startup logs the zone
+  it resolved, which is the quickest way to confirm.
+- The cron fires five minutes *before* the sync is due, not at it. That lead
+  time is the warning users get, so the expression and `WARNING_LEAD_MS` in
+  `src/services/maintenanceService.js` have to move together to keep the sync
+  starting at its advertised hour.
+- Anything a user sees while the import is running must be answerable without
+  touching SQLite — the tables are mid-rebuild for those minutes. That is why
+  `/api/system/maintenance` is unauthenticated (the API-key branch of
+  `authenticate` reads the database) and why maintenance state lives in memory.
+  A signed-in user whose collection appears to empty out with no explanation
+  reads it as data loss; that is the whole reason the notice exists.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.
