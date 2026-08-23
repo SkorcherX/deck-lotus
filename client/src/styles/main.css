@@ -108,6 +108,39 @@
   --radius-xl: 1rem;     /* 16 */
   --radius-full: 9999px;
 
+  /* Shape — cut corners rather than rounded ones. These are per-theme knobs:
+     a softer theme sets them all to 0 and everything falls back to the radius
+     scale above. Buttons cut top-left/bottom-right; surfaces follow suit at a
+     larger size so the language reads as deliberate rather than accidental. */
+  --chamfer-btn: 11px;
+  --chamfer-card: 14px;
+  --chamfer-modal: 18px;
+
+  /* Button body. Each variant is a lit top edge, a gradient face and a darker
+     plinth underneath. Fills deliberately start darker than the raw status hue
+     so white labels clear 4.5:1 — .btn-success was 2.54:1 and .btn-danger
+     3.76:1 before this. The --success/--danger/--warning tokens above are the
+     locked semantic colours and are NOT changed; only the button faces are. */
+  --primary-btn: #5f61ee;    /* #6366f1 measured 4.47:1 — just under AA */
+  --primary-deep: #4a3fd8;
+  --primary-edge: #818cf8;
+  --primary-plinth: #312e81;
+  --surface-btn: #3a4a63;
+  --surface-deep: #2b3648;
+  --surface-plinth: #131c2e;
+  --success-btn: #047857;
+  --success-deep: #03613f;
+  --success-edge: #10b981;
+  --success-plinth: #023d29;
+  --danger-btn: #dc2626;
+  --danger-deep: #a81a1a;
+  --danger-edge: #ef4444;
+  --danger-plinth: #6e1010;
+  --warning-btn: #f5a623;
+  --warning-deep: #d97706;
+  --warning-edge: #fbbf24;
+  --warning-plinth: #8a4c04;
+
   /* Elevation scale */
   --shadow: rgba(0, 0, 0, 0.5); /* legacy raw shadow color, still referenced */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -161,9 +194,28 @@ body {
 .gap-1 { gap: 0.5rem; }
 .gap-2 { gap: 1rem; }
 
-/* Buttons */
+/* Buttons
+   ---------------------------------------------------------------------------
+   Filled buttons are drawn in three layers so they have a cut-corner
+   silhouette AND physical depth, with no wrapper element and no markup change:
+
+     .btn          carries the plinth colour and the outer chamfer
+     .btn::before  the 1px hairline edge, sitting 2px above the bottom
+     .btn::after   the gradient face, inset 1px, lifted 2px off the bottom
+
+   The 2px of plinth showing along the bottom is what the face presses down
+   onto on :active. Both pseudos sit at negative z-index inside the button's
+   own stacking context (isolation: isolate), so labels and icons paint above
+   them without needing a wrapper.
+
+   clip-path clips outer box-shadows and outline, so this build has no drop
+   shadow and signals focus by lighting the edge instead. Where the browser
+   supports corner-shape, the @supports block further down throws all of that
+   away and uses a real border, box-shadow and outline instead — see there.
+   Set --chamfer-btn: 0 to opt a theme out of the whole treatment.
+   --------------------------------------------------------------------------- */
 .btn {
-  padding: 0.625rem 1.25rem;
+  padding: 0.625rem 1.25rem calc(0.625rem + 2px);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
@@ -181,50 +233,229 @@ body {
   user-select: none;
 }
 
-/* Subtler feedback than the old universal lift: shadow + slight brighten */
-.btn:hover { box-shadow: var(--shadow-md); }
-.btn:active { transform: translateY(1px); box-shadow: var(--shadow-sm); }
 .btn:focus-visible { outline: 2px solid var(--primary-light); outline-offset: 2px; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 
-.btn-primary {
-  background: var(--primary);
-  color: white;
+/* Filled variants opt in to the layered build by setting these four. Ghost and
+   any future outline-only variant simply don't, and stay flat. */
+.btn-primary,
+.btn-secondary,
+.btn-success,
+.btn-danger,
+.btn-warning {
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  background: var(--btn-plinth);
+  clip-path: polygon(
+    var(--chamfer-btn) 0, 100% 0,
+    100% calc(100% - var(--chamfer-btn)), calc(100% - var(--chamfer-btn)) 100%,
+    0 100%, 0 var(--chamfer-btn)
+  );
 }
-.btn-primary:hover { background: var(--primary-dark); }
+.btn-primary::before,
+.btn-secondary::before,
+.btn-success::before,
+.btn-danger::before,
+.btn-warning::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 2px 0;
+  z-index: -2;
+  background: var(--btn-edge);
+  clip-path: polygon(
+    calc(var(--chamfer-btn) - 1px) 0, 100% 0,
+    100% calc(100% - var(--chamfer-btn) + 1px), calc(100% - var(--chamfer-btn) + 1px) 100%,
+    0 100%, 0 calc(var(--chamfer-btn) - 1px)
+  );
+}
+.btn-primary::after,
+.btn-secondary::after,
+.btn-success::after,
+.btn-danger::after,
+.btn-warning::after {
+  content: "";
+  position: absolute;
+  inset: 1px 1px 3px 1px;
+  z-index: -1;
+  background: linear-gradient(180deg, var(--btn-face-a), var(--btn-face-b));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  clip-path: polygon(
+    calc(var(--chamfer-btn) - 2px) 0, 100% 0,
+    100% calc(100% - var(--chamfer-btn) + 2px), calc(100% - var(--chamfer-btn) + 2px) 100%,
+    0 100%, 0 calc(var(--chamfer-btn) - 2px)
+  );
+}
+
+/* Hover FLATTENS the gradient rather than brightening it. Lifting the top stop
+   is what drops white labels below 4.5:1, so only the bottom stop moves. */
+.btn-primary:hover,
+.btn-secondary:hover,
+.btn-success:hover,
+.btn-danger:hover,
+.btn-warning:hover { --btn-face-b: var(--btn-face-a); }
+
+/* Press: the face drops onto the plinth and the label rides down with it. */
+.btn-primary:active,
+.btn-secondary:active,
+.btn-success:active,
+.btn-danger:active,
+.btn-warning:active {
+  padding: calc(0.625rem + 2px) 1.25rem 0.625rem;
+}
+.btn-primary:active::after,
+.btn-secondary:active::after,
+.btn-success:active::after,
+.btn-danger:active::after,
+.btn-warning:active::after {
+  inset: 3px 1px 1px 1px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.btn-primary:active::before,
+.btn-secondary:active::before,
+.btn-success:active::before,
+.btn-danger:active::before,
+.btn-warning:active::before { inset: 2px 0 0 0; }
+
+/* clip-path eats the outline, so focus lights the edge instead. The @supports
+   block restores a real ring where corner-shape is available. */
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.btn-success:focus-visible,
+.btn-danger:focus-visible,
+.btn-warning:focus-visible {
+  outline: none;
+  --btn-edge: var(--primary-light);
+}
+
+.btn-primary {
+  color: white;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+  --btn-face-a: var(--primary-btn);
+  --btn-face-b: var(--primary-deep);
+  --btn-edge: var(--primary-edge);
+  --btn-plinth: var(--primary-plinth);
+}
 
 .btn-secondary {
-  background: var(--bg-tertiary);
   color: var(--text);
-  border-color: var(--border);
+  --btn-face-a: var(--surface-btn);
+  --btn-face-b: var(--surface-deep);
+  --btn-edge: var(--border-strong);
+  --btn-plinth: var(--surface-plinth);
 }
-.btn-secondary:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+
+.btn-success {
+  color: white;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  --btn-face-a: var(--success-btn);
+  --btn-face-b: var(--success-deep);
+  --btn-edge: var(--success-edge);
+  --btn-plinth: var(--success-plinth);
+}
 
 .btn-danger {
-  background: var(--danger);
   color: white;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  --btn-face-a: var(--danger-btn);
+  --btn-face-b: var(--danger-deep);
+  --btn-edge: var(--danger-edge);
+  --btn-plinth: var(--danger-plinth);
 }
-.btn-danger:hover { background: var(--danger-dark); }
 
 .btn-warning {
-  background: var(--warning);
   color: #1f1300;
+  --btn-face-a: var(--warning-btn);
+  --btn-face-b: var(--warning-deep);
+  --btn-edge: var(--warning-edge);
+  --btn-plinth: var(--warning-plinth);
 }
-.btn-warning:hover { background: var(--warning-dark); }
 
-/* Ghost / outline — for low-emphasis and icon-forward actions */
+/* Ghost / outline — for low-emphasis and icon-forward actions. Deliberately
+   NOT chamfered-and-lifted: low-emphasis actions should read as a different
+   silhouette, not the same one recoloured. */
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);
   border-color: var(--border);
+  border-left-width: 3px;
+  border-radius: 0;
+  padding: 0.625rem 1.25rem 0.625rem calc(1.25rem - 2px);
 }
 .btn-ghost:hover { background: var(--bg-tertiary); color: var(--text); border-color: var(--border-strong); }
 
 .btn-block { width: 100%; justify-content: center; }
 
 /* Size variants (replace inline padding/flex overrides) */
-.btn-sm { padding: 0.375rem 0.75rem; font-size: var(--text-xs); border-radius: var(--radius-sm); }
-.btn-lg { padding: 0.875rem 1.75rem; font-size: var(--text-base); }
+.btn-sm { padding: 0.375rem 0.75rem calc(0.375rem + 2px); font-size: var(--text-xs); border-radius: var(--radius-sm); --chamfer-btn: 8px; }
+.btn-sm:active { padding: calc(0.375rem + 2px) 0.75rem 0.375rem; }
+.btn-lg { padding: 0.875rem 1.75rem calc(0.875rem + 2px); font-size: var(--text-base); --chamfer-btn: 13px; }
+.btn-lg:active { padding: calc(0.875rem + 2px) 1.75rem 0.875rem; }
+.btn-ghost.btn-sm, .btn-ghost.btn-lg { padding-bottom: 0.375rem; }
+.btn-ghost.btn-lg { padding-bottom: 0.875rem; }
+
+/* ---- Native bevel, where the browser has it -------------------------------
+   corner-shape cuts the corner on the real border box, so border, box-shadow
+   and outline all follow the bevel. That makes the three-layer build above
+   unnecessary: the pseudos are switched off, the face moves back onto the
+   element, and buttons get their drop shadow and a real focus ring back.
+   Everything degrades to the clip-path build, which degrades to plain radii.
+   --------------------------------------------------------------------------- */
+@supports (corner-shape: bevel) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-success,
+  .btn-danger,
+  .btn-warning {
+    clip-path: none;
+    isolation: auto;
+    border: 1px solid var(--btn-edge);
+    corner-shape: bevel;
+    border-radius: var(--chamfer-btn) var(--radius-sm) var(--chamfer-btn) var(--radius-sm);
+    padding: 0.625rem 1.25rem;
+    background: linear-gradient(180deg, var(--btn-face-a), var(--btn-face-b));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24),
+                0 2px 0 var(--btn-plinth),
+                0 4px 10px rgba(0, 0, 0, 0.45);
+  }
+  .btn-primary::before, .btn-primary::after,
+  .btn-secondary::before, .btn-secondary::after,
+  .btn-success::before, .btn-success::after,
+  .btn-danger::before, .btn-danger::after,
+  .btn-warning::before, .btn-warning::after { content: none; }
+
+  .btn-sm.btn-primary, .btn-sm.btn-secondary, .btn-sm.btn-success,
+  .btn-sm.btn-danger, .btn-sm.btn-warning { padding: 0.375rem 0.75rem; }
+  .btn-lg.btn-primary, .btn-lg.btn-secondary, .btn-lg.btn-success,
+  .btn-lg.btn-danger, .btn-lg.btn-warning { padding: 0.875rem 1.75rem; }
+
+  .btn-primary:active, .btn-secondary:active, .btn-success:active,
+  .btn-danger:active, .btn-warning:active {
+    transform: translateY(2px);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  }
+  .btn-sm.btn-primary:active, .btn-sm.btn-secondary:active, .btn-sm.btn-success:active,
+  .btn-sm.btn-danger:active, .btn-sm.btn-warning:active { padding: 0.375rem 0.75rem; }
+  .btn-lg.btn-primary:active, .btn-lg.btn-secondary:active, .btn-lg.btn-success:active,
+  .btn-lg.btn-danger:active, .btn-lg.btn-warning:active { padding: 0.875rem 1.75rem; }
+
+  .btn-primary:focus-visible, .btn-secondary:focus-visible, .btn-success:focus-visible,
+  .btn-danger:focus-visible, .btn-warning:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+  }
+
+  /* .btn-ghost is deliberately NOT chamfered here. It cannot be in the
+     clip-path build — clipping a bordered outline button cuts the corner
+     through the border and leaves the two diagonals undrawn — so chamfering
+     it only where corner-shape exists would make low-emphasis buttons a
+     different SHAPE in different browsers, not just a different rendering.
+     It keeps its square-with-left-channel silhouette everywhere instead. */
+
+  /* Surfaces are chamfered too, but that block lives at the END of this file —
+     these containers define their own border-radius further down, and a rule
+     here would lose to them on source order. */
+}
 
 /* Navigation */
 .navbar {
@@ -2293,14 +2524,9 @@ button.btn-icon.active {
   font-weight: 600;
 }
 
-.btn-success {
-  background: var(--success);
-  color: white;
-}
-
-.btn-success:hover {
-  background: var(--success-dark);
-}
+/* .btn-success is defined with the other button variants near the top of this
+   file. It used to live here as white-on-var(--success), which measured
+   2.54:1 — well under AA — and is now a darker face with the same green edge. */
 
 /* Badge */
 .badge {
@@ -6104,4 +6330,39 @@ body.maintenance-locked #app {
   .audit-count { margin-left: 0; padding-bottom: 0; }
   .audit-quantity { margin-left: 0; }
   .audit-filter-search { flex-basis: 100%; }
+}
+
+/* ---- Surface shape ---------------------------------------------------------
+   The cut-corner language extended from buttons to the panels they sit on, so
+   chamfered buttons don't read as accidental against rounded cards.
+
+   This block is deliberately LAST in the file: every selector below sets its
+   own border-radius earlier on, and a rule placed with the button styles would
+   lose to them on source order.
+
+   corner-shape only — no clip-path fallback here on purpose. Clipping a
+   scrolling panel (.modal-content, .drawer) would cut off its own contents,
+   and clipping a card would eat its hover shadow. Where corner-shape is
+   missing these simply stay rounded, which is exactly how they look today.
+   --------------------------------------------------------------------------- */
+@supports (corner-shape: bevel) {
+  .modal-content,
+  .settings-section {
+    corner-shape: bevel;
+    border-radius: var(--chamfer-modal);
+  }
+
+  .inventory-card-item,
+  .filter-bar,
+  .drawer,
+  .card-item,
+  .deck-card {
+    corner-shape: bevel;
+    border-radius: var(--chamfer-card);
+  }
+
+  /* Pills and avatars stay round — a chamfered circle just looks broken. */
+  .badge,
+  .avatar,
+  .nav-link { corner-shape: round; }
 }
