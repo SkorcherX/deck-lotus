@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <!--
+    PLACEHOLDER for the `celebration` slot in client/src/themes/slots.js.
+    Transparent background, single centred subject. Deliberately the opposite
+    of the `empty` spot: a flourish rather than an invitation. Consumed by the
+    win-recorded moment in Phase 6.
+  -->
+  <defs>
+    <linearGradient id="cup" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c4a3fb"/>
+      <stop offset="1" stop-color="#6425c9"/>
+    </linearGradient>
+    <radialGradient id="burst" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8348ec" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#8348ec" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="300" cy="300" r="230" fill="url(#burst)"/>
+
+  <!-- rays -->
+  <g stroke="#38d6ec" stroke-width="5" stroke-linecap="round" opacity="0.5">
+    <path d="M300 78 L300 34"/><path d="M300 522 L300 566"/>
+    <path d="M78 300 L34 300"/><path d="M522 300 L566 300"/>
+    <path d="M143 143 L112 112"/><path d="M457 143 L488 112"/>
+    <path d="M143 457 L112 488"/><path d="M457 457 L488 488"/>
+  </g>
+
+  <!-- chalice -->
+  <path d="M204 172 L396 172 C396 292 356 348 300 358 C244 348 204 292 204 172 Z"
+        fill="url(#cup)" stroke="#c4a3fb" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M204 196 C150 196 142 262 196 274" fill="none" stroke="#c4a3fb" stroke-width="6" stroke-linecap="round"/>
+  <path d="M396 196 C450 196 458 262 404 274" fill="none" stroke="#c4a3fb" stroke-width="6" stroke-linecap="round"/>
+  <path d="M300 358 L300 418" stroke="#c4a3fb" stroke-width="10" stroke-linecap="round"/>
+  <path d="M236 434 L364 434" stroke="#c4a3fb" stroke-width="14" stroke-linecap="round"/>
+  <ellipse cx="300" cy="172" rx="96" ry="22" fill="#38d6ec" opacity="0.45"/>
+
+  <!-- sparks -->
+  <g fill="#38d6ec">
+    <circle cx="188" cy="112" r="7" opacity="0.8"/>
+    <circle cx="416" cy="126" r="5" opacity="0.65"/>
+    <circle cx="140" cy="368" r="5" opacity="0.5"/>
+    <circle cx="468" cy="352" r="7" opacity="0.6"/>
+    <circle cx="356" cy="86" r="4" opacity="0.45"/>
+  </g>
+</svg>

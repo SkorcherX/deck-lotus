@@ -28,7 +28,8 @@ and a small set of celebration animations.
   pattern) + a `localStorage` mirror for instant first paint.
 - **Animation:** a small named set of celebration moments.
 - **Default:** a new signature dark theme replaces the current indigo-on-slate.
-- **Art slots:** side-rail tapestries (gutters), page banner strip, footer band.
+- **Art slots:** side-rail tapestries (gutters), page banner strip, footer band,
+  and 600x600 spot art for empty states and the win celebration.
 - **Palette direction:** "Arcane" — violet on obsidian, run deeper and higher-contrast
   than today. Rarity and status colors locked across all themes.
 
@@ -44,7 +45,7 @@ and a small set of celebration animations.
 > | 3 - structural chrome | done - banner, gutter rails, footer, nav indicator |
 > | 4 - theme forge | done - prompt generator and browser extractor |
 > | 5 - per-user selection | localStorage half done; server column outstanding |
-> | 6 - celebration animations | not started |
+> | 6 - celebration animations | not started (the `celebration` art slot is ready) |
 >
 > Run `npm run check:themes` to re-check every theme's contrast,
 > `npm run theme:slots` to list the art slots, and `npm run theme:prompt` to

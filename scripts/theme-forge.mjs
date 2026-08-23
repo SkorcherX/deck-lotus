@@ -62,7 +62,9 @@ const NEGATIVES = [
 
 function buildPrompt(slot, { mood, palette, isAnchor }) {
   const lines = [];
-  const shape = slot.tiles === 'vertical' ? 'Vertical decorative panel' : 'Wide decorative banner illustration';
+  const shape = slot.shape === 'spot'
+    ? 'Square spot illustration'
+    : slot.tiles === 'vertical' ? 'Vertical decorative panel' : 'Wide decorative banner illustration';
   lines.push(`${shape}, exactly ${slot.width}x${slot.height} pixels, ${simplifyRatio(slot.width, slot.height)} aspect ratio.`);
   lines.push('');
   lines.push(`SUBJECT: ${mood}`);
@@ -70,16 +72,33 @@ function buildPrompt(slot, { mood, palette, isAnchor }) {
   lines.push('        visible brushwork, no photographic realism.');
   lines.push('');
   lines.push(`COMPOSITION: ${slot.safeArea}.`);
+  if (slot.id === 'empty') {
+    lines.push('INTENT: this appears wherever the app has nothing to show yet. It should');
+    lines.push('read as a calm, inviting "nothing here yet" — not as an error, and not');
+    lines.push('naming what is missing, since one image serves every empty screen.');
+  }
+  if (slot.id === 'celebration') {
+    lines.push('INTENT: this appears the moment someone records a win. It should read as a');
+    lines.push('flourish — triumphant and energetic, the opposite of the empty-state spot.');
+  }
   if (slot.overlaidText) {
     lines.push('Interface text sits directly on top of this image, so the area named above');
     lines.push('must stay quiet, low-detail and uncluttered.');
   }
   lines.push('');
-  lines.push('VALUE: This is a dark UI. Keep the image in the lower half of the value');
-  lines.push('range. Highlights are permitted only away from the area named above.');
-  lines.push('');
-  lines.push(`EDGES: The ${listEdges(slot.edgeFade)} must fade toward flat near-black so the`);
-  lines.push('image dissolves into the page rather than ending in a hard line.');
+  if (slot.shape === 'spot') {
+    lines.push('VALUE: This sits on a dark surface and is the only thing on it, so it may');
+    lines.push('carry real light and colour — unlike the banner, it competes with nothing.');
+    lines.push('');
+    lines.push('BACKGROUND: fully transparent. No backdrop, no vignette, no card, no circle');
+    lines.push('behind the subject. Deliver with an alpha channel.');
+  } else {
+    lines.push('VALUE: This is a dark UI. Keep the image in the lower half of the value');
+    lines.push('range. Highlights are permitted only away from the area named above.');
+    lines.push('');
+    lines.push(`EDGES: The ${listEdges(slot.edgeFade)} must fade toward flat near-black so the`);
+    lines.push('image dissolves into the page rather than ending in a hard line.');
+  }
   if (slot.tiles === 'vertical') {
     lines.push('');
     lines.push('TILING: This panel repeats vertically. The top and bottom edges must match');

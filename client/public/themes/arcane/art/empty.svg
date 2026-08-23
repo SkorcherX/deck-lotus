@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <!--
+    PLACEHOLDER for the `empty` slot in client/src/themes/slots.js.
+    Transparent background, single centred subject, generous margin — an
+    open, empty vessel rather than anything naming what is missing, since
+    one image serves every empty screen.
+  -->
+  <defs>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b794fa"/>
+      <stop offset="1" stop-color="#6425c9"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.55" r="0.5">
+      <stop offset="0" stop-color="#38d6ec" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#38d6ec" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="300" cy="330" r="170" fill="url(#glow)"/>
+
+  <!-- open vessel -->
+  <path d="M180 250 C180 400 220 470 300 490 C380 470 420 400 420 250 Z"
+        fill="none" stroke="url(#rim)" stroke-width="7" stroke-linejoin="round"/>
+  <ellipse cx="300" cy="250" rx="120" ry="34"
+           fill="none" stroke="url(#rim)" stroke-width="7"/>
+  <ellipse cx="300" cy="250" rx="120" ry="34" fill="#8348ec" opacity="0.10"/>
+
+  <!-- motes drifting out of it -->
+  <g fill="#38d6ec">
+    <circle cx="300" cy="176" r="8" opacity="0.85"/>
+    <circle cx="252" cy="140" r="5" opacity="0.6"/>
+    <circle cx="350" cy="128" r="6" opacity="0.5"/>
+    <circle cx="300" cy="96" r="4" opacity="0.35"/>
+    <circle cx="384" cy="176" r="3.5" opacity="0.3"/>
+    <circle cx="218" cy="192" r="3.5" opacity="0.3"/>
+  </g>
+  <g stroke="#b794fa" fill="none" stroke-width="2" opacity="0.35">
+    <path d="M300 220 C288 200 292 186 300 176"/>
+    <path d="M300 220 C316 202 336 160 350 134"/>
+    <path d="M300 220 C282 200 262 164 254 146"/>
+  </g>
+</svg>

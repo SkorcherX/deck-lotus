@@ -20,7 +20,13 @@ client/public/themes/<slug>/
     rail-left.webp      400 x 2000  (tiles vertically)
     rail-right.webp     400 x 2000  (tiles vertically)
     footer.webp        2400 x 200
+    empty.webp          600 x 600   (transparent, every empty screen)
+    celebration.webp    600 x 600   (transparent, the win moment)
 ```
+
+Every slot is optional. A theme that declares none still works — the chrome
+collapses and the empty states fall back to their icons. Declare a slot only
+once its file exists, or the CSS points at a 404.
 
 Budget about an hour.
 
@@ -225,6 +231,13 @@ Slot-specific notes:
   vine — not a scene.
 - **Footer** (2400×200) — same treatment as the banner but shallower, fading upward
   into the page.
+- **Spot art** (600×600, two of them) — `empty` and `celebration`. Both want a
+  **transparent background**: they sit directly on a surface, so a baked-in
+  backdrop or vignette shows as a visible square. Unlike the bands they compete
+  with nothing, so they may carry real light and colour. Keep them apart in
+  intent — `empty` is a calm "nothing here yet" that must not name what is
+  missing (one image serves every empty screen), while `celebration` is a
+  flourish. The generator writes both of those constraints into the prompts.
 
 > Rails only render above roughly 1600px of viewport width. On a laptop you will not
 > see them. Check the theme on a wide monitor before calling it done.

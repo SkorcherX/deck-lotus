@@ -62,6 +62,40 @@ export const ART_SLOTS = [
     edgeFade: ['top'],
     tiles: false,
   },
+  {
+    id: 'empty',
+    cssVar: '--art-empty',
+    filename: 'empty.webp',
+    width: 600,
+    height: 600,
+    shape: 'spot',
+    // Shown above "No decks yet" and friends. One image serves every empty
+    // state, so it has to say "nothing here yet" without naming what is
+    // missing — no cards, no decks, no trade symbolism.
+    safeArea: 'single centred subject with generous margin; nothing near the edges',
+    overlaidText: false,
+    scrim: null,
+    edgeFade: ['all'],
+    tiles: false,
+    transparent: true,
+  },
+  {
+    id: 'celebration',
+    cssVar: '--art-celebration',
+    filename: 'celebration.webp',
+    width: 600,
+    height: 600,
+    shape: 'spot',
+    // The win-recorded moment. Deliberately separate from `empty`: one is a
+    // calm invitation, the other is a flourish, and a single image cannot do
+    // both without being wrong for one of them.
+    safeArea: 'single centred subject with generous margin; nothing near the edges',
+    overlaidText: false,
+    scrim: null,
+    edgeFade: ['all'],
+    tiles: false,
+    transparent: true,
+  },
 ];
 
 /** The slot whose art anchors the palette extraction. */

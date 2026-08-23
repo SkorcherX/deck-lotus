@@ -8,6 +8,8 @@
     "banner": "art/banner.svg",
     "rail-left": "art/rail-left.svg",
     "rail-right": "art/rail-right.svg",
-    "footer": "art/footer.svg"
+    "footer": "art/footer.svg",
+    "empty": "art/empty.svg",
+    "celebration": "art/celebration.svg"
   }
 }

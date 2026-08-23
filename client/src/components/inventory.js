@@ -1229,8 +1229,9 @@ function renderInventory({ cards = null, append = false } = {}) {
 
   if (!inventoryData || !inventoryData.cards || inventoryData.cards.length === 0) {
     container.innerHTML = `
-      <div class="inventory-empty">
-        <i class="ph ph-archive" style="font-size: 4rem; opacity: 0.3;"></i>
+      <div class="empty-state">
+        <div class="empty-state-art" aria-hidden="true"></div>
+        <i class="ph ph-archive empty-state-icon" aria-hidden="true"></i>
         <h3>No cards in inventory</h3>
         <p>Add cards using the Quick Add search or Bulk Add button above.</p>
       </div>

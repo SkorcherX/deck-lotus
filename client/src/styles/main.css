@@ -6591,3 +6591,51 @@ body.maintenance-locked #app {
   }
   .app-footer-inner { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 }
+
+/* ---- Empty states -----------------------------------------------------------
+   One treatment for every "nothing here yet" screen. These were three different
+   markups saying the same thing — two inline-styled and one class-based — which
+   is also why there was nowhere for a theme to put spot art.
+
+   The art replaces the Phosphor icon when a theme supplies it, and falls back
+   to the icon when it does not, so an art-less theme looks exactly as before.
+   --------------------------------------------------------------------------- */
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: var(--space-7) var(--space-6);
+  color: var(--text-secondary);
+}
+
+.empty-state-art {
+  display: none;
+  width: 180px;
+  height: 180px;
+  margin: 0 auto var(--space-4);
+  background-image: var(--art-empty);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+.has-art-empty .empty-state-art { display: block; }
+.has-art-empty .empty-state-icon { display: none; }
+
+.empty-state-icon {
+  display: block;
+  font-size: 4rem;
+  line-height: 1;
+  margin-bottom: var(--space-4);
+  opacity: 0.3;
+}
+
+.empty-state h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--text);
+  font-size: var(--text-lg);
+}
+.empty-state p { margin: 0 auto; max-width: 46ch; }
+
+@media (max-width: 700px) {
+  .empty-state { padding: var(--space-6) var(--space-4); }
+  .empty-state-art { width: 130px; height: 130px; }
+}
