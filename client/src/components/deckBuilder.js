@@ -1800,7 +1800,7 @@ async function showPrintingSelectionModal(cardId, deckCardId) {
         <input type="text"
                id="printing-search"
                placeholder="Search by set code (e.g., INR, J25)..."
-               style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); font-size: 0.95rem; margin-bottom: 1.5rem;"
+               style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); color: var(--text); font-size: 0.95rem; margin-bottom: 1.5rem;"
                autocomplete="off">
         <div id="printing-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; max-height: 60vh; overflow-y: auto;">
           ${printings.map(printing => `
@@ -2871,11 +2871,11 @@ function displayCurrentSuggestion() {
         </div>
       </div>
       <div style="text-align: right;">
-        <div style="font-size: 2rem; font-weight: 700; color: var(--accent);">${suggestion.percentage}%</div>
+        <div style="font-size: 2rem; font-weight: 700; color: var(--primary);">${suggestion.percentage}%</div>
         <div style="color: var(--text-secondary); font-size: 0.875rem;">${suggestion.cardCount} / ${suggestion.cards.length} cards</div>
       </div>
     </div>
-    <div style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 0.5rem; border-left: 4px solid var(--accent);">
+    <div style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 0.5rem; border-left: 4px solid var(--primary);">
       <i class="ph ph-info"></i>
       ${suggestion.cardCount} cards in your deck have printings in this set. Apply this optimization to use ${suggestion.setName} versions for all available cards.
     </div>
@@ -2949,11 +2949,11 @@ async function analyzeManualSet(setCode) {
           </div>
         </div>
         <div style="text-align: right;">
-          <div style="font-size: 2rem; font-weight: 700; color: var(--accent);">${result.percentage}%</div>
+          <div style="font-size: 2rem; font-weight: 700; color: var(--primary);">${result.percentage}%</div>
           <div style="color: var(--text-secondary); font-size: 0.875rem;">${result.cardCount} / ${result.totalCards} cards</div>
         </div>
       </div>
-      <div style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 0.5rem; border-left: 4px solid var(--accent);">
+      <div style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 0.5rem; border-left: 4px solid var(--primary);">
         <i class="ph ph-info"></i>
         ${result.cardCount} cards in your deck have printings in this set. Apply this optimization to use ${result.setName} versions for all available cards.
       </div>

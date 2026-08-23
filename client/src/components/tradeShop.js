@@ -293,7 +293,7 @@ function showPrintingPicker(card) {
       <span>
         ${escapeHtml((printing.set_code || '').toUpperCase())}
         ${printing.collector_number ? `<span style="color:var(--text-secondary);">#${escapeHtml(printing.collector_number)}</span>` : ''}
-        ${printing.is_foil === 1 ? '<span style="color:var(--accent);">foil</span>' : ''}
+        ${printing.is_foil === 1 ? '<span style="color:var(--primary);">foil</span>' : ''}
       </span>
       <span style="color:var(--text-secondary);">${printing.quantity} · ${money(printing.price)}</span>
     </button>
@@ -425,7 +425,7 @@ function renderCart() {
         <div style="font-size:0.9rem;">
           ${item.quantity}x ${escapeHtml(item.cardName)}
           <span style="color:var(--text-secondary);">${escapeHtml((item.setCode || '').toUpperCase())}</span>
-          ${item.isFoil ? '<span style="color:var(--accent);font-size:0.75rem;">foil</span>' : ''}
+          ${item.isFoil ? '<span style="color:var(--primary);font-size:0.75rem;">foil</span>' : ''}
         </div>
         <div style="font-size:0.78rem;color:var(--text-secondary);">
           ${escapeHtml((item.typeLine || '').split('—')[0].trim())} ·

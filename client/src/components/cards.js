@@ -752,13 +752,13 @@ export async function showCardDetail(cardId) {
               <!-- Add New Printing Dropdown -->
               <div style="margin-bottom: 1rem;">
                 <div style="position: relative;">
-                  <button id="add-printing-dropdown-btn" style="width: 100%; padding: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 0.95rem; transition: all 0.2s;" onmouseenter="this.style.borderColor='var(--accent-color)'" onmouseleave="this.style.borderColor='var(--border-color)'">
+                  <button id="add-printing-dropdown-btn" style="width: 100%; padding: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 0.95rem; transition: all 0.2s;" onmouseenter="this.style.borderColor='var(--primary)'" onmouseleave="this.style.borderColor='var(--border-color)'">
                     <span style="color: var(--text-secondary);">+ Add printing to collection...</span>
                     <i class="ph ph-caret-down"></i>
                   </button>
                   <div id="printing-dropdown" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; margin-top: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; max-height: 350px; z-index: 1000; box-shadow: 0 4px 12px rgb(var(--scrim-rgb) / 0.3); display: flex; flex-direction: column;">
                     <div style="padding: 0.75rem; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; background: var(--bg-secondary); z-index: 1;">
-                      <input type="text" id="printing-search" placeholder="Search set code or name..." style="width: 100%; padding: 0.5rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 0.875rem;" autocomplete="off">
+                      <input type="text" id="printing-search" placeholder="Search set code or name..." style="width: 100%; padding: 0.5rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text); font-size: 0.875rem;" autocomplete="off">
                     </div>
                     <div id="printing-dropdown-list" style="overflow-y: auto; flex: 1;">
                       ${card.printings.map(p => {
@@ -801,18 +801,18 @@ export async function showCardDetail(cardId) {
                             ${op.set_name || op.set_code.toUpperCase()}${op.rarity ? ` • ${op.rarity}` : ''}
                           </div>
                         </div>
-                        <button class="swap-printing-btn" data-printing-id="${op.printing_id}" data-quantity="${op.quantity}" data-is-foil="${op.is_foil ? 1 : 0}" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;" onmouseenter="this.style.borderColor='var(--accent-color)'; this.style.color='var(--text-primary)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)';">
+                        <button class="swap-printing-btn" data-printing-id="${op.printing_id}" data-quantity="${op.quantity}" data-is-foil="${op.is_foil ? 1 : 0}" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;" onmouseenter="this.style.borderColor='var(--primary)'; this.style.color='var(--text)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)';">
                           <i class="ph ph-swap"></i> Change Printing
                         </button>
-                        <button class="toggle-foil-btn" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-quantity="${op.quantity}" title="${op.is_foil ? 'Mark these copies as non-foil' : 'Mark these copies as foil'}" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;" onmouseenter="this.style.borderColor='var(--accent-color)'; this.style.color='var(--text-primary)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)';">
+                        <button class="toggle-foil-btn" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-quantity="${op.quantity}" title="${op.is_foil ? 'Mark these copies as non-foil' : 'Mark these copies as foil'}" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;" onmouseenter="this.style.borderColor='var(--primary)'; this.style.color='var(--text)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)';">
                           <i class="ph ph-sparkle"></i> ${op.is_foil ? 'Mark as Non-Foil' : 'Mark as Foil'}
                         </button>
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.75rem;">
                         <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--bg-tertiary); border-radius: 6px; padding: 0.25rem;">
-                          <button class="owned-qty-decrease" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text-primary); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--danger)'" onmouseleave="this.style.color='var(--text-primary)'">−</button>
+                          <button class="owned-qty-decrease" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--danger)'" onmouseleave="this.style.color='var(--text)'">−</button>
                           <span class="owned-qty-display" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" style="min-width: 2rem; text-align: center; font-weight: 600;">${op.quantity}</span>
-                          <button class="owned-qty-increase" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text-primary); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--success)'" onmouseleave="this.style.color='var(--text-primary)'">+</button>
+                          <button class="owned-qty-increase" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--success)'" onmouseleave="this.style.color='var(--text)'">+</button>
                         </div>
                       </div>
                     </div>
@@ -832,12 +832,12 @@ export async function showCardDetail(cardId) {
                 <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.75rem;">Used in Decks (${ownership.totalInDecks} total)</div>
                 <div style="display: grid; gap: 0.5rem;">
                   ${ownership.deckUsage.map(deck => `
-                    <div class="deck-usage-item" data-deck-id="${deck.id}" style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s; border: 1px solid var(--border-color);" onmouseenter="this.style.background='var(--bg-tertiary)'; this.style.borderColor='var(--accent-color)';" onmouseleave="this.style.background='var(--bg-secondary)'; this.style.borderColor='var(--border-color)';">
+                    <div class="deck-usage-item" data-deck-id="${deck.id}" style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s; border: 1px solid var(--border-color);" onmouseenter="this.style.background='var(--bg-tertiary)'; this.style.borderColor='var(--primary)';" onmouseleave="this.style.background='var(--bg-secondary)'; this.style.borderColor='var(--border-color)';">
                       <div style="flex: 1;">
                         <div style="font-weight: 500;">${deck.name}</div>
                         ${deck.format ? `<div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">${deck.format}</div>` : ''}
                       </div>
-                      <div style="font-weight: 600; color: var(--accent-color);">×${deck.total_quantity}</div>
+                      <div style="font-weight: 600; color: var(--primary);">×${deck.total_quantity}</div>
                     </div>
                   `).join('')}
                 </div>
@@ -1006,7 +1006,7 @@ export async function showCardDetail(cardId) {
                 </summary>
                 <div style="margin-top: 1rem; display: grid; gap: 0.75rem; max-height: 400px; overflow-y: auto;">
                   ${card.foreignData.map(f => `
-                    <div style="padding: 1rem; background: var(--bg-tertiary); border-radius: 6px; border-left: 3px solid var(--accent-color);">
+                    <div style="padding: 1rem; background: var(--bg-tertiary); border-radius: 6px; border-left: 3px solid var(--primary);">
                       <div style="font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.875rem; color: var(--text-secondary);">
                         ${f.language}
                       </div>
@@ -1069,7 +1069,7 @@ export async function showCardDetail(cardId) {
                         ${p.artist || 'Unknown Artist'}
                       </div>
                     </div>
-                    <button class="add-printing-btn" data-printing-id="${p.id}" style="background: var(--accent-color); color: white; border: none; border-radius: 6px; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap;" onmouseenter="this.style.opacity='0.8'" onmouseleave="this.style.opacity='1'">
+                    <button class="add-printing-btn" data-printing-id="${p.id}" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap;" onmouseenter="this.style.opacity='0.8'" onmouseleave="this.style.opacity='1'">
                       + Add
                     </button>
                   </div>
@@ -1518,13 +1518,13 @@ async function showSwapPrintingModal(card, fromPrintingId, quantity, cardId, own
         Swap ${quantity} cop${quantity === 1 ? 'y' : 'ies'} from <strong>${currentPrinting.set_code.toUpperCase()}</strong> to a different printing
       </p>
       <div style="margin-bottom: 1rem;">
-        <input type="text" id="swap-printing-search" placeholder="Search by set code or name..." style="width: 100%; padding: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 0.9rem;" autocomplete="off">
+        <input type="text" id="swap-printing-search" placeholder="Search by set code or name..." style="width: 100%; padding: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text); font-size: 0.9rem;" autocomplete="off">
       </div>
       <div id="swap-printing-list" style="flex: 1; overflow-y: auto; display: grid; gap: 0.5rem;">
         ${card.printings.filter(p => p.id !== fromPrintingId).map(p => {
           const isAlreadyOwned = ownership.ownedPrintings.find(op => op.printing_id === p.id);
           return `
-            <div class="swap-printing-option" data-printing-id="${p.id}" data-set-code="${p.set_code.toLowerCase()}" data-set-name="${(p.set_name || '').toLowerCase()}" style="padding: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.2s;" onmouseenter="this.style.borderColor='var(--accent-color)'; this.style.background='var(--bg-tertiary)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.background='var(--bg-secondary)';">
+            <div class="swap-printing-option" data-printing-id="${p.id}" data-set-code="${p.set_code.toLowerCase()}" data-set-name="${(p.set_name || '').toLowerCase()}" style="padding: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.2s;" onmouseenter="this.style.borderColor='var(--primary)'; this.style.background='var(--bg-tertiary)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.background='var(--bg-secondary)';">
               <img src="${p.image_url}" alt="${p.set_code}" style="width: 40px; height: 56px; border-radius: 4px; object-fit: cover; flex-shrink: 0;" onerror="this.style.display='none'">
               <div style="flex: 1; min-width: 0;">
                 <div style="font-weight: 500;">

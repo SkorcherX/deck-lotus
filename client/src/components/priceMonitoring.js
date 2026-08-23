@@ -39,10 +39,10 @@ function renderWatches(watches) {
   list.innerHTML = watches.map(w => {
     const price = w.latest_price ?? w.last_price;
     const hitTarget = w.max_price != null && price != null && price <= w.max_price;
-    const priceColor = hitTarget ? 'var(--success-bright)' : 'var(--text-primary)';
+    const priceColor = hitTarget ? 'var(--success-bright)' : 'var(--text)';
     const targetLabel = w.max_price != null
-      ? `Target: <strong style="color: var(--text-primary);">${formatPrice(w.max_price)}</strong>`
-      : `Mode: <strong style="color: var(--text-primary);">New Low Alert</strong>`;
+      ? `Target: <strong style="color: var(--text);">${formatPrice(w.max_price)}</strong>`
+      : `Mode: <strong style="color: var(--text);">New Low Alert</strong>`;
     const printingLabel = w.set_code ? `${w.set_code.toUpperCase()}${w.set_name ? ` — ${w.set_name}` : ''}` : 'Any printing';
     const thumbnail = w.image_url
       ? `<img src="${w.image_url}" alt="${w.card_name}" style="width:44px;height:62px;border-radius:4px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'">`
@@ -62,9 +62,9 @@ function renderWatches(watches) {
             </div>
             <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.25rem;">
               <span>${targetLabel}</span>
-              <span>Cond: <strong style="color: var(--text-primary);">${CONDITIONS[w.condition] || w.condition}</strong></span>
+              <span>Cond: <strong style="color: var(--text);">${CONDITIONS[w.condition] || w.condition}</strong></span>
               <span>Current: <strong style="color: ${priceColor};">${formatPrice(price)}</strong></span>
-              ${w.expires_at ? `<span>Expires: <strong style="color:var(--text-primary);">${w.expires_at.slice(0,10)}</strong></span>` : ''}
+              ${w.expires_at ? `<span>Expires: <strong style="color:var(--text);">${w.expires_at.slice(0,10)}</strong></span>` : ''}
             </div>
             ${w.notes ? `<div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; font-style: italic;">${w.notes}</div>` : ''}
             <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">Last checked: ${w.last_checked ? formatDate(w.last_checked) : 'Never'}</div>

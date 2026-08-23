@@ -34,7 +34,7 @@ function itemKey(item) {
 }
 
 function finishLabel(isFoil) {
-  return isFoil ? ' <span style="color:var(--accent);font-size:0.75rem;">foil</span>' : '';
+  return isFoil ? ' <span style="color:var(--primary);font-size:0.75rem;">foil</span>' : '';
 }
 
 function money(value) {
@@ -877,7 +877,7 @@ export function renderDisruptionBanner(container, disruptions, onResolved) {
 
   container.classList.remove('hidden');
   container.innerHTML = `
-    <div style="padding:0.85rem 1rem;border-radius:8px;background:var(--bg-tertiary);border-left:3px solid var(--accent, var(--warning));">
+    <div style="padding:0.85rem 1rem;border-radius:8px;background:var(--bg-tertiary);border-left:3px solid var(--warning);">
       <div style="font-weight:600;margin-bottom:0.5rem;">
         <i class="ph ph-arrows-left-right"></i>
         ${disruptions.length === 1 ? 'A card in this deck was traded away' : 'Cards in this deck were traded away'}

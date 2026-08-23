@@ -14,7 +14,8 @@
     "client:build": "cd client && npm run build",
     "check:themes": "node scripts/check-theme-contrast.mjs",
     "theme:prompt": "node scripts/theme-forge.mjs prompt",
-    "theme:slots": "node scripts/theme-forge.mjs slots"
+    "theme:slots": "node scripts/theme-forge.mjs slots",
+    "check:tokens": "node scripts/check-tokens.mjs"
   },
   "keywords": [
     "mtg",
