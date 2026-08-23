@@ -2344,14 +2344,14 @@ function renderStats(stats) {
         <div class="mana-curve-single-bar" style="overflow: visible; position: relative;">
           ${stats.manaCurve.map((item, index) => {
             const percentage = (item.total_cards / totalCurveCards) * 100;
-            const cmcColor = cmcColor(item.cmc);
+            const segmentColor = cmcColor(item.cmc);
             const needsOverflow = percentage < (overflowThreshold * 100);
             const isFiltered = currentFilter.cmc === item.cmc;
 
             return `
               <div class="mana-curve-segment ${isFiltered ? 'filtered' : ''}"
                    data-cmc="${item.cmc}"
-                   style="width: ${percentage}%; background: ${cmcColor}; cursor: pointer; position: relative;"
+                   style="width: ${percentage}%; background: ${segmentColor}; cursor: pointer; position: relative;"
                    title="${item.cmc} CMC: ${item.total_cards} cards (${percentage.toFixed(1)}%)">
                 ${!needsOverflow ? `
                   <span class="mana-curve-segment-label">${item.cmc}</span>
@@ -2361,13 +2361,13 @@ function renderStats(stats) {
           }).join('')}
           ${overflowLabels.map((labelData, idx) => {
             const position = labelPositions[labelData.index];
-            const cmcColor = cmcColor(labelData.cmc);
+            const segmentColor = cmcColor(labelData.cmc);
             const isFiltered = currentFilter.cmc === labelData.cmc;
 
             return `
               <span class="mana-curve-overflow-label ${isFiltered ? 'filtered' : ''}"
                     data-cmc="${labelData.cmc}"
-                    style="position: absolute; bottom: calc(100% + 0.5rem); left: ${position}%; transform: translateX(-50%); font-size: 0.75rem; font-weight: 600; white-space: nowrap; padding: 0.25rem 0.5rem; background: ${cmcColor}; border-radius: 4px; color: white; text-shadow: 0 1px 2px rgb(var(--scrim-rgb) / 0.5); z-index: ${50 + idx}; pointer-events: auto; cursor: pointer; transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, z-index 0s;">${labelData.cmc}</span>
+                    style="position: absolute; bottom: calc(100% + 0.5rem); left: ${position}%; transform: translateX(-50%); font-size: 0.75rem; font-weight: 600; white-space: nowrap; padding: 0.25rem 0.5rem; background: ${segmentColor}; border-radius: 4px; color: white; text-shadow: 0 1px 2px rgb(var(--scrim-rgb) / 0.5); z-index: ${50 + idx}; pointer-events: auto; cursor: pointer; transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, z-index 0s;">${labelData.cmc}</span>
             `;
           }).join('')}
         </div>

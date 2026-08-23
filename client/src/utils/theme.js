@@ -43,6 +43,20 @@ export function clearTokenCache() {
   cache = new Map();
 }
 
+/**
+ * A channel token as a real rgba() string.
+ *
+ * Canvas — and therefore Chart.js — cannot resolve CSS custom properties: a
+ * `var(--x)` handed to a 2D context is not a colour and paints nothing. Any
+ * chart colour has to come through here.
+ */
+export function tokenRgba(name, alpha = 1) {
+  const triplet = token(name).trim();
+  const parts = triplet.split(/[\s,]+/).filter(Boolean);
+  if (parts.length < 3) return `rgba(0, 0, 0, ${alpha})`;
+  return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+}
+
 /** Ramp colour for a converted mana cost. Cycles above 10. */
 export function cmcColor(cmc) {
   const n = Number(cmc);

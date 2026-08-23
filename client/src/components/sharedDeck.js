@@ -272,10 +272,10 @@ function renderStats(stats) {
       <div class="mana-curve-single-bar">
         ${stats.manaCurve.map(item => {
           const percentage = (item.total_cards / totalCards) * 100;
-          const cmcColor = cmcColor(item.cmc);
+          const segmentColor = cmcColor(item.cmc);
           return `
             <div class="mana-curve-segment"
-                 style="width: ${percentage}%; background: ${cmcColor};"
+                 style="width: ${percentage}%; background: ${segmentColor};"
                  title="${item.cmc} CMC: ${item.total_cards} cards (${percentage.toFixed(1)}%)">
               <span class="mana-curve-segment-label">${item.cmc}</span>
             </div>

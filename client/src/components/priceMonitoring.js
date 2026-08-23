@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { showToast, debounce, confirmDialog, openDrawer, closeDrawer } from '../utils/ui.js';
+import { token, tokenRgba } from '../utils/theme.js';
 
 const CONDITIONS = { any: 'Any', nm: 'NM', lp: 'LP', mp: 'MP', hp: 'HP', dm: 'DM' };
 
@@ -234,15 +235,18 @@ function renderHistoryChart(history, cardName, maxPrice) {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   });
   const prices = sorted.map(r => r.found_price);
+  // Resolved values, not var(): Chart.js paints to a canvas, and a canvas
+  // context cannot resolve CSS custom properties — a var() reaching here is
+  // not a colour and paints nothing.
   const pointColors = sorted.map(r =>
-    r.notified ? 'var(--success-bright)' : 'rgb(var(--primary-rgb) / 0.9)'
+    r.notified ? token('--success-bright') : tokenRgba('--primary-rgb', 0.9)
   );
 
   const datasets = [{
     label: 'Found Price',
     data: prices,
-    borderColor: 'rgb(var(--primary-rgb) / 0.9)',
-    backgroundColor: 'rgb(var(--primary-rgb) / 0.08)',
+    borderColor: tokenRgba('--primary-rgb', 0.9),
+    backgroundColor: tokenRgba('--primary-rgb', 0.08),
     pointBackgroundColor: pointColors,
     pointRadius: 5,
     pointHoverRadius: 7,
@@ -255,7 +259,7 @@ function renderHistoryChart(history, cardName, maxPrice) {
     datasets.push({
       label: 'Target Price',
       data: sorted.map(() => maxPrice),
-      borderColor: 'var(--warning)',
+      borderColor: token('--warning'),
       borderDash: [6, 4],
       borderWidth: 2,
       pointRadius: 0,
