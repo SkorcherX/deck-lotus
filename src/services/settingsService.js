@@ -13,6 +13,15 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'app-settings.json');
 
 const DEFAULTS = {
   registrationEnabled: true,
+  // Scheduled-backup config lives here rather than in memory: a container rebuild
+  // starts a fresh process, and a backup schedule that quietly stops running is
+  // worse than one that was never enabled.
+  scheduledBackups: {
+    enabled: false,
+    frequency: 'daily', // daily, 6hours, 12hours, weekly
+    retainCount: 10,
+    lastRun: null
+  }
 };
 
 function readFile() {
@@ -31,7 +40,12 @@ function readFile() {
  * deploy can force registration off without touching the file.
  */
 export function getSettings() {
-  const settings = { ...DEFAULTS, ...readFile() };
+  const stored = readFile();
+  const settings = {
+    ...DEFAULTS,
+    ...stored,
+    scheduledBackups: { ...DEFAULTS.scheduledBackups, ...(stored.scheduledBackups || {}) }
+  };
   if (process.env.REGISTRATION_ENABLED !== undefined) {
     settings.registrationEnabled =
       process.env.REGISTRATION_ENABLED.toLowerCase() === 'true';
@@ -49,9 +63,17 @@ export function isRegistrationEnabled() {
  * Ignored when the value is locked by an env var.
  */
 export function updateSettings(patch = {}) {
-  const current = { ...DEFAULTS, ...readFile() };
+  const stored = readFile();
+  const current = {
+    ...DEFAULTS,
+    ...stored,
+    scheduledBackups: { ...DEFAULTS.scheduledBackups, ...(stored.scheduledBackups || {}) }
+  };
   if (typeof patch.registrationEnabled === 'boolean') {
     current.registrationEnabled = patch.registrationEnabled;
+  }
+  if (patch.scheduledBackups && typeof patch.scheduledBackups === 'object') {
+    current.scheduledBackups = { ...current.scheduledBackups, ...patch.scheduledBackups };
   }
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });

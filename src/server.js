@@ -25,6 +25,7 @@ import systemRoutes from './routes/system.js';
 import auditRoutes from './routes/audit.js';
 import { setupDailySync } from './services/syncService.js';
 import { setupPriceMonitoringSchedule } from './services/priceMonitoringService.js';
+import { initScheduledBackups } from './services/backupService.js';
 import { getAvatarsDir } from './services/avatarService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -205,6 +206,7 @@ async function start() {
     // Setup daily sync schedule
     setupDailySync();
     setupPriceMonitoringSchedule();
+    initScheduledBackups();
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`\n🚀 Deck Lotus server running on port ${PORT}`);

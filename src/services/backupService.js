@@ -2,6 +2,7 @@ import { getDb } from '../db/index.js';
 import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
+import { getSettings, updateSettings } from './settingsService.js';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -17,14 +18,20 @@ if (!fs.existsSync(BACKUP_DIR)) {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
 }
 
-// Scheduled backup state
+// Scheduled backup state. The config itself is persisted in app-settings.json —
+// holding it only in memory meant every container rebuild silently turned the
+// schedule off — and is loaded back here at startup by initScheduledBackups().
 let scheduledBackupJob = null;
-let backupConfig = {
-  enabled: false,
-  frequency: 'daily', // daily, 6hours, 12hours, weekly
-  retainCount: 10, // Keep last N backups
-  lastRun: null
-};
+let backupConfig = { ...getSettings().scheduledBackups };
+
+function persistBackupConfig() {
+  try {
+    updateSettings({ scheduledBackups: backupConfig });
+  } catch (err) {
+    // A schedule that is running but unsaved beats refusing to schedule at all.
+    console.error('Failed to persist backup config:', err.message);
+  }
+}
 
 /**
  * Create a backup of all user data (users, decks, deck_cards, api_keys)
@@ -380,6 +387,7 @@ export function createScheduledBackup() {
 
   exportBackupToFile(backup, filepath);
   backupConfig.lastRun = new Date().toISOString();
+  persistBackupConfig();
 
   console.log(`✓ Scheduled backup created: ${filename}`);
 
@@ -472,12 +480,14 @@ export function deleteBackupFile(filename) {
 /**
  * Configure scheduled backups
  */
-export function configureScheduledBackups(config) {
+export function configureScheduledBackups(config, { persist = true } = {}) {
   const { enabled, frequency, retainCount } = config;
 
   if (enabled !== undefined) backupConfig.enabled = enabled;
   if (frequency !== undefined) backupConfig.frequency = frequency;
   if (retainCount !== undefined) backupConfig.retainCount = retainCount;
+
+  if (persist) persistBackupConfig();
 
   // Stop existing job if any
   if (scheduledBackupJob) {
@@ -521,6 +531,14 @@ export function configureScheduledBackups(config) {
   }
 
   return backupConfig;
+}
+
+/**
+ * Re-arm the saved schedule at startup. Called from server.js alongside the other
+ * cron setups; passes persist: false because nothing has changed yet.
+ */
+export function initScheduledBackups() {
+  return configureScheduledBackups({}, { persist: false });
 }
 
 /**
