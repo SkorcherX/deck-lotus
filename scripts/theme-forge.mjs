@@ -149,7 +149,23 @@ if (args['with-palette'] && !palette) {
   process.exit(1);
 }
 
-const wanted = args.slot && args.slot !== true ? [args.slot] : (palette ? ART_SLOTS.filter((s) => s.id !== ANCHOR_SLOT).map((s) => s.id) : [ANCHOR_SLOT]);
+let wanted;
+if (args.slot && args.slot !== true) {
+  wanted = [args.slot];
+} else if (args.all) {
+  wanted = ART_SLOTS.map((s) => s.id);
+} else if (palette) {
+  wanted = ART_SLOTS.filter((s) => s.id !== ANCHOR_SLOT).map((s) => s.id);
+} else {
+  wanted = [ANCHOR_SLOT];
+}
+
+if (args.all && !palette) {
+  console.log('NOTE: --all without --with-palette emits every prompt up front, so you can');
+  console.log('see the whole set. The rail and footer prompts below carry no palette and');
+  console.log('nothing to match against yet. For art that actually looks like one set, do');
+  console.log('the banner first, extract, then re-run with --with-palette.\n');
+}
 
 for (const id of wanted) {
   const slot = ART_SLOTS.find((s) => s.id === id);
@@ -160,8 +176,21 @@ for (const id of wanted) {
 }
 
 if (!palette && wanted.length === 1 && wanted[0] === ANCHOR_SLOT) {
+  const others = ART_SLOTS.filter((s) => s.id !== ANCHOR_SLOT).map((s) => s.id).join(', ');
   console.log('-'.repeat(72));
-  console.log('Next: save the result, then open /tools/theme-forge.html to extract the');
-  console.log('palette from it. Only then generate the remaining slots, with');
-  console.log('--with-palette and the banner attached as a reference image.');
+  console.log('THAT WAS STEP 1 OF 2. This prompt makes the banner only.');
+  console.log('');
+  console.log(`The other slots (${others}) come from step 2,`);
+  console.log('which needs the banner to exist first so the rest of the art can be');
+  console.log('generated to match it — four images made independently from the same');
+  console.log('text do not look like one set.');
+  console.log('');
+  console.log('  1. Paste the prompt above into Gemini.');
+  console.log(`  2. Save the result as client/public/themes/${slug}/art/banner.webp`);
+  console.log('  3. Open /tools/theme-forge.html and drop it in. Save the CSS it writes');
+  console.log(`     to client/public/themes/${slug}/theme.css`);
+  console.log(`  4. npm run theme:prompt -- ${slug} --mood "..." --with-palette`);
+  console.log('     ...then attach the banner to each of those prompts as a reference image.');
+  console.log('');
+  console.log('To see all four prompts now instead, add --all.');
 }

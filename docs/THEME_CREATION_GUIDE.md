@@ -61,8 +61,16 @@ Pick a name and a slug at the same time — `stormreach`, `duskmantle`, `emberfa
 ## Step 2 — Generate the prompt
 
 ```bash
-npm run theme:prompt -- <slug> --mood "..." --slot banner
+npm run theme:prompt -- <slug> --mood "..."
 ```
+
+That single command prints the whole banner prompt, ready to paste into Gemini —
+you write the mood line and nothing else.
+
+**It prints the banner prompt only, on purpose.** The rails and footer come from
+a second run after the palette exists (step 6), so they can be generated to match
+the banner rather than merely to match the same sentence. Add `--all` to see all
+four now, at the cost of that consistency.
 
 It reads `client/src/themes/slots.js` (the single source of truth for every slot's
 dimensions, safe areas and edge treatment) and prints a paste-ready prompt. You supply
