@@ -1719,42 +1719,58 @@
                     </p>
                 </div>
 
-                <div class="audit-filters">
-                    <div class="audit-filter-row">
+                <div class="filter-bar audit-filter-bar">
+                    <div class="filter-group audit-filter-search">
+                        <label for="audit-search">Search</label>
                         <input
                             type="search"
                             id="audit-search"
-                            class="audit-search"
+                            class="filter-input"
                             placeholder="Card name, set code, collector number or deck"
                         />
-                        <select id="audit-entity" class="audit-select">
+                    </div>
+                    <div class="filter-group">
+                        <label for="audit-entity">Area</label>
+                        <select id="audit-entity" class="filter-select">
                             <option value="">All areas</option>
                             <option value="inventory">Inventory</option>
                             <option value="deck">Decks</option>
                             <option value="trade">Trades</option>
                         </select>
-                        <select id="audit-action" class="audit-select">
+                    </div>
+                    <div class="filter-group">
+                        <label for="audit-action">Action</label>
+                        <select id="audit-action" class="filter-select">
                             <option value="">All actions</option>
                         </select>
-                        <select id="audit-source" class="audit-select">
+                    </div>
+                    <div class="filter-group">
+                        <label for="audit-source">Source</label>
+                        <select id="audit-source" class="filter-select">
                             <option value="">All sources</option>
                         </select>
-                        <select id="audit-user" class="audit-select hidden">
+                    </div>
+                    <!-- Admins only; the whole group hides so the label goes with it -->
+                    <div class="filter-group hidden" id="audit-user-group">
+                        <label for="audit-user">User</label>
+                        <select id="audit-user" class="filter-select">
                             <option value="">My history</option>
                         </select>
                     </div>
-                    <div class="audit-filter-row">
-                        <label class="audit-date">
-                            From <input type="date" id="audit-from" />
-                        </label>
-                        <label class="audit-date">
-                            To <input type="date" id="audit-to" />
-                        </label>
+                    <div class="filter-group">
+                        <label for="audit-from">From</label>
+                        <input type="date" id="audit-from" class="filter-input" />
+                    </div>
+                    <div class="filter-group">
+                        <label for="audit-to">To</label>
+                        <input type="date" id="audit-to" class="filter-input" />
+                    </div>
+                    <div class="filter-group">
                         <button id="audit-clear" class="btn btn-secondary">
                             Clear filters
                         </button>
-                        <span id="audit-count" class="audit-count"></span>
                     </div>
+                    <span id="audit-count" class="audit-count"></span>
                 </div>
 
                 <div id="audit-list" class="audit-list"></div>

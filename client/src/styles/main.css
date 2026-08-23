@@ -5959,59 +5959,32 @@ body.maintenance-locked #app {
   margin-top: var(--space-1);
 }
 
-.audit-filters {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+/* The filter bar reuses .filter-bar / .filter-group / .filter-select /
+   .filter-input from the Inventory and Browse Cards pages, so the controls
+   match the rest of the app. Only the bits specific to this bar live here. */
+
+.audit-filter-bar {
+  margin-top: 0;
   margin-bottom: var(--space-4);
 }
 
-.audit-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-}
-
-/* These sit outside .form-group, which is where the app's input styling
-   lives, so they have to ask for it explicitly or they render as native
-   controls against a dark background. */
-.audit-search,
-.audit-date input {
-  padding: var(--space-2) var(--space-3);
-  background-color: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text);
-  font-size: var(--text-sm);
-  font-family: inherit;
-  color-scheme: dark;
-}
-
-.audit-search:focus,
-.audit-date input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-soft);
-}
-
-.audit-search {
+/* Search takes the slack; the dropdowns stay at a readable fixed width. */
+.audit-filter-search {
   flex: 1 1 18rem;
   min-width: 12rem;
 }
 
-.audit-select { min-width: 9rem; }
+.audit-filter-bar .filter-select { min-width: 9.5rem; }
 
-.audit-date {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
+/* Native date pickers render their own icon and popup; without this they come
+   out light against the dark bar. */
+.audit-filter-bar input[type="date"] { color-scheme: dark; }
 
+/* Pushed to the far end, and sitting on the controls' baseline rather than
+   the labels' — .filter-bar aligns its children to flex-end. */
 .audit-count {
   margin-left: auto;
+  padding-bottom: var(--space-3);
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
@@ -6128,6 +6101,7 @@ body.maintenance-locked #app {
 @media (max-width: 768px) {
   .record-figures { grid-template-columns: repeat(2, 1fr); }
   .record-form-row { grid-template-columns: 1fr; }
-  .audit-count { margin-left: 0; }
+  .audit-count { margin-left: 0; padding-bottom: 0; }
   .audit-quantity { margin-left: 0; }
+  .audit-filter-search { flex-basis: 100%; }
 }

@@ -128,11 +128,15 @@ async function loadFilterOptions() {
     fillSelect('audit-source', result.sources, 'All sources', describeSource);
 
     const userSelect = el('audit-user');
-    if (userSelect) {
+    const userGroup = el('audit-user-group');
+    if (userSelect && userGroup) {
       // Only an admin gets the user picker; for everybody else the scope is
       // fixed at their own history and a disabled control would just raise
       // the question of whose else they could see.
-      userSelect.classList.toggle('hidden', !result.isAdmin);
+      //
+      // The whole group hides, not just the select — otherwise a stray
+      // "User" label is left sitting in the filter bar with nothing under it.
+      userGroup.classList.toggle('hidden', !result.isAdmin);
 
       if (result.isAdmin) {
         const options = [
