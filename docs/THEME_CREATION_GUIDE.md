@@ -4,6 +4,11 @@ How to produce a new theme — artwork and palette — from a one-line idea.
 
 ## Just want to make a theme? Open the wizard
 
+Double-click **`tools/theme-forge.bat`** (or run `npm run theme:forge`). It opens
+the wizard on whichever Deck Lotus is already running, and starts the client dev
+server first if none is. Pass an address to aim it somewhere specific:
+`tools\theme-forge.bat http://unraid.local:3000`.
+
 **`/tools/theme-forge.html`** on the running site walks the whole thing through
 one step at a time: name it, describe it, pick how dark the app should be, copy
 a prompt, drop the result back in, and download the two files at the end. It

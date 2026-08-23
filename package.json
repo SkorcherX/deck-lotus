@@ -15,7 +15,8 @@
     "check:themes": "node scripts/check-theme-contrast.mjs",
     "theme:prompt": "node scripts/theme-forge.mjs prompt",
     "theme:slots": "node scripts/theme-forge.mjs slots",
-    "check:tokens": "node scripts/check-tokens.mjs"
+    "check:tokens": "node scripts/check-tokens.mjs",
+    "theme:forge": "node scripts/open-forge.mjs"
   },
   "keywords": [
     "mtg",
