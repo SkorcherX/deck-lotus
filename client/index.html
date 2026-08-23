@@ -111,7 +111,7 @@
                         <a href="#" data-page="trades" class="nav-link" title="Trades">
                             <i class="ph ph-arrows-left-right nav-icon"></i>
                             <span class="nav-text">Trades</span>
-                            <span id="trade-pending-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:#16a34a;color:#fff;"></span>
+                            <span id="trade-pending-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:var(--success-bright);color:var(--on-accent);"></span>
                         </a>
                         <a href="#" data-page="scan" class="nav-link" title="Scan Cards">
                             <i class="ph ph-camera nav-icon"></i>
@@ -1635,7 +1635,7 @@
                             <div style="display:flex;gap:0.5rem;align-items:flex-start;">
                                 <div style="position: relative; flex: 1;">
                                     <input type="text" id="pm-card-name" placeholder="e.g. Meekstone" required autocomplete="off" style="width: 100%;" />
-                                    <div id="pm-card-search-results" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3);"></div>
+                                    <div id="pm-card-search-results" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgb(var(--scrim-rgb) / 0.3);"></div>
                                 </div>
                                 <select id="pm-card-type-filter" title="Filter by card type" style="flex-shrink:0;width:140px;">
                                     <option value="">All types</option>

@@ -418,8 +418,8 @@ function renderCards(cards) {
              class="card-image"
              style="width: 100%; border-radius: 8px; margin-bottom: 0.5rem; pointer-events: none;">
       ` : ''}
-      <button class="quick-add-btn" data-card-id="${card.id}" style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.8); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; z-index: 10;">+</button>
-      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.id}" style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)'}; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; z-index: 10;">
+      <button class="quick-add-btn" data-card-id="${card.id}" style="position: absolute; top: 8px; right: 8px; background: rgb(var(--scrim-rgb) / 0.8); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; z-index: 10;">+</button>
+      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.id}" style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; z-index: 10;">
         <i class="ph ${card.is_owned ? 'ph-check-circle' : 'ph-circle'}"></i>
       </button>
       <div class="card-name" style="pointer-events: none;">${card.name}</div>
@@ -481,12 +481,12 @@ async function toggleCardOwnership(cardId, buttonEl) {
     // Update button appearance
     if (result.owned) {
       buttonEl.classList.add('owned');
-      buttonEl.style.background = 'rgba(16, 185, 129, 0.9)';
+      buttonEl.style.background = 'rgb(var(--success-rgb) / 0.9)';
       buttonEl.innerHTML = '<i class="ph ph-check-circle"></i>';
       showToast('Added to collection', 'success', 1500);
     } else {
       buttonEl.classList.remove('owned');
-      buttonEl.style.background = 'rgba(0,0,0,0.8)';
+      buttonEl.style.background = 'rgb(var(--scrim-rgb) / 0.8)';
       buttonEl.innerHTML = '<i class="ph ph-circle"></i>';
       showToast('Removed from collection', 'success', 1500);
     }
@@ -531,7 +531,7 @@ async function showQuickAddMenu(cardId, buttonEl) {
       max-height: 300px;
       overflow-y: auto;
       z-index: 1000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 12px rgb(var(--scrim-rgb) / 0.3);
     `;
 
     dropdown.innerHTML = decks.map(d => `
@@ -647,7 +647,7 @@ export async function showCardDetail(cardId) {
                  data-front-url="${firstPrinting.image_url}"
                  data-back-url="${firstPrinting.image_url.replace('/front/', '/back/')}"
                  data-is-flipped="false"
-                 style="width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: transform 0.6s;">
+                 style="width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgb(var(--scrim-rgb) / 0.5); transition: transform 0.6s;">
             ${hasFlippableBackside ? `
               <div style="display: flex; justify-content: center; margin-top: 0.75rem;">
                 <button id="flip-card-btn" class="btn btn-secondary" style="width: auto; padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: center;">
@@ -722,17 +722,17 @@ export async function showCardDetail(cardId) {
                 border-radius: 4px;
                 font-weight: 600;
                 font-size: 0.875rem;
-                ${firstPrinting.rarity.toLowerCase() === 'mythic' ? 'background: linear-gradient(135deg, #ea580c, #dc2626); color: white;' : ''}
-                ${firstPrinting.rarity.toLowerCase() === 'rare' ? 'background: linear-gradient(135deg, #ca8a04, #a16207); color: white;' : ''}
-                ${firstPrinting.rarity.toLowerCase() === 'uncommon' ? 'background: linear-gradient(135deg, #71717a, #52525b); color: white;' : ''}
+                ${firstPrinting.rarity.toLowerCase() === 'mythic' ? 'background: linear-gradient(135deg, var(--rarity-mythic), var(--danger-dark)); color: white;' : ''}
+                ${firstPrinting.rarity.toLowerCase() === 'rare' ? 'background: linear-gradient(135deg, var(--rarity-rare), var(--rarity-rare-grad-b)); color: white;' : ''}
+                ${firstPrinting.rarity.toLowerCase() === 'uncommon' ? 'background: linear-gradient(135deg, var(--rarity-uncommon), var(--rarity-uncommon-grad-b)); color: white;' : ''}
                 ${firstPrinting.rarity.toLowerCase() === 'common' ? 'background: var(--bg-tertiary); color: var(--text-secondary);' : ''}
               ">${firstPrinting.rarity}</span>
             </div>
           ` : ''}
 
           <!-- Ownership & Deck Usage Section -->
-          <div style="margin: 2rem 0; padding: 1.25rem; background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05)); border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.3);">
-            <h3 style="margin: 0 0 1rem 0; color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+          <div style="margin: 2rem 0; padding: 1.25rem; background: linear-gradient(135deg, rgb(var(--success-rgb) / 0.1), rgb(var(--success-dark-rgb) / 0.05)); border-radius: 12px; border: 1px solid rgb(var(--success-rgb) / 0.3);">
+            <h3 style="margin: 0 0 1rem 0; color: var(--success); display: flex; align-items: center; gap: 0.5rem;">
               <i class="ph ph-check-circle-fill" style="font-size: 1.5rem;"></i>
               Collection & Deck Usage
             </h3>
@@ -744,7 +744,7 @@ export async function showCardDetail(cardId) {
                 ${ownership && ownership.totalOwned > 0 ? `
                   <span style="font-size: 0.875rem; color: var(--text-secondary);">
                     Total: ${ownership.totalOwned} •
-                    Available: <span style="color: ${ownership.available > 0 ? '#10b981' : '#f59e0b'}; font-weight: 600;">${ownership.available}</span>
+                    Available: <span style="color: ${ownership.available > 0 ? 'var(--success)' : 'var(--warning)'}; font-weight: 600;">${ownership.available}</span>
                   </span>
                 ` : ''}
               </div>
@@ -756,7 +756,7 @@ export async function showCardDetail(cardId) {
                     <span style="color: var(--text-secondary);">+ Add printing to collection...</span>
                     <i class="ph ph-caret-down"></i>
                   </button>
-                  <div id="printing-dropdown" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; margin-top: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; max-height: 350px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; flex-direction: column;">
+                  <div id="printing-dropdown" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; margin-top: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; max-height: 350px; z-index: 1000; box-shadow: 0 4px 12px rgb(var(--scrim-rgb) / 0.3); display: flex; flex-direction: column;">
                     <div style="padding: 0.75rem; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; background: var(--bg-secondary); z-index: 1;">
                       <input type="text" id="printing-search" placeholder="Search set code or name..." style="width: 100%; padding: 0.5rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 0.875rem;" autocomplete="off">
                     </div>
@@ -770,7 +770,7 @@ export async function showCardDetail(cardId) {
                               <div style="font-weight: 500;">
                                 ${p.set_code.toUpperCase()}
                                 <span style="margin-left: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">#${p.collector_number || '?'}</span>
-                                ${isOwned ? `<span style="margin-left: 0.5rem; color: #10b981; font-size: 0.875rem;">✓ Owned</span>` : ''}
+                                ${isOwned ? `<span style="margin-left: 0.5rem; color: var(--success); font-size: 0.875rem;">✓ Owned</span>` : ''}
                               </div>
                               <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
                                 ${p.set_name || p.set_code.toUpperCase()} • ${p.rarity || 'Unknown'}
@@ -810,9 +810,9 @@ export async function showCardDetail(cardId) {
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.75rem;">
                         <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--bg-tertiary); border-radius: 6px; padding: 0.25rem;">
-                          <button class="owned-qty-decrease" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text-primary); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='var(--text-primary)'">−</button>
+                          <button class="owned-qty-decrease" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text-primary); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--danger)'" onmouseleave="this.style.color='var(--text-primary)'">−</button>
                           <span class="owned-qty-display" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" style="min-width: 2rem; text-align: center; font-weight: 600;">${op.quantity}</span>
-                          <button class="owned-qty-increase" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text-primary); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='#10b981'" onmouseleave="this.style.color='var(--text-primary)'">+</button>
+                          <button class="owned-qty-increase" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text-primary); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--success)'" onmouseleave="this.style.color='var(--text-primary)'">+</button>
                         </div>
                       </div>
                     </div>
@@ -861,8 +861,8 @@ export async function showCardDetail(cardId) {
             </div>
           ` : ''}
           ${card.leadership_skills ? `
-            <div style="margin-top: 2rem; padding: 1rem; background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1)); border-radius: 8px; border: 1px solid rgba(139,92,246,0.3);">
-              <h3 style="margin: 0 0 0.75rem 0; color: #a78bfa;">⚔️ Commander Legal</h3>
+            <div style="margin-top: 2rem; padding: 1rem; background: linear-gradient(135deg, rgb(var(--badge-alt-rgb) / 0.1), rgb(var(--info-rgb) / 0.1)); border-radius: 8px; border: 1px solid rgb(var(--badge-alt-rgb) / 0.3);">
+              <h3 style="margin: 0 0 0.75rem 0; color: var(--drift-violet-heading);">⚔️ Commander Legal</h3>
               <div style="line-height: 1.6;">
                 This card can be your commander in: <strong>${JSON.parse(card.leadership_skills).brawl ? 'Commander, Brawl' : 'Commander'}</strong>
                 ${JSON.parse(card.leadership_skills).oathbreaker ? ', <strong>Oathbreaker</strong>' : ''}
@@ -900,15 +900,15 @@ export async function showCardDetail(cardId) {
                     future: 'Future'
                   };
                   const statusConfig = {
-                    Legal: { icon: '✓', color: '#4ade80' },
-                    Banned: { icon: '✗', color: '#f87171' },
-                    Restricted: { icon: '⚠', color: '#fbbf24' }
+                    Legal: { icon: '✓', color: 'var(--status-ok)' },
+                    Banned: { icon: '✗', color: 'var(--danger-light)' },
+                    Restricted: { icon: '⚠', color: 'var(--status-warn)' }
                   };
 
                   return Object.entries(legalities)
                     .filter(([_, status]) => status && status !== 'null')
                     .map(([format, status]) => {
-                      const config = statusConfig[status] || { icon: '⊘', color: '#9ca3af' };
+                      const config = statusConfig[status] || { icon: '⊘', color: 'var(--status-unknown)' };
                       const label = formatLabels[format] || format;
                       return `
                         <div style="padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 6px; display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem;">
@@ -978,7 +978,7 @@ export async function showCardDetail(cardId) {
                 ${card.edhrec_rank ? `
                   <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span>EDHRec Rank:</span>
-                    <a href="https://edhrec.com/cards/${encodeURIComponent(card.name.toLowerCase().replace(/\s+/g, '-'))}" target="_blank" style="color: #60a5fa; text-decoration: none; font-weight: 500;">
+                    <a href="https://edhrec.com/cards/${encodeURIComponent(card.name.toLowerCase().replace(/\s+/g, '-'))}" target="_blank" style="color: var(--drift-link-blue); text-decoration: none; font-weight: 500;">
                       #${card.edhrec_rank} →
                     </a>
                   </div>
@@ -1060,11 +1060,11 @@ export async function showCardDetail(cardId) {
                 ${card.printings.slice(0, 10).map(p => {
                   const isOwned = ownership && ownership.ownedPrintings.find(op => op.printing_id === p.id);
                   return `
-                  <div class="printing-item" data-printing-id="${p.id}" data-image-url="${p.large_image_url || p.image_url}" data-fallback="${p.image_url}" style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s; border: 1px solid ${isOwned ? 'rgba(16, 185, 129, 0.5)' : 'var(--border-color)'};">
+                  <div class="printing-item" data-printing-id="${p.id}" data-image-url="${p.large_image_url || p.image_url}" data-fallback="${p.image_url}" style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s; border: 1px solid ${isOwned ? 'rgb(var(--success-rgb) / 0.5)' : 'var(--border-color)'};">
                     <div style="flex: 1; cursor: pointer;" class="printing-preview" data-image-url="${p.large_image_url || p.image_url}" data-fallback="${p.image_url}">
                       <strong>${p.set_code.toUpperCase()}</strong> #${p.collector_number || '?'}
                       ${p.rarity ? `<span style="margin-left: 1rem; color: var(--text-secondary);">${p.rarity}</span>` : ''}
-                      ${isOwned ? `<span style="margin-left: 0.5rem; color: #10b981; font-size: 0.875rem;">✓ Owned</span>` : ''}
+                      ${isOwned ? `<span style="margin-left: 0.5rem; color: var(--success); font-size: 0.875rem;">✓ Owned</span>` : ''}
                       <div style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem;">
                         ${p.artist || 'Unknown Artist'}
                       </div>
@@ -1353,7 +1353,7 @@ async function showQuickAddMenuModal(cardId) {
       max-height: 300px;
       overflow-y: auto;
       z-index: 10001;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 12px rgb(var(--scrim-rgb) / 0.3);
     `;
 
     dropdown.innerHTML = decks.map(d => `
@@ -1408,7 +1408,7 @@ async function showQuickRemoveMenuModal(cardId, deckUsage) {
     max-height: 300px;
     overflow-y: auto;
     z-index: 10001;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgb(var(--scrim-rgb) / 0.3);
   `;
 
   dropdown.innerHTML = deckUsage.map(d => `
@@ -1530,7 +1530,7 @@ async function showSwapPrintingModal(card, fromPrintingId, quantity, cardId, own
                 <div style="font-weight: 500;">
                   ${p.set_code.toUpperCase()}
                   <span style="margin-left: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">#${p.collector_number || '?'}</span>
-                  ${isAlreadyOwned ? `<span style="margin-left: 0.5rem; color: #10b981; font-size: 0.75rem;">+${isAlreadyOwned.quantity} owned</span>` : ''}
+                  ${isAlreadyOwned ? `<span style="margin-left: 0.5rem; color: var(--success); font-size: 0.75rem;">+${isAlreadyOwned.quantity} owned</span>` : ''}
                 </div>
                 <div style="font-size: 0.8rem; color: var(--text-secondary);">
                   ${p.set_name || p.set_code.toUpperCase()}${p.rarity ? ` • ${p.rarity}` : ''}
@@ -1611,11 +1611,11 @@ function updateBrowseGridOwnership(cardId, isOwned) {
 
   if (isOwned) {
     ownershipBtn.classList.add('owned');
-    ownershipBtn.style.background = 'rgba(16, 185, 129, 0.9)';
+    ownershipBtn.style.background = 'rgb(var(--success-rgb) / 0.9)';
     ownershipBtn.innerHTML = '<i class="ph ph-check-circle"></i>';
   } else {
     ownershipBtn.classList.remove('owned');
-    ownershipBtn.style.background = 'rgba(0,0,0,0.8)';
+    ownershipBtn.style.background = 'rgb(var(--scrim-rgb) / 0.8)';
     ownershipBtn.innerHTML = '<i class="ph ph-circle"></i>';
   }
 }

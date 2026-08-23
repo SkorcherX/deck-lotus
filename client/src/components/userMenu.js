@@ -105,13 +105,13 @@ async function updateAvatar() {
       avatarImg.classList.add('hidden');
       avatarInitials.style.display = 'flex';
       avatarInitials.style.background = preset.color;
-      avatarInitials.style.color = '#fff';
+      avatarInitials.style.color = 'var(--on-accent)';
       avatarInitials.innerHTML = `<i class="ss ss-${preset.id}"></i>`;
 
       dropdownAvatarImg.classList.add('hidden');
       dropdownAvatarInitials.style.display = 'flex';
       dropdownAvatarInitials.style.background = preset.color;
-      dropdownAvatarInitials.style.color = '#fff';
+      dropdownAvatarInitials.style.color = 'var(--on-accent)';
       dropdownAvatarInitials.innerHTML = `<i class="ss ss-${preset.id}"></i>`;
       return;
     }

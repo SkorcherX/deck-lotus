@@ -62,7 +62,7 @@ async function runShoppingOptimizer() {
     const result = await api.manaPoolOptimize(items, model);
     renderShoppingOptimizerResults(result, resultsEl);
   } catch (err) {
-    resultsEl.innerHTML = `<div style="color:#f87171;padding:1rem;border-radius:6px;background:rgba(248,113,113,0.1);">
+    resultsEl.innerHTML = `<div style="color:var(--danger-light);padding:1rem;border-radius:6px;background:rgb(var(--danger-light-rgb) / 0.1);">
       <i class="ph ph-warning"></i> ${err.message}
       ${!err.message.includes('token') ? '' : '<br><small>Set MANAPOOL_API_TOKEN in your server .env to use the optimizer.</small>'}
     </div>`;
@@ -88,7 +88,7 @@ function renderShoppingOptimizerResults(result, el) {
 
   el.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
-      <span style="font-size:1rem;font-weight:700;color:#16a34a;">
+      <span style="font-size:1rem;font-weight:700;color:var(--success-bright);">
         <i class="ph ph-check-circle"></i> ${fmt(totalCents)} total across ${sellerCount} seller${sellerCount !== 1 ? 's' : ''}
       </span>
       <a href="https://manapool.com/cart" target="_blank" rel="noopener" class="btn btn-primary btn-sm">

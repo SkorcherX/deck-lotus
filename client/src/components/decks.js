@@ -112,7 +112,7 @@ function renderDecks() {
       : null;
 
     const backgroundStyle = backgroundImage
-      ? `background: linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0.9)), url('${backgroundImage}') center/cover no-repeat;`
+      ? `background: linear-gradient(to bottom, rgb(var(--scrim-rgb) / 0.7), rgb(var(--scrim-rgb) / 0.9)), url('${backgroundImage}') center/cover no-repeat;`
       : '';
 
     return `
@@ -121,7 +121,7 @@ function renderDecks() {
           <div>
             <h3>${deck.name}</h3>
             ${deck.format ? `<span class="deck-format">${deck.format}</span>` : ''}
-            ${deck.traded_away_count ? `<span class="deck-format" style="background:#b45309;color:#fff;" title="Traded away, still listed in this deck">${deck.traded_away_count} traded away</span>` : ''}
+            ${deck.traded_away_count ? `<span class="deck-format" style="background:var(--drift-traded-amber);color:var(--on-accent);" title="Traded away, still listed in this deck">${deck.traded_away_count} traded away</span>` : ''}
           </div>
         </div>
         <div class="deck-card-stats">

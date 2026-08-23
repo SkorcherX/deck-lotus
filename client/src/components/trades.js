@@ -128,9 +128,9 @@ function draftTotals(items) {
 const STATUS_STYLE = {
   awaiting_counter: { label: 'Shopping list sent', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' },
   pending: { label: 'Awaiting reply', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' },
-  accepted: { label: 'Done', background: '#16a34a', color: '#fff' },
-  declined: { label: 'Declined', background: '#71717a', color: '#fff' },
-  cancelled: { label: 'Cancelled', background: '#71717a', color: '#fff' },
+  accepted: { label: 'Done', background: 'var(--success-bright)', color: 'var(--on-accent)' },
+  declined: { label: 'Declined', background: 'var(--rarity-uncommon)', color: 'var(--on-accent)' },
+  cancelled: { label: 'Cancelled', background: 'var(--rarity-uncommon)', color: 'var(--on-accent)' },
 };
 
 function statusBadge(status) {
@@ -676,7 +676,7 @@ async function runSearch(side, term) {
       });
     });
   } catch (error) {
-    results.innerHTML = `<div style="padding:0.5rem;color:var(--danger,#dc2626);font-size:0.875rem;">${escapeHtml(error.message)}</div>`;
+    results.innerHTML = `<div style="padding:0.5rem;color:var(--danger,var(--danger-dark));font-size:0.875rem;">${escapeHtml(error.message)}</div>`;
   }
 }
 
@@ -704,7 +704,7 @@ const refreshImpact = debounce(async () => {
     state.impact = await api.previewTrade(draft.partnerId, items);
     warnings.innerHTML = renderImpact(state.impact);
   } catch (error) {
-    warnings.innerHTML = `<div style="color:var(--danger,#dc2626);font-size:0.875rem;">${escapeHtml(error.message)}</div>`;
+    warnings.innerHTML = `<div style="color:var(--danger,var(--danger-dark));font-size:0.875rem;">${escapeHtml(error.message)}</div>`;
   }
 }, 350);
 
@@ -872,7 +872,7 @@ export function renderDisruptionBanner(container, disruptions, onResolved) {
 
   container.classList.remove('hidden');
   container.innerHTML = `
-    <div style="padding:0.85rem 1rem;border-radius:8px;background:var(--bg-tertiary);border-left:3px solid var(--accent, #f59e0b);">
+    <div style="padding:0.85rem 1rem;border-radius:8px;background:var(--bg-tertiary);border-left:3px solid var(--accent, var(--warning));">
       <div style="font-weight:600;margin-bottom:0.5rem;">
         <i class="ph ph-arrows-left-right"></i>
         ${disruptions.length === 1 ? 'A card in this deck was traded away' : 'Cards in this deck were traded away'}

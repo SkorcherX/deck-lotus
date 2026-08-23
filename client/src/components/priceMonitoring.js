@@ -13,12 +13,12 @@ function formatDate(iso) {
 }
 
 function statusBadge(watch) {
-  if (!watch.is_active) return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:#71717a;color:#fff;">Inactive</span>';
-  if (watch.expires_at && new Date(watch.expires_at) < new Date()) return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:#71717a;color:#fff;">Expired</span>';
+  if (!watch.is_active) return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--rarity-uncommon);color:var(--on-accent);">Inactive</span>';
+  if (watch.expires_at && new Date(watch.expires_at) < new Date()) return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--rarity-uncommon);color:var(--on-accent);">Expired</span>';
   const price = watch.latest_price ?? watch.last_price;
   if (watch.max_price != null) {
     if (price != null && price <= watch.max_price) {
-      return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:#16a34a;color:#fff;">Price Hit!</span>';
+      return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--success-bright);color:var(--on-accent);">Price Hit!</span>';
     }
   }
   return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--bg-tertiary);color:var(--text-secondary);">Watching</span>';
@@ -38,7 +38,7 @@ function renderWatches(watches) {
   list.innerHTML = watches.map(w => {
     const price = w.latest_price ?? w.last_price;
     const hitTarget = w.max_price != null && price != null && price <= w.max_price;
-    const priceColor = hitTarget ? '#16a34a' : 'var(--text-primary)';
+    const priceColor = hitTarget ? 'var(--success-bright)' : 'var(--text-primary)';
     const targetLabel = w.max_price != null
       ? `Target: <strong style="color: var(--text-primary);">${formatPrice(w.max_price)}</strong>`
       : `Mode: <strong style="color: var(--text-primary);">New Low Alert</strong>`;
@@ -235,14 +235,14 @@ function renderHistoryChart(history, cardName, maxPrice) {
   });
   const prices = sorted.map(r => r.found_price);
   const pointColors = sorted.map(r =>
-    r.notified ? '#16a34a' : 'rgba(99,102,241,0.9)'
+    r.notified ? 'var(--success-bright)' : 'rgb(var(--primary-rgb) / 0.9)'
   );
 
   const datasets = [{
     label: 'Found Price',
     data: prices,
-    borderColor: 'rgba(99,102,241,0.9)',
-    backgroundColor: 'rgba(99,102,241,0.08)',
+    borderColor: 'rgb(var(--primary-rgb) / 0.9)',
+    backgroundColor: 'rgb(var(--primary-rgb) / 0.08)',
     pointBackgroundColor: pointColors,
     pointRadius: 5,
     pointHoverRadius: 7,
@@ -255,7 +255,7 @@ function renderHistoryChart(history, cardName, maxPrice) {
     datasets.push({
       label: 'Target Price',
       data: sorted.map(() => maxPrice),
-      borderColor: '#f59e0b',
+      borderColor: 'var(--warning)',
       borderDash: [6, 4],
       borderWidth: 2,
       pointRadius: 0,
@@ -271,7 +271,7 @@ function renderHistoryChart(history, cardName, maxPrice) {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: 'rgba(255,255,255,0.7)', boxWidth: 14, font: { size: 11 } } },
+        legend: { labels: { color: 'rgb(var(--gloss-rgb) / 0.7)', boxWidth: 14, font: { size: 11 } } },
         tooltip: {
           callbacks: {
             label: ctx => ctx.dataset.label + ': $' + (ctx.parsed.y != null ? ctx.parsed.y.toFixed(2) : '—'),
@@ -279,10 +279,10 @@ function renderHistoryChart(history, cardName, maxPrice) {
         },
       },
       scales: {
-        x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        x: { ticks: { color: 'rgb(var(--gloss-rgb) / 0.5)', font: { size: 10 } }, grid: { color: 'rgb(var(--gloss-rgb) / 0.05)' } },
         y: {
-          ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10 }, callback: v => '$' + v.toFixed(2) },
-          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: 'rgb(var(--gloss-rgb) / 0.5)', font: { size: 10 }, callback: v => '$' + v.toFixed(2) },
+          grid: { color: 'rgb(var(--gloss-rgb) / 0.05)' },
         },
       },
     },
@@ -500,7 +500,7 @@ export function setupPriceMonitoring() {
                   <tr style="border-bottom:1px solid var(--border-color);">
                     <td style="padding:0.5rem;">${formatDate(row.checked_at)}</td>
                     <td style="text-align:right;padding:0.5rem;">${formatPrice(row.found_price)}</td>
-                    <td style="text-align:center;padding:0.5rem;">${row.notified ? '<i class="ph ph-check-circle" style="color:#16a34a;"></i>' : '<i class="ph ph-minus" style="color:var(--text-secondary);"></i>'}</td>
+                    <td style="text-align:center;padding:0.5rem;">${row.notified ? '<i class="ph ph-check-circle" style="color:var(--success-bright);"></i>' : '<i class="ph ph-minus" style="color:var(--text-secondary);"></i>'}</td>
                   </tr>
                 `).join('')}
               </tbody>

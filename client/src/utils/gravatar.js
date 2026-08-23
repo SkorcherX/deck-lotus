@@ -3,6 +3,8 @@
  * (Gravatar requires MD5 hash of email)
  * Based on https://github.com/blueimp/JavaScript-MD5
  */
+
+import { token } from './theme.js';
 function md5(string) {
   function md5cycle(x, k) {
     let a = x[0], b = x[1], c = x[2], d = x[3];
@@ -217,7 +219,10 @@ export function getUserInitials(username) {
  * Generate a color based on username for avatar background
  */
 export function getUserColor(username) {
-  if (!username) return '#6b7280';
+  // Deterministic per username: this is identity, not theming, so the hue is
+  // computed rather than tokenised. Only the no-username fallback is a theme
+  // colour.
+  if (!username) return token('--drift-avatar-fallback', '#6b7280');
 
   // Generate a consistent color based on username
   let hash = 0;

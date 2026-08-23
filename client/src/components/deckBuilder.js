@@ -2,6 +2,7 @@ import api from '../services/api.js';
 import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/commander.js';
 import { showLoading, hideLoading, debounce, formatMana, showToast, hideModal } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
+import { cmcColor, manaGradient } from '../utils/theme.js';
 import {
   setupInventoryPanel,
   resetInventoryPanel,
@@ -220,7 +221,7 @@ export function setupDeckBuilder() {
       const result = await api.manaPoolOptimize(items, model);
       renderOptimizerResults(result, resultsEl);
     } catch (err) {
-      resultsEl.innerHTML = `<div style="color:#f87171;padding:1rem;border-radius:6px;background:rgba(248,113,113,0.1);">
+      resultsEl.innerHTML = `<div style="color:var(--danger-light);padding:1rem;border-radius:6px;background:rgb(var(--danger-light-rgb) / 0.1);">
         <i class="ph ph-warning"></i> ${err.message}
         ${!err.message.includes('token') ? '' : '<br><small>Set MANAPOOL_API_TOKEN in your server .env file.</small>'}
       </div>`;
@@ -258,7 +259,7 @@ export function setupDeckBuilder() {
       const result = await api.manaPoolValidateDeck(commanderNames, otherCards, format);
       renderValidatorResults(result, resultsEl, format);
     } catch (err) {
-      resultsEl.innerHTML = `<div style="color:#f87171;padding:1rem;border-radius:6px;background:rgba(248,113,113,0.1);">
+      resultsEl.innerHTML = `<div style="color:var(--danger-light);padding:1rem;border-radius:6px;background:rgb(var(--danger-light-rgb) / 0.1);">
         <i class="ph ph-warning"></i> ${err.message}
         ${!err.message.includes('token') ? '' : '<br><small>Set MANAPOOL_API_TOKEN in your server .env file.</small>'}
       </div>`;
@@ -847,7 +848,7 @@ function renderCardItem(card) {
   if (layoutView === 'ultra-compact') {
     return `
       <div class="deck-card-item ultra-compact ${card.is_commander ? 'is-commander' : ''}" data-deck-card-id="${card.deck_card_id}" data-printing-id="${card.printing_id}" data-is-sideboard="${card.is_sideboard}" data-board-type="${card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')}" data-card-id="${card.card_id}" draggable="true">
-        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.card_id}" style="position: absolute; top: 2px; left: 2px; background: ${card.is_owned ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)'}; color: white; border: none; border-radius: 50%; width: 16px; height: 16px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
+        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.card_id}" style="position: absolute; top: 2px; left: 2px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 16px; height: 16px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
           <i class="ph ${card.is_owned ? 'ph-check-circle' : 'ph-circle'}"></i>
         </button>
         ${showCommanderIcon ? `
@@ -899,7 +900,7 @@ function renderCardItem(card) {
   if (layoutView === 'compact') {
     return `
       <div class="deck-card-item compact ${card.is_commander ? 'is-commander' : ''}" data-deck-card-id="${card.deck_card_id}" data-printing-id="${card.printing_id}" data-is-sideboard="${card.is_sideboard}" data-board-type="${card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')}" data-card-id="${card.card_id}" draggable="true" style="position: relative;">
-        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.card_id}" style="position: absolute; top: 4px; left: 4px; background: ${card.is_owned ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)'}; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
+        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.card_id}" style="position: absolute; top: 4px; left: 4px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
           <i class="ph ${card.is_owned ? 'ph-check-circle' : 'ph-circle'}"></i>
         </button>
         <img src="${card.image_url}"
@@ -936,7 +937,7 @@ function renderCardItem(card) {
 
   return `
     <div class="deck-card-item ${card.is_commander ? 'is-commander' : ''}" data-deck-card-id="${card.deck_card_id}" data-printing-id="${card.printing_id}" data-is-sideboard="${card.is_sideboard}" data-board-type="${card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')}" data-card-id="${card.card_id}" draggable="true" style="position: relative;">
-      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.card_id}" style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgba(16, 185, 129, 0.9)' : 'rgba(0,0,0,0.8)'}; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
+      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.card_id}" style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
         <i class="ph ${card.is_owned ? 'ph-check-circle' : 'ph-circle'}"></i>
       </button>
       <img src="${card.image_url}"
@@ -1412,12 +1413,12 @@ async function toggleCardOwnership(cardId, buttonEl) {
     // Update the button appearance
     if (result.owned) {
       buttonEl.classList.add('owned');
-      buttonEl.style.background = 'rgba(16, 185, 129, 0.9)';
+      buttonEl.style.background = 'rgb(var(--success-rgb) / 0.9)';
       buttonEl.innerHTML = '<i class="ph ph-check-circle"></i>';
       showToast('Added to collection', 'success', 1500);
     } else {
       buttonEl.classList.remove('owned');
-      buttonEl.style.background = 'rgba(0,0,0,0.8)';
+      buttonEl.style.background = 'rgb(var(--scrim-rgb) / 0.8)';
       buttonEl.innerHTML = '<i class="ph ph-circle"></i>';
       showToast('Removed from collection', 'success', 1500);
     }
@@ -2283,7 +2284,7 @@ function renderStats(stats) {
         <span style="font-size: 0.875rem; color: var(--text-secondary);">${ownedCards} / ${totalCards} cards</span>
       </div>
       <div style="width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
-        <div style="width: ${ownedPercentage}%; height: 100%; background: linear-gradient(90deg, #10b981, #059669); transition: width 0.3s;"></div>
+        <div style="width: ${ownedPercentage}%; height: 100%; background: linear-gradient(90deg, var(--success), var(--success-dark)); transition: width 0.3s;"></div>
       </div>
       ${currentFilter.ownership ? `
         <div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--primary); font-weight: 600;">
@@ -2343,7 +2344,7 @@ function renderStats(stats) {
         <div class="mana-curve-single-bar" style="overflow: visible; position: relative;">
           ${stats.manaCurve.map((item, index) => {
             const percentage = (item.total_cards / totalCurveCards) * 100;
-            const cmcColor = getCMCColor(item.cmc);
+            const cmcColor = cmcColor(item.cmc);
             const needsOverflow = percentage < (overflowThreshold * 100);
             const isFiltered = currentFilter.cmc === item.cmc;
 
@@ -2360,13 +2361,13 @@ function renderStats(stats) {
           }).join('')}
           ${overflowLabels.map((labelData, idx) => {
             const position = labelPositions[labelData.index];
-            const cmcColor = getCMCColor(labelData.cmc);
+            const cmcColor = cmcColor(labelData.cmc);
             const isFiltered = currentFilter.cmc === labelData.cmc;
 
             return `
               <span class="mana-curve-overflow-label ${isFiltered ? 'filtered' : ''}"
                     data-cmc="${labelData.cmc}"
-                    style="position: absolute; bottom: calc(100% + 0.5rem); left: ${position}%; transform: translateX(-50%); font-size: 0.75rem; font-weight: 600; white-space: nowrap; padding: 0.25rem 0.5rem; background: ${cmcColor}; border-radius: 4px; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5); z-index: ${50 + idx}; pointer-events: auto; cursor: pointer; transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, z-index 0s;">${labelData.cmc}</span>
+                    style="position: absolute; bottom: calc(100% + 0.5rem); left: ${position}%; transform: translateX(-50%); font-size: 0.75rem; font-weight: 600; white-space: nowrap; padding: 0.25rem 0.5rem; background: ${cmcColor}; border-radius: 4px; color: white; text-shadow: 0 1px 2px rgb(var(--scrim-rgb) / 0.5); z-index: ${50 + idx}; pointer-events: auto; cursor: pointer; transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, z-index 0s;">${labelData.cmc}</span>
             `;
           }).join('')}
         </div>
@@ -2415,7 +2416,7 @@ function renderStats(stats) {
       label.addEventListener('mouseenter', () => {
         label.style.zIndex = '500';
         label.style.transform = 'translateX(-50%) scale(1.2)';
-        label.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.7)';
+        label.style.boxShadow = '0 6px 16px rgb(var(--scrim-rgb) / 0.7)';
       });
 
       label.addEventListener('mouseleave', () => {
@@ -2453,7 +2454,7 @@ function renderStats(stats) {
     const width = (item.total_cards / maxColor) * 100;
     const percentage = totalColorCards > 0 ? ((item.total_cards / totalColorCards) * 100).toFixed(1) : 0;
     const colorIcons = formatColorIcons(item.colors);
-    const colorBg = getColorBackground(item.colors);
+    const colorBg = manaGradient(item.colors);
     const isFiltered = currentFilter.color === item.colors;
 
     return `
@@ -2486,45 +2487,6 @@ function renderStats(stats) {
   });
 }
 
-function getCMCColor(cmc) {
-  // Unique color for each CMC value
-  const colors = {
-    0: '#94a3b8',  // Gray
-    1: '#10b981',  // Green
-    2: '#34d399',  // Light Green
-    3: '#fbbf24',  // Yellow
-    4: '#fb923c',  // Orange
-    5: '#f87171',  // Light Red
-    6: '#ef4444',  // Red
-    7: '#c084fc',  // Light Purple
-    8: '#a855f7',  // Purple
-    9: '#7c3aed',  // Dark Purple
-    10: '#6366f1', // Indigo
-  };
-
-  // For CMC > 10, use a cycling pattern
-  if (cmc > 10) {
-    const colorKeys = Object.keys(colors);
-    return colors[colorKeys[cmc % colorKeys.length]];
-  }
-
-  return colors[cmc] || '#6b7280'; // Default gray if not found
-}
-
-function getTypeColor(type) {
-  const colors = {
-    'Creature': '#10b981',
-    'Instant': '#3b82f6',
-    'Sorcery': '#8b5cf6',
-    'Enchantment': '#ec4899',
-    'Artifact': '#64748b',
-    'Planeswalker': '#f59e0b',
-    'Land': '#78716c',
-    'Other': '#6b7280'
-  };
-  return colors[type] || colors['Other'];
-}
-
 function formatColorIcons(colors) {
   if (!colors) return '<i class="ms ms-c ms-cost"></i>'; // Colorless
 
@@ -2538,38 +2500,6 @@ function formatColorIcons(colors) {
     const colorLower = color.toLowerCase();
     return `<i class="ms ms-${colorLower} ms-cost ms-cost-shadow"></i>`;
   }).join('');
-}
-
-function getColorBackground(colors) {
-  if (!colors) return 'linear-gradient(135deg, #d0c6bb, #a8a8a8)'; // Colorless gradient
-
-  // Map colors to their MTG color values
-  const colorMap = {
-    'W': '#fdfbce',
-    'U': '#bcdaf7',
-    'B': '#a7999e',
-    'R': '#f19b79',
-    'G': '#9fcba6'
-  };
-
-  const colorValues = colors.split('').map(c => colorMap[c] || '#ccc');
-
-  if (colorValues.length === 1) {
-    return `linear-gradient(135deg, ${colorValues[0]}, ${adjustBrightness(colorValues[0], -20)})`;
-  }
-
-  // Multi-color gradient
-  return `linear-gradient(135deg, ${colorValues.join(', ')})`;
-}
-
-function adjustBrightness(color, amount) {
-  // Simple brightness adjustment for gradients
-  const hex = color.replace('#', '');
-  const num = parseInt(hex, 16);
-  const r = Math.max(0, Math.min(255, (num >> 16) + amount));
-  const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amount));
-  const b = Math.max(0, Math.min(255, (num & 0x0000FF) + amount));
-  return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
 }
 
 function showLegalityModal() {
@@ -2636,8 +2566,8 @@ async function checkFormatLegality(format, formatLabel) {
     // Display results
     resultsDiv.innerHTML = `
       <h3>${formatLabel} Legality</h3>
-      <div style="padding: 1rem; background: ${result.isLegal ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; border-radius: 8px; margin: 1rem 0;">
-        <div style="font-size: 1.1rem; font-weight: 600; color: ${result.isLegal ? '#10b981' : '#ef4444'};">
+      <div style="padding: 1rem; background: ${result.isLegal ? 'rgb(var(--success-rgb) / 0.1)' : 'rgb(var(--danger-rgb) / 0.1)'}; border-radius: 8px; margin: 1rem 0;">
+        <div style="font-size: 1.1rem; font-weight: 600; color: ${result.isLegal ? 'var(--success)' : 'var(--danger)'};">
           ${result.isLegal ? '✓' : '✗'} ${result.isLegal ? 'This deck is legal for ' + formatLabel : 'This deck is not legal for ' + formatLabel}
         </div>
         ${!result.isLegal ? `
@@ -2651,14 +2581,14 @@ async function checkFormatLegality(format, formatLabel) {
         <h4 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Illegal Cards:</h4>
         <div style="display: grid; gap: 0.75rem;">
           ${result.illegalCards.map(card => `
-            <div style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px; display: flex; gap: 1rem; align-items: center; border-left: 3px solid #ef4444;">
+            <div style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px; display: flex; gap: 1rem; align-items: center; border-left: 3px solid var(--danger);">
               ${card.image_url ? `
                 <img src="${card.image_url}" alt="${card.name}" style="width: 50px; height: 70px; border-radius: 4px; object-fit: cover;">
               ` : ''}
               <div style="flex: 1;">
                 <div style="font-weight: 600;">${card.name}</div>
                 <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem;">${card.type_line || ''}</div>
-                <div style="font-size: 0.875rem; color: #ef4444; margin-top: 0.25rem; font-weight: 500;">
+                <div style="font-size: 0.875rem; color: var(--danger); margin-top: 0.25rem; font-weight: 500;">
                   ${card.reason}
                 </div>
               </div>
@@ -3142,7 +3072,7 @@ function renderOptimizerResults(result, el) {
 
   el.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
-      <span style="font-size:1.1rem;font-weight:700;color:#16a34a;">
+      <span style="font-size:1.1rem;font-weight:700;color:var(--success-bright);">
         <i class="ph ph-check-circle"></i> Optimized — ${fmt(totalCents)} across ${sellerCount} seller${sellerCount !== 1 ? 's' : ''}
       </span>
       <a href="https://manapool.com/cart" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
@@ -3216,8 +3146,8 @@ function renderValidatorResults(result, el, format) {
   }
 
   el.innerHTML = `
-    <div style="padding:1rem;border-radius:8px;background:${valid ? 'rgba(22,163,74,0.1)' : 'rgba(239,68,68,0.1)'};border:1px solid ${valid ? '#16a34a' : '#ef4444'};margin-bottom:1rem;">
-      <div style="font-size:1.1rem;font-weight:700;color:${valid ? '#16a34a' : '#ef4444'};">
+    <div style="padding:1rem;border-radius:8px;background:${valid ? 'rgb(var(--success-bright-rgb) / 0.1)' : 'rgb(var(--danger-rgb) / 0.1)'};border:1px solid ${valid ? 'var(--success-bright)' : 'var(--danger)'};margin-bottom:1rem;">
+      <div style="font-size:1.1rem;font-weight:700;color:${valid ? 'var(--success-bright)' : 'var(--danger)'};">
         <i class="ph ${valid ? 'ph-check-circle' : 'ph-x-circle'}"></i>
         ${valid ? 'Deck is Legal' : 'Deck has Violations'}
       </div>
@@ -3225,15 +3155,15 @@ function renderValidatorResults(result, el, format) {
     </div>
     ${violations.length ? `
       <div>
-        <span style="font-size:0.75rem;text-transform:uppercase;color:#ef4444;font-weight:600;">Violations (${violations.length})</span>
+        <span style="font-size:0.75rem;text-transform:uppercase;color:var(--danger);font-weight:600;">Violations (${violations.length})</span>
         <div style="margin-top:0.5rem;display:flex;flex-direction:column;gap:0.4rem;">
-          ${violations.map(v => `<div style="font-size:0.85rem;padding:0.4rem 0.6rem;background:rgba(239,68,68,0.08);border-radius:4px;">
+          ${violations.map(v => `<div style="font-size:0.85rem;padding:0.4rem 0.6rem;background:rgb(var(--danger-rgb) / 0.08);border-radius:4px;">
               ${v.card ? `<strong>${v.card}</strong> — ` : ''}${v.reason}
             </div>`).join('')}
         </div>
       </div>
     ` : (valid ? `<div style="font-size:0.875rem;color:var(--text-secondary);">No issues found.</div>` : `
-      <div style="font-size:0.85rem;color:var(--text-secondary);padding:0.4rem 0.6rem;background:rgba(239,68,68,0.08);border-radius:4px;">
+      <div style="font-size:0.85rem;color:var(--text-secondary);padding:0.4rem 0.6rem;background:rgb(var(--danger-rgb) / 0.08);border-radius:4px;">
         ${sizeHint || 'Deck is invalid but no specific violations were listed.'}
         <details style="margin-top:0.4rem;">
           <summary style="cursor:pointer;">Show raw response</summary>

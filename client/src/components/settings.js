@@ -361,7 +361,7 @@ function renderAvatarPreview(user) {
       img.classList.add('hidden');
       initials.style.display = 'flex';
       initials.style.background = preset.color;
-      initials.style.color = '#fff';
+      initials.style.color = 'var(--on-accent)';
       initials.innerHTML = `<i class="ss ss-${preset.id}"></i>`;
       return;
     }

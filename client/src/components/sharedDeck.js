@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast } from '../utils/ui.js';
+import { cmcColor, manaGradient } from '../utils/theme.js';
 
 // Board of a shared-deck card (board_type authoritative; is_sideboard is legacy).
 const sharedBoardOf = (c) => c.board_type || (c.is_sideboard ? 'sideboard' : 'mainboard');
@@ -271,7 +272,7 @@ function renderStats(stats) {
       <div class="mana-curve-single-bar">
         ${stats.manaCurve.map(item => {
           const percentage = (item.total_cards / totalCards) * 100;
-          const cmcColor = getCMCColor(item.cmc);
+          const cmcColor = cmcColor(item.cmc);
           return `
             <div class="mana-curve-segment"
                  style="width: ${percentage}%; background: ${cmcColor};"
@@ -311,7 +312,7 @@ function renderStats(stats) {
     const width = (item.total_cards / maxColor) * 100;
     const percentage = totalColorCards > 0 ? ((item.total_cards / totalColorCards) * 100).toFixed(1) : 0;
     const colorIcons = formatColorIcons(item.colors);
-    const colorBg = getColorBackground(item.colors);
+    const colorBg = manaGradient(item.colors);
     return `
       <div class="chart-bar" title="${item.total_cards} cards (${percentage}%)">
         <div class="chart-label color-label">${colorIcons}</div>
@@ -326,14 +327,6 @@ function renderStats(stats) {
   }).join('');
 }
 
-function getCMCColor(cmc) {
-  if (cmc === 0) return '#94a3b8';
-  if (cmc <= 2) return '#10b981';
-  if (cmc <= 4) return '#f59e0b';
-  if (cmc <= 6) return '#ef4444';
-  return '#7c3aed';
-}
-
 function formatColorIcons(colors) {
   if (!colors) return '<i class="ms ms-c ms-cost"></i>';
   return colors.split('').map(color => {
@@ -342,31 +335,3 @@ function formatColorIcons(colors) {
   }).join('');
 }
 
-function getColorBackground(colors) {
-  if (!colors) return 'linear-gradient(135deg, #d0c6bb, #a8a8a8)';
-
-  const colorMap = {
-    'W': '#fdfbce',
-    'U': '#bcdaf7',
-    'B': '#a7999e',
-    'R': '#f19b79',
-    'G': '#9fcba6'
-  };
-
-  const colorValues = colors.split('').map(c => colorMap[c] || '#ccc');
-
-  if (colorValues.length === 1) {
-    return `linear-gradient(135deg, ${colorValues[0]}, ${adjustBrightness(colorValues[0], -20)})`;
-  }
-
-  return `linear-gradient(135deg, ${colorValues.join(', ')})`;
-}
-
-function adjustBrightness(color, amount) {
-  const hex = color.replace('#', '');
-  const num = parseInt(hex, 16);
-  const r = Math.max(0, Math.min(255, (num >> 16) + amount));
-  const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amount));
-  const b = Math.max(0, Math.min(255, (num & 0x0000FF) + amount));
-  return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
-}
