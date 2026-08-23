@@ -35,7 +35,11 @@ and a small set of celebration animations.
 
 ---
 
-> **Status:** Phases 0-2 are shipped. Phases 3-6 are still planned.
+> **Status:** all phases shipped. What remains is content, not structure —
+> replacing Arcane's placeholder SVGs with generated art, and two colour
+> decisions left open on purpose (the `--drift-*` group, and
+> `--rarity-uncommon` being both illegible and identical to
+> `--rarity-common`).
 >
 > | Phase | State |
 > |---|---|
@@ -45,7 +49,7 @@ and a small set of celebration animations.
 > | 3 - structural chrome | done - banner, gutter rails, footer, nav indicator |
 > | 4 - theme forge | done - prompt generator and browser extractor |
 > | 5 - per-user selection | done - migration 032, /auth/preferences, settings picker |
-> | 6 - celebration animations | not started (the `celebration` art slot is ready) |
+> | 6 - celebration animations | done - celebrate() in utils/ui.js, four moments |
 >
 > Run `npm run check:themes` to re-check every theme's contrast,
 > `npm run theme:slots` to list the art slots, and `npm run theme:prompt` to

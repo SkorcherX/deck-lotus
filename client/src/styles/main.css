@@ -6693,3 +6693,111 @@ body.maintenance-locked #app {
   color: var(--text-muted);
 }
 .theme-option-desc { color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.4; }
+
+/* ---- Celebrations -----------------------------------------------------------
+   The overlay behind celebrate() in utils/ui.js. Entirely decorative: it never
+   takes pointer events, so it cannot block the thing the user just did.
+
+   Colour is token-driven, so each theme celebrates in its own palette, and the
+   spot art comes from the theme's `celebration` slot when it ships one.
+   --------------------------------------------------------------------------- */
+:root {
+  --celebration-tone-1: var(--primary-light);
+  --celebration-tone-2: var(--highlight);
+  --celebration-tone-3: var(--warning);
+}
+
+.celebration {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-toast);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.celebration-burst {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-7);
+  text-align: center;
+  background: rgb(var(--bg-rgb) / 0.82);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: celebrationBurst 2.6s var(--ease) forwards;
+}
+@supports (corner-shape: bevel) {
+  .celebration-burst { corner-shape: bevel; border-radius: var(--chamfer-modal); }
+}
+
+/* Spot art if the theme has it, icon if not — same swap as the empty states. */
+.celebration-art {
+  display: none;
+  width: 128px;
+  height: 128px;
+  background-image: var(--art-celebration);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+.has-art-celebration .celebration-art { display: block; }
+.has-art-celebration .celebration-icon { display: none; }
+
+.celebration-icon {
+  font-size: 4rem;
+  line-height: 1;
+  color: var(--celebration-tone-2);
+}
+
+.celebration-title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text);
+}
+.celebration-detail {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.celebration-confetti { position: absolute; inset: 0; }
+.celebration-confetti span {
+  position: absolute;
+  top: -24px;
+  left: var(--x);
+  width: 9px;
+  height: 14px;
+  background: var(--tone);
+  border-radius: 1px;
+  opacity: 0;
+  animation: celebrationFall 2.4s var(--delay) cubic-bezier(0.25, 0.6, 0.4, 1) forwards;
+}
+
+@keyframes celebrationBurst {
+  0%   { opacity: 0; transform: translateY(14px) scale(0.9); }
+  10%  { opacity: 1; transform: translateY(0) scale(1.02); }
+  16%  { transform: translateY(0) scale(1); }
+  82%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-10px) scale(0.98); }
+}
+
+@keyframes celebrationFall {
+  0%   { opacity: 0; transform: translate3d(0, 0, 0) rotate(0deg); }
+  8%   { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(var(--drift), 105vh, 0) rotate(var(--spin)); }
+}
+
+/* celebrate() bails out before building anything when reduced motion is set,
+   so this is belt and braces for a preference changed mid-animation, and for
+   anything that renders the markup by another route. */
+@media (prefers-reduced-motion: reduce) {
+  .celebration { display: none; }
+  .celebration-burst, .celebration-confetti span { animation: none; }
+}

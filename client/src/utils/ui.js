@@ -254,3 +254,104 @@ export function popover(anchorEl, contentEl, { align = 'left', gap = 6 } = {}) {
 
   return { el: pop, close };
 }
+
+/* -------------------------------------------------------------------------
+ * Celebrations
+ *
+ * A brief overlay for the handful of moments worth marking: a win recorded, a
+ * collection milestone, a finished import, an accepted trade.
+ *
+ * Three rules hold this together:
+ *
+ *   - It is never load-bearing. Everything is decorative and pointer-events:
+ *     none, so a celebration that fails to render, or is suppressed, changes
+ *     nothing about what the user can do.
+ *   - Colour comes from tokens, so each theme celebrates in its own palette,
+ *     and the artwork comes from the theme's `celebration` art slot when it
+ *     ships one.
+ *   - Reduced motion means no motion. Not "less" — the whole overlay is
+ *     skipped and the caller's toast carries the message on its own.
+ * ------------------------------------------------------------------------- */
+
+const CELEBRATIONS = {
+  win: { icon: 'ph-trophy', pieces: 22 },
+  milestone: { icon: 'ph-sparkle', pieces: 26 },
+  import: { icon: 'ph-check-circle', pieces: 16 },
+  trade: { icon: 'ph-handshake', pieces: 18 },
+};
+
+function prefersReducedMotion() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Mark a moment.
+ *
+ * @param {'win'|'milestone'|'import'|'trade'} kind
+ * @param {{title?: string, detail?: string}} [options]
+ * @returns {boolean} whether anything was shown
+ */
+export function celebrate(kind, { title = '', detail = '' } = {}) {
+  const config = CELEBRATIONS[kind];
+  if (!config) return false;
+
+  // Honour the OS setting before building anything. The caller always shows a
+  // toast too, so nothing is lost by skipping this entirely.
+  if (prefersReducedMotion()) return false;
+
+  // Never stack. A second milestone during the first would just be noise.
+  document.querySelectorAll('.celebration').forEach((el) => el.remove());
+
+  const overlay = document.createElement('div');
+  overlay.className = `celebration celebration-${kind}`;
+  overlay.setAttribute('aria-hidden', 'true');
+
+  const burst = document.createElement('div');
+  burst.className = 'celebration-burst';
+
+  // The theme's spot art if it has one, otherwise an icon. Which of the two
+  // is used is decided in CSS by the has-art-celebration class, so this always
+  // builds both and lets the stylesheet pick.
+  const art = document.createElement('div');
+  art.className = 'celebration-art';
+  const icon = document.createElement('i');
+  icon.className = `ph-fill ${config.icon} celebration-icon`;
+  burst.append(art, icon);
+
+  if (title) {
+    const heading = document.createElement('div');
+    heading.className = 'celebration-title';
+    heading.textContent = title;
+    burst.appendChild(heading);
+  }
+  if (detail) {
+    const sub = document.createElement('div');
+    sub.className = 'celebration-detail';
+    sub.textContent = detail;
+    burst.appendChild(sub);
+  }
+
+  // Confetti, positioned by custom properties so the keyframes stay generic.
+  const confetti = document.createElement('div');
+  confetti.className = 'celebration-confetti';
+  for (let i = 0; i < config.pieces; i++) {
+    const piece = document.createElement('span');
+    piece.style.setProperty('--x', `${Math.round(Math.random() * 100)}%`);
+    piece.style.setProperty('--delay', `${Math.round(Math.random() * 320)}ms`);
+    piece.style.setProperty('--drift', `${Math.round((Math.random() - 0.5) * 160)}px`);
+    piece.style.setProperty('--spin', `${Math.round((Math.random() - 0.5) * 720)}deg`);
+    piece.style.setProperty('--tone', `var(--celebration-tone-${(i % 3) + 1})`);
+    confetti.appendChild(piece);
+  }
+
+  overlay.append(confetti, burst);
+  document.body.appendChild(overlay);
+
+  // Tie removal to the animation rather than a guessed timeout, so it cannot
+  // linger if the browser throttles the tab mid-animation.
+  const done = () => overlay.remove();
+  burst.addEventListener('animationend', done, { once: true });
+  setTimeout(done, 4000); // belt and braces if the event never fires
+
+  return true;
+}
