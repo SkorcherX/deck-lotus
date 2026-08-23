@@ -14,6 +14,7 @@ import {
   getDeckByShareToken,
   deleteDeckShare,
   importSharedDeck,
+  cloneDeck,
   checkDeckLegality,
 } from '../services/deckService.js';
 import {
@@ -247,6 +248,25 @@ router.delete('/:id/cards/by-card-id/:cardId', authenticate, (req, res, next) =>
 });
 
 /**
+ * POST /api/decks/:id/clone
+ * Copy a deck, cards and all, into a new deck. Partial decks copy as they are:
+ * an unfinished list is a template, not an error.
+ */
+router.post('/:id/clone', authenticate, (req, res, next) => {
+  try {
+    const { name } = req.body || {};
+    const deck = cloneDeck(parseInt(req.params.id, 10), req.user.id, name);
+
+    res.status(201).json({ deck });
+  } catch (error) {
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
  * POST /api/decks/import
  * Import deck from text
  */
@@ -275,6 +295,10 @@ router.post('/import', authenticate, (req, res, next) => {
       deck,
       imported: result.imported,
       notFound: result.notFound,
+      // The lines that resolved to nothing come back so the person who pasted
+      // them can see which ones to fix, rather than being told the import
+      // succeeded and finding an empty deck.
+      unresolved: result.unresolved,
       message: `Successfully imported ${result.imported} cards${result.notFound > 0 ? ` (${result.notFound} not found)` : ''}`
     });
   } catch (error) {

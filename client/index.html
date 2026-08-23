@@ -2315,12 +2315,15 @@
                                 "
                             >
                                 Supports Moxfield, Arena, MTGO, and plain text
-                                formats
+                                formats, including set code and collector
+                                number with no card name. Partial lists are
+                                fine &mdash; import what you have and add the
+                                rest later.
                             </p>
                             <textarea
                                 id="import-deck-list"
                                 rows="15"
-                                placeholder="Paste your deck list here...&#10;&#10;Examples:&#10;1 Lightning Bolt&#10;4 Counterspell [DMR]&#10;1 Black Lotus (LEA) 4 *F*"
+                                placeholder="Paste your deck list here...&#10;&#10;Examples:&#10;1 Lightning Bolt&#10;4 Counterspell [DMR]&#10;1 Black Lotus (LEA) 4 *F*&#10;1 FDN 1"
                                 required
                                 style="
                                     font-family: monospace;
@@ -2328,6 +2331,11 @@
                                 "
                             ></textarea>
                         </div>
+                        <div
+                            id="import-deck-unresolved"
+                            class="hidden"
+                            style="margin-bottom: 1rem"
+                        ></div>
                         <div style="display: flex; gap: 0.5rem">
                             <button
                                 type="submit"

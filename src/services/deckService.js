@@ -752,9 +752,10 @@ export function importSharedDeck(shareToken, userId) {
   // Copy all cards to the new deck
   for (const card of sharedDeck.cards) {
     db.run(
-      `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander)
-       VALUES (?, ?, ?, ?, ?)`,
-      [newDeck.id, card.printing_id, card.quantity, card.is_sideboard, card.is_commander]
+      `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [newDeck.id, card.printing_id, card.quantity, card.is_sideboard, card.is_commander,
+       card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard'), card.is_foil ? 1 : 0]
     );
 
     recordDeckEvent({
@@ -775,6 +776,90 @@ export function importSharedDeck(shareToken, userId) {
   }
 
   return getDeckById(newDeck.id, userId);
+}
+
+/**
+ * Copy a deck, cards and all, into a new deck owned by the same user.
+ *
+ * A half-finished deck is a useful starting point — the lands and the staples
+ * that every build shares — so cloning has to keep partial decks intact rather
+ * than validate them. The copy is written in one transaction: a clone that
+ * stopped halfway would look like a deck its owner had built that way.
+ */
+export function cloneDeck(deckId, userId, newName = null) {
+  const source = getDeckById(deckId, userId);
+
+  if (!source) {
+    throw new Error('Deck not found or access denied');
+  }
+
+  const name = (newName && newName.trim()) || `${source.name} (copy)`;
+
+  const newDeckId = db.transaction(() => {
+    const result = db.run(
+      `INSERT INTO decks (user_id, name, format, description) VALUES (?, ?, ?, ?)`,
+      [userId, name, source.format || null, source.description || null]
+    );
+
+    const clonedId = result.lastInsertRowid;
+
+    for (const card of source.cards) {
+      db.run(
+        `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          clonedId,
+          card.printing_id,
+          card.quantity,
+          card.is_sideboard ? 1 : 0,
+          card.is_commander ? 1 : 0,
+          card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard'),
+          card.is_foil ? 1 : 0,
+        ]
+      );
+    }
+
+    return clonedId;
+  });
+
+  // Logged like the other bulk deck writes, so a copy can be told apart from a
+  // deck somebody typed in card by card.
+  const batchId = `deck-clone-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  recordDeckEvent({
+    userId,
+    action: AUDIT_ACTIONS.DECK_CREATE,
+    source: 'deck_clone',
+    deckId: newDeckId,
+    deckName: name,
+    detail: {
+      batchId,
+      format: source.format || null,
+      clonedFromDeckId: source.id,
+      clonedFromDeckName: source.name,
+      cards: source.cards.length,
+    },
+  });
+
+  for (const card of source.cards) {
+    recordDeckEvent({
+      userId,
+      action: AUDIT_ACTIONS.DECK_CARD_ADD,
+      source: 'deck_clone',
+      deckId: newDeckId,
+      deckName: name,
+      printingId: card.printing_id,
+      quantityBefore: 0,
+      quantityAfter: card.quantity,
+      detail: {
+        batchId,
+        via: 'deck_clone',
+        boardType: card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard'),
+      },
+    });
+  }
+
+  return getDeckById(newDeckId, userId);
 }
 
 /**

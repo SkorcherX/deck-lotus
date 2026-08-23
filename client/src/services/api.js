@@ -254,6 +254,13 @@ class ApiClient {
     });
   }
 
+  async cloneDeck(deckId, name) {
+    return this.request(`/decks/${deckId}/clone`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
   // Deck sharing methods
   async createDeckShare(deckId) {
     return this.request(`/decks/${deckId}/share`, {

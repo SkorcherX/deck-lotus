@@ -147,5 +147,12 @@ taken on GitHub — only do it when explicitly asked.
   `decks`: a stored total and the log can disagree, and then neither can be
   trusted. `deck_games` hangs off `decks`, which the MTGJSON import never
   clears, so it is safe from the weekly rebuild.
+- The deck-list parser (`src/services/importService.js`) and the inventory
+  bulk-add parser (`client/src/components/inventory.js`) accept the same line
+  formats on purpose — people paste the same text into both boxes, including
+  the nameless `1 FDN 1` set-and-collector form. Lines that resolve to nothing
+  come back as `unresolved` so the import modal can list them; a deck import
+  never fails as a whole, because a partial list is a legitimate starting
+  point that `cloneDeck` is built to copy.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.

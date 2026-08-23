@@ -16,8 +16,10 @@ export function parseDeckList(text) {
     // Skip empty lines
     if (!trimmedLine) continue;
 
-    // Check for section headers
-    if (/^(sideboard|commander|deck|companion)/i.test(trimmedLine)) {
+    // Check for section headers. The word has to be the whole line (bar a
+    // colon or a count) — now that a bare card name is a valid line,
+    // "Commander's Sphere" must not be read as the start of a section.
+    if (/^(sideboard|commander|deck|companion)[:\s]*\d*$/i.test(trimmedLine)) {
       if (/^sideboard/i.test(trimmedLine)) currentSection = 'sideboard';
       if (/^commander/i.test(trimmedLine)) currentSection = 'commander';
       if (/^deck/i.test(trimmedLine)) currentSection = 'mainboard';
@@ -29,6 +31,7 @@ export function parseDeckList(text) {
     if (parsed) {
       cards.push({
         ...parsed,
+        line: trimmedLine,
         isSideboard: currentSection === 'sideboard',
         isCommander: currentSection === 'commander'
       });
@@ -41,25 +44,49 @@ export function parseDeckList(text) {
 /**
  * Parse a single card line
  * Supports formats:
- * - "1 Card Name" (plain text)
+ * - "1 Card Name" / "1x Card Name" (plain text)
+ * - "Card Name" (quantity defaults to 1)
  * - "1 Card Name (SET) 123" (Moxfield)
  * - "1 Card Name (SET) 123 *F*" (Moxfield with foil)
  * - "1 Card Name [SET]" (TCGplayer)
+ * - "1 FDN 1" (set code + collector number, no card name)
+ *
+ * The set-code-and-collector-number form is the one the inventory bulk add
+ * accepts, and people paste the same text into both boxes. A deck list that
+ * names no cards at all is a legitimate paste, not a malformed one.
  */
 function parseCardLine(line) {
   // Remove leading/trailing whitespace
   line = line.trim();
 
-  // Match quantity at start
-  const quantityMatch = line.match(/^(\d+)\s+(.+)$/);
-  if (!quantityMatch) return null;
+  // Comment lines from exported lists
+  if (!line || /^(\/\/|#)/.test(line)) return null;
 
-  const quantity = parseInt(quantityMatch[1]);
-  let remainder = quantityMatch[2];
+  // Check for foil marker, anywhere on the line
+  const isFoil = /\*F\*/i.test(line) || /\(F\)/i.test(line);
+  line = line.replace(/\*F\*/ig, '').replace(/\(F\)/ig, '').trim();
 
-  // Check for foil marker
-  const isFoil = remainder.includes('*F*');
-  remainder = remainder.replace(/\*F\*/g, '').trim();
+  // Match optional quantity at start; a line with no count means one copy
+  const quantityMatch = line.match(/^(\d+)\s*x?\s+(.+)$/i);
+  const quantity = quantityMatch ? parseInt(quantityMatch[1], 10) : 1;
+  const remainder = (quantityMatch ? quantityMatch[2] : line).trim();
+
+  if (!remainder) return null;
+
+  // Set code + collector number, with no card name. The second token must
+  // contain a digit so real two-word card names ("Sol Ring") don't match, and
+  // the set code is short enough that a leading word of a card name
+  // ("Borrowing 100,000 Arrows") won't be mistaken for one.
+  const setNumberMatch = remainder.match(/^([A-Za-z0-9]{2,6})[\s-]+([A-Za-z0-9★†\-]*\d[A-Za-z0-9★†\-]*)$/);
+  if (setNumberMatch) {
+    return {
+      quantity,
+      name: null,
+      setCode: setNumberMatch[1].toUpperCase(),
+      collectorNumber: setNumberMatch[2],
+      isFoil
+    };
+  }
 
   // Extract set code and collector number (Moxfield format)
   let setCode = null;
@@ -80,6 +107,8 @@ function parseCardLine(line) {
       setCode = tcgMatch[2].toUpperCase();
     }
   }
+
+  if (!cardName) return null;
 
   return {
     quantity,
@@ -104,6 +133,21 @@ function normalizeCardName(name) {
  * Find card in database by name and optional set/collector number
  */
 export function findCard(name, setCode = null, collectorNumber = null) {
+  // Set code plus collector number identifies a single printing on its own,
+  // which is why the inventory bulk add accepts lines that carry no name.
+  if (setCode && collectorNumber && !name) {
+    return db.get(
+      `SELECT c.id, c.name, p.id as printing_id, p.set_code, p.collector_number
+       FROM printings p
+       JOIN cards c ON c.id = p.card_id
+       WHERE p.set_code = ? AND p.collector_number = ? COLLATE NOCASE
+       LIMIT 1`,
+      [setCode.toUpperCase(), String(collectorNumber)]
+    ) || null;
+  }
+
+  if (!name) return null;
+
   // Normalize the card name for consistent matching
   const normalizedName = normalizeCardName(name);
 
@@ -205,56 +249,92 @@ export function importDeck(userId, deckName, format, cardList) {
     detail: { batchId, format: format || null, lines: cardList.length },
   });
 
-  // Add cards to deck
+  // Add cards to deck. Finish and board are part of a deck card's identity —
+  // deck_cards is keyed UNIQUE(deck_id, printing_id, is_sideboard, is_foil) —
+  // so the same printing listed twice has to add up rather than collide.
   const insertCard = db.prepare(
-    `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
 
   // Process each card in the list
   let imported = 0;
   let notFound = 0;
+  // Lines that resolved to nothing are handed back rather than only logged:
+  // a deck that comes out empty with a success message reads as the import
+  // being broken, when it is usually three bad set codes.
+  const unresolved = [];
 
   for (const cardData of cardList) {
     const card = findCard(cardData.name, cardData.setCode, cardData.collectorNumber);
 
-    if (card) {
+    if (!card) {
+      notFound++;
+      unresolved.push({
+        line: cardData.line ?? null,
+        name: cardData.name ?? null,
+        setCode: cardData.setCode ?? null,
+        collectorNumber: cardData.collectorNumber ?? null,
+        quantity: cardData.quantity,
+      });
+      console.warn(`Card not found: ${cardData.name || ''}${cardData.setCode ? ` (${cardData.setCode})` : ''}${cardData.collectorNumber ? ` ${cardData.collectorNumber}` : ''}`);
+      continue;
+    }
+
+    const isSideboard = cardData.isSideboard ? 1 : 0;
+    const isFoil = cardData.isFoil ? 1 : 0;
+    const boardType = cardData.isSideboard ? 'sideboard' : 'mainboard';
+
+    const existing = db.get(
+      `SELECT id, quantity FROM deck_cards
+       WHERE deck_id = ? AND printing_id = ? AND is_sideboard = ? AND is_foil = ?`,
+      [deckId, card.printing_id, isSideboard, isFoil]
+    );
+
+    const before = existing?.quantity || 0;
+
+    if (existing) {
+      db.run(
+        `UPDATE deck_cards SET quantity = quantity + ? WHERE id = ?`,
+        [cardData.quantity, existing.id]
+      );
+    } else {
       insertCard.run(
         deckId,
         card.printing_id,
         cardData.quantity,
-        cardData.isSideboard ? 1 : 0,
-        cardData.isCommander ? 1 : 0
+        isSideboard,
+        cardData.isCommander ? 1 : 0,
+        boardType,
+        isFoil
       );
-
-      // What the line said, next to what it resolved to.
-      recordDeckEvent({
-        userId,
-        action: AUDIT_ACTIONS.DECK_CARD_ADD,
-        source: 'deck_import',
-        deckId,
-        deckName,
-        printingId: card.printing_id,
-        quantityBefore: 0,
-        quantityAfter: cardData.quantity,
-        detail: {
-          batchId,
-          boardType: cardData.isSideboard ? 'sideboard' : 'mainboard',
-          entered: {
-            cardName: cardData.name ?? null,
-            setCode: cardData.setCode ?? null,
-            collectorNumber: cardData.collectorNumber ?? null,
-            quantity: cardData.quantity,
-          },
-        },
-      });
-
-      imported++;
-    } else {
-      notFound++;
-      console.warn(`Card not found: ${cardData.name}${cardData.setCode ? ` (${cardData.setCode})` : ''}${cardData.collectorNumber ? ` ${cardData.collectorNumber}` : ''}`);
     }
+
+    // What the line said, next to what it resolved to.
+    recordDeckEvent({
+      userId,
+      action: AUDIT_ACTIONS.DECK_CARD_ADD,
+      source: 'deck_import',
+      deckId,
+      deckName,
+      printingId: card.printing_id,
+      quantityBefore: before,
+      quantityAfter: before + cardData.quantity,
+      detail: {
+        batchId,
+        boardType,
+        entered: {
+          cardName: cardData.name ?? null,
+          setCode: cardData.setCode ?? null,
+          collectorNumber: cardData.collectorNumber ?? null,
+          quantity: cardData.quantity,
+          isFoil: !!cardData.isFoil,
+        },
+      },
+    });
+
+    imported++;
   }
 
-  return { deckId, imported, notFound };
+  return { deckId, imported, notFound, unresolved };
 }

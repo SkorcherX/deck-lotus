@@ -131,6 +131,7 @@ function renderDecks() {
         </div>
         <div class="deck-card-actions">
           <button class="btn btn-primary btn-edit" data-deck-id="${deck.id}">Edit</button>
+          <button class="btn btn-secondary btn-clone" data-deck-id="${deck.id}" data-deck-name="${deck.name.replace(/"/g, '&quot;')}">Clone</button>
           <button class="btn btn-danger btn-delete" data-deck-id="${deck.id}">Delete</button>
         </div>
       </div>
@@ -143,6 +144,13 @@ function renderDecks() {
       e.stopPropagation();
       const deckId = btn.dataset.deckId;
       openDeckBuilder(deckId);
+    });
+  });
+
+  decksList.querySelectorAll('.btn-clone').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showCloneModal(btn.dataset.deckId, btn.dataset.deckName);
     });
   });
 
@@ -196,6 +204,60 @@ function recordBadge(record) {
     `${record.winRate === null ? '' : ` (${record.winRate}%)`}</span>`;
 }
 
+/**
+ * Cloning is how a half-built deck becomes a template: copy the shell, then
+ * flesh out the copy. The name is asked for up front because two decks called
+ * the same thing are hard to tell apart in the list.
+ */
+function showCloneModal(deckId, deckName) {
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+
+  modalBody.innerHTML = `
+    <h2>Clone Deck</h2>
+    <p style="margin-top: 0.5rem; color: var(--text-secondary);">
+      Copies every card in <strong>${deckName}</strong>, mainboard and sideboard, into a new deck.
+    </p>
+    <form id="clone-deck-form" style="margin-top: 1.5rem;">
+      <div class="form-group">
+        <label for="clone-deck-name">New Deck Name</label>
+        <input type="text" id="clone-deck-name" value="${deckName} (copy)" required autofocus>
+      </div>
+      <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
+        <button type="submit" class="btn btn-primary" style="flex: 1;">Clone Deck</button>
+        <button type="button" class="btn btn-secondary" id="cancel-clone-deck">Cancel</button>
+      </div>
+    </form>
+  `;
+
+  modal.classList.remove('hidden');
+
+  document.getElementById('clone-deck-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('clone-deck-name').value;
+
+    try {
+      showLoading();
+      modal.classList.add('hidden');
+      const result = await api.cloneDeck(deckId, name);
+      await loadDecks();
+      hideLoading();
+      showToast('Deck cloned', 'success');
+
+      if (result.deck && result.deck.id) {
+        openDeckBuilder(result.deck.id);
+      }
+    } catch (error) {
+      hideLoading();
+      showToast('Failed to clone deck: ' + error.message, 'error');
+    }
+  });
+
+  document.getElementById('cancel-clone-deck').addEventListener('click', () => {
+    modal.classList.add('hidden');
+  });
+}
+
 function openDeckBuilder(deckId) {
   // Dispatch event to open deck builder
   window.dispatchEvent(new CustomEvent('open-deck', { detail: { deckId } }));
@@ -209,6 +271,9 @@ function showImportModal() {
   document.getElementById('import-deck-name').value = '';
   document.getElementById('import-deck-format').value = '';
   document.getElementById('import-deck-list').value = '';
+  const unresolvedBox = document.getElementById('import-deck-unresolved');
+  unresolvedBox.classList.add('hidden');
+  unresolvedBox.innerHTML = '';
 
   // Handle close
   document.getElementById('import-modal-close').onclick = () => {
@@ -235,10 +300,34 @@ function showImportModal() {
       const result = await api.importDeck(name, format, deckList);
 
       hideLoading();
-      showToast(`Successfully imported ${result.imported} cards!`, 'success', 3000);
 
-      // Reload decks and open the imported deck
+      const unresolved = result.unresolved || [];
+
       await loadDecks();
+
+      // Lines nobody could match are shown against the list they came from,
+      // so they can be corrected and re-pasted. Telling someone the import
+      // succeeded and handing them an empty deck is what made this look
+      // broken.
+      if (unresolved.length > 0) {
+        showToast(
+          `Imported ${result.imported} cards, ${unresolved.length} line${unresolved.length === 1 ? '' : 's'} not found`,
+          'warning',
+          5000
+        );
+
+        unresolvedBox.innerHTML = `
+          <strong>Lines that could not be matched:</strong>
+          <ul style="margin: 0.5rem 0 0 1.25rem; font-family: monospace; font-size: 0.875rem;">
+            ${unresolved.map(item => `<li>${escapeHtml(item.line || item.name || '')}</li>`).join('')}
+          </ul>
+        `;
+        unresolvedBox.classList.remove('hidden');
+        modal.classList.remove('hidden');
+        return;
+      }
+
+      showToast(`Successfully imported ${result.imported} cards!`, 'success', 3000);
 
       if (result.deck && result.deck.id) {
         setTimeout(() => {
@@ -251,4 +340,11 @@ function showImportModal() {
       showToast('Failed to import deck: ' + error.message, 'error');
     }
   };
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
