@@ -6,6 +6,7 @@ import { setupCards } from './components/cards.js';
 import { setupSettings } from './components/settings.js';
 import { setupShopping } from './components/shopping.js';
 import { setupInventory } from './components/inventory.js';
+import { setupMaintenanceWatch, stopMaintenanceWatch, fetchMaintenanceStatus } from './components/maintenance.js';
 import { setupScan } from './components/scan.js';
 import { setupSharedDeck, loadSharedDeck } from './components/sharedDeck.js';
 import { setupPriceMonitoring } from './components/priceMonitoring.js';
@@ -41,8 +42,20 @@ class App {
         await api.getProfile();
         await this.showApp();
       } catch (error) {
-        api.logout();
-        this.showAuthPage();
+        // A failed profile check normally means the session is done. But the
+        // card tables being mid-rebuild fails it too, and throwing the user
+        // out to a login screen they cannot get past — while their collection
+        // appears to be gone — is the worst possible reading of a routine
+        // update. Hold them instead, and carry on once it finishes.
+        const maintenance = await fetchMaintenanceStatus();
+
+        if (maintenance && maintenance.state === 'running') {
+          setupMaintenanceWatch();
+          window.addEventListener('maintenance:finished', () => this.init(), { once: true });
+        } else {
+          api.logout();
+          this.showAuthPage();
+        }
       } finally {
         hideLoading();
       }
@@ -52,6 +65,7 @@ class App {
   }
 
   showAuthPage() {
+    stopMaintenanceWatch();
     document.getElementById('auth-page').classList.remove('hidden');
     document.getElementById('navbar').classList.add('hidden');
     this.hideAllPages();
@@ -61,6 +75,10 @@ class App {
     document.getElementById('auth-page').classList.add('hidden');
     document.getElementById('navbar').classList.remove('hidden');
     await setupUserMenu();
+
+    // Watch for card-data updates. Only for signed-in users: they are the
+    // ones with a collection that would appear to empty out mid-session.
+    setupMaintenanceWatch();
 
     // A trade waiting for an answer is the one thing here that needs the
     // user rather than the other way round, so the count is shown up front

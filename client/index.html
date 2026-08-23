@@ -49,6 +49,37 @@
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     </head>
     <body>
+        <!-- Card-data update is imminent: warns without taking the page away -->
+        <div id="maintenance-banner" class="maintenance-banner hidden" role="status" aria-live="polite">
+            <i class="ph ph-warning-circle"></i>
+            <span id="maintenance-banner-text"></span>
+        </div>
+
+        <!-- Card-data update is running: blocks the page until it finishes -->
+        <div id="maintenance-overlay" class="maintenance-overlay hidden" role="alertdialog" aria-modal="true" aria-labelledby="maintenance-overlay-title">
+            <div class="maintenance-dialog">
+                <i class="ph ph-database maintenance-dialog-icon"></i>
+                <h2 id="maintenance-overlay-title">Updating card data</h2>
+                <p class="maintenance-dialog-lede">
+                    Your collection is safe. It is backed up and restored automatically as
+                    part of this update, and will be exactly as you left it when the update
+                    finishes. Editing is paused until then.
+                </p>
+                <div class="maintenance-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div id="maintenance-progress-bar" class="maintenance-progress-bar"></div>
+                </div>
+                <div class="maintenance-progress-meta">
+                    <span id="maintenance-overlay-label">Working...</span>
+                    <span id="maintenance-overlay-percent">0%</span>
+                </div>
+                <p id="maintenance-overlay-elapsed" class="maintenance-dialog-note"></p>
+                <p class="maintenance-dialog-note">
+                    This usually takes several minutes. You do not need to refresh — this
+                    notice clears itself the moment the update is done.
+                </p>
+            </div>
+        </div>
+
         <div id="app">
             <!-- Navigation -->
             <nav id="navbar" class="navbar hidden">

@@ -323,8 +323,17 @@ class ApiClient {
   }
 
   // Admin methods
-  async syncDatabase() {
-    return this.request('/admin/sync', { method: 'POST' });
+  // Unauthenticated on the server: it has to answer while the card tables are
+  // being rebuilt, which is when an API-key lookup could not.
+  async getMaintenanceStatus() {
+    return this.request('/system/maintenance');
+  }
+
+  async syncDatabase(warnSeconds) {
+    return this.request('/admin/sync', {
+      method: 'POST',
+      body: JSON.stringify(warnSeconds === undefined ? {} : { warnSeconds }),
+    });
   }
 
   async getSyncStatus() {

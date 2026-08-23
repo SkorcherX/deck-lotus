@@ -141,7 +141,7 @@ export function setupSettings() {
   refreshDbBtn.addEventListener('click', async () => {
     const ok = await confirmDialog({
       title: 'Refresh database?',
-      message: 'This updates all card data, prices, and sets. It may take several minutes.',
+      message: 'This updates all card data, prices, and sets. Everyone signed in gets a one-minute warning, then the app is locked with a progress notice until it finishes. It may take several minutes.',
       confirmText: 'Refresh',
     });
     if (!ok) return;
@@ -151,10 +151,12 @@ export function setupSettings() {
       refreshDbBtn.textContent = 'Syncing...';
       showLoading();
 
+      // Returns as soon as the update is announced, not when it completes —
+      // the countdown and progress notice take it from here for every user.
       await api.syncDatabase();
 
       hideLoading();
-      showToast('Database refreshed successfully!', 'success');
+      showToast('Update starting in 1 minute — everyone has been warned.', 'success');
       await loadSyncStatus();
     } catch (error) {
       hideLoading();

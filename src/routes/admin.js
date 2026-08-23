@@ -1,5 +1,5 @@
 import express from 'express';
-import { runSync, getSyncStatus } from '../services/syncService.js';
+import { scheduleSyncWithWarning, getSyncStatus } from '../services/syncService.js';
 import {
   createBackup,
   restoreBackup,
@@ -48,12 +48,26 @@ router.put('/settings', authenticate, requireAdmin, (req, res, next) => {
  */
 router.post('/sync', authenticate, requireAdmin, async (req, res, next) => {
   try {
-    const result = await runSync();
-    res.json(result);
-  } catch (error) {
-    if (error.message === 'Sync already in progress') {
-      return res.status(409).json({ error: error.message });
+    // Announced and answered straight away rather than held open for the
+    // length of the import. The request used to await the whole multi-minute
+    // run, which told the admin nothing while it worked and gave everyone
+    // else no warning at all; both now follow the same countdown and progress
+    // that the scheduled sync uses.
+    const warnSeconds = Number.isFinite(Number(req.body?.warnSeconds))
+      ? Math.max(0, Math.min(Number(req.body.warnSeconds), 900))
+      : 60;
+
+    const result = scheduleSyncWithWarning({
+      leadMs: warnSeconds * 1000,
+      trigger: 'manual'
+    });
+
+    if (!result.scheduled) {
+      return res.status(409).json({ error: result.reason });
     }
+
+    res.json({ scheduled: true, startsAt: result.startsAt, warnSeconds });
+  } catch (error) {
     next(error);
   }
 });
