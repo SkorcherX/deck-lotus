@@ -3,5 +3,11 @@
   "name": "Arcane",
   "author": "Deck Lotus",
   "appearance": "dark",
-  "art": {}
+  "artNote": "SVG placeholders. Replace with generated art per docs/THEME_CREATION_GUIDE.md; slot ids and sizes live in src/themes/slots.js.",
+  "art": {
+    "banner": "art/banner.svg",
+    "rail-left": "art/rail-left.svg",
+    "rail-right": "art/rail-right.svg",
+    "footer": "art/footer.svg"
+  }
 }

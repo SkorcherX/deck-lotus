@@ -112,6 +112,15 @@
             </div>
         </div>
 
+        <!--
+          Gutter tapestries. Fixed to the viewport and purely decorative, so
+          they are aria-hidden and never take pointer events. They only render
+          above ~1600px, where the 1400px content column actually leaves room;
+          below that they collapse and nothing about the layout changes.
+        -->
+        <div class="art-rail art-rail-left" aria-hidden="true"></div>
+        <div class="art-rail art-rail-right" aria-hidden="true"></div>
+
         <div id="app">
             <!-- Navigation -->
             <nav id="navbar" class="navbar hidden">
@@ -2765,6 +2774,19 @@
             <div id="loading" class="loading hidden">
                 <div class="spinner"></div>
             </div>
+
+            <!--
+              Global footer. The app had none, which is part of why every page
+              just stopped rather than ending. Carries the footer art slot.
+            -->
+            <footer id="app-footer" class="app-footer hidden">
+                <div class="app-footer-inner">
+                    <span class="app-footer-brand">Deck&nbsp;Lotus</span>
+                    <span class="app-footer-meta">
+                        <span id="app-footer-theme"></span>
+                    </span>
+                </div>
+            </footer>
         </div>
 
         <script type="module" src="/src/main.js"></script>

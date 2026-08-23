@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 2000" width="400" height="2000" preserveAspectRatio="xMidYMin slice">
+  <!--
+    PLACEHOLDER. Stand-in for the `rail-left` slot in
+    client/src/themes/slots.js. Tiles vertically without a seam (the motif
+    repeats every 500px) and dissolves toward the content edge.
+  -->
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0a0711" stop-opacity="0.15"/><stop offset="0.55" stop-color="#0a0711" stop-opacity="0.6"/><stop offset="1" stop-color="#0a0711" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="2000" fill="#0a0711"/>
+  <g transform="translate(0 0)" opacity="0.5">
+    <path d="M200 40 C120 130 120 250 200 340 C280 250 280 130 200 40 Z" fill="none" stroke="#8348ec" stroke-width="2"/>
+    <path d="M200 110 C160 170 160 240 200 300 C240 240 240 170 200 110 Z" fill="none" stroke="#b794fa" stroke-width="1.2"/>
+    <circle cx="200" cy="190" r="8" fill="#38d6ec" opacity="0.5"/>
+    <path d="M60 400 L200 460 L340 400" fill="none" stroke="#8348ec" stroke-width="1.2" opacity="0.6"/>
+    <path d="M110 430 L200 470 L290 430" fill="none" stroke="#b794fa" stroke-width="1" opacity="0.4"/>
+  </g>
+  <g transform="translate(0 500)" opacity="0.5">
+    <path d="M200 40 C120 130 120 250 200 340 C280 250 280 130 200 40 Z" fill="none" stroke="#8348ec" stroke-width="2"/>
+    <path d="M200 110 C160 170 160 240 200 300 C240 240 240 170 200 110 Z" fill="none" stroke="#b794fa" stroke-width="1.2"/>
+    <circle cx="200" cy="190" r="8" fill="#38d6ec" opacity="0.5"/>
+    <path d="M60 400 L200 460 L340 400" fill="none" stroke="#8348ec" stroke-width="1.2" opacity="0.6"/>
+    <path d="M110 430 L200 470 L290 430" fill="none" stroke="#b794fa" stroke-width="1" opacity="0.4"/>
+  </g>
+  <g transform="translate(0 1000)" opacity="0.5">
+    <path d="M200 40 C120 130 120 250 200 340 C280 250 280 130 200 40 Z" fill="none" stroke="#8348ec" stroke-width="2"/>
+    <path d="M200 110 C160 170 160 240 200 300 C240 240 240 170 200 110 Z" fill="none" stroke="#b794fa" stroke-width="1.2"/>
+    <circle cx="200" cy="190" r="8" fill="#38d6ec" opacity="0.5"/>
+    <path d="M60 400 L200 460 L340 400" fill="none" stroke="#8348ec" stroke-width="1.2" opacity="0.6"/>
+    <path d="M110 430 L200 470 L290 430" fill="none" stroke="#b794fa" stroke-width="1" opacity="0.4"/>
+  </g>
+  <g transform="translate(0 1500)" opacity="0.5">
+    <path d="M200 40 C120 130 120 250 200 340 C280 250 280 130 200 40 Z" fill="none" stroke="#8348ec" stroke-width="2"/>
+    <path d="M200 110 C160 170 160 240 200 300 C240 240 240 170 200 110 Z" fill="none" stroke="#b794fa" stroke-width="1.2"/>
+    <circle cx="200" cy="190" r="8" fill="#38d6ec" opacity="0.5"/>
+    <path d="M60 400 L200 460 L340 400" fill="none" stroke="#8348ec" stroke-width="1.2" opacity="0.6"/>
+    <path d="M110 430 L200 470 L290 430" fill="none" stroke="#b794fa" stroke-width="1" opacity="0.4"/>
+  </g>
+  <rect width="400" height="2000" fill="url(#fade)"/>
+</svg>

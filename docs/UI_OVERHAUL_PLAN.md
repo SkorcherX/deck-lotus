@@ -41,12 +41,18 @@ and a small set of celebration animations.
 > | 0 - palette and tone | done - Arcane defined and contrast-verified |
 > | 1 - tokenise | done - proven visually inert against 46 selectors |
 > | 2 - theme pack format | done - `arcane` (default) and `classic` ship |
-> | 3 - structural chrome | not started (button/surface shape landed early) |
-> | 4 - theme forge | not started |
+> | 3 - structural chrome | done - banner, gutter rails, footer, nav indicator |
+> | 4 - theme forge | done - prompt generator and browser extractor |
 > | 5 - per-user selection | localStorage half done; server column outstanding |
 > | 6 - celebration animations | not started |
 >
-> Run `npm run check:themes` to re-check every theme's contrast.
+> Run `npm run check:themes` to re-check every theme's contrast,
+> `npm run theme:slots` to list the art slots, and `npm run theme:prompt` to
+> generate a Gemini prompt. The palette extractor is at
+> `/tools/theme-forge.html` on the dev server.
+>
+> Arcane currently ships **SVG placeholder art** so the chrome is visible and
+> testable. Replacing it with generated art is the remaining work in Phase 4.
 > **Companion:** [`THEME_CREATION_GUIDE.md`](THEME_CREATION_GUIDE.md) — the step-by-step
 > procedure for actually producing a theme once Phases 1–4 exist.
 

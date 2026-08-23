@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 300" width="2400" height="300" preserveAspectRatio="xMidYMid slice">
+  <!--
+    PLACEHOLDER. Geometric stand-in for generated art, sized to the `banner`
+    slot in client/src/themes/slots.js. Obeys the same rules real art must:
+    the central 60% stays quiet and dark for the page title, and the top and
+    bottom edges dissolve toward the page background.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a1250"/>
+      <stop offset="0.55" stop-color="#150d2e"/>
+      <stop offset="1" stop-color="#0d1a3a"/>
+    </linearGradient>
+    <linearGradient id="fadeY" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0711" stop-opacity="0.85"/>
+      <stop offset="0.35" stop-color="#0a0711" stop-opacity="0"/>
+      <stop offset="0.7" stop-color="#0a0711" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0a0711" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="quiet" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0.18" stop-color="#0a0711" stop-opacity="0"/>
+      <stop offset="0.34" stop-color="#0a0711" stop-opacity="0.55"/>
+      <stop offset="0.66" stop-color="#0a0711" stop-opacity="0.55"/>
+      <stop offset="0.82" stop-color="#0a0711" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="2400" height="300" fill="url(#bg)"/>
+
+  <g stroke="#b794fa" fill="none" stroke-width="1.5" opacity="0.30">
+    <path d="M0 236 L232 124 L464 208 L696 80 L916 192"/>
+    <path d="M2400 224 L2186 116 L1954 200 L1722 92 L1530 184"/>
+    <circle cx="232" cy="124" r="6"/><circle cx="696" cy="80" r="6"/>
+    <circle cx="2186" cy="116" r="6"/><circle cx="1722" cy="92" r="6"/>
+  </g>
+  <g stroke="#8348ec" fill="none" stroke-width="1" opacity="0.22">
+    <path d="M0 168 L300 246 L560 150 L820 244"/>
+    <path d="M2400 160 L2100 240 L1840 146 L1580 240"/>
+  </g>
+  <g fill="#38d6ec" opacity="0.28">
+    <circle cx="392" cy="68" r="3"/><circle cx="584" cy="152" r="2.2"/>
+    <circle cx="150" cy="196" r="2.2"/><circle cx="860" cy="112" r="2.6"/>
+    <circle cx="2028" cy="60" r="3"/><circle cx="1868" cy="148" r="2.2"/>
+    <circle cx="2270" cy="188" r="2.2"/><circle cx="1600" cy="108" r="2.6"/>
+  </g>
+
+  <rect width="2400" height="300" fill="url(#quiet)"/>
+  <rect width="2400" height="300" fill="url(#fadeY)"/>
+</svg>

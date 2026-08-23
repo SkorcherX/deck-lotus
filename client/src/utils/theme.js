@@ -120,7 +120,14 @@ function storeTheme(slug) {
   }
 }
 
-/** Point every art-slot property at this theme, or clear it if unsupplied. */
+/**
+ * Point every art-slot property at this theme, or clear it if unsupplied, and
+ * stamp a has-art-<slot> class for each one present.
+ *
+ * The class is what the chrome keys off. CSS cannot ask "is this custom
+ * property set?", and a themed band that reserves its height whether or not
+ * art arrives would leave an empty stripe on every art-less theme.
+ */
 function applyArtSlots(slug, art) {
   const root = document.documentElement;
   for (const slot of ART_SLOTS) {
@@ -131,6 +138,7 @@ function applyArtSlots(slug, art) {
       // A theme without this slot must degrade to no image, never a 404 box.
       root.style.removeProperty(slot.cssVar);
     }
+    root.classList.toggle(`has-art-${slot.id}`, Boolean(file));
   }
 }
 

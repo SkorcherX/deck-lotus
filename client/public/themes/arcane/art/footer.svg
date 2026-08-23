@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 200" width="2400" height="200" preserveAspectRatio="xMidYMid slice">
+  <!--
+    PLACEHOLDER. Stand-in for the `footer` slot in client/src/themes/slots.js.
+    Version and links sit at the left and right ends, so both ends stay calm;
+    the top edge dissolves upward into the page.
+  -->
+  <defs>
+    <linearGradient id="fbg" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#2a1250"/>
+      <stop offset="1" stop-color="#0a0711"/>
+    </linearGradient>
+    <linearGradient id="ffade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0711" stop-opacity="1"/>
+      <stop offset="0.6" stop-color="#0a0711" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#0a0711" stop-opacity="0.1"/>
+    </linearGradient>
+  </defs>
+  <rect width="2400" height="200" fill="url(#fbg)"/>
+  <g stroke="#8348ec" fill="none" stroke-width="1.2" opacity="0.30">
+    <path d="M900 200 L1050 120 L1200 170 L1350 120 L1500 200"/>
+    <circle cx="1200" cy="170" r="5"/>
+    <circle cx="1050" cy="120" r="4"/><circle cx="1350" cy="120" r="4"/>
+  </g>
+  <g fill="#38d6ec" opacity="0.22">
+    <circle cx="1120" cy="96" r="2.4"/><circle cx="1280" cy="96" r="2.4"/>
+  </g>
+  <rect width="2400" height="200" fill="url(#ffade)"/>
+</svg>

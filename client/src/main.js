@@ -15,7 +15,8 @@ import { setupTrades, refreshTradeBadge } from './components/trades.js';
 import { setupTradeShop } from './components/tradeShop.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
-import { initTheme } from './utils/theme.js';
+import { initTheme, currentTheme } from './utils/theme.js';
+import { getTheme } from './themes/registry.js';
 
 class App {
   constructor() {
@@ -82,6 +83,9 @@ class App {
   async showApp() {
     document.getElementById('auth-page').classList.add('hidden');
     document.getElementById('navbar').classList.remove('hidden');
+    document.getElementById('app-footer').classList.remove('hidden');
+    this.renderFooterTheme();
+    document.addEventListener('theme:changed', () => this.renderFooterTheme());
     await setupUserMenu();
 
     // Watch for card-data updates. Only for signed-in users: they are the
@@ -95,6 +99,13 @@ class App {
     window.addEventListener('trades:changed', refreshTradeBadge);
 
     this.showPage('decks');
+  }
+
+  renderFooterTheme() {
+    const el = document.getElementById('app-footer-theme');
+    if (!el) return;
+    const theme = getTheme(currentTheme());
+    el.textContent = theme ? `Theme: ${theme.name}` : '';
   }
 
   hideAllPages() {

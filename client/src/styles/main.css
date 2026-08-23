@@ -6472,3 +6472,122 @@ body.maintenance-locked #app {
   .avatar,
   .nav-link { corner-shape: round; }
 }
+
+/* ---- Structural chrome ------------------------------------------------------
+   The banner, the gutter rails and the footer. Each is driven by an art slot
+   custom property that the theme loader points at the current theme's files,
+   and each is gated on a has-art-<slot> class the loader stamps on <html>.
+
+   The class gate matters: CSS cannot ask whether a custom property is set, and
+   a band that reserves its height regardless would leave an empty stripe on
+   every theme that ships no art.
+   --------------------------------------------------------------------------- */
+
+/* Gutter rails. Fixed, decorative, and only worth showing once the viewport is
+   wide enough that the 1400px content column leaves real room beside it. */
+.art-rail {
+  display: none;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: calc((100vw - var(--page-max)) / 2);
+  max-width: 400px;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: repeat-y;
+  background-size: 400px auto;
+  opacity: 0.85;
+}
+.art-rail-left { left: 0; background-image: var(--art-rail-left); background-position: left top; }
+.art-rail-right { right: 0; background-image: var(--art-rail-right); background-position: right top; }
+
+@media (min-width: 1600px) {
+  .has-art-rail-left .art-rail-left,
+  .has-art-rail-right .art-rail-right { display: block; }
+}
+
+/* Content sits above the rails. Without this the fixed rails would paint over
+   the page rather than beside it. */
+#app { position: relative; z-index: 1; }
+
+/* Banner. The band is the page header itself, pulled out to the full width of
+   the content column by cancelling .page's padding. */
+.page-header { position: relative; }
+
+.has-art-banner .page-header {
+  margin: -2rem -2rem 2rem;
+  padding: 2rem;
+  min-height: 150px;
+  align-items: flex-end;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background-image: var(--art-banner);
+  background-size: cover;
+  background-position: center;
+}
+
+/* Scrim. Titles have to stay legible over whatever art a future theme ships,
+   so the band darkens toward the bottom where the text sits. */
+.has-art-banner .page-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--bg-rgb) / 0.25),
+    rgb(var(--bg-rgb) / 0.88)
+  );
+}
+.has-art-banner .page-header > * { position: relative; z-index: 1; }
+
+/* Footer */
+.app-footer {
+  position: relative;
+  margin-top: var(--space-8);
+  border-top: 1px solid var(--border);
+  background-color: var(--bg-secondary);
+}
+.has-art-footer .app-footer {
+  background-image: var(--art-footer);
+  background-size: cover;
+  background-position: center bottom;
+}
+.has-art-footer .app-footer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, rgb(var(--bg-rgb) / 0.45), rgb(var(--bg-rgb) / 0.9));
+}
+.app-footer-inner {
+  position: relative;
+  z-index: 1;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.app-footer-brand { font-weight: 600; letter-spacing: 0.03em; }
+.app-footer-meta { display: flex; align-items: center; gap: var(--space-4); }
+
+/* Active nav gets the highlight role, which is the one thing the stock palette
+   never had a colour for — on a theme that defines one, the current page reads
+   at a glance instead of blending into the brand colour. */
+.nav-link.active {
+  box-shadow: inset 0 -2px 0 var(--highlight);
+}
+
+@media (max-width: 700px) {
+  .has-art-banner .page-header {
+    margin: -1rem -1rem 1.5rem;
+    padding: 1.25rem;
+    min-height: 110px;
+  }
+  .app-footer-inner { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+}

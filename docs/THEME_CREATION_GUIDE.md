@@ -2,12 +2,12 @@
 
 How to produce a new theme — artwork and palette — from a one-line idea.
 
-> **Status.** The theme pack format, the loader and the contrast gate are built —
-> steps 4, 5 and 7 below are real today, and `npm run check:themes` runs. The art
-> pipeline (`theme-forge.js`, `/tools/theme-forge.html`) is Phase 4 and does **not**
-> exist yet, so steps 2, 3 and 6 describe tooling still to come. The *method* is
-> valid regardless; the tooling only automates it. See
-> [`UI_OVERHAUL_PLAN.md`](UI_OVERHAUL_PLAN.md) for what has shipped.
+> **Status: every step below works today.** The pack format, the loader, the
+> chrome that consumes the art, the prompt generator and the palette extractor
+> are all built.
+>
+> The one thing still outstanding: Arcane ships **SVG placeholder art**, not
+> generated art. Running this guide against it is exactly how that gets fixed.
 
 A finished theme is a folder:
 
@@ -61,7 +61,7 @@ Pick a name and a slug at the same time — `stormreach`, `duskmantle`, `emberfa
 ## Step 2 — Generate the prompt
 
 ```bash
-node scripts/theme-forge.js prompt <slug> --slot banner
+npm run theme:prompt -- <slug> --mood "..." --slot banner
 ```
 
 It reads `client/src/themes/slots.js` (the single source of truth for every slot's
@@ -196,7 +196,7 @@ comment; it records which artwork the palette came from, which matters a year la
 ## Step 6 — Generate the remaining art
 
 ```bash
-node scripts/theme-forge.js prompt <slug> --with-palette
+npm run theme:prompt -- <slug> --mood "..." --with-palette
 ```
 
 Now that the palette is fixed, the prompts for the rails and footer include the actual
