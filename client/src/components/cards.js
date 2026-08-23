@@ -722,9 +722,9 @@ export async function showCardDetail(cardId) {
                 border-radius: 4px;
                 font-weight: 600;
                 font-size: 0.875rem;
-                ${firstPrinting.rarity.toLowerCase() === 'mythic' ? 'background: linear-gradient(135deg, var(--rarity-mythic), var(--danger-dark)); color: white;' : ''}
-                ${firstPrinting.rarity.toLowerCase() === 'rare' ? 'background: linear-gradient(135deg, var(--rarity-rare), var(--rarity-rare-grad-b)); color: white;' : ''}
-                ${firstPrinting.rarity.toLowerCase() === 'uncommon' ? 'background: linear-gradient(135deg, var(--rarity-uncommon), var(--rarity-uncommon-grad-b)); color: white;' : ''}
+                ${firstPrinting.rarity.toLowerCase() === 'mythic' ? 'background: linear-gradient(135deg, var(--rarity-mythic-grad-a), var(--rarity-mythic-grad-b)); color: var(--on-accent);' : ''}
+                ${firstPrinting.rarity.toLowerCase() === 'rare' ? 'background: linear-gradient(135deg, var(--rarity-rare-grad-a), var(--rarity-rare-grad-b)); color: var(--on-accent);' : ''}
+                ${firstPrinting.rarity.toLowerCase() === 'uncommon' ? 'background: linear-gradient(135deg, var(--rarity-uncommon-grad-a), var(--rarity-uncommon-grad-b)); color: var(--on-rarity-uncommon);' : ''}
                 ${firstPrinting.rarity.toLowerCase() === 'common' ? 'background: var(--bg-tertiary); color: var(--text-secondary);' : ''}
               ">${firstPrinting.rarity}</span>
             </div>

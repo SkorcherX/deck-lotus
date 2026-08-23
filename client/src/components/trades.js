@@ -129,8 +129,8 @@ const STATUS_STYLE = {
   awaiting_counter: { label: 'Shopping list sent', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' },
   pending: { label: 'Awaiting reply', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' },
   accepted: { label: 'Done', background: 'var(--success-bright)', color: 'var(--on-accent)' },
-  declined: { label: 'Declined', background: 'var(--rarity-uncommon)', color: 'var(--on-accent)' },
-  cancelled: { label: 'Cancelled', background: 'var(--rarity-uncommon)', color: 'var(--on-accent)' },
+  declined: { label: 'Declined', background: 'var(--secondary)', color: 'var(--on-accent)' },
+  cancelled: { label: 'Cancelled', background: 'var(--secondary)', color: 'var(--on-accent)' },
 };
 
 function statusBadge(status) {

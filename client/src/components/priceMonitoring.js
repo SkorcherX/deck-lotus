@@ -14,8 +14,8 @@ function formatDate(iso) {
 }
 
 function statusBadge(watch) {
-  if (!watch.is_active) return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--rarity-uncommon);color:var(--on-accent);">Inactive</span>';
-  if (watch.expires_at && new Date(watch.expires_at) < new Date()) return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--rarity-uncommon);color:var(--on-accent);">Expired</span>';
+  if (!watch.is_active) return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--secondary);color:var(--on-accent);">Inactive</span>';
+  if (watch.expires_at && new Date(watch.expires_at) < new Date()) return '<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;background:var(--secondary);color:var(--on-accent);">Expired</span>';
   const price = watch.latest_price ?? watch.last_price;
   if (watch.max_price != null) {
     if (price != null && price <= watch.max_price) {

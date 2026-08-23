@@ -15,7 +15,15 @@ function parse(file) {
 const base = parse('client/src/styles/main.css');
 const LOCKED = {
   '--rarity-rare': base['--rarity-rare'], '--rarity-mythic': base['--rarity-mythic'],
-  '--rarity-uncommon': base['--rarity-uncommon'], '--success': base['--success'],
+  '--rarity-uncommon': base['--rarity-uncommon'], '--rarity-common': base['--rarity-common'],
+  '--rarity-rare-fill': base['--rarity-rare-fill'], '--rarity-mythic-fill': base['--rarity-mythic-fill'],
+  '--rarity-uncommon-fill': base['--rarity-uncommon-fill'], '--rarity-common-fill': base['--rarity-common-fill'],
+  '--on-rarity-rare': base['--on-rarity-rare'], '--on-rarity-uncommon': base['--on-rarity-uncommon'],
+  '--on-rarity-mythic': base['--on-rarity-mythic'],
+  '--rarity-rare-grad-a': base['--rarity-rare-grad-a'], '--rarity-rare-grad-b': base['--rarity-rare-grad-b'],
+  '--rarity-mythic-grad-a': base['--rarity-mythic-grad-a'], '--rarity-mythic-grad-b': base['--rarity-mythic-grad-b'],
+  '--rarity-uncommon-grad-b': base['--rarity-uncommon-grad-b'],
+  '--on-accent': base['--on-accent'], '--success': base['--success'],
   '--danger': base['--danger'], '--warning': base['--warning'],
   '--status-ok': base['--status-ok'], '--status-warn': base['--status-warn'],
   '--status-unknown': base['--status-unknown'],
@@ -24,7 +32,7 @@ const LOCKED = {
 // Colours that already fail on the stock palette. A new theme must not make
 // them worse, but it is not required to fix them — that is a deliberate
 // product decision about locked recognition cues, not a theming bug.
-const KNOWN = new Set(['uncommon on card', 'mythic on card', 'highlight on card']);
+const KNOWN = new Set(['highlight on card']);
 
 /* Every pack on disk, not a hardcoded list — a theme that is not checked is
    the whole failure this script exists to prevent. `classic` goes first
@@ -79,9 +87,24 @@ for (const slug of slugs) {
     ['white on danger button',       t['--on-accent'], t['--danger-btn'], 4.5],
     ['dark on warning button',       t['--on-warning'], t['--warning-btn'], 4.5],
     ['text on secondary button',     t['--text'], t['--surface-btn'], 4.5],
-    ['rare on card',                 t['--rarity-rare'], t['--bg-secondary'], 4.5],
-    ['mythic on card',               t['--rarity-mythic'], t['--bg-secondary'], 4.5],
-    ['uncommon on card',             t['--rarity-uncommon'], t['--bg-secondary'], 4.5],
+    // Rarity colours are BADGE BACKGROUNDS carrying a label, not foreground
+    // text. Checking them as text was measuring a direction the app never
+    // uses, and reported a failure that did not exist.
+    ['label on rare badge',          t['--on-rarity-rare'], t['--rarity-rare-fill'], 4.5],
+    ['label on mythic badge',        t['--on-rarity-mythic'], t['--rarity-mythic-fill'], 4.5],
+    ['label on uncommon badge',      t['--on-rarity-uncommon'], t['--rarity-uncommon-fill'], 4.5],
+    ['label on common badge',        t['--on-accent'], t['--rarity-common-fill'], 4.5],
+    ['common vs uncommon apart',     t['--rarity-common-fill'], t['--rarity-uncommon-fill'], 3.0],
+    // The card-detail pill is a gradient, so its label must clear BOTH stops.
+    ['pill label, rare light stop',  t['--on-accent'], t['--rarity-rare-grad-a'], 4.5],
+    ['pill label, rare dark stop',   t['--on-accent'], t['--rarity-rare-grad-b'], 4.5],
+    ['pill label, mythic light stop', t['--on-accent'], t['--rarity-mythic-grad-a'], 4.5],
+    ['pill label, mythic dark stop', t['--on-accent'], t['--rarity-mythic-grad-b'], 4.5],
+    ['pill label, uncommon dark stop', t['--on-rarity-uncommon'], t['--rarity-uncommon-grad-b'], 4.5],
+    // The rarity filter chips use the flat identity colour, not the fill.
+    ['chip label, rare',             t['--on-rarity-rare'], t['--rarity-rare'], 4.5],
+    ['chip label, mythic',           t['--on-rarity-mythic'], t['--rarity-mythic'], 4.5],
+    ['chip label, uncommon',         t['--on-rarity-uncommon'], t['--rarity-uncommon'], 4.5],
     ['legality ok on card',          t['--status-ok'], t['--bg-secondary'], 4.5],
     ['legality warn on card',        t['--status-warn'], t['--bg-secondary'], 4.5],
     ['legality unknown on card',     t['--status-unknown'], t['--bg-secondary'], 4.5],

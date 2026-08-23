@@ -120,17 +120,25 @@
   --on-accent: #ffffff;
   --on-warning: #1f1300;
   --on-rarity-rare: #000000;
+  --on-rarity-uncommon: #16161a;
+  --on-rarity-mythic: #16161a;
 
   /* Rarity (MTG) — locked across themes; these are recognition cues players
      read without labels. Two forms on purpose: the plain token is the dot and
      text colour against a dark surface, the -fill variant is the filled badge,
      which needs a brighter value to carry dark text. They are not a drift. */
-  --rarity-common: #71717a;
-  --rarity-uncommon: #71717a;
+  /* Common is a dark neutral and uncommon is silver, as on the cards
+     themselves. They used to be the same value, which made the two badges
+     indistinguishable — the one thing a rarity colour has to do.
+
+     Silver is light, so uncommon carries dark text rather than white. Rare
+     already works this way with gold; --on-rarity-* says which. */
+  --rarity-common: #52525b;
+  --rarity-uncommon: #c3c8d0;
   --rarity-rare: #ca8a04;
   --rarity-mythic: #ea580c;
-  --rarity-common-fill: #64748b;
-  --rarity-uncommon-fill: #64748b;
+  --rarity-common-fill: #52525b;
+  --rarity-uncommon-fill: #c3c8d0;
   --rarity-rare-fill: #eab308;
   --rarity-mythic-fill: #f97316;
 
@@ -168,10 +176,18 @@
   --success-bright-rgb: 22 163 74;
   --success-dark-rgb: 5 150 105;
 
-  /* Second stop of the rarity badge gradients. Locked with the rest of rarity. */
-  --rarity-uncommon-grad-b: #52525b;
-  --rarity-rare-grad-b: #a16207;
-  --rarity-mythic-grad-b: #dc2626;
+  /* The card-detail rarity pill is a gradient, so its label has to clear BOTH
+     stops — which the badge fills above do not, being tuned as flat colours.
+     Rare and mythic therefore get their own deeper pair here rather than
+     reusing the fill as the first stop; white was failing on the light end of
+     both (2.94:1 and 3.56:1). Uncommon is silver and carries dark text, so it
+     reuses its fill directly. Locked with the rest of rarity. */
+  --rarity-uncommon-grad-a: var(--rarity-uncommon-fill);
+  --rarity-uncommon-grad-b: #8a9099;
+  --rarity-rare-grad-a: #a16207;
+  --rarity-rare-grad-b: #7c4a05;
+  --rarity-mythic-grad-a: #c2410c;
+  --rarity-mythic-grad-b: #b91c1c;
 
   /* Format-legality indicators. */
   --status-ok: #4ade80;
@@ -1827,9 +1843,9 @@ button.btn-icon.active {
   transition: transform var(--transition), box-shadow var(--transition), opacity var(--transition);
 }
 .rarity-checkbox-box.rarity-c { background: var(--bg-hover); color: var(--text-secondary); }
-.rarity-checkbox-box.rarity-u { background: var(--rarity-uncommon); }
-.rarity-checkbox-box.rarity-r { background: var(--rarity-rare); }
-.rarity-checkbox-box.rarity-m { background: var(--rarity-mythic); }
+.rarity-checkbox-box.rarity-u { background: var(--rarity-uncommon); color: var(--on-rarity-uncommon); }
+.rarity-checkbox-box.rarity-r { background: var(--rarity-rare); color: var(--on-rarity-rare); }
+.rarity-checkbox-box.rarity-m { background: var(--rarity-mythic); color: var(--on-rarity-mythic); }
 
 /* Toolbar / button-row utilities (replace recurring inline flex rows) */
 .toolbar {
@@ -3574,13 +3590,13 @@ button.btn-icon.active {
 }
 
 .rarity-common {
-  background: var(--secondary);
-  color: white;
+  background: var(--rarity-common-fill);
+  color: var(--on-accent);
 }
 
 .rarity-uncommon {
   background: var(--rarity-uncommon-fill);
-  color: var(--on-accent);
+  color: var(--on-rarity-uncommon);
 }
 
 .rarity-rare {
@@ -3590,7 +3606,7 @@ button.btn-icon.active {
 
 .rarity-mythic {
   background: var(--rarity-mythic-fill);
-  color: var(--on-accent);
+  color: var(--on-rarity-mythic);
 }
 
 .collector-number {
