@@ -182,7 +182,8 @@ New markup in `client/index.html` and new CSS sections in `main.css`.
 
 - **Page shell**: wrap content in a shell grid — `[rail | page-max 1400px | rail]`.
   Rails carry `--art-rail-left/right`, are `position: fixed`, `pointer-events: none`,
-  masked to fade toward the content edge, and **collapse below ~1600px** so nothing
+  scaled to fill the gutter so the fade always lands on the content edge, and
+  **collapse below 1700px** so nothing
   changes on laptops or mobile.
 - **Banner strip**: a themed band behind the existing `.page-header` (~2400×300 art),
   with a token-driven scrim so title text stays legible against any theme's artwork.
@@ -336,7 +337,7 @@ animations — extend them rather than adding a third.
 
 - `npm run client:build` — must succeed; check the emitted CSS for leaked hex literals.
 - Dev server via the preview tools (`npm run client:dev`, port 5173): walk all 16 pages
-  in each built-in theme; confirm rails collapse at <1600px and mobile is unchanged.
+  in each built-in theme; confirm rails collapse at <1700px and mobile is unchanged.
 - Chart-heavy pages (`deck-builder`, `cards`, `price-monitoring`) are the tokenization
   canary — if a chart renders grey or wrong, `theme.js` was bypassed somewhere.
 - Toggle OS reduced-motion and re-check every celebration and modal.

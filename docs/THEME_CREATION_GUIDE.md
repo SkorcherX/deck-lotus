@@ -239,8 +239,16 @@ Slot-specific notes:
   missing (one image serves every empty screen), while `celebration` is a
   flourish. The generator writes both of those constraints into the prompts.
 
-> Rails only render above roughly 1600px of viewport width. On a laptop you will not
-> see them. Check the theme on a wide monitor before calling it done.
+> Rails only render above 1700px of viewport width, and they SCALE to whatever
+> gutter is left beside the 1400px content column — so the art is rarely shown at
+> its native 400px. Two consequences when generating it: the inner-edge fade must
+> be gradual enough to survive being squeezed to ~150px, and fine detail near that
+> edge will be lost.
+>
+> Display scaling matters more than resolution here. A 2560px monitor at 125% is
+> 2048 CSS pixels, and at 150% only 1707 — so a wide screen can leave a far
+> narrower gutter than its spec sheet suggests. Check at the scaling you actually
+> use.
 
 ---
 
@@ -276,4 +284,4 @@ Selecting a theme is `applyTheme(slug)` from `utils/theme.js`; the choice is mir
 - [ ] Walked the app in the new theme, including a chart-heavy page
   (`deck-builder`, `cards`, `price-monitoring`) — a grey or wrong-coloured chart means
   a hardcoded hex escaped tokenization
-- [ ] Checked above 1600px wide so the rails actually render
+- [ ] Checked above 1700px wide so the rails actually render, at your real display scaling

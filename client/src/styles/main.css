@@ -6484,24 +6484,34 @@ body.maintenance-locked #app {
    --------------------------------------------------------------------------- */
 
 /* Gutter rails. Fixed, decorative, and only worth showing once the viewport is
-   wide enough that the 1400px content column leaves real room beside it. */
+   wide enough that the 1400px content column leaves real room beside it.
+
+   The rail fills the whole gutter and the art scales to it, rather than being
+   pinned at its native 400px. Pinning broke at both ends: below ~2200px the
+   gutter is narrower than the art, so the inner edge — which is where the fade
+   lives — was cropped off and the art ended in a hard vertical line; above
+   ~2200px the gutter is wider, leaving a bare strip between the art and the
+   content. Scaling costs some magnification on very wide screens, which is far
+   less noticeable than either a cut-off fade or a seam. */
 .art-rail {
   display: none;
   position: fixed;
   top: 0;
   bottom: 0;
   width: calc((100vw - var(--page-max)) / 2);
-  max-width: 400px;
   z-index: 0;
   pointer-events: none;
   background-repeat: repeat-y;
-  background-size: 400px auto;
+  background-size: 100% auto;
   opacity: 0.85;
 }
-.art-rail-left { left: 0; background-image: var(--art-rail-left); background-position: left top; }
-.art-rail-right { right: 0; background-image: var(--art-rail-right); background-position: right top; }
+.art-rail-left { left: 0; background-image: var(--art-rail-left); background-position: right top; }
+.art-rail-right { right: 0; background-image: var(--art-rail-right); background-position: left top; }
 
-@media (min-width: 1600px) {
+/* 1700px leaves a 150px gutter each side. Below that the art is squeezed past
+   a third of its natural width and reads as a smear rather than a tapestry, so
+   it is better not shown at all. */
+@media (min-width: 1700px) {
   .has-art-rail-left .art-rail-left,
   .has-art-rail-right .art-rail-right { display: block; }
 }
