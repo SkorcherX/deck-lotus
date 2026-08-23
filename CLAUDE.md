@@ -117,5 +117,35 @@ taken on GitHub — only do it when explicitly asked.
   `authenticate` reads the database) and why maintenance state lives in memory.
   A signed-in user whose collection appears to empty out with no explanation
   reads it as data loss; that is the whole reason the notice exists.
+- The audit log (`audit_log`, `src/services/auditService.js`) deliberately
+  **denormalises** the card it is talking about — name, set code, collector
+  number — and holds `printing_id` as a plain integer with no foreign key.
+  `scripts/import-mtgjson.js` clears `printings` every sync, so a real FK
+  would either cascade the history away or block the import. `printing_uuid`
+  is the identifier that survives a reimport; re-join on that, never on
+  `printing_id`. The table is not backed up/restored by the import script
+  because nothing in it references a row the import touches.
+- Audit writes must never throw. `recordAudit` swallows its own errors on
+  purpose: a collection edit that succeeded must not be reported as failed
+  because the history could not be written. Keep new writers going through it.
+- `setOwnedPrintingQuantity` is the choke point every collection change goes
+  through — quick-add, the card page, and both sides of an accepted trade. Its
+  fifth argument is the audit context (`source`, and `tradeId`/`actorUserId`
+  where relevant). A new caller that omits it still logs, but as `api`, which
+  makes the entry much harder to trace back. Bulk paths (`bulkAddToInventory`,
+  `importDeck`, `importSharedDeck`, `applyPrintingOptimization`) additionally
+  stamp a `batchId` into `detail` so one import can be pulled back out as a
+  unit — that is what makes a mis-entered bulk add correctable.
+- A user's audit scope is resolved server-side in `src/routes/audit.js`
+  (`resolveScope`), never taken from the query. Rows are scoped by
+  `audit_log.user_id` — whose collection moved — while `actor_user_id` records
+  who caused it. That split is what stops a trade's audit rows from leaking the
+  partner's deck names, the same concern the partner-browse rules exist for.
+- Deck records are a log (`deck_games`), not a pair of counters. Totals are
+  always derived — `getDeckRecord`/`getDeckRecords` in
+  `src/services/deckGameService.js`. Do not cache a win/loss count onto
+  `decks`: a stored total and the log can disagree, and then neither can be
+  trusted. `deck_games` hangs off `decks`, which the MTGJSON import never
+  clears, so it is safe from the weekly rebuild.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.

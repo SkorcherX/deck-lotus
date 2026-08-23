@@ -35,6 +35,23 @@ const ROLE_LABELS = {
 
 const el = (id) => document.getElementById(id);
 
+/**
+ * The toggle's label says what pressing it will do, not what is on screen.
+ *
+ * It used to read "From Inventory" in both states, so once the panel was open
+ * there was nothing to suggest the same button closed it again — people went
+ * looking for a way back to the deck and did not find one. Every place that
+ * opens or closes the panel goes through here, so the two cannot drift apart.
+ */
+function setTogglePresentation(open) {
+  const toggle = el('inventory-panel-toggle');
+  if (!toggle) return;
+
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.textContent = open ? '← Back to Deck' : 'From Inventory';
+  toggle.classList.toggle('is-open', open);
+}
+
 export function setupInventoryPanel(context) {
   ctx = context;
 
@@ -46,7 +63,7 @@ export function setupInventoryPanel(context) {
     toggle.addEventListener('click', () => {
       const opening = panel.classList.contains('hidden');
       panel.classList.toggle('hidden', !opening);
-      toggle.setAttribute('aria-expanded', String(opening));
+      setTogglePresentation(opening);
       if (opening) {
         page = 1;
         loadFeed();
@@ -57,7 +74,7 @@ export function setupInventoryPanel(context) {
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
       panel.classList.add('hidden');
-      if (toggle) toggle.setAttribute('aria-expanded', 'false');
+      setTogglePresentation(false);
     });
   }
 
@@ -155,8 +172,7 @@ export function resetInventoryPanel() {
   const panel = el('inventory-panel');
   if (panel) panel.classList.add('hidden');
 
-  const toggle = el('inventory-panel-toggle');
-  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+  setTogglePresentation(false);
 
   renderUndo();
 }
@@ -183,9 +199,8 @@ export function openInventoryPanelWith({ type = 'all', colors = [], maxCmc = nul
   syncFilterControls();
 
   const panel = el('inventory-panel');
-  const toggle = el('inventory-panel-toggle');
   if (panel) panel.classList.remove('hidden');
-  if (toggle) toggle.setAttribute('aria-expanded', 'true');
+  setTogglePresentation(true);
 
   loadFeed();
   panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });

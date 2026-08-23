@@ -1,6 +1,8 @@
 import db from '../db/connection.js';
 import crypto from 'crypto';
 import { getDisruptionCounts, getDisruptions } from './tradeService.js';
+import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
+import { getDeckRecords, getDeckRecord } from './deckGameService.js';
 
 /**
  * Get all decks for a user
@@ -22,6 +24,10 @@ export function getUserDecks(userId) {
   // than one per deck.
   const disruptions = getDisruptionCounts(userId);
 
+  // Match records for every deck in one query, so the list page does not fan
+  // out into one lookup per card shown.
+  const records = getDeckRecords(userId);
+
   // Get a random card image for each deck (prefer creatures)
   return decks.map(deck => {
     const randomCard = db.get(
@@ -40,7 +46,10 @@ export function getUserDecks(userId) {
     return {
       ...deck,
       preview_image: randomCard?.image_url || null,
-      traded_away_count: disruptions.get(deck.id)?.cards || 0
+      traded_away_count: disruptions.get(deck.id)?.cards || 0,
+      record: records.get(deck.id) || {
+        wins: 0, losses: 0, draws: 0, played: 0, winRate: null
+      }
     };
   });
 }
@@ -110,17 +119,27 @@ export function getDeckById(deckId, userId) {
     // them. The deck is returned exactly as it stands — nothing is filtered
     // out — because the owner has not yet said whether it should shrink.
     disruptions: getDisruptions(userId, deckId),
+    record: getDeckRecord(deckId, userId),
   };
 }
 
 /**
  * Create a new deck
  */
-export function createDeck(userId, name, format, description) {
+export function createDeck(userId, name, format, description, context = {}) {
   const result = db.run(
     `INSERT INTO decks (user_id, name, format, description) VALUES (?, ?, ?, ?)`,
     [userId, name, format || null, description || null]
   );
+
+  recordDeckEvent({
+    userId,
+    action: AUDIT_ACTIONS.DECK_CREATE,
+    source: context.source || 'deck_builder',
+    deckId: result.lastInsertRowid,
+    deckName: name,
+    detail: { format: format || null },
+  });
 
   return {
     id: result.lastInsertRowid,
@@ -137,9 +156,11 @@ export function createDeck(userId, name, format, description) {
 export function updateDeck(deckId, userId, updates) {
   const { name, format, description } = updates;
 
-  // Check if deck belongs to user
+  // Check if deck belongs to user. The current values come along so the audit
+  // row can say what a rename was *from* — "deck renamed" on its own does not
+  // help anybody find the deck they are looking for.
   const deck = db.get(
-    `SELECT id FROM decks WHERE id = ? AND user_id = ?`,
+    `SELECT id, name, format, description FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
 
@@ -177,6 +198,21 @@ export function updateDeck(deckId, userId, updates) {
     params
   );
 
+  recordDeckEvent({
+    userId,
+    action: AUDIT_ACTIONS.DECK_UPDATE,
+    deckId,
+    deckName: name !== undefined ? name : deck.name,
+    detail: {
+      from: { name: deck.name, format: deck.format, description: deck.description },
+      to: {
+        name: name !== undefined ? name : deck.name,
+        format: format !== undefined ? format : deck.format,
+        description: description !== undefined ? description : deck.description,
+      },
+    },
+  });
+
   return getDeckById(deckId, userId);
 }
 
@@ -184,10 +220,34 @@ export function updateDeck(deckId, userId, updates) {
  * Delete deck
  */
 export function deleteDeck(deckId, userId) {
+  // Read the name before the row goes: a delete that logs only an id is a
+  // dead end once the deck it pointed at no longer exists.
+  const deck = db.get(
+    `SELECT name, format FROM decks WHERE id = ? AND user_id = ?`,
+    [deckId, userId]
+  );
+
+  const cardCount = deck
+    ? db.get(
+      `SELECT COALESCE(SUM(quantity), 0) as count FROM deck_cards WHERE deck_id = ?`,
+      [deckId]
+    ).count
+    : 0;
+
   const result = db.run(
     `DELETE FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
+
+  if (result.changes > 0) {
+    recordDeckEvent({
+      userId,
+      action: AUDIT_ACTIONS.DECK_DELETE,
+      deckId,
+      deckName: deck?.name || null,
+      detail: { format: deck?.format || null, cardCount },
+    });
+  }
 
   return result.changes > 0;
 }
@@ -198,7 +258,7 @@ export function deleteDeck(deckId, userId) {
 export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSideboard = false, isCommander = false, boardType = null, isFoil = false) {
   // Verify deck ownership
   const deck = db.get(
-    `SELECT id FROM decks WHERE id = ? AND user_id = ?`,
+    `SELECT id, name FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
 
@@ -238,6 +298,18 @@ export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSidebo
   // Update deck timestamp
   db.run(`UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [deckId]);
 
+  recordDeckEvent({
+    userId,
+    action: AUDIT_ACTIONS.DECK_CARD_ADD,
+    deckId,
+    deckName: deck.name,
+    printingId,
+    isFoil,
+    quantityBefore: existing?.quantity || 0,
+    quantityAfter: (existing?.quantity || 0) + quantity,
+    detail: { boardType: finalBoardType, isCommander: !!isCommander },
+  });
+
   return getDeckById(deckId, userId);
 }
 
@@ -247,7 +319,7 @@ export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSidebo
 export function updateDeckCard(deckId, userId, deckCardId, updates) {
   // Verify deck ownership
   const deck = db.get(
-    `SELECT id FROM decks WHERE id = ? AND user_id = ?`,
+    `SELECT id, name FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
 
@@ -256,6 +328,14 @@ export function updateDeckCard(deckId, userId, deckCardId, updates) {
   }
 
   const { quantity, isSideboard, isCommander, printingId, boardType, isFoil } = updates;
+
+  // Read before the write. Swapping a card's printing is one of the ways a
+  // collection quietly ends up holding the wrong version, and the audit row
+  // is only useful if it says which printing was swapped out.
+  const before = db.get(
+    `SELECT quantity, printing_id, is_foil, board_type FROM deck_cards WHERE id = ? AND deck_id = ?`,
+    [deckCardId, deckId]
+  );
 
   const fields = [];
   const params = [];
@@ -309,6 +389,27 @@ export function updateDeckCard(deckId, userId, deckCardId, updates) {
   // Update deck timestamp
   db.run(`UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [deckId]);
 
+  recordDeckEvent({
+    userId,
+    action: AUDIT_ACTIONS.DECK_CARD_UPDATE,
+    deckId,
+    deckName: deck.name,
+    // Logged against the printing the row held going in, so a printing swap
+    // reads as "this one was replaced" rather than appearing under the new
+    // card as if it had always been there.
+    printingId: before?.printing_id ?? printingId ?? null,
+    isFoil: before ? before.is_foil === 1 : (isFoil ?? null),
+    quantityBefore: before?.quantity ?? null,
+    quantityAfter: quantity !== undefined ? quantity : (before?.quantity ?? null),
+    detail: {
+      changed: Object.keys(updates).filter((key) => updates[key] !== undefined),
+      printingFrom: before?.printing_id ?? null,
+      printingTo: printingId !== undefined ? printingId : (before?.printing_id ?? null),
+      boardFrom: before?.board_type ?? null,
+      boardTo: boardType !== undefined ? boardType : (before?.board_type ?? null),
+    },
+  });
+
   return getDeckById(deckId, userId);
 }
 
@@ -318,13 +419,19 @@ export function updateDeckCard(deckId, userId, deckCardId, updates) {
 export function removeCardFromDeck(deckId, userId, deckCardId) {
   // Verify deck ownership
   const deck = db.get(
-    `SELECT id FROM decks WHERE id = ? AND user_id = ?`,
+    `SELECT id, name FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
 
   if (!deck) {
     throw new Error('Deck not found or access denied');
   }
+
+  // Captured before the delete — afterwards there is nothing left to name.
+  const removed = db.get(
+    `SELECT quantity, printing_id, is_foil, board_type FROM deck_cards WHERE id = ? AND deck_id = ?`,
+    [deckCardId, deckId]
+  );
 
   db.run(
     `DELETE FROM deck_cards WHERE id = ? AND deck_id = ?`,
@@ -333,6 +440,20 @@ export function removeCardFromDeck(deckId, userId, deckCardId) {
 
   // Update deck timestamp
   db.run(`UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [deckId]);
+
+  if (removed) {
+    recordDeckEvent({
+      userId,
+      action: AUDIT_ACTIONS.DECK_CARD_REMOVE,
+      deckId,
+      deckName: deck.name,
+      printingId: removed.printing_id,
+      isFoil: removed.is_foil === 1,
+      quantityBefore: removed.quantity,
+      quantityAfter: 0,
+      detail: { boardType: removed.board_type },
+    });
+  }
 
   return getDeckById(deckId, userId);
 }
@@ -347,13 +468,24 @@ export function removeCardFromDeck(deckId, userId, deckCardId) {
 export function removeCardFromDeckByCardId(deckId, userId, cardId) {
   // Verify deck ownership
   const deck = db.get(
-    `SELECT id FROM decks WHERE id = ? AND user_id = ?`,
+    `SELECT id, name FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
 
   if (!deck) {
     throw new Error('Deck not found or access denied');
   }
+
+  // This removes every row for the card across printings, finishes and
+  // boards, so it gets one audit row per row removed rather than a single
+  // "card removed" that hides how many copies actually went.
+  const removed = db.all(
+    `SELECT quantity, printing_id, is_foil, board_type FROM deck_cards
+      WHERE deck_id = ? AND printing_id IN (
+        SELECT id FROM printings WHERE card_id = ?
+      )`,
+    [deckId, cardId]
+  );
 
   db.run(
     `DELETE FROM deck_cards WHERE deck_id = ? AND printing_id IN (
@@ -364,6 +496,20 @@ export function removeCardFromDeckByCardId(deckId, userId, cardId) {
 
   // Update deck timestamp
   db.run(`UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [deckId]);
+
+  for (const row of removed) {
+    recordDeckEvent({
+      userId,
+      action: AUDIT_ACTIONS.DECK_CARD_REMOVE,
+      deckId,
+      deckName: deck.name,
+      printingId: row.printing_id,
+      isFoil: row.is_foil === 1,
+      quantityBefore: row.quantity,
+      quantityAfter: 0,
+      detail: { boardType: row.board_type, via: 'remove_by_card' },
+    });
+  }
 
   return getDeckById(deckId, userId);
 }
@@ -453,7 +599,7 @@ export function getDeckStats(deckId, userId) {
 export function createDeckShare(deckId, userId) {
   // Verify deck ownership
   const deck = db.get(
-    `SELECT id FROM decks WHERE id = ? AND user_id = ?`,
+    `SELECT id, name FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
 
@@ -594,8 +740,14 @@ export function importSharedDeck(shareToken, userId) {
     userId,
     `${sharedDeck.name} (imported)`,
     sharedDeck.format,
-    sharedDeck.description
+    sharedDeck.description,
+    { source: 'deck_import' }
   );
+
+  // A shared import is another bulk write — a deck's worth of specific
+  // printings arriving at once, chosen by somebody else — so it is logged
+  // per card like the other import paths.
+  const batchId = `share-import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   // Copy all cards to the new deck
   for (const card of sharedDeck.cards) {
@@ -604,6 +756,22 @@ export function importSharedDeck(shareToken, userId) {
        VALUES (?, ?, ?, ?, ?)`,
       [newDeck.id, card.printing_id, card.quantity, card.is_sideboard, card.is_commander]
     );
+
+    recordDeckEvent({
+      userId,
+      action: AUDIT_ACTIONS.DECK_CARD_ADD,
+      source: 'deck_import',
+      deckId: newDeck.id,
+      deckName: newDeck.name,
+      printingId: card.printing_id,
+      quantityBefore: 0,
+      quantityAfter: card.quantity,
+      detail: {
+        batchId,
+        via: 'shared_deck',
+        boardType: card.is_sideboard ? 'sideboard' : 'mainboard',
+      },
+    });
   }
 
   return getDeckById(newDeck.id, userId);
@@ -615,7 +783,7 @@ export function importSharedDeck(shareToken, userId) {
 export function checkDeckLegality(deckId, userId, format) {
   // Verify deck ownership
   const deck = db.get(
-    `SELECT id FROM decks WHERE id = ? AND user_id = ?`,
+    `SELECT id, name FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
 

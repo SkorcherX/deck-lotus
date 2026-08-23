@@ -1,4 +1,5 @@
 import db from '../db/connection.js';
+import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
 
 /**
  * Parse deck list from various formats
@@ -190,6 +191,20 @@ export function importDeck(userId, deckName, format, cardList) {
 
   const deckId = result.lastInsertRowid;
 
+  // Pasting a decklist is the other bulk entry point where a wrong set code
+  // or collector number turns into the wrong printing without anybody
+  // noticing, so it is logged line by line, the same as an inventory import.
+  const batchId = `deck-import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  recordDeckEvent({
+    userId,
+    action: AUDIT_ACTIONS.DECK_CREATE,
+    source: 'deck_import',
+    deckId,
+    deckName: deckName,
+    detail: { batchId, format: format || null, lines: cardList.length },
+  });
+
   // Add cards to deck
   const insertCard = db.prepare(
     `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander)
@@ -211,6 +226,29 @@ export function importDeck(userId, deckName, format, cardList) {
         cardData.isSideboard ? 1 : 0,
         cardData.isCommander ? 1 : 0
       );
+
+      // What the line said, next to what it resolved to.
+      recordDeckEvent({
+        userId,
+        action: AUDIT_ACTIONS.DECK_CARD_ADD,
+        source: 'deck_import',
+        deckId,
+        deckName,
+        printingId: card.printing_id,
+        quantityBefore: 0,
+        quantityAfter: cardData.quantity,
+        detail: {
+          batchId,
+          boardType: cardData.isSideboard ? 'sideboard' : 'mainboard',
+          entered: {
+            cardName: cardData.name ?? null,
+            setCode: cardData.setCode ?? null,
+            collectorNumber: cardData.collectorNumber ?? null,
+            quantity: cardData.quantity,
+          },
+        },
+      });
+
       imported++;
     } else {
       notFound++;

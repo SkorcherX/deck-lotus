@@ -17,6 +17,10 @@ export function setupDecks() {
 
   // Load decks when page is shown
   window.addEventListener('page:decks', loadDecks);
+
+  // Logging a game from the deck builder changes a record shown on this page,
+  // so the list is re-read rather than kept from the last visit.
+  window.addEventListener('decks:changed', loadDecks);
 }
 
 function showNewDeckModal() {
@@ -123,6 +127,7 @@ function renderDecks() {
         <div class="deck-card-stats">
           <span>Main: ${deck.mainboard_count || 0} cards</span>
           <span>Side: ${deck.sideboard_count || 0} cards</span>
+          ${recordBadge(deck.record)}
         </div>
         <div class="deck-card-actions">
           <button class="btn btn-primary btn-edit" data-deck-id="${deck.id}">Edit</button>
@@ -173,6 +178,22 @@ function renderDecks() {
       openDeckBuilder(deckId);
     });
   });
+}
+
+/**
+ * The deck's win-loss record, shown only once there is one. A deck nobody has
+ * played yet reading "0-0" invites the question of whether the feature is
+ * broken; showing nothing says the same thing without the doubt.
+ */
+function recordBadge(record) {
+  if (!record || !record.played) return '';
+
+  const draws = record.draws ? `-${record.draws}` : '';
+
+  return `<span title="${record.wins} won, ${record.losses} lost` +
+    `${record.draws ? `, ${record.draws} drawn` : ''}">` +
+    `${record.wins}-${record.losses}${draws}` +
+    `${record.winRate === null ? '' : ` (${record.winRate}%)`}</span>`;
 }
 
 function openDeckBuilder(deckId) {

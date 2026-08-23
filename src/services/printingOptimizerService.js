@@ -1,4 +1,5 @@
 import { getDb } from '../db/index.js';
+import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
 
 /**
  * Analyze deck and find optimal printing sets
@@ -227,10 +228,20 @@ export function applyPrintingOptimization(deckId, userId, changes) {
   const db = getDb();
 
   // Verify deck ownership
-  const deck = db.prepare('SELECT id FROM decks WHERE id = ? AND user_id = ?').get(deckId, userId);
+  const deck = db.prepare('SELECT id, name FROM decks WHERE id = ? AND user_id = ?').get(deckId, userId);
   if (!deck) {
     throw new Error('Deck not found');
   }
+
+  // Every card in the deck can change printing in one press here, which makes
+  // this the largest single edit the app offers — and the hardest to undo from
+  // memory afterwards. Each swap is logged with the printing it came from, so
+  // an optimization run against the wrong set can be read back and reversed.
+  const batchId = `optimize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const readCurrent = db.prepare(
+    'SELECT printing_id, quantity, is_foil, board_type FROM deck_cards WHERE id = ? AND deck_id = ?'
+  );
 
   // Apply changes in a transaction
   const applyChanges = db.transaction(() => {
@@ -242,9 +253,31 @@ export function applyPrintingOptimization(deckId, userId, changes) {
 
     let updated = 0;
     for (const change of changes) {
+      const before = readCurrent.get(change.deckCardId, deckId);
       const result = updateStmt.run(change.newPrintingId, change.deckCardId, deckId);
+
       if (result.changes > 0) {
         updated++;
+
+        recordDeckEvent({
+          userId,
+          action: AUDIT_ACTIONS.DECK_CARD_UPDATE,
+          source: 'deck_builder',
+          deckId,
+          deckName: deck.name,
+          // Logged against the printing being replaced, so the row names what
+          // the deck used to hold rather than what it now holds.
+          printingId: before?.printing_id ?? null,
+          isFoil: before ? before.is_foil === 1 : null,
+          detail: {
+            batchId,
+            via: 'optimize_printings',
+            printingFrom: before?.printing_id ?? null,
+            printingTo: change.newPrintingId,
+            boardType: before?.board_type ?? null,
+            quantity: before?.quantity ?? null,
+          },
+        });
       }
     }
 

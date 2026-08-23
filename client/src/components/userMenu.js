@@ -27,6 +27,18 @@ export async function setupUserMenu() {
     }
   });
 
+  // Settings moved off the top row and into this menu — it is an account
+  // thing, and the nav bar had run out of room for the pages people actually
+  // work in. Closing the dropdown first, so the settings page is not left
+  // sitting behind an open menu.
+  const settingsBtn = document.getElementById('dropdown-settings-btn');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+      closeDropdown();
+      window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'settings' } }));
+    });
+  }
+
   // Logout handler
   logoutBtn.addEventListener('click', () => {
     api.logout();

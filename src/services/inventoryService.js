@@ -6,6 +6,7 @@ import {
 } from '../utils/cardNameMatch.js';
 import { ROLE_FILTERS } from './cardRoleService.js';
 import { colorFilterSql } from '../utils/colorFilter.js';
+import { recordInventoryChange } from './auditService.js';
 
 // Price of one owned copy, honouring its finish. Foil copies are worth their
 // foil price; where a printing has no foil price synced we fall back to the
@@ -644,12 +645,19 @@ export function resolveBulkAddItems(items) {
  * Accepts array of items: { cardName, setCode, collectorNumber, quantity, isFoil }
  * Either cardName or (setCode + collectorNumber) must be present.
  */
-export function bulkAddToInventory(userId, items) {
+export function bulkAddToInventory(userId, items, context = {}) {
   const results = {
     added: 0,
     failed: 0,
     errors: []
   };
+
+  // A batch id ties every row of one paste together, so a hundred-line import
+  // that resolved against the wrong set can be pulled back out of the log as
+  // a unit rather than reconstructed from timestamps.
+  const batchId = context.batchId
+    || `bulk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const source = context.source || 'bulk_add';
 
   for (const item of items) {
     try {
@@ -696,6 +704,30 @@ export function bulkAddToInventory(userId, items) {
         [userId, cardId]
       );
 
+      // What the line said is logged next to what it resolved to. A wrong set
+      // code is invisible once it has become a printing id — the only way to
+      // see that "Lightning Bolt (M10) 146" was entered and "Lightning Bolt
+      // (LEA) 161" was stored is to keep both.
+      recordInventoryChange({
+        userId,
+        actorUserId: context.actorUserId ?? userId,
+        printingId: printing.id,
+        isFoil,
+        before: existing?.quantity || 0,
+        after: (existing?.quantity || 0) + quantity,
+        source,
+        detail: {
+          batchId,
+          entered: {
+            cardName: item.cardName ?? null,
+            setCode: item.setCode ?? null,
+            collectorNumber: item.collectorNumber ?? null,
+            quantity,
+            isFoil: !!isFoil,
+          },
+        },
+      });
+
       results.added += quantity;
     } catch (error) {
       results.failed++;
@@ -703,7 +735,9 @@ export function bulkAddToInventory(userId, items) {
     }
   }
 
-  return results;
+  // Handed back so the import's own result can link straight to the batch it
+  // just wrote, rather than making the user hunt for it by timestamp.
+  return { ...results, batchId };
 }
 
 /**

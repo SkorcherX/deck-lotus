@@ -8,6 +8,7 @@ import {
   refreshInventoryPanel,
   openInventoryPanelWith
 } from './inventoryPanel.js';
+import { setupDeckRecord, renderDeckRecordLabel } from './deckRecord.js';
 import { renderDisruptionBanner } from './trades.js';
 
 let currentDeck = null;
@@ -70,6 +71,14 @@ export function setupDeckBuilder() {
       // commander it has just added, say — does not have to re-fetch.
       return currentDeck;
     }
+  });
+
+  // Wins and losses for the deck being edited.
+  setupDeckRecord({
+    getDeckId: () => currentDeckId,
+    // The deck list shows each deck's record, so it has to be re-read after a
+    // game is logged rather than kept from the last time the page was opened.
+    onChange: () => window.dispatchEvent(new CustomEvent('decks:changed'))
   });
 
   // Tab switching
@@ -522,6 +531,8 @@ async function loadDeck(deckId) {
     // Populate deck info
     document.getElementById('deck-name').value = currentDeck.name;
     document.getElementById('deck-format').value = currentDeck.format || '';
+
+    renderDeckRecordLabel(currentDeck.record);
 
     // Render deck cards
     renderDeckCards();

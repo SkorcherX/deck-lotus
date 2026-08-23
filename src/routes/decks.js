@@ -16,6 +16,13 @@ import {
   importSharedDeck,
   checkDeckLegality,
 } from '../services/deckService.js';
+import {
+  getDeckGames,
+  addDeckGame,
+  updateDeckGame,
+  deleteDeckGame,
+  getDeckRecord,
+} from '../services/deckGameService.js';
 import { checkFormatRules } from '../services/formatRulesService.js';
 import { getDeckPrice } from '../services/pricingService.js';
 import { parseDeckList, importDeck } from '../services/importService.js';
@@ -458,6 +465,72 @@ router.post('/:id/optimize-printings/apply', authenticate, (req, res, next) => {
     const result = applyPrintingOptimization(deckId, req.user.id, changes);
 
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Match record
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/decks/:id/games
+ * Every game logged for a deck, newest first, plus the record they total to.
+ */
+router.get('/:id/games', authenticate, (req, res, next) => {
+  try {
+    const deckId = parseInt(req.params.id);
+    res.json(getDeckGames(deckId, req.user.id, { limit: req.query.limit }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/decks/:id/games
+ * Log a game.
+ */
+router.post('/:id/games', authenticate, (req, res, next) => {
+  try {
+    const deckId = parseInt(req.params.id);
+    const game = addDeckGame(deckId, req.user.id, req.body || {});
+
+    res.status(201).json({ game, record: getDeckRecord(deckId, req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/decks/:id/games/:gameId
+ * Correct a game that was entered wrong — the reason the record is a log and
+ * not a pair of counters.
+ */
+router.put('/:id/games/:gameId', authenticate, (req, res, next) => {
+  try {
+    const deckId = parseInt(req.params.id);
+    const game = updateDeckGame(parseInt(req.params.gameId), req.user.id, req.body || {});
+
+    res.json({ game, record: getDeckRecord(deckId, req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/decks/:id/games/:gameId
+ */
+router.delete('/:id/games/:gameId', authenticate, (req, res, next) => {
+  try {
+    const deckId = parseInt(req.params.id);
+    const removed = deleteDeckGame(parseInt(req.params.gameId), req.user.id);
+
+    if (!removed) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
+
+    res.json({ success: true, record: getDeckRecord(deckId, req.user.id) });
   } catch (error) {
     next(error);
   }

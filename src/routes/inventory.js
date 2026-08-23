@@ -10,9 +10,23 @@ import {
   getOwnedSets,
 } from '../services/inventoryService.js';
 import { setOwnedPrintingQuantity } from '../services/cardService.js';
+import { AUDIT_SOURCES } from '../services/auditService.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
+
+/**
+ * Where the client says a change came from, for the audit log.
+ *
+ * Checked against the known list rather than stored as sent: the value ends
+ * up in a filter dropdown, and letting a caller invent one turns that
+ * dropdown into a list of whatever anybody has ever posted. An unrecognised
+ * value falls back to the endpoint's own default rather than being rejected —
+ * a mislabelled audit row is better than a refused inventory add.
+ */
+function auditSource(requested, fallback) {
+  return AUDIT_SOURCES.includes(requested) ? requested : fallback;
+}
 
 /**
  * GET /api/inventory
@@ -104,13 +118,15 @@ router.get('/sets', authenticate, (req, res, next) => {
  */
 router.post('/bulk-add', authenticate, (req, res, next) => {
   try {
-    const { items } = req.body;
+    const { items, source } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Items array is required' });
     }
 
-    const result = bulkAddToInventory(req.user.id, items);
+    const result = bulkAddToInventory(req.user.id, items, {
+      source: auditSource(source, 'bulk_add'),
+    });
     res.json(result);
   } catch (error) {
     next(error);
@@ -198,13 +214,15 @@ router.post('/bulk-resolve', authenticate, (req, res, next) => {
  */
 router.post('/quick-add', authenticate, (req, res, next) => {
   try {
-    const { printingId, quantity = 1, isFoil = false } = req.body;
+    const { printingId, quantity = 1, isFoil = false, source } = req.body;
 
     if (!printingId) {
       return res.status(400).json({ error: 'printingId is required' });
     }
 
-    const result = setOwnedPrintingQuantity(req.user.id, printingId, quantity, isFoil);
+    const result = setOwnedPrintingQuantity(req.user.id, printingId, quantity, isFoil, {
+      source: auditSource(source, 'quick_add'),
+    });
     res.json(result);
   } catch (error) {
     next(error);

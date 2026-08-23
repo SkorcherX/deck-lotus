@@ -189,7 +189,7 @@ router.post('/:id/owned', authenticate, (req, res, next) => {
     const cardId = parseInt(req.params.id);
     const userId = req.user.id;
 
-    const result = toggleCardOwnership(userId, cardId);
+    const result = toggleCardOwnership(userId, cardId, { source: 'card_page' });
     res.json(result);
   } catch (error) {
     next(error);
@@ -256,7 +256,7 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
       return res.status(400).json({ error: 'Quantity is required' });
     }
 
-    const result = setOwnedPrintingQuantity(userId, printingId, parseInt(quantity), isFoil);
+    const result = setOwnedPrintingQuantity(userId, printingId, parseInt(quantity), isFoil, { source: 'card_page' });
     res.json(result);
   } catch (error) {
     next(error);

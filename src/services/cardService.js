@@ -4,6 +4,7 @@ import {
   fuzzyPlan,
   rankFuzzyCandidates
 } from '../utils/cardNameMatch.js';
+import { recordInventoryChange } from './auditService.js';
 
 // Ceiling on how many near-miss candidates the edit-distance pass considers,
 // per name table. Only reached when every chunk of the query is a common
@@ -646,10 +647,14 @@ export function getAllSubtypes() {
  * Toggle card ownership for a user
  * This now manages owned_printings instead of owned_cards
  */
-export function toggleCardOwnership(userId, cardId) {
-  // Check if any printings are owned
+export function toggleCardOwnership(userId, cardId, context = {}) {
+  const source = context.source || 'card_page';
+
+  // Check if any printings are owned. Quantity and finish come along for the
+  // ride so the audit log can say what the toggle actually threw away — "card
+  // removed" is not enough to put four foils back.
   const ownedPrintings = db.all(
-    `SELECT op.id, op.printing_id
+    `SELECT op.id, op.printing_id, op.quantity, op.is_foil
      FROM owned_printings op
      JOIN printings p ON op.printing_id = p.id
      WHERE op.user_id = ? AND p.card_id = ?`,
@@ -670,6 +675,22 @@ export function toggleCardOwnership(userId, cardId) {
       `DELETE FROM owned_cards WHERE user_id = ? AND card_id = ?`,
       [userId, cardId]
     );
+
+    // One row per printing dropped, matching the shape every other inventory
+    // change is logged in, so a filter on 'inventory.remove' catches these too.
+    for (const owned of ownedPrintings) {
+      recordInventoryChange({
+        userId,
+        actorUserId: context.actorUserId ?? userId,
+        printingId: owned.printing_id,
+        isFoil: owned.is_foil === 1,
+        before: owned.quantity,
+        after: 0,
+        source,
+        detail: { via: 'toggle_ownership' },
+      });
+    }
+
     return { owned: false, message: 'Card removed from collection' };
   } else {
     // Add the first printing with quantity 1
@@ -689,6 +710,17 @@ export function toggleCardOwnership(userId, cardId) {
          ON CONFLICT(user_id, card_id) DO UPDATE SET quantity = 1`,
         [userId, cardId]
       );
+
+      recordInventoryChange({
+        userId,
+        actorUserId: context.actorUserId ?? userId,
+        printingId: firstPrinting.id,
+        isFoil: false,
+        before: 0,
+        after: 1,
+        source,
+        detail: { via: 'toggle_ownership' },
+      });
     }
     return { owned: true, message: 'Card added to collection' };
   }
@@ -746,7 +778,13 @@ export function getCardOwnedPrintings(userId, cardId) {
  */
 // Foil and non-foil copies of the same printing are tracked as separate rows,
 // so isFoil is part of the identity of the row being set, not just an attribute.
-export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = false) {
+//
+// `context` says where the change came from, for the audit log. It is an
+// explicit argument rather than ambient state because this function is the
+// choke point every collection change goes through — quick-add, the card
+// page, and both sides of an accepted trade — and the log is worth little if
+// it cannot tell those apart. Callers that omit it are recorded as 'api'.
+export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = false, context = {}) {
   const foilFlag = isFoil ? 1 : 0;
   // Get the card_id for this printing
   const printing = db.get(
@@ -759,6 +797,25 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = 
   }
 
   const cardId = printing.card_id;
+
+  // Read before anything moves: the audit row records what the quantity used
+  // to be, which is the number you need when undoing a bad import by hand.
+  const previous = db.get(
+    `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+    [userId, printingId, foilFlag]
+  )?.quantity || 0;
+
+  const logChange = (after) => recordInventoryChange({
+    userId,
+    actorUserId: context.actorUserId ?? userId,
+    printingId,
+    isFoil,
+    before: previous,
+    after,
+    source: context.source || 'api',
+    tradeId: context.tradeId ?? null,
+    detail: context.detail ?? null,
+  });
 
   if (quantity <= 0) {
     // Remove if quantity is 0 or less
@@ -783,6 +840,8 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = 
         [userId, cardId]
       );
     }
+
+    logChange(0);
 
     return { success: true, message: 'Printing removed from collection' };
   }
@@ -813,6 +872,8 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = 
      ON CONFLICT(user_id, card_id) DO UPDATE SET quantity = 1`,
     [userId, cardId]
   );
+
+  logChange(quantity);
 
   return { success: true, quantity };
 }

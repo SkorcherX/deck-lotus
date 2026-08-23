@@ -4,6 +4,7 @@ import { setupDecks } from './components/decks.js';
 import { setupDeckBuilder } from './components/deckBuilder.js';
 import { setupCards } from './components/cards.js';
 import { setupSettings } from './components/settings.js';
+import { setupAudit } from './components/audit.js';
 import { setupShopping } from './components/shopping.js';
 import { setupInventory } from './components/inventory.js';
 import { setupMaintenanceWatch, stopMaintenanceWatch, fetchMaintenanceStatus } from './components/maintenance.js';
@@ -149,6 +150,9 @@ class App {
       case 'settings':
         window.dispatchEvent(new CustomEvent('page:settings'));
         break;
+      case 'audit':
+        window.dispatchEvent(new CustomEvent('page:audit'));
+        break;
     }
   }
 
@@ -160,6 +164,14 @@ class App {
         const page = link.dataset.page;
         this.showPage(page);
       });
+    });
+
+    // Settings lives in the avatar menu rather than the top row, so it has no
+    // .nav-link to hang off. The menu asks for the page by event instead of
+    // reaching into the app.
+    window.addEventListener('navigate', (e) => {
+      const page = e.detail?.page;
+      if (page) this.showPage(page);
     });
   }
 
@@ -174,6 +186,7 @@ class App {
     setupInventory();
     setupScan();
     setupSettings();
+    setupAudit();
     setupPriceMonitoring();
     setupTrades();
     setupTradeShop();

@@ -1,6 +1,7 @@
 import db from '../db/connection.js';
 import { setOwnedPrintingQuantity } from './cardService.js';
 import { getInventory, getInventoryStats } from './inventoryService.js';
+import { recordTradeEvent, AUDIT_ACTIONS } from './auditService.js';
 
 /**
  * Card trades between users of the same instance.
@@ -306,10 +307,29 @@ export function createTrade(fromUserId, toUserId, items, note = null) {
 
     insertItems(result.lastInsertRowid, normalized);
 
+    logTradeCreated(result.lastInsertRowid, fromUserId, partner.id, normalized, 'proposal');
+
     return result.lastInsertRowid;
   });
 
   return getTradeById(tradeId, fromUserId);
+}
+
+/**
+ * Both sides get the event, because a trade someone else started is
+ * something you will want to find in your own history later. No cards have
+ * moved yet, so nothing is logged against either collection.
+ */
+function logTradeCreated(tradeId, fromUserId, toUserId, items, shape) {
+  for (const partyId of [fromUserId, toUserId]) {
+    recordTradeEvent({
+      userId: partyId,
+      actorUserId: fromUserId,
+      action: AUDIT_ACTIONS.TRADE_CREATE,
+      tradeId,
+      detail: { shape, itemCount: items.length },
+    });
+  }
 }
 
 /**
@@ -342,6 +362,8 @@ export function createTradeRequest(fromUserId, toUserId, items, note = null) {
     );
 
     insertItems(result.lastInsertRowid, normalized);
+
+    logTradeCreated(result.lastInsertRowid, fromUserId, partner.id, normalized, 'request');
 
     return result.lastInsertRowid;
   });
@@ -437,6 +459,18 @@ export function counterTrade(tradeId, userId, items, note = null, declinedItemId
         WHERE id = ?`,
       [trade.from_user_id, note || null, tradeId]
     );
+
+    // How many of the asked-for cards were kept back is the detail people
+    // come looking for when a trade turns out smaller than they remembered.
+    for (const partyId of [trade.from_user_id, trade.to_user_id]) {
+      recordTradeEvent({
+        userId: partyId,
+        actorUserId: userId,
+        action: AUDIT_ACTIONS.TRADE_COUNTER,
+        tradeId,
+        detail: { offered: normalized.length, declined: declined.length },
+      });
+    }
   });
 
   return getTradeById(tradeId, userId);
@@ -469,7 +503,7 @@ function assertHasCopies(userId, item) {
 // ---------------------------------------------------------------------------
 
 /** Move copies out of a collection, deleting the row at zero. */
-function takeCopies(userId, printingId, isFoil, quantity) {
+function takeCopies(userId, printingId, isFoil, quantity, context = {}) {
   const row = db.get(
     `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
     [userId, printingId, isFoil ? 1 : 0]
@@ -485,16 +519,16 @@ function takeCopies(userId, printingId, isFoil, quantity) {
 
   // Goes through setOwnedPrintingQuantity so the legacy owned_cards mirror
   // stays in step, including being cleared when the last printing goes.
-  setOwnedPrintingQuantity(userId, printingId, have - quantity, isFoil);
+  setOwnedPrintingQuantity(userId, printingId, have - quantity, isFoil, context);
 }
 
-function addCopies(userId, printingId, isFoil, quantity) {
+function addCopies(userId, printingId, isFoil, quantity, context = {}) {
   const row = db.get(
     `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
     [userId, printingId, isFoil ? 1 : 0]
   );
 
-  setOwnedPrintingQuantity(userId, printingId, (row?.quantity || 0) + quantity, isFoil);
+  setOwnedPrintingQuantity(userId, printingId, (row?.quantity || 0) + quantity, isFoil, context);
 }
 
 /**
@@ -527,16 +561,22 @@ export function acceptTrade(tradeId, userId) {
 
   const items = loadItems(tradeId);
 
+  // Both sides' inventory moves are logged against the collection that moved,
+  // with the accepting user as the actor. Written inside the transaction, so
+  // a trade that rolls back takes its audit rows with it rather than leaving
+  // a record of a move that never happened.
+  const auditContext = { source: 'trade', tradeId, actorUserId: userId };
+
   db.transaction(() => {
     // Losing side first, for both parties.
     for (const item of items) {
       const giver = item.direction === 'give' ? trade.from_user_id : trade.to_user_id;
-      takeCopies(giver, item.printing_id, item.is_foil === 1, item.quantity);
+      takeCopies(giver, item.printing_id, item.is_foil === 1, item.quantity, auditContext);
     }
 
     for (const item of items) {
       const receiver = item.direction === 'give' ? trade.to_user_id : trade.from_user_id;
-      addCopies(receiver, item.printing_id, item.is_foil === 1, item.quantity);
+      addCopies(receiver, item.printing_id, item.is_foil === 1, item.quantity, auditContext);
     }
 
     db.run(
@@ -550,6 +590,18 @@ export function acceptTrade(tradeId, userId) {
     // recorded are the ones the user will actually see in the deck.
     recordDisruptions(trade.from_user_id, items, 'give', tradeId);
     recordDisruptions(trade.to_user_id, items, 'receive', tradeId);
+
+    // One trade-level row per side, so each user's own log shows the trade as
+    // an event and not just as a scatter of card movements.
+    for (const partyId of [trade.from_user_id, trade.to_user_id]) {
+      recordTradeEvent({
+        userId: partyId,
+        actorUserId: userId,
+        action: AUDIT_ACTIONS.TRADE_ACCEPT,
+        tradeId,
+        detail: { itemCount: items.length },
+      });
+    }
   });
 
   return getTradeById(tradeId, userId);
@@ -640,6 +692,22 @@ function closeTrade(tradeId, userId, status, allowed, message) {
       WHERE id = ?`,
     [status, tradeId]
   );
+
+  // No cards moved, so there is nothing to log against a collection — but a
+  // trade that was turned down is exactly the sort of thing someone later
+  // asks about, so both sides get the event.
+  const action = status === 'declined'
+    ? AUDIT_ACTIONS.TRADE_DECLINE
+    : AUDIT_ACTIONS.TRADE_CANCEL;
+
+  for (const partyId of [trade.from_user_id, trade.to_user_id]) {
+    recordTradeEvent({
+      userId: partyId,
+      actorUserId: userId,
+      action,
+      tradeId,
+    });
+  }
 
   return getTradeById(tradeId, userId);
 }

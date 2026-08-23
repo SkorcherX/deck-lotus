@@ -121,9 +121,9 @@
                             <i class="ph ph-bell-ringing nav-icon"></i>
                             <span class="nav-text">Price Watch</span>
                         </a>
-                        <a href="#" data-page="settings" class="nav-link" title="Settings">
-                            <i class="ph ph-gear nav-icon"></i>
-                            <span class="nav-text">Settings</span>
+                        <a href="#" data-page="audit" class="nav-link" title="Audit Log">
+                            <i class="ph ph-scroll nav-icon"></i>
+                            <span class="nav-text">Audit Log</span>
                         </a>
                     </div>
                     <div class="user-menu">
@@ -226,6 +226,13 @@
                                     </div>
                                 </div>
                                 <div class="user-dropdown-divider"></div>
+                                <button
+                                    id="dropdown-settings-btn"
+                                    class="user-dropdown-action"
+                                >
+                                    <i class="ph ph-gear"></i>
+                                    <span>Settings</span>
+                                </button>
                                 <button
                                     id="logout-btn"
                                     class="user-dropdown-logout"
@@ -378,6 +385,14 @@
                                 <option value="pauper">Pauper</option>
                             </select>
                             <div class="deck-actions">
+                                <button
+                                    id="deck-record-btn"
+                                    class="btn btn-secondary"
+                                    title="Wins and losses for this deck"
+                                >
+                                    <i class="ph ph-trophy btn-icon"></i>
+                                    <span id="deck-record-label" class="btn-text">Record</span>
+                                </button>
                                 <button
                                     id="share-deck-btn"
                                     class="btn btn-secondary"
@@ -1695,6 +1710,62 @@
                 </div>
             </div>
 
+            <!-- Audit Log Page -->
+            <div id="audit-page" class="page hidden">
+                <div class="page-header">
+                    <h2>Audit Log</h2>
+                    <p class="page-subtitle">
+                        Every change to your collection, decks and trades, newest first.
+                    </p>
+                </div>
+
+                <div class="audit-filters">
+                    <div class="audit-filter-row">
+                        <input
+                            type="search"
+                            id="audit-search"
+                            class="audit-search"
+                            placeholder="Card name, set code, collector number or deck"
+                        />
+                        <select id="audit-entity" class="audit-select">
+                            <option value="">All areas</option>
+                            <option value="inventory">Inventory</option>
+                            <option value="deck">Decks</option>
+                            <option value="trade">Trades</option>
+                        </select>
+                        <select id="audit-action" class="audit-select">
+                            <option value="">All actions</option>
+                        </select>
+                        <select id="audit-source" class="audit-select">
+                            <option value="">All sources</option>
+                        </select>
+                        <select id="audit-user" class="audit-select hidden">
+                            <option value="">My history</option>
+                        </select>
+                    </div>
+                    <div class="audit-filter-row">
+                        <label class="audit-date">
+                            From <input type="date" id="audit-from" />
+                        </label>
+                        <label class="audit-date">
+                            To <input type="date" id="audit-to" />
+                        </label>
+                        <button id="audit-clear" class="btn btn-secondary">
+                            Clear filters
+                        </button>
+                        <span id="audit-count" class="audit-count"></span>
+                    </div>
+                </div>
+
+                <div id="audit-list" class="audit-list"></div>
+
+                <div id="audit-pager" class="audit-pager hidden">
+                    <button id="audit-prev" class="btn btn-secondary">Previous</button>
+                    <span id="audit-page-label"></span>
+                    <button id="audit-next" class="btn btn-secondary">Next</button>
+                </div>
+            </div>
+
             <!-- Settings Page -->
             <div id="settings-page" class="page hidden">
                 <div class="page-header">
@@ -2124,6 +2195,75 @@
             </div>
 
             <!-- Import Deck Modal -->
+            <!-- Deck match record: log games, review and correct them -->
+            <div id="deck-record-modal" class="modal hidden">
+                <div class="modal-content">
+                    <span class="modal-close" id="deck-record-close">&times;</span>
+                    <h2 style="margin-bottom: 0.5rem">Match Record</h2>
+
+                    <div id="deck-record-summary" class="record-summary"></div>
+
+                    <form id="deck-game-form" class="record-form">
+                        <input type="hidden" id="deck-game-id" />
+                        <div class="record-form-row">
+                            <div class="form-group">
+                                <label for="deck-game-result">Result</label>
+                                <select id="deck-game-result" required>
+                                    <option value="win">Win</option>
+                                    <option value="loss">Loss</option>
+                                    <option value="draw">Draw</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="deck-game-date">Played</label>
+                                <input type="date" id="deck-game-date" required />
+                            </div>
+                        </div>
+                        <div class="record-form-row">
+                            <div class="form-group">
+                                <label for="deck-game-opponent">Opponent</label>
+                                <input
+                                    type="text"
+                                    id="deck-game-opponent"
+                                    placeholder="Optional"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="deck-game-opponent-deck">Their deck</label>
+                                <input
+                                    type="text"
+                                    id="deck-game-opponent-deck"
+                                    placeholder="Optional"
+                                />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="deck-game-notes">Notes</label>
+                            <input
+                                type="text"
+                                id="deck-game-notes"
+                                placeholder="Optional"
+                            />
+                        </div>
+                        <div class="record-form-actions">
+                            <button type="submit" class="btn btn-primary" id="deck-game-submit">
+                                Log game
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-secondary hidden"
+                                id="deck-game-cancel-edit"
+                            >
+                                Cancel edit
+                            </button>
+                        </div>
+                    </form>
+
+                    <h3 class="record-history-heading">History</h3>
+                    <div id="deck-game-list" class="record-list"></div>
+                </div>
+            </div>
+
             <div id="import-deck-modal" class="modal hidden">
                 <div class="modal-content">
                     <span class="modal-close" id="import-modal-close"

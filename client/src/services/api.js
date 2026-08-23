@@ -706,6 +706,50 @@ class ApiClient {
       body: JSON.stringify({ resolution }),
     });
   }
+
+  // Deck match record
+  async getDeckGames(deckId) {
+    return this.request(`/decks/${deckId}/games`);
+  }
+
+  async addDeckGame(deckId, game) {
+    return this.request(`/decks/${deckId}/games`, {
+      method: 'POST',
+      body: JSON.stringify(game),
+    });
+  }
+
+  async updateDeckGame(deckId, gameId, game) {
+    return this.request(`/decks/${deckId}/games/${gameId}`, {
+      method: 'PUT',
+      body: JSON.stringify(game),
+    });
+  }
+
+  async deleteDeckGame(deckId, gameId) {
+    return this.request(`/decks/${deckId}/games/${gameId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Audit log
+  async getAuditLog(filters = {}) {
+    const params = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== null && value !== undefined && value !== '') {
+        params.append(key, value);
+      }
+    }
+
+    const query = params.toString();
+    return this.request(`/audit${query ? `?${query}` : ''}`);
+  }
+
+  async getAuditFilters(userId = null) {
+    const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    return this.request(`/audit/filters${query}`);
+  }
 }
 
 export default new ApiClient();

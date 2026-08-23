@@ -5776,3 +5776,358 @@ body.maintenance-locked #app {
   cursor: pointer;
   white-space: nowrap;
 }
+
+/* ===========================================================================
+   Settings in the avatar menu
+
+   Settings used to sit in the top nav. It is an account concern rather than
+   somewhere people work, so it moved in here beside Logout — styled as a
+   neutral action so the destructive one stays the only red thing in the menu.
+   =========================================================================== */
+
+.user-dropdown-action {
+  width: calc(100% - 2rem);
+  margin: 1rem 1rem 0;
+  padding: 0.875rem;
+  background: var(--bg-tertiary);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.user-dropdown-action:hover {
+  background: var(--bg-hover);
+  transform: translateY(-2px);
+}
+
+.user-dropdown-action i {
+  font-size: 1.125rem;
+}
+
+/* The logout button set its own top margin when it was the only action here;
+   with Settings above it, that doubles up. */
+.user-dropdown-action + .user-dropdown-logout {
+  margin-top: 0.5rem;
+}
+
+/* ===========================================================================
+   Inventory panel toggle
+
+   The open state gets the accent border, so "Back to Deck" reads as the
+   currently-active mode rather than as another way in.
+   =========================================================================== */
+
+#inventory-panel-toggle.is-open {
+  border-color: var(--primary);
+  color: var(--primary-light);
+}
+
+/* ===========================================================================
+   Deck match record
+   =========================================================================== */
+
+.record-summary {
+  margin-bottom: var(--space-5);
+}
+
+.record-figures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+
+.record-figure {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  text-align: center;
+}
+
+.record-figure.is-win { border-color: var(--success); }
+.record-figure.is-loss { border-color: var(--danger); }
+.record-figure.is-draw { border-color: var(--warning); }
+
+.record-figure-value {
+  display: block;
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.record-figure-label {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.record-form {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}
+
+.record-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.record-form-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.record-history-heading {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.record-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.record-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.record-row.is-editing {
+  border-color: var(--primary);
+}
+
+.record-result {
+  flex-shrink: 0;
+  min-width: 3.5rem;
+  text-align: center;
+  padding: 0.125rem var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.record-result.is-win { background: var(--success); color: #fff; }
+.record-result.is-loss { background: var(--danger); color: #fff; }
+.record-result.is-draw { background: var(--warning); color: #1f1300; }
+
+.record-row-body { flex: 1; min-width: 0; }
+.record-row-main { font-size: var(--text-sm); }
+.record-row-meta { font-size: var(--text-xs); color: var(--text-muted); }
+.record-muted { color: var(--text-muted); }
+
+.record-row-actions {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.record-empty {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-3) 0;
+}
+
+/* ===========================================================================
+   Audit log
+   =========================================================================== */
+
+.page-subtitle {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  margin-top: var(--space-1);
+}
+
+.audit-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.audit-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* These sit outside .form-group, which is where the app's input styling
+   lives, so they have to ask for it explicitly or they render as native
+   controls against a dark background. */
+.audit-search,
+.audit-date input {
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  color-scheme: dark;
+}
+
+.audit-search:focus,
+.audit-date input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.audit-search {
+  flex: 1 1 18rem;
+  min-width: 12rem;
+}
+
+.audit-select { min-width: 9rem; }
+
+.audit-date {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.audit-count {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.audit-entry {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.audit-entry.audit-inventory { border-left-color: var(--primary); }
+.audit-entry.audit-deck { border-left-color: var(--info); }
+.audit-entry.audit-trade { border-left-color: var(--warning); }
+
+.audit-entry-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.audit-badge {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.125rem var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.audit-badge-inventory { background: var(--primary-soft); color: var(--primary-light); }
+
+.audit-subject { font-size: var(--text-sm); }
+.audit-printing, .audit-in { color: var(--text-muted); }
+
+.audit-foil {
+  color: var(--rarity-mythic);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.audit-quantity {
+  font-weight: 700;
+  font-size: var(--text-sm);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.audit-quantity.is-up { color: var(--success); }
+.audit-quantity.is-down { color: var(--danger); }
+
+.audit-quantity-detail {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.audit-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* The line as typed, next to what it matched. Highlighted when the two differ
+   — that difference is the bug the page exists to surface. */
+.audit-entered {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.audit-entered code {
+  background: var(--bg-tertiary);
+  padding: 0.0625rem 0.25rem;
+  border-radius: var(--radius-sm);
+}
+
+.audit-entered.is-mismatch {
+  color: var(--warning);
+}
+
+.audit-empty {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.audit-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+  .record-figures { grid-template-columns: repeat(2, 1fr); }
+  .record-form-row { grid-template-columns: 1fr; }
+  .audit-count { margin-left: 0; }
+  .audit-quantity { margin-left: 0; }
+}
