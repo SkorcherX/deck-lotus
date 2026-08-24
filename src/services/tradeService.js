@@ -1,7 +1,7 @@
 import db from '../db/connection.js';
 import { setOwnedPrintingQuantity } from './cardService.js';
 import { getInventory, getInventoryStats } from './inventoryService.js';
-import { recordTradeEvent, AUDIT_ACTIONS } from './auditService.js';
+import { recordTradeEvent, describeCounterparty, AUDIT_ACTIONS } from './auditService.js';
 
 /**
  * Card trades between users of the same instance.
@@ -325,6 +325,9 @@ function logTradeCreated(tradeId, fromUserId, toUserId, items, shape) {
     recordTradeEvent({
       userId: partyId,
       actorUserId: fromUserId,
+      // Each row names the other side, so "Trade #12" reads as "with alice"
+      // in both logs rather than only in the recipient's.
+      counterpartyId: partyId === fromUserId ? toUserId : fromUserId,
       action: AUDIT_ACTIONS.TRADE_CREATE,
       tradeId,
       detail: { shape, itemCount: items.length },
@@ -466,6 +469,7 @@ export function counterTrade(tradeId, userId, items, note = null, declinedItemId
       recordTradeEvent({
         userId: partyId,
         actorUserId: userId,
+        counterpartyId: partyId === trade.from_user_id ? trade.to_user_id : trade.from_user_id,
         action: AUDIT_ACTIONS.TRADE_COUNTER,
         tradeId,
         detail: { offered: normalized.length, declined: declined.length },
@@ -565,18 +569,31 @@ export function acceptTrade(tradeId, userId) {
   // with the accepting user as the actor. Written inside the transaction, so
   // a trade that rolls back takes its audit rows with it rather than leaving
   // a record of a move that never happened.
-  const auditContext = { source: 'trade', tradeId, actorUserId: userId };
+  // Every card movement carries who it moved to or from. Without it a
+  // "Removed from collection" row from a trade is indistinguishable from one
+  // somebody typed, which is the first question asked of a card that is no
+  // longer there. The actor is whoever accepted, which on your own rows is
+  // often you — so it cannot stand in for the far side.
+  const counterpartyOf = (ownerId) =>
+    describeCounterparty(ownerId === trade.from_user_id ? trade.to_user_id : trade.from_user_id);
+
+  const contextFor = (ownerId) => ({
+    source: 'trade',
+    tradeId,
+    actorUserId: userId,
+    detail: { counterparty: counterpartyOf(ownerId) },
+  });
 
   db.transaction(() => {
     // Losing side first, for both parties.
     for (const item of items) {
       const giver = item.direction === 'give' ? trade.from_user_id : trade.to_user_id;
-      takeCopies(giver, item.printing_id, item.is_foil === 1, item.quantity, auditContext);
+      takeCopies(giver, item.printing_id, item.is_foil === 1, item.quantity, contextFor(giver));
     }
 
     for (const item of items) {
       const receiver = item.direction === 'give' ? trade.to_user_id : trade.from_user_id;
-      addCopies(receiver, item.printing_id, item.is_foil === 1, item.quantity, auditContext);
+      addCopies(receiver, item.printing_id, item.is_foil === 1, item.quantity, contextFor(receiver));
     }
 
     db.run(
@@ -597,6 +614,7 @@ export function acceptTrade(tradeId, userId) {
       recordTradeEvent({
         userId: partyId,
         actorUserId: userId,
+        counterpartyId: partyId === trade.from_user_id ? trade.to_user_id : trade.from_user_id,
         action: AUDIT_ACTIONS.TRADE_ACCEPT,
         tradeId,
         detail: { itemCount: items.length },
@@ -704,6 +722,7 @@ function closeTrade(tradeId, userId, status, allowed, message) {
     recordTradeEvent({
       userId: partyId,
       actorUserId: userId,
+      counterpartyId: partyId === trade.from_user_id ? trade.to_user_id : trade.from_user_id,
       action,
       tradeId,
     });

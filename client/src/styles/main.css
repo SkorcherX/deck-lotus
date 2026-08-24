@@ -6400,6 +6400,10 @@ body.maintenance-locked #app {
 .audit-subject { font-size: var(--text-sm); }
 .audit-printing, .audit-in { color: var(--text-muted); }
 
+/* A row whose card name could not be recovered. Marked rather than left blank
+   so it reads as a known gap in the record, not as a broken row. */
+.audit-unnamed { color: var(--text-muted); font-style: italic; }
+
 .audit-foil {
   color: var(--rarity-mythic);
   font-size: var(--text-xs);

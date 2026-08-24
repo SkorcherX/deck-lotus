@@ -234,6 +234,12 @@ function renderEntry(entry) {
   `;
 }
 
+/** The other side of a trade, where the row knows it. */
+function counterpartyOf(entry) {
+  const name = entry.detail?.counterparty?.username;
+  return name ? ` <span class="audit-in">with</span> ${escapeHtml(name)}` : '';
+}
+
 /** What the change was about: a card, a deck, or a trade. */
 function subjectOf(entry) {
   if (entry.card_name) {
@@ -243,9 +249,14 @@ function subjectOf(entry) {
       ? ` <span class="audit-in">in</span> ${escapeHtml(entry.deck_name)}`
       : '';
 
+    // A card that left the collection raises "where did it go?" immediately,
+    // and the source pill down in the meta line is not where anyone looks for
+    // the answer. Naming the trade partner on the row itself is the
+    // difference between a removal that is explained and one that reads as
+    // cards going missing.
     return `<strong>${escapeHtml(entry.card_name)}</strong>` +
       (printing ? ` <span class="audit-printing">${escapeHtml(printing)}</span>` : '') +
-      foil + deck;
+      foil + deck + counterpartyOf(entry);
   }
 
   if (entry.deck_name) {
@@ -253,7 +264,15 @@ function subjectOf(entry) {
   }
 
   if (entry.trade_id) {
-    return `<strong>Trade #${entry.trade_id}</strong>`;
+    return `<strong>Trade #${entry.trade_id}</strong>${counterpartyOf(entry)}`;
+  }
+
+  // A card change whose name could not be recovered still gets a subject
+  // rather than an empty line: the printing is what there is to go on, and a
+  // blank row is indistinguishable from a rendering fault.
+  const printing = [entry.set_code, entry.collector_number].filter(Boolean).join(' ');
+  if (printing) {
+    return `<span class="audit-unnamed">Unknown card</span> <span class="audit-printing">${escapeHtml(printing)}</span>`;
   }
 
   return '';

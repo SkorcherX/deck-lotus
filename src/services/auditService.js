@@ -84,6 +84,24 @@ function describePrinting(printingId) {
 }
 
 /**
+ * Look up a username for the log.
+ *
+ * Denormalised for the same reason card identity is: the log has to still
+ * read as a sentence after the account it names has gone. Returns null rather
+ * than throwing, so a missing user costs a name and not the entry.
+ */
+function describeUser(userId) {
+  if (!userId) return null;
+
+  try {
+    const row = db.get(`SELECT id, username FROM users WHERE id = ?`, [userId]);
+    return row ? { id: row.id, username: row.username } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Write one audit row. Never throws — see rule 1 at the top of this file.
  */
 export function recordAudit(entry) {
@@ -230,14 +248,25 @@ export function recordDeckEvent({
   });
 }
 
-/** Record a trade changing state. The card movements are logged separately. */
+/**
+ * Record a trade changing state. The card movements are logged separately.
+ *
+ * `counterpartyId` is the other side of the trade *from this row's owner* —
+ * these events are written once per party, so the same trade produces two
+ * rows that name each other. Without it a trade you started reads as "Trade
+ * #12" with nobody in it: `actor_user_id` only identifies the far side on the
+ * rows where somebody else acted, which is never the initiator's own row.
+ */
 export function recordTradeEvent({
   userId,
   actorUserId = null,
+  counterpartyId = null,
   action,
   tradeId,
   detail = null,
 }) {
+  const counterparty = describeUser(counterpartyId);
+
   recordAudit({
     userId,
     actorUserId,
@@ -245,8 +274,17 @@ export function recordTradeEvent({
     action,
     source: 'trade',
     tradeId,
-    detail,
+    detail: counterparty ? { ...(detail || {}), counterparty } : detail,
   });
+}
+
+/**
+ * The counterparty of a card movement, for stamping into an inventory
+ * change's detail. Exported because the trade service is the only thing that
+ * knows who the other side is, and the inventory writer it calls does not.
+ */
+export function describeCounterparty(userId) {
+  return describeUser(userId);
 }
 
 // ---------------------------------------------------------------------------
@@ -301,9 +339,12 @@ export function listAuditEntries(userIds, filters = {}) {
 
   if (search) {
     // Card name, set code and deck name in one box — the three things you
-    // know when you are hunting a batch you got wrong.
-    where.push('(a.card_name LIKE ? OR a.set_code LIKE ? OR a.deck_name LIKE ? OR a.collector_number = ?)');
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`, search);
+    // know when you are hunting a batch you got wrong. `c.name` is the
+    // recovered name (see the join below); without it a row whose name only
+    // exists at read time would be visible but unsearchable, which is the
+    // more confusing of the two failures.
+    where.push('(a.card_name LIKE ? OR c.name LIKE ? OR a.set_code LIKE ? OR a.deck_name LIKE ? OR a.collector_number = ?)');
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, search);
   }
 
   if (from) {
@@ -319,8 +360,28 @@ export function listAuditEntries(userIds, filters = {}) {
 
   const whereSql = `WHERE ${where.join(' AND ')}`;
 
+  // Card identity is copied in at write time, but a row written while the
+  // printings table was mid-rebuild — or before the name was being captured —
+  // has nothing to show, and a nameless line is exactly the line somebody is
+  // scrolling for. Where the row kept a uuid, the name is recovered from the
+  // current printings table on the way out.
+  //
+  // The join is on printing_uuid and never on printing_id: the weekly MTGJSON
+  // import reassigns ids, so a stale id would attach some other card's name to
+  // the row, which is worse than leaving it blank.
+  //
+  // Shared by the count and the page so the search can reach the recovered
+  // name in both — a filter that pages differently from how it counts is a
+  // bug that only shows up on the last page.
+  const fromSql = `
+       FROM audit_log a
+       LEFT JOIN users u ON a.user_id = u.id
+       LEFT JOIN users actor ON a.actor_user_id = actor.id
+       LEFT JOIN printings p ON a.card_name IS NULL AND a.printing_uuid IS NOT NULL AND p.uuid = a.printing_uuid
+       LEFT JOIN cards c ON c.id = p.card_id`;
+
   const total = db.get(
-    `SELECT COUNT(*) as count FROM audit_log a ${whereSql}`,
+    `SELECT COUNT(*) as count ${fromSql} ${whereSql}`,
     params
   ).count;
 
@@ -328,13 +389,18 @@ export function listAuditEntries(userIds, filters = {}) {
   const safePage = Math.max(parseInt(page, 10) || 1, 1);
   const offset = (safePage - 1) * safeLimit;
 
+  // The COALESCE aliases deliberately shadow the columns `a.*` just selected:
+  // the later column of a duplicated name is the one that reaches the row
+  // object, so every reader downstream sees the recovered value without
+  // knowing it was recovered.
   const entries = db.all(
     `SELECT a.*,
+            COALESCE(a.card_name, c.name) as card_name,
+            COALESCE(a.set_code, p.set_code) as set_code,
+            COALESCE(a.collector_number, p.collector_number) as collector_number,
             u.username as username,
             actor.username as actor_username
-       FROM audit_log a
-       LEFT JOIN users u ON a.user_id = u.id
-       LEFT JOIN users actor ON a.actor_user_id = actor.id
+       ${fromSql}
        ${whereSql}
       ORDER BY a.created_at DESC, a.id DESC
       LIMIT ? OFFSET ?`,
