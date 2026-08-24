@@ -29,6 +29,12 @@ export const THEMES = [
     description: 'The original indigo-on-slate palette.',
     swatches: ['#0f172a', '#1e293b', '#6366f1', '#ec4899'],
   },
+  {
+    slug: 'purple-lotus',
+    name: 'Purple Lotus',
+    description: 'Efflorescent violet lotus with elaborate pin striping.',
+    swatches: ['#0d0a13', '#18151f', '#8c3b73', '#c37fab'],
+  },
 ];
 
 export const DEFAULT_THEME = 'arcane';
