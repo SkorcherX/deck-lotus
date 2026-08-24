@@ -37,13 +37,19 @@ client/public/themes/<slug>/
     rail-left.webp      400 x 2000  (tiles vertically)
     rail-right.webp     400 x 2000  (tiles vertically)
     footer.webp        2400 x 200
-    empty.webp          600 x 600   (transparent, every empty screen)
-    celebration.webp    600 x 600   (transparent, the win moment)
 ```
 
 Every slot is optional. A theme that declares none still works — the chrome
-collapses and the empty states fall back to their icons. Declare a slot only
-once its file exists, or the CSS points at a 404.
+just collapses. Declare a slot only once its file exists, or the CSS points at
+a 404.
+
+There used to be two more: 600×600 transparent spots for empty states and for
+a celebration overlay. Both are gone. They were the two squares that made a
+theme feel unfinished until they were drawn, and they paid for it on the
+screens people look at least — and, in the celebration's case, in an animation
+that stopped being fun somewhere around the sixth time it fired. Empty states
+now use the Phosphor icon each screen already passes, and there is no
+celebration. Old themes may still carry the files; nothing reads them.
 
 Budget about an hour.
 
@@ -271,14 +277,6 @@ Slot-specific notes:
   vine — not a scene.
 - **Footer** (2400×200) — same treatment as the banner but shallower, fading upward
   into the page.
-- **Spot art** (600×600, two of them) — `empty` and `celebration`. Both want a
-  **transparent background**: they sit directly on a surface, so a baked-in
-  backdrop or vignette shows as a visible square. Unlike the bands they compete
-  with nothing, so they may carry real light and colour. Keep them apart in
-  intent — `empty` is a calm "nothing here yet" that must not name what is
-  missing (one image serves every empty screen), while `celebration` is a
-  flourish. The generator writes both of those constraints into the prompts.
-
 > Rails only render above 1700px of viewport width, and they SCALE to whatever
 > gutter is left beside the 1400px content column — so the art is rarely shown at
 > its native 400px. Two consequences when generating it: the inner-edge fade must

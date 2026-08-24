@@ -1,5 +1,5 @@
 import api from '../services/api.js';
-import { showToast, confirmDialog, celebrate } from '../utils/ui.js';
+import { showToast, confirmDialog } from '../utils/ui.js';
 
 /**
  * A deck's match record.
@@ -202,8 +202,6 @@ async function submit(event) {
   const payload = readForm();
 
   try {
-    const wasNewWin = !editingId && payload.result === 'win';
-
     if (editingId) {
       await api.updateDeckGame(deckId, editingId, payload);
       showToast('Game updated', 'success');
@@ -215,16 +213,6 @@ async function submit(event) {
     stopEditing();
     resetForm();
     await load();
-
-    // After load(), so the record shown is the one including this game.
-    // Only a newly logged win — editing an old game into a win is bookkeeping,
-    // not a moment.
-    if (wasNewWin) {
-      celebrate('win', {
-        title: 'Win recorded',
-        detail: record ? `Now ${record.wins}–${record.losses}` : '',
-      });
-    }
     ctx?.onChange?.();
   } catch (error) {
     showToast('Failed to save game: ' + error.message, 'error');

@@ -1,33 +1,6 @@
 import api from '../services/api.js';
-import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog, celebrate } from '../utils/ui.js';
+import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
-
-/**
- * Collection milestones.
- *
- * Crossings only. lastTotalCopies starts null and the first observation just
- * records it, so opening the page with 1,200 cards is not a milestone — that
- * would fire on every load for anyone past a threshold.
- */
-const MILESTONES = [100, 500, 1000, 2500, 5000, 10000];
-let lastTotalCopies = null;
-let milestoneJustFired = false;
-
-function checkMilestone(total) {
-  if (typeof total !== 'number' || Number.isNaN(total)) return false;
-  const previous = lastTotalCopies;
-  lastTotalCopies = total;
-  if (previous === null || total <= previous) return false;
-
-  const crossed = MILESTONES.filter((m) => previous < m && total >= m).pop();
-  if (!crossed) return false;
-
-  milestoneJustFired = celebrate('milestone', {
-    title: `${crossed.toLocaleString()} cards`,
-    detail: 'Your collection just passed a milestone',
-  });
-  return milestoneJustFired;
-}
 
 // 54 = 9 rows of 6 at the grid's usual column count, so a full page ends on
 // a complete row instead of trailing off mid-row.
@@ -1038,17 +1011,7 @@ function setupBulkAddModal() {
 
         showToast(`Added ${result.added} cards!`, 'success');
 
-        // Refresh first: the reload is what notices a milestone crossing, and
-        // a milestone outranks "import finished" — firing both would just have
-        // the second replace the first mid-animation.
-        milestoneJustFired = false;
         await loadInventoryData();
-        if (!milestoneJustFired && result.added > 0) {
-          celebrate('import', {
-            title: 'Import complete',
-            detail: `${result.added.toLocaleString()} card${result.added === 1 ? '' : 's'} added`,
-          });
-        }
       } catch (error) {
         showError('Bulk add failed: ' + error.message);
       } finally {
@@ -1197,7 +1160,6 @@ async function loadInventoryData({ append = false } = {}) {
     totalPages = inventoryResult.pagination.totalPages || 1;
 
     renderStats(statsResult);
-    checkMilestone(statsResult.totalCopies);
     renderResultCount(inventoryResult.pagination.totalCards, statsResult.uniqueCards);
     renderInventory(append ? { cards: newCards, append: true } : {});
     renderPagination();
@@ -1361,7 +1323,6 @@ function renderInventory({ cards = null, append = false } = {}) {
   if (!inventoryData || !inventoryData.cards || inventoryData.cards.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-art" aria-hidden="true"></div>
         <i class="ph ph-archive empty-state-icon" aria-hidden="true"></i>
         <h3>No cards in inventory</h3>
         <p>Add cards using the Quick Add search or Bulk Add button above.</p>

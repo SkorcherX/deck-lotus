@@ -98,7 +98,6 @@ function renderDecks() {
   if (decks.length === 0) {
     decksList.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-art" aria-hidden="true"></div>
         <i class="ph ph-cards-three empty-state-icon" aria-hidden="true"></i>
         <h3>No decks yet</h3>
         <p>Click "New Deck" to create your first deck!</p>

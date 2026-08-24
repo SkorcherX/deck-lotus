@@ -10,6 +10,13 @@
  *      dimensions and composition rules to ask for art at the right size.
  *
  * Change a dimension here and the generated Gemini prompt changes with it.
+ *
+ * Removing one is the other half of that: the wizard, the prompt generator and
+ * the loader all derive from this list, so a slot deleted here stops being
+ * asked for everywhere at once. The `empty` and `celebration` spots went that
+ * way — two square illustrations every theme had to commission, one for the
+ * screens people look at least and one for an overlay that stopped being fun
+ * around the sixth time it fired.
  */
 
 export const ART_SLOTS = [
@@ -61,40 +68,6 @@ export const ART_SLOTS = [
     scrim: 'to top, transparent -> --bg',
     edgeFade: ['top'],
     tiles: false,
-  },
-  {
-    id: 'empty',
-    cssVar: '--art-empty',
-    filename: 'empty.webp',
-    width: 600,
-    height: 600,
-    shape: 'spot',
-    // Shown above "No decks yet" and friends. One image serves every empty
-    // state, so it has to say "nothing here yet" without naming what is
-    // missing — no cards, no decks, no trade symbolism.
-    safeArea: 'single centred subject with generous margin; nothing near the edges',
-    overlaidText: false,
-    scrim: null,
-    edgeFade: ['all'],
-    tiles: false,
-    transparent: true,
-  },
-  {
-    id: 'celebration',
-    cssVar: '--art-celebration',
-    filename: 'celebration.webp',
-    width: 600,
-    height: 600,
-    shape: 'spot',
-    // The win-recorded moment. Deliberately separate from `empty`: one is a
-    // calm invitation, the other is a flourish, and a single image cannot do
-    // both without being wrong for one of them.
-    safeArea: 'single centred subject with generous margin; nothing near the edges',
-    overlaidText: false,
-    scrim: null,
-    edgeFade: ['all'],
-    tiles: false,
-    transparent: true,
   },
 ];
 

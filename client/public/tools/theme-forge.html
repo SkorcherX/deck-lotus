@@ -258,7 +258,7 @@
     <h2>Make the rest of the art</h2>
     <p class="why">Now that the colours are fixed, these prompts carry your real hex values.
       Do them <strong>one at a time, attaching your banner to each one</strong> as a reference
-      image — five pictures generated separately from the same sentence look like five ideas,
+      image — three pictures generated separately from the same sentence look like three ideas,
       not one theme.</p>
 
     <div class="callout">
@@ -739,7 +739,7 @@ function renderSlotList() {
 function slotTitle(s) {
   return ({
     'rail-left': 'Left gutter rail', 'rail-right': 'Right gutter rail',
-    footer: 'Footer band', empty: 'Empty-state spot', celebration: 'Win-recorded spot',
+    footer: 'Footer band',
   })[s.id] || s.id;
 }
 function slotBlurb(s) {
@@ -747,8 +747,6 @@ function slotBlurb(s) {
     'rail-left': 'A tall tapestry down the left edge of wide windows. It repeats vertically, so its top and bottom must match, and its inner edge has to disappear into the page.',
     'rail-right': 'The mirror of the left rail. Generate it separately so the two are not identical.',
     footer: 'A shallow band under the page, fading upward into the background.',
-    empty: 'Shown wherever there is nothing to display yet. Calm and inviting — and it must not name what is missing, because one image serves every empty screen. Needs a transparent background.',
-    celebration: 'Shown the moment someone records a win. A flourish. Also transparent.',
   })[s.id] || '';
 }
 
@@ -963,26 +961,16 @@ function checkSlotImage(id, file) {
     else if (ratioOk) notes.push(`<li>${img.width}×${img.height} — not the exact size, but the right shape. It will scale.</li>`);
     else { bad = true; notes.push(`<li><strong>${img.width}×${img.height} is the wrong shape.</strong> This slot is ${slot.width}×${slot.height}, so the image will be cropped.</li>`); }
 
-    if (slot.shape === 'spot') {
-      const c = document.createElement('canvas');
-      c.width = c.height = 64;
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0, 64, 64);
-      const d = ctx.getImageData(0, 0, 64, 64).data;
-      const corners = [0, 63, 64 * 63, 64 * 64 - 1].map(i => d[i * 4 + 3]);
-      if (corners.some(a => a > 40)) {
-        bad = true;
-        notes.push('<li><strong>The background is not transparent.</strong> A baked-in backdrop shows as a visible square on the page. Ask for “transparent background, PNG with alpha” and convert to webp afterwards.</li>');
-      } else notes.push('<li>Background is transparent.</li>');
-    } else {
-      const edges = edgeReport(img, state.ground || groundHex());
-      for (const k of (slot.edgeFade || [])) {
-        const r = edges[k]; if (!r) continue;
-        if (r.off < 1) notes.push(`<li>The ${k} edge averages <span class="mono">${r.hex}</span> — it meets the page.</li>`);
-        else {
-          if (r.off >= 2.5) bad = true;
-          notes.push(`<li>The ${k} edge averages <span class="mono">${r.hex}</span>, ${r.lighter ? 'lighter' : 'darker'} than <span class="mono">${state.ground}</span>${r.off >= 2.5 ? ' — <strong>this will show as a line</strong>' : ' — close enough that only a careful eye will see it'}.</li>`);
-        }
+    // No slot is a transparent spot any more — the empty-state and celebration
+    // squares were the only two, and both are gone. What is left all fades into
+    // the page, so the only edge question is whether it meets the ground colour.
+    const edges = edgeReport(img, state.ground || groundHex());
+    for (const k of (slot.edgeFade || [])) {
+      const r = edges[k]; if (!r) continue;
+      if (r.off < 1) notes.push(`<li>The ${k} edge averages <span class="mono">${r.hex}</span> — it meets the page.</li>`);
+      else {
+        if (r.off >= 2.5) bad = true;
+        notes.push(`<li>The ${k} edge averages <span class="mono">${r.hex}</span>, ${r.lighter ? 'lighter' : 'darker'} than <span class="mono">${state.ground}</span>${r.off >= 2.5 ? ' — <strong>this will show as a line</strong>' : ' — close enough that only a careful eye will see it'}.</li>`);
       }
     }
     out.innerHTML = `<div class="callout ${bad ? 'bad' : 'good'}"><ul class="checks">${notes.join('')}</ul>${bad ? '<p>Worth one more regeneration.</p>' : '<p class="note">Good to keep.</p>'}</div>`;

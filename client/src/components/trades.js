@@ -1,5 +1,5 @@
 import api from '../services/api.js';
-import { showLoading, hideLoading, showToast, debounce, confirmDialog, celebrate } from '../utils/ui.js';
+import { showLoading, hideLoading, showToast, debounce, confirmDialog } from '../utils/ui.js';
 import { openTradeShop } from './tradeShop.js';
 
 /**
@@ -315,11 +315,6 @@ async function respond(tradeId, action) {
       action === 'accept' ? 'Trade done — both collections updated' : `Trade ${action}led`,
       'success'
     );
-
-    // Only an accept. Declining or cancelling is not a moment to mark.
-    if (action === 'accept') {
-      celebrate('trade', { title: 'Trade complete', detail: 'Both collections updated' });
-    }
   } catch (error) {
     hideLoading();
     showToast(error.message, 'error');

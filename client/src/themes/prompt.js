@@ -55,9 +55,9 @@ function listEdges(edges) {
  */
 export function buildPrompt(slot, { mood, palette = null, isAnchor = false, ground = null } = {}) {
   const lines = [];
-  const shape = slot.shape === 'spot'
-    ? 'Square spot illustration'
-    : slot.tiles === 'vertical' ? 'Vertical decorative panel' : 'Wide decorative banner illustration';
+  const shape = slot.tiles === 'vertical'
+    ? 'Vertical decorative panel'
+    : 'Wide decorative banner illustration';
 
   lines.push(`${shape}, exactly ${slot.width}x${slot.height} pixels, ${simplifyRatio(slot.width, slot.height)} aspect ratio.`);
   lines.push('');
@@ -67,34 +67,16 @@ export function buildPrompt(slot, { mood, palette = null, isAnchor = false, grou
   lines.push('');
   lines.push(`COMPOSITION: ${slot.safeArea}.`);
 
-  if (slot.id === 'empty') {
-    lines.push('INTENT: this appears wherever the app has nothing to show yet. It should');
-    lines.push('read as a calm, inviting "nothing here yet" — not as an error, and not');
-    lines.push('naming what is missing, since one image serves every empty screen.');
-  }
-  if (slot.id === 'celebration') {
-    lines.push('INTENT: this appears the moment someone records a win. It should read as a');
-    lines.push('flourish — triumphant and energetic, the opposite of the empty-state spot.');
-  }
   if (slot.overlaidText) {
     lines.push('Interface text sits directly on top of this image, so the area named above');
     lines.push('must stay quiet, low-detail and uncluttered.');
   }
   lines.push('');
 
-  if (slot.shape === 'spot') {
-    lines.push('VALUE: This sits on a dark surface and is the only thing on it, so it may');
-    lines.push('carry real light and colour — unlike the banner, it competes with nothing.');
-    lines.push('');
-    lines.push('BACKGROUND: fully transparent. No backdrop, no vignette, no card, no circle');
-    lines.push('behind the subject. Deliver with an alpha channel — a baked-in dark');
-    lines.push('background shows as a visible square against the page.');
-  } else {
-    lines.push('VALUE: This is a dark UI. Keep the image in the lower half of the value');
-    lines.push('range. Highlights are permitted only away from the area named above.');
-    lines.push('');
-    lines.push(...groundLines(slot, ground));
-  }
+  lines.push('VALUE: This is a dark UI. Keep the image in the lower half of the value');
+  lines.push('range. Highlights are permitted only away from the area named above.');
+  lines.push('');
+  lines.push(...groundLines(slot, ground));
 
   if (slot.tiles === 'vertical') {
     lines.push('');

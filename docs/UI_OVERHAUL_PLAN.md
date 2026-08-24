@@ -15,8 +15,8 @@ but it is dark-only by construction and is undermined by ~55 stray hex values an
 
 Goal: a **repeatable theme pack format** — one folder per theme, droppable per release —
 plus the structural chrome that makes a theme visible, a generated Gemini art prompt so
-each release's artwork arrives at the right slots and sizes, per-user theme selection,
-and a small set of celebration animations.
+each release's artwork arrives at the right slots and sizes, and per-user theme
+selection.
 
 ### Decisions taken
 
@@ -26,20 +26,30 @@ and a small set of celebration animations.
   future theme guaranteed-usable without QA.
 - **Persistence:** `theme` column on `users` (migration 032, mirroring the avatar
   pattern) + a `localStorage` mirror for instant first paint.
-- **Animation:** a small named set of celebration moments.
+- **Animation:** a small named set of celebration moments. *(Later removed — see
+  the status note above.)*
 - **Default:** a new signature dark theme replaces the current indigo-on-slate.
 - **Art slots:** side-rail tapestries (gutters), page banner strip, footer band,
-  and 600x600 spot art for empty states and the win celebration.
+  and 600x600 spot art for empty states and the win celebration. *(The two spot
+  slots were later removed.)*
 - **Palette direction:** "Arcane" — violet on obsidian, run deeper and higher-contrast
   than today. Rarity and status colors locked across all themes.
 
 ---
 
 > **Status:** all phases shipped. What remains is content, not structure —
-> replacing Arcane's placeholder SVGs with generated art, and two colour
-> decisions left open on purpose (the `--drift-*` group, and
-> `--rarity-uncommon` being both illegible and identical to
-> `--rarity-common`).
+> replacing Arcane's placeholder SVGs with generated art.
+>
+> **Walked back since:** the celebration animations and both 600×600 spot art
+> slots are gone. The overlay was genuinely nice the first time a collection
+> crossed a milestone and tiresome by the sixth, and it was firing on four
+> separate moments that all already showed a toast. Removing it also retired
+> the `celebration` art slot; the `empty` slot went with it, because two
+> commissioned squares was a real tax on making a theme and empty states read
+> fine with the Phosphor icon each screen already passes. `ART_SLOTS` is down
+> to four bands, and the wizard asks for three pictures after the banner
+> instead of five. The plan below describes what was built, not what is there
+> now.
 >
 > | Phase | State |
 > |---|---|
@@ -49,7 +59,7 @@ and a small set of celebration animations.
 > | 3 - structural chrome | done - banner, gutter rails, footer, nav indicator |
 > | 4 - theme forge | done - prompt generator and browser extractor |
 > | 5 - per-user selection | done - migration 032, /auth/preferences, settings picker |
-> | 6 - celebration animations | done - celebrate() in utils/ui.js, four moments |
+> | 6 - celebration animations | shipped, then removed - see the note above |
 >
 > Run `npm run check:themes` to re-check every theme's contrast,
 > `npm run theme:slots` to list the art slots, and `npm run theme:prompt` to
@@ -315,7 +325,13 @@ Copy the avatar feature end to end; it is the exact precedent.
 
 ---
 
-## Phase 6 — Celebration animations
+## Phase 6 — Celebration animations *(shipped, then removed)*
+
+> This phase was built as described and later taken out entirely, along with
+> the `celebration` and `empty` art slots. Kept here because the reasoning
+> below is still what would need answering if anyone wants it back — and
+> because the answer to "why did four different moments all want the same
+> overlay?" turned out to be that none of them did.
 
 One shared utility, `celebrate(kind, anchorEl)` added to `client/src/utils/ui.js`
 alongside `showToast`/`confirmDialog`, driving token-colored effects so each theme's
@@ -340,7 +356,7 @@ animations — extend them rather than adding a third.
   in each built-in theme; confirm rails collapse at <1700px and mobile is unchanged.
 - Chart-heavy pages (`deck-builder`, `cards`, `price-monitoring`) are the tokenization
   canary — if a chart renders grey or wrong, `theme.js` was bypassed somewhere.
-- Toggle OS reduced-motion and re-check every celebration and modal.
+- Toggle OS reduced-motion and re-check every modal.
 - Theme persistence: change theme → hard reload (no flash) → different browser →
   confirm it followed the account.
 - **Live server only** for the migration: verify against the Unraid host with a
