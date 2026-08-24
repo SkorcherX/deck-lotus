@@ -72,11 +72,16 @@ function describePrinting(printingId) {
 
     if (!row) return {};
 
+    // Keys are camelCase because this object is spread straight into
+    // recordAudit's argument, which destructures camelCase. Returning the
+    // column names instead silently drops the card identity: the row is
+    // written with a printing_id and nothing else, and the log then shows a
+    // trade movement as "Trade #10" with no card on it.
     return {
-      printing_uuid: row.uuid,
-      card_name: row.name,
-      set_code: row.set_code,
-      collector_number: row.collector_number,
+      printingUuid: row.uuid,
+      cardName: row.name,
+      setCode: row.set_code,
+      collectorNumber: row.collector_number,
     };
   } catch {
     return {};
