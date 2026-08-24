@@ -132,15 +132,8 @@ function toConditionIds(condition) {
   return all.slice(idx); // e.g. 'lp' → ['LP', 'MP', 'HP', 'DM'] — any condition LP or worse accepted
 }
 
-// POST /buyer/optimizer — finds cheapest combination of sellers for a list of cards
-// items: [{ name, quantity, condition?, foil?, setCode?, collectorNumber? }]
-// model: 'lowest_price' | 'balanced' | 'fewest_packages' | 'gathered_shipping_only'
-// Response: { cart: [{ inventory_id, quantity_selected }], totals: { subtotal_cents, shipping_cents, buyer_fee_cents, total_cents, seller_count } }
-export async function optimizeCart(items, model = 'lowest_price') {
-  assertConfigured();
-  if (!items?.length) throw new Error('No items provided');
-
-  const body = {
+function buildOptimizerBody(items, model) {
+  return {
     model,
     destination_country: 'US',
     cart: items.map(item => {
@@ -161,8 +154,49 @@ export async function optimizeCart(items, model = 'lowest_price') {
       };
     }),
   };
+}
 
-  return apiPost('/buyer/optimizer', body);
+// POST /buyer/optimizer — finds cheapest combination of sellers for a list of cards
+// items: [{ name, quantity, condition?, foil?, setCode?, collectorNumber? }]
+// model: 'lowest_price' | 'balanced' | 'fewest_packages' | 'gathered_shipping_only'
+// Response: { cart: [{ inventory_id, quantity_selected }], totals: {...}, unavailable: string[] }
+// A 409 with per-item availability means SOME cards have no seller — that's not a
+// failure of the request, so we drop those items and retry rather than erroring out.
+export async function optimizeCart(items, model = 'lowest_price') {
+  assertConfigured();
+  if (!items?.length) throw new Error('No items provided');
+
+  const res = await fetch(`${BASE_URL}/buyer/optimizer`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(buildOptimizerBody(items, model)),
+  });
+
+  if (res.ok) return { ...(await res.json()), unavailable: [] };
+
+  const data = await res.json().catch(() => null);
+  if (res.status !== 409 || !Array.isArray(data?.details)) {
+    throw new Error(`Mana Pool API error ${res.status}: /buyer/optimizer${data ? ` — ${JSON.stringify(data)}` : ''}`);
+  }
+
+  const unavailableIndexes = new Set(
+    data.details.filter(d => d.total_available === 0).map(d => d.item.index)
+  );
+  const unavailable = items.filter((_, i) => unavailableIndexes.has(i)).map(item => item.name);
+  const remaining = items.filter((_, i) => !unavailableIndexes.has(i));
+
+  if (!remaining.length) return { cart: [], totals: null, unavailable };
+
+  const retryRes = await fetch(`${BASE_URL}/buyer/optimizer`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(buildOptimizerBody(remaining, model)),
+  });
+  if (!retryRes.ok) {
+    const retryText = await retryRes.text().catch(() => '');
+    throw new Error(`Mana Pool API error ${retryRes.status}: /buyer/optimizer${retryText ? ` — ${retryText}` : ''}`);
+  }
+  return { ...(await retryRes.json()), unavailable };
 }
 
 // POST /deck — validate a deck for a given format

@@ -227,7 +227,7 @@ export function setupDeckBuilder() {
     } catch (err) {
       resultsEl.innerHTML = `<div style="color:var(--danger-light);padding:1rem;border-radius:6px;background:rgb(var(--danger-light-rgb) / 0.1);">
         <i class="ph ph-warning"></i> ${err.message}
-        ${!err.message.includes('token') ? '' : '<br><small>Set MANAPOOL_API_TOKEN in your server .env file.</small>'}
+        ${!err.message.includes('not configured') ? '' : '<br><small>Set MANAPOOL_API_TOKEN in your server .env file.</small>'}
       </div>`;
     } finally {
       btn.disabled = false;
@@ -265,7 +265,7 @@ export function setupDeckBuilder() {
     } catch (err) {
       resultsEl.innerHTML = `<div style="color:var(--danger-light);padding:1rem;border-radius:6px;background:rgb(var(--danger-light-rgb) / 0.1);">
         <i class="ph ph-warning"></i> ${err.message}
-        ${!err.message.includes('token') ? '' : '<br><small>Set MANAPOOL_API_TOKEN in your server .env file.</small>'}
+        ${!err.message.includes('not configured') ? '' : '<br><small>Set MANAPOOL_API_TOKEN in your server .env file.</small>'}
       </div>`;
     } finally {
       btn.disabled = false;
@@ -2991,11 +2991,12 @@ async function applyOptimization() {
 }
 
 function renderOptimizerResults(result, el) {
-  // API response: { cart: [{ inventory_id, quantity_selected }], totals: { subtotal_cents, shipping_cents, buyer_fee_cents, total_cents, seller_count } }
+  // API response: { cart: [{ inventory_id, quantity_selected }], totals: {...}, unavailable: string[] }
   const totals = result.totals;
   const cart = result.cart ?? [];
+  const unavailable = result.unavailable ?? [];
 
-  if (!totals && !cart.length) {
+  if (!totals && !cart.length && !unavailable.length) {
     el.innerHTML = `<div style="color:var(--text-secondary);padding:1rem;text-align:center;">
       No results returned. Check that your MANAPOOL_API_TOKEN is valid and cards are listed on Mana Pool.
     </div>`;
@@ -3005,8 +3006,17 @@ function renderOptimizerResults(result, el) {
   const fmt = cents => `$${(cents / 100).toFixed(2)}`;
   const sellerCount = totals?.seller_count ?? '?';
   const totalCents = totals?.total_cents ?? 0;
+  const unavailableHtml = unavailable.length ? `
+    <div style="color:var(--danger-light);padding:0.75rem;border-radius:8px;background:rgb(var(--danger-light-rgb) / 0.1);margin-bottom:0.75rem;">
+      <div style="font-size:0.85rem;font-weight:700;margin-bottom:0.35rem;">
+        <i class="ph ph-warning"></i> No sellers available on Mana Pool (${unavailable.length})
+      </div>
+      <div style="font-size:0.85rem;color:var(--text-secondary);">${unavailable.join(', ')}</div>
+    </div>
+  ` : '';
 
   el.innerHTML = `
+    ${totals ? `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
       <span style="font-size:1.1rem;font-weight:700;color:var(--success-bright);">
         <i class="ph ph-check-circle"></i> Optimized — ${fmt(totalCents)} across ${sellerCount} seller${sellerCount !== 1 ? 's' : ''}
@@ -3015,8 +3025,7 @@ function renderOptimizerResults(result, el) {
         Complete on Mana Pool <i class="ph ph-arrow-square-out"></i>
       </a>
     </div>
-    ${totals ? `
-      <div style="background:var(--bg-tertiary);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
+    <div style="background:var(--bg-tertiary);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
         <div style="display:flex;justify-content:space-between;padding:0.2rem 0;font-size:0.9rem;">
           <span>Subtotal</span><span>${fmt(totals.subtotal_cents ?? 0)}</span>
         </div>
@@ -3032,9 +3041,12 @@ function renderOptimizerResults(result, el) {
         </div>
       </div>
     ` : ''}
+    ${unavailableHtml}
+    ${cart.length ? `
     <div style="font-size:0.8rem;color:var(--text-secondary);text-align:center;">
       ${cart.length} item${cart.length !== 1 ? 's' : ''} selected — click "Complete on Mana Pool" to review and checkout.
     </div>
+    ` : ''}
   `;
 }
 
