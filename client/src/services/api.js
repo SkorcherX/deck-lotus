@@ -486,10 +486,14 @@ class ApiClient {
   // Inventory methods
   async getInventory(filters = {}) {
     const params = new URLSearchParams();
-    // One `name` param per chip; the server ANDs them together.
+    // One `name` param per chip, plus the unpinned term from the search box;
+    // the server ANDs them together and cannot tell the two apart, which is
+    // the point — an unpinned term filters exactly like a pinned one, it just
+    // does not survive the next thing typed.
     for (const term of [].concat(filters.names || filters.name || [])) {
       if (term) params.append('name', term);
     }
+    if (filters.liveName) params.append('name', filters.liveName);
     if (filters.colors && filters.colors.length > 0) params.append('colors', filters.colors.join(','));
     if (filters.type && filters.type !== 'all') params.append('type', filters.type);
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));
@@ -511,10 +515,11 @@ class ApiClient {
   async getAdminInventory(userIds, filters = {}) {
     const params = new URLSearchParams();
     params.append('userIds', userIds.join(','));
-    // One `name` param per chip; the server ANDs them together.
+    // Same as getInventory: chips plus the unpinned search term.
     for (const term of [].concat(filters.names || filters.name || [])) {
       if (term) params.append('name', term);
     }
+    if (filters.liveName) params.append('name', filters.liveName);
     if (filters.colors && filters.colors.length > 0) params.append('colors', filters.colors.join(','));
     if (filters.type && filters.type !== 'all') params.append('type', filters.type);
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));

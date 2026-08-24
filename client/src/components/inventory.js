@@ -1,5 +1,5 @@
 import api from '../services/api.js';
-import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog } from '../utils/ui.js';
+import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog, debounce } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
 
 // 54 = 9 rows of 6 at the grid's usual column count, so a full page ends on
@@ -15,6 +15,11 @@ let filters = {
   // `sets` match any of the listed codes (widening) — a card is only ever
   // printed in one set per printing, so ANDing them would match nothing.
   names: [],
+  // What is currently in the search box but has not been pinned. It filters
+  // exactly like a chip — narrowing, alongside them — but it is replaced by
+  // the next thing typed rather than added to. That is the whole difference
+  // between looking up another card and refining the search you are in.
+  liveName: '',
   sets: [],
   colors: [],
   type: 'all',
@@ -136,8 +141,17 @@ function setupFilterListeners() {
 }
 
 // The search box filters by card name or by set code depending on the mode
-// dropdown beside it. Pressing Enter commits the term as a chip, so terms
-// stack: filter to a set, flip the dropdown, then search names within it.
+// dropdown beside it.
+//
+// Typing filters straight away and REPLACES whatever was typed before it.
+// Pressing Enter pins the current term as a chip, and pinned terms stack:
+// filter to a set, flip the dropdown, then search names within it.
+//
+// It used to be Enter or nothing, which meant every search appended. Since
+// name chips all have to match, looking up a second card after a first one
+// reliably returned nothing at all — the two terms were being read as one
+// card's name. Making the unpinned term transient fixes that without giving
+// up the narrowing, because narrowing is now something you ask for.
 function setupSearchChips() {
   const input = document.getElementById('inventory-search');
   const mode = document.getElementById('inventory-search-mode');
@@ -146,9 +160,12 @@ function setupSearchChips() {
 
   const applyMode = () => {
     const isSet = mode.value === 'set';
+    // Names filter as you type, so the old "press Enter" hint would be
+    // describing the wrong thing. Set codes still need it: a partial code is
+    // not a filter worth running, so set mode really does wait for Enter.
     input.placeholder = isSet
       ? 'Filter by set code, press Enter...'
-      : 'Filter by name, press Enter...';
+      : 'Filter by name...';
     // The set list is only a useful suggestion in set mode; leaving it
     // attached in name mode offers set codes while typing a card name.
     if (isSet) {
@@ -159,21 +176,37 @@ function setupSearchChips() {
   };
 
   mode.addEventListener('change', () => {
+    // The live term belongs to the mode it was typed in — carrying a
+    // half-typed card name over into set mode would filter by a set code
+    // that does not exist and silently empty the list.
+    setLiveTerm('', mode.value);
+    input.value = '';
     applyMode();
     input.focus();
   });
   applyMode();
 
+  input.addEventListener('input', debounce(() => {
+    setLiveTerm(input.value, mode.value);
+  }, 250));
+
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (addFilterChip(mode.value, input.value)) {
+
+      // Pinning and the live term are the same value, so clear the live one
+      // first — otherwise the term is applied twice, once as a chip and once
+      // as itself, which is harmless for results and wrong in the count.
+      const value = input.value;
+      if (value.trim()) {
+        clearLiveTerm();
         input.value = '';
+        addFilterChip(mode.value, value);
       }
       return;
     }
 
-    // Backspace in an empty box takes back the chip you just added.
+    // Backspace in an empty box takes back the chip you just pinned.
     if (e.key === 'Backspace' && input.value === '') {
       const last = activeChips().pop();
       if (last) {
@@ -190,6 +223,28 @@ function setupSearchChips() {
   });
 
   renderFilterChips();
+}
+
+/**
+ * Apply what is currently typed, without pinning it.
+ *
+ * Set mode is deliberately not filtered live: a set code is only meaningful
+ * once it is complete, and filtering on "M" then "M1" then "M10" empties the
+ * list twice on the way to an answer. Names are the opposite — every prefix
+ * of a name is a useful filter.
+ */
+function setLiveTerm(rawValue, mode) {
+  const value = mode === 'set' ? '' : String(rawValue).trim();
+  if (value === filters.liveName) return;
+
+  filters.liveName = value;
+  currentPage = 1;
+  loadInventoryData();
+}
+
+/** Drop the live term without triggering a fetch — for callers about to do one. */
+function clearLiveTerm() {
+  filters.liveName = '';
 }
 
 // Chips in the order they were committed, so backspace removes the newest.
@@ -1120,7 +1175,15 @@ function renderBulkAddPreview(items) {
   previewDiv.classList.remove('hidden');
 }
 
+// Bumped on every load. Typing filters live now, so two requests can be in
+// flight within a few hundred milliseconds and the slower one can land last —
+// which would leave the grid showing results for a prefix of what is in the
+// box. Only the newest request is allowed to write to the page.
+let inventoryRequestId = 0;
+
 async function loadInventoryData({ append = false } = {}) {
+  const requestId = ++inventoryRequestId;
+
   try {
     // The full-page spinner is for a list being replaced. Appending keeps the
     // current rows readable and shows its own footer instead.
@@ -1143,6 +1206,16 @@ async function loadInventoryData({ append = false } = {}) {
           api.getInventory({ ...filters, page: currentPage, limit: PAGE_SIZE }),
           api.getInventoryStats()
         ]);
+
+    // Superseded while this was in flight: drop the results rather than
+    // painting them over newer ones. The spinner is deliberately left alone —
+    // the request that overtook this one owns it and will hide it when it
+    // renders. `loadingMore` is not: it belongs to this append, and leaving it
+    // set would stall endless scroll for good.
+    if (requestId !== inventoryRequestId) {
+      if (append) loadingMore = false;
+      return;
+    }
 
     const newCards = inventoryResult.cards || [];
 
@@ -1210,6 +1283,7 @@ function renderResultCount(matched, collectionTotal) {
 function hasActiveFilters() {
   return (
     filters.names.length > 0 ||
+    !!filters.liveName ||
     filters.sets.length > 0 ||
     filters.colors.length > 0 ||
     (filters.type && filters.type !== 'all') ||
