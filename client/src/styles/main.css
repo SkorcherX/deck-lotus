@@ -4256,6 +4256,11 @@ body.maintenance-locked #app {
   animation: spin 1s linear infinite;
 }
 
+.ph-spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
 /* Inventory Grid */
 .inventory-grid {
   display: grid;
