@@ -149,11 +149,68 @@ export function setupCards() {
   // Load cards when page is shown
   window.addEventListener('page:cards', () => {
     loadCards();
+    refreshWantSummary();
+  });
+
+  // The summary's link is not a .nav-link, so it asks for the page by event
+  // the same way the avatar menu does.
+  document.querySelector('.cards-want-summary-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'shopping' } }));
   });
 
   // Also check if we're already on the cards page
   if (!document.getElementById('cards-page').classList.contains('hidden')) {
     loadCards();
+  }
+}
+
+/**
+ * The running cost of the shopping list, shown while browsing.
+ *
+ * Deliberately priced the same way the Shopping page prices it — per copy
+ * needed, from the merged payload — rather than from a local tally. Two
+ * screens quoting different totals for the same list is the sort of thing
+ * that stops anyone trusting either number.
+ *
+ * Asks for the wanted half only (no deckIds), because this bar is about what
+ * browsing has added, not what the decks were already going to cost.
+ */
+async function refreshWantSummary() {
+  const bar = document.getElementById('cards-want-summary');
+  const text = document.getElementById('cards-want-summary-text');
+  if (!bar || !text) return;
+
+  try {
+    const data = await api.getShoppingList([]);
+    const cards = (data.sets || []).flatMap((set) => set.cards || []);
+
+    if (cards.length === 0) {
+      bar.classList.add('hidden');
+      return;
+    }
+
+    const copies = cards.reduce((sum, c) => sum + (c.quantityNeeded || 1), 0);
+    const estimate = cards.reduce(
+      (sum, c) => sum + (c.price || 0) * (c.quantityNeeded || 1),
+      0
+    );
+
+    // Cards with no price on file are named rather than silently treated as
+    // free — an estimate that quietly omits three mythics is worse than one
+    // that admits it is short.
+    const unpriced = cards.filter((c) => !c.price).length;
+
+    text.innerHTML =
+      `<strong>${copies}</strong> card${copies === 1 ? '' : 's'} on your shopping list` +
+      ` &middot; about <strong>$${estimate.toFixed(2)}</strong>` +
+      (unpriced ? ` <span class="cards-want-unpriced">(${unpriced} with no price on file)</span>` : '');
+
+    bar.classList.remove('hidden');
+  } catch (error) {
+    // A summary that cannot load is not worth interrupting browsing over.
+    console.error('Failed to load shopping summary:', error);
+    bar.classList.add('hidden');
   }
 }
 
@@ -422,6 +479,16 @@ function renderCards(cards) {
       <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.id}" style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; z-index: 10;">
         <i class="ph ${card.is_owned ? 'ph-check-circle' : 'ph-circle'}"></i>
       </button>
+      <!--
+        Shopping, as distinct from owning. The tick above says "I have this";
+        this says "I want this" and puts the card on the shopping list, where
+        it gets priced alongside everything the decks need. Sits under the
+        ownership tick rather than beside the + so the two collection actions
+        stay on the left and adding-to-a-list stays its own thing.
+      -->
+      <button class="want-btn" data-card-id="${card.id}" title="Add to shopping list" style="position: absolute; top: 46px; left: 8px; background: rgb(var(--scrim-rgb) / 0.8); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10;">
+        <i class="ph ph-bookmark-simple"></i>
+      </button>
       <div class="card-name" style="pointer-events: none;">${card.name}</div>
       <div class="card-mana" style="pointer-events: none;">${formatMana(card.mana_cost)}</div>
       <div class="card-type" style="pointer-events: none;">${card.type_line || ''}</div>
@@ -446,7 +513,7 @@ function renderCards(cards) {
   // Add click handlers to show card details
   cardsGrid.querySelectorAll('.card-item').forEach(item => {
     item.addEventListener('click', async (e) => {
-      if (e.target.classList.contains('quick-add-btn')) return;
+      if (e.target.closest('.quick-add-btn') || e.target.closest('.want-btn')) return;
       const cardId = item.dataset.cardId;
       await showCardDetail(cardId);
     });
@@ -458,6 +525,28 @@ function renderCards(cards) {
       e.stopPropagation();
       const cardId = btn.dataset.cardId;
       await showQuickAddMenu(cardId, btn);
+    });
+  });
+
+  // Shopping list handlers. The server picks the cheapest printing — Browse
+  // Cards works at card level and has no printing to send.
+  cardsGrid.querySelectorAll('.want-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+
+      try {
+        const { added } = await api.addWantedCard({ cardId: parseInt(btn.dataset.cardId, 10) });
+
+        // The button marks itself rather than reverting: adding twice is a
+        // legitimate thing to do (two copies), so this is a confirmation, not
+        // a toggle.
+        btn.classList.add('wanted');
+        btn.innerHTML = '<i class="ph ph-bookmark-simple-fill"></i>';
+        showToast(`${added.name} added to your shopping list`, 'success', 1500);
+        refreshWantSummary();
+      } catch (error) {
+        showToast('Could not add to the shopping list: ' + error.message, 'error');
+      }
     });
   });
 

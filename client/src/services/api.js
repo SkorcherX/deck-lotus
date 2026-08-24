@@ -456,6 +456,33 @@ class ApiClient {
     return this.request(`/shopping?${params}`);
   }
 
+  // The wanted list: cards being shopped for that no deck asked for.
+  async addWantedCard(body) {
+    return this.request('/shopping/wanted', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  async addWantedCardsBulk(text) {
+    return this.request('/shopping/wanted/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  async setWantedQuantity(itemId, quantity) {
+    return this.request(`/shopping/wanted/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quantity }),
+    });
+  }
+
+  async removeWantedCard(itemId) {
+    return this.request(`/shopping/wanted/${itemId}`, { method: 'DELETE' });
+  }
+
+  async clearWantedCards() {
+    return this.request('/shopping/wanted', { method: 'DELETE' });
+  }
+
   // Inventory methods
   async getInventory(filters = {}) {
     const params = new URLSearchParams();

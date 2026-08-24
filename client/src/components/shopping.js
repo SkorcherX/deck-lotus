@@ -1,5 +1,5 @@
 import api from '../services/api.js';
-import { showLoading, hideLoading, formatMana, showToast, showError } from '../utils/ui.js';
+import { showLoading, hideLoading, formatMana, showToast, showError, debounce } from '../utils/ui.js';
 
 let selectedDeckIds = new Set();
 let shoppingData = null;
@@ -23,6 +23,189 @@ export function setupShopping() {
   window.addEventListener('page:shopping', loadShoppingData);
 
   document.getElementById('shopping-optimize-btn')?.addEventListener('click', runShoppingOptimizer);
+  setupWantedList();
+}
+
+// ---------------------------------------------------------------------------
+// The wanted list — cards being shopped for with no deck behind them
+// ---------------------------------------------------------------------------
+
+/**
+ * Wire the two ways onto the list: one card at a time, or a pasted block.
+ *
+ * Both land in the same place, and the list they land in is merged with the
+ * deck-derived one server-side. Nothing below this point knows the difference,
+ * which is why the filters, the totals and the Mana Pool optimizer all work on
+ * wanted cards without being told about them.
+ */
+function setupWantedList() {
+  const search = document.getElementById('shopping-wanted-search');
+  const results = document.getElementById('shopping-wanted-results');
+
+  if (search && results) {
+    search.addEventListener('input', debounce(async () => {
+      const query = search.value.trim();
+
+      if (query.length < 2) {
+        results.classList.add('hidden');
+        results.innerHTML = '';
+        return;
+      }
+
+      try {
+        const { cards = [] } = await api.searchForInventoryAdd(query);
+        renderWantedSearchResults(cards);
+      } catch (error) {
+        console.error('Wanted-card search failed:', error);
+      }
+    }, 250));
+
+    // Clicking away closes the dropdown; without this it hangs over the deck
+    // selector below and swallows the clicks meant for it.
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.shopping-wanted-search')) {
+        results.classList.add('hidden');
+      }
+    });
+  }
+
+  const bulkToggle = document.getElementById('shopping-wanted-bulk-toggle');
+  const bulk = document.getElementById('shopping-wanted-bulk');
+
+  bulkToggle?.addEventListener('click', () => {
+    bulk?.classList.toggle('hidden');
+    if (!bulk?.classList.contains('hidden')) {
+      document.getElementById('shopping-wanted-bulk-text')?.focus();
+    }
+  });
+
+  document.getElementById('shopping-wanted-bulk-cancel')?.addEventListener('click', () => {
+    bulk?.classList.add('hidden');
+  });
+
+  document.getElementById('shopping-wanted-bulk-add')?.addEventListener('click', addWantedBulk);
+
+  document.getElementById('shopping-wanted-clear')?.addEventListener('click', async () => {
+    if (!window.confirm('Remove every card from your wanted list?')) return;
+
+    try {
+      const { cleared } = await api.clearWantedCards();
+      showToast(`Removed ${cleared} card${cleared === 1 ? '' : 's'}`, 'success');
+      await refreshShoppingData();
+    } catch (error) {
+      showToast('Could not clear the list: ' + error.message, 'error');
+    }
+  });
+}
+
+function renderWantedSearchResults(cards) {
+  const results = document.getElementById('shopping-wanted-results');
+  if (!results) return;
+
+  if (cards.length === 0) {
+    results.innerHTML = '<div class="search-result-item">No cards found</div>';
+    results.classList.remove('hidden');
+    return;
+  }
+
+  results.innerHTML = cards.map((card) => `
+    <div class="search-result-item" data-card-id="${card.card_id}" data-printing-id="${card.cheapest_printing_id || ''}">
+      <div>
+        <strong>${escapeHtml(card.name)}</strong>
+        ${card.type_line ? `<div class="shopping-wanted-result-type">${escapeHtml(card.type_line)}</div>` : ''}
+      </div>
+      ${card.total_owned ? `<span class="shopping-wanted-owned">own ${card.total_owned}</span>` : ''}
+    </div>
+  `).join('');
+
+  results.classList.remove('hidden');
+
+  results.querySelectorAll('.search-result-item[data-card-id]').forEach((item) => {
+    item.addEventListener('click', async () => {
+      // The printing is sent when the search knew one, and the card id
+      // otherwise — the server resolves the cheapest printing either way, so
+      // a search result that came back without one is still addable.
+      const printingId = item.dataset.printingId;
+      const body = printingId
+        ? { printingId: parseInt(printingId, 10) }
+        : { cardId: parseInt(item.dataset.cardId, 10) };
+
+      try {
+        const { added } = await api.addWantedCard(body);
+        showToast(`Added ${added.name} to your list`, 'success', 1500);
+
+        const search = document.getElementById('shopping-wanted-search');
+        if (search) search.value = '';
+        results.classList.add('hidden');
+
+        await refreshShoppingData();
+      } catch (error) {
+        showToast('Could not add that card: ' + error.message, 'error');
+      }
+    });
+  });
+}
+
+async function addWantedBulk() {
+  const textarea = document.getElementById('shopping-wanted-bulk-text');
+  const resultEl = document.getElementById('shopping-wanted-bulk-result');
+  const text = textarea?.value.trim();
+
+  if (!text) {
+    showToast('Paste some card lines first', 'warning');
+    return;
+  }
+
+  try {
+    const result = await api.addWantedCardsBulk(text);
+
+    // Lines that resolved to nothing are shown rather than counted: a paste
+    // that added 47 of 50 is only useful if you can see which three failed,
+    // and the usual cause is a set code that needs correcting by hand.
+    if (resultEl) {
+      resultEl.classList.remove('hidden');
+      resultEl.innerHTML = `
+        <div class="shopping-bulk-summary">
+          Added ${result.added.length} of ${result.parsed} line${result.parsed === 1 ? '' : 's'}.
+        </div>
+        ${result.unresolved.length ? `
+          <div class="shopping-bulk-unresolved">
+            <strong>Could not match:</strong>
+            <ul>
+              ${result.unresolved.map((u) => `<li>${escapeHtml(u.line || u.name || '(blank)')}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    if (result.added.length > 0) {
+      textarea.value = '';
+      await refreshShoppingData();
+    }
+  } catch (error) {
+    showToast('Could not add those cards: ' + error.message, 'error');
+  }
+}
+
+/** Change or remove one wanted row from the list rendered below. */
+async function updateWanted(itemId, quantity) {
+  try {
+    if (quantity <= 0) {
+      await api.removeWantedCard(itemId);
+    } else {
+      await api.setWantedQuantity(itemId, quantity);
+    }
+    await refreshShoppingData();
+  } catch (error) {
+    showToast('Could not update the list: ' + error.message, 'error');
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
 }
 
 async function runShoppingOptimizer() {
@@ -37,11 +220,17 @@ async function runShoppingOptimizer() {
     for (const card of set.cards) {
       const key = `${card.printingId}`;
       if (sessionState.found.has(key) || sessionState.skipped.has(key)) continue;
+      // quantityNeeded, not 1: the optimizer is quoting a basket, and asking
+      // Mana Pool for one copy of a card you need four of prices the wrong
+      // basket. Entries carry no bare `quantity` — the deck half keeps its
+      // counts per deck and the wanted half in its own row, and the server
+      // reconciles the two into this one number.
+      const wanted = card.quantityNeeded || 1;
       const existing = items.find(i => i.name === card.name);
       if (existing) {
-        existing.quantity += card.quantity ?? 1;
+        existing.quantity += wanted;
       } else {
-        items.push({ name: card.name, quantity: card.quantity ?? 1 });
+        items.push({ name: card.name, quantity: wanted });
       }
     }
   }
@@ -359,12 +548,9 @@ function renderFilters() {
 }
 
 async function refreshShoppingData() {
-  if (selectedDeckIds.size === 0) {
-    shoppingData = { sets: [], totalCards: 0, totalDecks: 0, totalPrice: 0 };
-    renderShoppingList();
-    return;
-  }
-
+  // Deselecting every deck no longer means there is nothing to fetch: the
+  // wanted list comes back either way, and short-circuiting here is what used
+  // to blank the page the moment the last deck was unticked.
   try {
     showLoading();
     const result = await api.getShoppingList(Array.from(selectedDeckIds));
@@ -375,6 +561,27 @@ async function refreshShoppingData() {
     hideLoading();
     showError('Failed to refresh shopping data: ' + error.message);
   }
+}
+
+/**
+ * The count and the clear button on the wanted-list section.
+ *
+ * Reads from the merged payload rather than tracking its own copy — the list
+ * on screen and the number above it come from the same fetch, so they cannot
+ * disagree after an add.
+ */
+function renderWantedSummary() {
+  const count = document.getElementById('shopping-wanted-count');
+  const clear = document.getElementById('shopping-wanted-clear');
+  const total = shoppingData?.totalWanted || 0;
+
+  if (count) {
+    count.textContent = total === 0
+      ? 'Nothing on your list yet'
+      : `${total} card${total === 1 ? '' : 's'} on your list`;
+  }
+
+  clear?.classList.toggle('hidden', total === 0);
 }
 
 function applyFiltersToData(data) {
@@ -410,7 +617,12 @@ function applyFiltersToData(data) {
     return {
       ...set,
       cards: filteredCards,
-      totalPrice: filteredCards.reduce((sum, card) => sum + (card.price || 0), 0),
+      // Priced per copy needed, not per distinct card. A list that quotes one
+      // copy of a four-of is not an estimate of anything.
+      totalPrice: filteredCards.reduce(
+        (sum, card) => sum + (card.price || 0) * (card.quantityNeeded || 1),
+        0
+      ),
       cardCount: filteredCards.length,
     };
   });
@@ -452,12 +664,16 @@ function renderShoppingList() {
   const container = document.getElementById('shopping-list-container');
   const stats = document.getElementById('shopping-stats');
 
-  if (!shoppingData || selectedDeckIds.size === 0) {
+  renderWantedSummary();
+
+  // Only genuinely-nothing is empty now — no decks picked *and* nothing on the
+  // wanted list.
+  if (!shoppingData || (selectedDeckIds.size === 0 && !(shoppingData.totalWanted > 0))) {
     container.innerHTML = `
       <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
         <i class="ph ph-shopping-cart" style="font-size: 4rem; opacity: 0.3;"></i>
-        <h3>Select decks to shop for</h3>
-        <p>Choose one or more decks above to see what cards you need.</p>
+        <h3>Nothing to shop for yet</h3>
+        <p>Pick a deck above, or search for a card you want.</p>
       </div>
     `;
     stats.innerHTML = '';
@@ -589,7 +805,7 @@ function renderSetCards(cards) {
             const boardIcon = d.boardType === 'sideboard' ? '📋' : d.boardType === 'maybeboard' ? '🤔' : '📚';
             return `${d.deckName} (${boardIcon} ${d.boardType})`;
           }).join(', ');
-          const totalQuantity = card.decks.reduce((sum, d) => sum + d.quantity, 0);
+          const totalQuantity = card.quantityNeeded || 1;
           const isHighPriority = card.decks.length >= 3;
           const cardKey = `${card.printingId}`;
 
@@ -597,13 +813,14 @@ function renderSetCards(cards) {
             <div class="shopping-card-compact ${isHighPriority ? 'high-priority' : ''}" data-card-key="${cardKey}">
               <div class="compact-card-main">
                 <span class="compact-card-qty">${totalQuantity}x</span>
+                ${card.wanted ? '<span class="wanted-badge" title="On your wanted list"><i class="ph ph-bookmark-simple"></i></span>' : ''}
                 <span class="compact-card-name">${card.name}</span>
                 <span class="compact-card-number">#${card.collectorNumber || '?'}</span>
                 ${card.price ? `<span class="compact-card-price">$${card.price.toFixed(2)}</span>` : ''}
                 ${isHighPriority ? `<span class="compact-priority-badge" title="Format staple!"><i class="ph ph-star-fill"></i></span>` : ''}
               </div>
               <div class="compact-card-details">
-                <span class="compact-card-decks">${deckDetails}</span>
+                <span class="compact-card-decks">${deckDetails || (card.wanted ? 'On your wanted list' : '')}</span>
                 <div class="compact-card-actions">
                   <button class="btn-icon found-btn" data-card-key="${cardKey}" data-card-id="${card.cardId}" title="Found it!">
                     <i class="ph ph-check"></i>
@@ -634,7 +851,7 @@ function renderSetCards(cards) {
             ${boardIcon} <strong>${d.deckName}</strong>: ${boardLabel} (${d.quantity}x)
           </div>`;
         }).join('');
-        const totalQuantity = card.decks.reduce((sum, d) => sum + d.quantity, 0);
+        const totalQuantity = card.quantityNeeded || 1;
         const isMultiDeck = card.decks.length > 1;
         const isHighPriority = card.decks.length >= 3; // Format staple
         const cardKey = `${card.printingId}`;
@@ -670,13 +887,35 @@ function renderSetCards(cards) {
                 <span class="collector-number">#${card.collectorNumber || '?'}</span>
                 ${card.price ? `<span class="card-price">$${card.price.toFixed(2)}</span>` : ''}
               </div>
-              <div class="shopping-card-decks">
-                <strong>Needed for:</strong>
-                ${deckDetails}
-              </div>
+              ${card.decks.length ? `
+                <div class="shopping-card-decks">
+                  <strong>Needed for:</strong>
+                  ${deckDetails}
+                </div>
+              ` : ''}
+              ${card.wanted ? `
+                <div class="shopping-card-wanted">
+                  <strong>On your list</strong>
+                  ${card.wanted.note ? `<div class="shopping-card-wanted-note">${escapeHtml(card.wanted.note)}</div>` : ''}
+                  ${card.wanted.alreadyOwned ? '<div class="shopping-card-wanted-owned">You already own a copy</div>' : ''}
+                  <div class="shopping-wanted-qty">
+                    <button class="btn-icon wanted-step" data-wanted-id="${card.wanted.id}" data-to="${card.wanted.quantity - 1}" title="One fewer">
+                      <i class="ph ph-minus"></i>
+                    </button>
+                    <span class="shopping-wanted-qty-value">${card.wanted.quantity}</span>
+                    <button class="btn-icon wanted-step" data-wanted-id="${card.wanted.id}" data-to="${card.wanted.quantity + 1}" title="One more">
+                      <i class="ph ph-plus"></i>
+                    </button>
+                    <button class="btn-icon wanted-remove" data-wanted-id="${card.wanted.id}" title="Take off the list">
+                      <i class="ph ph-trash"></i>
+                    </button>
+                  </div>
+                </div>
+              ` : ''}
               ${totalQuantity > 1 ? `
                 <div class="shopping-card-quantity">
-                  <strong>Total quantity:</strong> ${totalQuantity}x
+                  <strong>Copies to buy:</strong> ${totalQuantity}x
+                  ${card.price ? ` • $${(card.price * totalQuantity).toFixed(2)}` : ''}
                 </div>
               ` : ''}
               <div class="shopping-card-actions">
@@ -718,11 +957,18 @@ function exportShoppingList() {
     exportText += `${'-'.repeat(50)}\n`;
 
     set.cards.forEach(card => {
-      const totalQty = card.decks.reduce((sum, d) => sum + d.quantity, 0);
+      const totalQty = card.quantityNeeded || 1;
       const deckDetails = card.decks.map(d => `${d.deckName} (${d.boardType}, ${d.quantity}x)`).join(', ');
-      const price = card.price ? ` • $${card.price.toFixed(2)}` : '';
+      const price = card.price ? ` • $${(card.price * totalQty).toFixed(2)}` : '';
       exportText += `${totalQty}x ${card.name} (#${card.collectorNumber})${price}\n`;
-      exportText += `   Decks: ${deckDetails}\n`;
+
+      // A wanted card has no deck to name, and printing "Decks: " with
+      // nothing after it in a list you take to a shop reads as a bug.
+      if (deckDetails) {
+        exportText += `   Decks: ${deckDetails}\n`;
+      } else if (card.wanted) {
+        exportText += `   Wanted${card.wanted.note ? `: ${card.wanted.note}` : ''}\n`;
+      }
     });
     exportText += `\n`;
   });
@@ -767,5 +1013,17 @@ document.addEventListener('click', async (e) => {
     sessionState.skipped.add(cardKey);
     showToast('Card skipped', 'info', 1500);
     renderShoppingList();
+  }
+
+  // Wanted-list quantity. Stepping to zero removes the row, which is what the
+  // minus button on a single copy is asking for.
+  const step = e.target.closest('.wanted-step');
+  if (step) {
+    await updateWanted(parseInt(step.dataset.wantedId, 10), parseInt(step.dataset.to, 10));
+  }
+
+  const remove = e.target.closest('.wanted-remove');
+  if (remove) {
+    await updateWanted(parseInt(remove.dataset.wantedId, 10), 0);
   }
 });

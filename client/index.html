@@ -897,6 +897,19 @@
                         </div>
                     </div>
                 </div>
+                <!--
+                  What browsing has cost so far. Hidden until something is on
+                  the list — an empty "$0.00" bar on a page you are only
+                  reading would be noise. Priced from the same estimate the
+                  Shopping page shows, so the two cannot quote different
+                  numbers.
+                -->
+                <div id="cards-want-summary" class="cards-want-summary hidden">
+                    <i class="ph ph-bookmark-simple"></i>
+                    <span id="cards-want-summary-text"></span>
+                    <a href="#" data-page="shopping" class="cards-want-summary-link">Open shopping list</a>
+                </div>
+
                 <div id="cards-grid" class="cards-grid"></div>
                 <div id="pagination" class="pagination">
                     <button id="prev-page" class="btn btn-secondary" disabled>
@@ -917,6 +930,52 @@
                 </div>
 
                 <div class="shopping-content">
+                    <!--
+                      Cards wanted on their own account, with no deck behind
+                      them. Placed above the deck selector because it is the
+                      half you add to by hand — the deck half needs choosing,
+                      not entering.
+                    -->
+                    <div class="shopping-section">
+                        <div class="shopping-wanted-head">
+                            <h3 style="margin: 0;">Cards You Want</h3>
+                            <span id="shopping-wanted-count" class="shopping-wanted-count"></span>
+                            <button id="shopping-wanted-clear" class="btn btn-secondary btn-sm hidden">
+                                Clear list
+                            </button>
+                        </div>
+
+                        <div class="shopping-wanted-entry">
+                            <div class="shopping-wanted-search">
+                                <input
+                                    type="text"
+                                    id="shopping-wanted-search"
+                                    placeholder="Search for a card to shop for..."
+                                    autocomplete="off"
+                                />
+                                <div id="shopping-wanted-results" class="search-results hidden"></div>
+                            </div>
+                            <button id="shopping-wanted-bulk-toggle" class="btn btn-secondary">
+                                <i class="ph ph-list-plus btn-icon"></i>
+                                <span class="btn-text">Paste a list</span>
+                            </button>
+                        </div>
+
+                        <!-- Same line formats as the deck and inventory boxes -->
+                        <div id="shopping-wanted-bulk" class="shopping-wanted-bulk hidden">
+                            <textarea
+                                id="shopping-wanted-bulk-text"
+                                rows="8"
+                                placeholder="1 Lightning Bolt&#10;2 Counterspell (MH2) 267&#10;1 FDN 1"
+                            ></textarea>
+                            <div class="shopping-wanted-bulk-actions">
+                                <button id="shopping-wanted-bulk-add" class="btn btn-primary btn-sm">Add to list</button>
+                                <button id="shopping-wanted-bulk-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+                            </div>
+                            <div id="shopping-wanted-bulk-result" class="shopping-wanted-bulk-result hidden"></div>
+                        </div>
+                    </div>
+
                     <!-- Deck Selection -->
                     <div class="shopping-section">
                         <h3 style="margin-bottom: 1rem;">Select Decks to Shop For</h3>

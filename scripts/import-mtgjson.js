@@ -722,6 +722,20 @@ async function main() {
           `).all()
         : [];
 
+      // The shopping list points at printings too, and its rows are the only
+      // record that somebody wanted a card — nothing else in the database
+      // implies them the way a deck implies its cards. Losing them every
+      // Sunday would be losing user data outright.
+      const shoppingListBackup = hasTable('shopping_list_items')
+        ? targetDb.prepare(`
+            SELECT sli.user_id, sli.quantity, sli.is_foil, sli.note,
+                   sli.created_at, sli.updated_at,
+                   p.uuid as printing_uuid
+            FROM shopping_list_items sli
+            JOIN printings p ON sli.printing_id = p.id
+          `).all()
+        : [];
+
       // Create backup directory if it doesn't exist
       const BACKUP_DIR = path.join(DATA_DIR, 'backups');
       if (!fs.existsSync(BACKUP_DIR)) {
@@ -741,7 +755,8 @@ async function main() {
           owned_cards: ownedCardsBackup,
           owned_printings: ownedPrintingsBackup,
           trade_items: tradeItemsBackup,
-          deck_card_disruptions: disruptionsBackup
+          deck_card_disruptions: disruptionsBackup,
+          shopping_list_items: shoppingListBackup
         }
       };
 
@@ -797,6 +812,7 @@ async function main() {
       targetDb._ownedPrintingsBackup = ownedPrintingsBackup;
       targetDb._tradeItemsBackup = tradeItemsBackup;
       targetDb._disruptionsBackup = disruptionsBackup;
+      targetDb._shoppingListBackup = shoppingListBackup;
       targetDb._safetyBackupPath = safetyBackupPath;
     }
 
@@ -1084,6 +1100,64 @@ async function main() {
       console.log(`✓ Restored ${disruptionResult.restored} traded-away notices`);
       if (disruptionResult.notFound > 0) {
         console.log(`  ⚠️  ${disruptionResult.notFound} notices could not be restored`);
+      }
+    }
+
+    // STEP 9: Restore the wanted-cards shopping list
+    if (targetDb._shoppingListBackup && targetDb._shoppingListBackup.length > 0) {
+      console.log('\n🔄 Restoring shopping lists...');
+
+      const insertShoppingItem = targetDb.prepare(`
+        INSERT INTO shopping_list_items
+          (user_id, printing_id, quantity, is_foil, note, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const getShoppingPrintingId = targetDb.prepare(`
+        SELECT id FROM printings WHERE uuid = ? LIMIT 1
+      `);
+
+      const restoreShoppingList = targetDb.transaction((entries) => {
+        let restored = 0;
+        let notFound = 0;
+
+        for (const entry of entries) {
+          const printing = getShoppingPrintingId.get(entry.printing_uuid);
+          if (printing) {
+            try {
+              // is_foil is carried through rather than defaulted: it is part
+              // of the unique key, and dropping it would collapse a user's
+              // foil and non-foil rows for one printing onto the same key,
+              // where the second insert is discarded.
+              insertShoppingItem.run(
+                entry.user_id,
+                printing.id,
+                entry.quantity,
+                entry.is_foil ?? 0,
+                entry.note ?? null,
+                entry.created_at,
+                entry.updated_at
+              );
+              restored++;
+            } catch (e) {
+              // The user may have been deleted since the list was made
+              notFound++;
+            }
+          } else {
+            notFound++;
+          }
+        }
+
+        return { restored, notFound };
+      });
+
+      const shoppingResult = restoreShoppingList(targetDb._shoppingListBackup);
+      console.log(`✓ Restored ${shoppingResult.restored} shopping list entries`);
+
+      if (shoppingResult.notFound > 0) {
+        // Unlike a trade, a list that lost a row is still a coherent list —
+        // it just has fewer cards on it. Nothing is cancelled here.
+        console.log(`  ⚠️  ${shoppingResult.notFound} wanted cards not found in new import`);
       }
     }
 

@@ -6867,3 +6867,179 @@ body.maintenance-locked #app {
   .celebration { display: none; }
   .celebration-burst, .celebration-confetti span { animation: none; }
 }
+
+/* ---- Wanted list (shopping for cards no deck asked for) ---------------------
+   The shopping page's own entry point. It is styled quietly on purpose: the
+   deck-derived list below is still the main event on that page, and a loud
+   panel at the top would suggest otherwise.
+   --------------------------------------------------------------------------- */
+
+.shopping-wanted-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.shopping-wanted-count {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-right: auto;
+}
+
+.shopping-wanted-entry {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+/* The dropdown is absolutely positioned against this, so it has to be the
+   containing block — without it the results hang off the page instead. */
+.shopping-wanted-search {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.shopping-wanted-search input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.shopping-wanted-search input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.shopping-wanted-search .search-results { z-index: 20; }
+
+.shopping-wanted-result-type {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.shopping-wanted-owned {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.shopping-wanted-bulk {
+  margin-top: 1rem;
+}
+
+.shopping-wanted-bulk textarea {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.shopping-wanted-bulk-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.shopping-wanted-bulk-result {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.shopping-bulk-summary { color: var(--text-secondary); }
+
+/* Lines that did not resolve. Marked as a problem because they are one: the
+   usual cause is a set code that needs correcting by hand. */
+.shopping-bulk-unresolved {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border-left: 3px solid var(--danger);
+  background: var(--bg-tertiary);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.shopping-bulk-unresolved ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.shopping-bulk-unresolved li { font-family: var(--font-mono, monospace); }
+
+/* The marker distinguishing a card you asked for from one a deck needs. */
+.wanted-badge {
+  color: var(--primary);
+  font-size: 0.9rem;
+}
+
+.shopping-card-wanted {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.shopping-card-wanted-note { font-style: italic; }
+
+.shopping-card-wanted-owned { color: var(--warning); }
+
+.shopping-wanted-qty {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.shopping-wanted-qty-value {
+  min-width: 1.5rem;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* ---- Browse Cards: what the list is costing so far ---- */
+
+.cards-want-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.cards-want-summary-link {
+  margin-left: auto;
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.cards-want-summary-link:hover { text-decoration: underline; }
+
+.cards-want-unpriced { color: var(--text-muted); }
+
+/* The want button, once the card is on the list. */
+.want-btn.wanted { background: rgb(var(--primary-rgb) / 0.9) !important; }
+
+@media (max-width: 700px) {
+  .shopping-wanted-entry { flex-direction: column; }
+  .shopping-wanted-search { width: 100%; }
+}

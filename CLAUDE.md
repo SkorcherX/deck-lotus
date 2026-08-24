@@ -96,11 +96,22 @@ taken on GitHub — only do it when explicitly asked.
   acknowledges it and picks `removed` (deck shrinks; `checkFormatRules` then
   reports the size violation by itself) or `kept`. Nothing expires or
   auto-applies these — an unread one is the point.
-- `scripts/import-mtgjson.js` clears `printings`, which cascades `trade_items`
-  and `deck_card_disruptions` away. Both are backed up and restored there by
-  printing `uuid`, same as `deck_cards` and `owned_printings`; a pending trade
-  that comes back empty is cancelled rather than left in a shape nobody agreed
-  to.
+- `scripts/import-mtgjson.js` clears `printings`, which cascades `trade_items`,
+  `deck_card_disruptions` and `shopping_list_items` away. All three are backed
+  up and restored there by printing `uuid`, same as `deck_cards` and
+  `owned_printings`; a pending trade that comes back empty is cancelled rather
+  than left in a shape nobody agreed to, while a shopping list that lost a row
+  is still a coherent list and is left alone.
+- The shopping list has two halves and only one of them is stored. What your
+  decks need is derived on every read; `shopping_list_items` holds cards wanted
+  on their own account. `groupIntoSets` in `src/services/shoppingMerge.js`
+  merges them, and that module is deliberately import-free so it can be tested
+  where the SQLite driver will not build. The number it produces —
+  `quantityNeeded` — is the **larger** of the two claims, never their sum: a
+  card is usually on the wanted list *because* a deck wants it, and adding them
+  quotes a playset as five. Everything downstream (filters, totals, the Mana
+  Pool cart optimizer, the export) reads that one number, so a new consumer
+  should use it rather than re-deriving a count from `decks`.
 - The weekly MTGJSON sync runs on a cron in `src/services/syncService.js`,
   and node-cron reads a bare expression in the *process's* timezone — which in
   a container with no `TZ` is UTC. "Sundays at 3 AM" therefore fired at 8 PM
