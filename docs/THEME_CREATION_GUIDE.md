@@ -336,8 +336,9 @@ Selecting a theme is `applyTheme(slug)` from `utils/theme.js`; the choice is mir
 ## Final checklist
 
 - [ ] Banner: centre 60% quiet, dark enough for white text, no smuggled text
-      (the outer ~88px at each end is faded to the page colour in CSS, so
-      nothing you put there will survive — keep the composition inboard)
+      (it is painted the full width of the window, wider than the 1400px
+      column the title sits in, so the far left and right of the art land
+      out past the page content — put nothing there you need seen)
 - [ ] Rails tile vertically with no seam; inner edges fade out
 - [ ] All four images present, correct dimensions, `.webp`
 - [ ] All four read as one set (they were generated against the banner)

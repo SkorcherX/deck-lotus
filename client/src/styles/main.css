@@ -6583,8 +6583,15 @@ body.maintenance-locked #app {
 }
 
 /* Content sits above the rails. Without this the fixed rails would paint over
-   the page rather than beside it. */
-#app { position: relative; z-index: 1; }
+   the page rather than beside it.
+
+   overflow-x: clip contains the banner's full-width bleed, which is 100vw and
+   therefore half a scrollbar wider than the document on each side. `clip` and
+   not `hidden` on purpose: hidden would make this a scroll container, which
+   breaks position: sticky inside it and gives the page a second scrollbar.
+   Vertical overflow is untouched, so dropdowns and flyouts still escape
+   downward. */
+#app { position: relative; z-index: 1; overflow-x: clip; }
 
 /* Banner. The band is the page header itself, pulled out to the full width of
    the content column by cancelling .page's padding. */
@@ -6595,57 +6602,68 @@ body.maintenance-locked #app {
   padding: 2rem;
   min-height: 150px;
   align-items: flex-end;
-  overflow: hidden;
   border-bottom: 1px solid var(--border);
+  /* No background here. The art bleeds past this box — see ::before — and a
+     background painted on the element itself would stop at the content
+     column, which is the seam this whole arrangement exists to avoid. */
+}
+
+/* The band runs the full width of the window, not the width of the content
+   column.
+
+   It used to stop at the column, which put a hard vertical edge against the
+   gutter rails. Fading those ends into the page fixed the edge but replaced
+   it with a worse thing: the rail's top is *also* background, because a
+   panel that tiles seamlessly has to end in flat colour, so the two
+   background regions met and every theme grew a dead rectangle in each top
+   corner. A band with no ends cannot have that problem — the art simply runs
+   corner to corner, and the only junction left is the horizontal one at the
+   bottom, which the scrim was already handling.
+
+   The layout does NOT bleed: .page-header keeps its column width so the title
+   and its buttons stay lined up with the page content below. Only the
+   painting escapes, via this pseudo-element.
+
+   100vw over the scrollbar-free document width is deliberate here, unlike in
+   .art-rail. A rail has to land exactly on the column edge; this only has to
+   cover, and overshooting by half a scrollbar is invisible where landing
+   half a scrollbar short would show as a sliver of page down the side. The
+   overshoot is clipped by #app rather than allowed to scroll. */
+.has-art-banner .page-header::before,
+.has-art-banner .page-header::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  margin-left: -50vw;
+  pointer-events: none;
+}
+
+.has-art-banner .page-header::before {
   background-image: var(--art-banner);
   background-size: cover;
   background-position: center;
 }
 
-/* Scrim, in two layers.
-   
-   Vertical: titles have to stay legible over whatever art a future theme
-   ships, so the band darkens toward the bottom where the text sits.
+/* Scrim. Titles have to stay legible over whatever art a future theme ships,
+   so the band darkens toward the bottom where the text sits — and the last
+   few pixels reach flat --bg, so the rails below start from the page colour
+   rather than from a lighter edge.
 
-   Horizontal: the band is exactly as wide as the content column, and on a
-   wide window the gutter rails start where it ends. Two unrelated opaque
-   images meeting at a hard vertical line is the same defect as a rail that
-   does not tile, and it has the same fix — both sides of the junction have to
-   be the page colour. So the last few dozen pixels at each end resolve to
-   flat --bg, and the rail's inner edge is already asked to do likewise. The
-   two meet in the background rather than in the artwork.
-
-   This is CSS rather than a prompt change on purpose: it works on every theme
-   already shipped, and asking the art to fade somewhere it is then painted
-   over would be redundant.
-
-   `rgb(var(--bg-rgb) / 0)` and not `transparent` — the keyword is transparent
-   *black*, so a gradient running to it drags every theme's fade through a
-   grey haze on the way. Interpolating between two alphas of the same colour
-   is what makes the fade invisible.
-
-   The fade is a fixed width, not a percentage: it exists to hide a seam whose
-   size does not change with the viewport, and a percentage would eat the
-   artwork on a wide screen while leaving the seam showing on a narrow one. */
+   `rgb(var(--bg-rgb) / …)` and never `transparent`: the keyword is transparent
+   *black*, so a gradient running to it drags every theme's fade through a grey
+   haze on the way. */
 .has-art-banner .page-header::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(
-      to right,
-      rgb(var(--bg-rgb) / 1) 0,
-      rgb(var(--bg-rgb) / 0) 88px,
-      rgb(var(--bg-rgb) / 0) calc(100% - 88px),
-      rgb(var(--bg-rgb) / 1) 100%
-    ),
-    linear-gradient(
-      to bottom,
-      rgb(var(--bg-rgb) / 0.25),
-      rgb(var(--bg-rgb) / 0.88)
-    );
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--bg-rgb) / 0.25),
+    rgb(var(--bg-rgb) / 0.88) 88%,
+    rgb(var(--bg-rgb) / 1)
+  );
 }
+
 .has-art-banner .page-header > * { position: relative; z-index: 1; }
 
 /* Footer */
@@ -6713,17 +6731,6 @@ body.maintenance-locked #app {
     margin: -1rem -1rem 1.5rem;
     padding: 1.25rem;
     min-height: 110px;
-  }
-
-  /* No rails at this width, so there is no junction to hide — and 88px of an
-     already-narrow band is most of the artwork. The vertical scrim stays; it
-     is doing a different job. */
-  .has-art-banner .page-header::after {
-    background: linear-gradient(
-      to bottom,
-      rgb(var(--bg-rgb) / 0.25),
-      rgb(var(--bg-rgb) / 0.88)
-    );
   }
   .app-footer-inner { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 }
