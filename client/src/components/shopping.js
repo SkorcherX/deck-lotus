@@ -249,7 +249,7 @@ async function runShoppingOptimizer() {
   const btn = document.getElementById('shopping-optimize-btn');
   const resultsEl = document.getElementById('shopping-optimizer-results');
   btn.disabled = true;
-  btn.innerHTML = '<i class="ph ph-spinner"></i> Optimizing…';
+  btn.innerHTML = '<i class="ph ph-circle-notch"></i> Optimizing…';
   resultsEl.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Finding best deals across Mana Pool sellers…</div>';
 
   try {

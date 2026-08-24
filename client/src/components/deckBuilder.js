@@ -212,7 +212,7 @@ export function setupDeckBuilder() {
     const btn = document.getElementById('run-optimizer-btn');
     const resultsEl = document.getElementById('optimizer-results');
     btn.disabled = true;
-    btn.innerHTML = '<i class="ph ph-spinner"></i> Optimizing…';
+    btn.innerHTML = '<i class="ph ph-circle-notch"></i> Optimizing…';
     resultsEl.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Finding best deals across Mana Pool sellers…</div>';
 
     const items = cards.map(c => ({
@@ -246,7 +246,7 @@ export function setupDeckBuilder() {
     const resultsEl = document.getElementById('validator-results');
     const btn = document.getElementById('run-validator-btn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="ph ph-spinner"></i> Validating…';
+    btn.innerHTML = '<i class="ph ph-circle-notch"></i> Validating…';
     resultsEl.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Checking deck with Mana Pool…</div>';
 
     // Adventure/split/DFC cards are stored with the combined "Front // Back" name
@@ -2862,7 +2862,7 @@ function renderSuggestionCards(cards, containerId) {
 async function analyzeManualSet(setCode) {
   try {
     document.getElementById('analyze-manual-set-btn').disabled = true;
-    document.getElementById('analyze-manual-set-btn').innerHTML = '<i class="ph ph-spinner"></i> Analyzing...';
+    document.getElementById('analyze-manual-set-btn').innerHTML = '<i class="ph ph-circle-notch"></i> Analyzing...';
 
     const result = await api.analyzeSpecificSet(currentDeckId, setCode);
 
@@ -2957,7 +2957,7 @@ async function applyOptimization() {
   try {
     const applyBtn = document.getElementById('apply-optimization-btn');
     applyBtn.disabled = true;
-    applyBtn.innerHTML = '<i class="ph ph-spinner"></i> Applying...';
+    applyBtn.innerHTML = '<i class="ph ph-circle-notch"></i> Applying...';
 
     // Build changes array
     const changes = optimizerState.currentSelection.cards.map(card => ({

@@ -4252,11 +4252,7 @@ body.maintenance-locked #app {
   font-size: 0.9rem;
 }
 
-.inventory-scroll-sentinel .ph-circle-notch {
-  animation: spin 1s linear infinite;
-}
-
-.ph-spinner {
+.ph-circle-notch {
   display: inline-block;
   animation: spin 1s linear infinite;
 }
