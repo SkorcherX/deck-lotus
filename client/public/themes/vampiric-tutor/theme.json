@@ -1,0 +1,11 @@
+{
+  "slug": "vampiric-tutor",
+  "name": "vampiricTutor",
+  "appearance": "dark",
+  "mirrorRails": true,
+  "art": {
+    "banner": "art/banner.webp",
+    "rail-left": "art/rail-left.webp",
+    "footer": "art/footer.webp"
+  }
+}

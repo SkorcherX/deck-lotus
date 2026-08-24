@@ -35,6 +35,12 @@ export const THEMES = [
     description: 'Efflorescent violet lotus with elaborate pin striping.',
     swatches: ['#0d0a13', '#18151f', '#8c3b73', '#c37fab'],
   },
+  {
+    slug: 'vampiric-tutor',
+    name: 'Vampiric Tutor',
+    description: 'A demonic, horned entity in ink-wash, over ember and ash.',
+    swatches: ['#150808', '#211313', '#983d1c', '#c8856e'],
+  },
 ];
 
 export const DEFAULT_THEME = 'arcane';
