@@ -333,17 +333,43 @@ async function setupAdminUserFilter() {
     allUsers = users;
     row.classList.remove('hidden');
 
-    checklist.innerHTML = allUsers.map(u => `
-      <label class="inventory-user-checkbox">
-        <input type="checkbox" value="${u.id}" ${u.id === currentUserId ? 'checked' : ''} />
-        ${u.username}${u.id === currentUserId ? ' (me)' : ''}
+    // "Everyone" leads the list rather than sitting after it: with more than a
+    // handful of users the boxes wrap onto several lines, and a toggle you
+    // have to hunt for at the end of them is worse than no toggle. It doubles
+    // as the state readout — indeterminate whenever the selection is partial —
+    // so the row says which of the three cases you are in without counting
+    // ticks. If the list keeps growing this is the control that becomes a
+    // dropdown; the per-user boxes are what will not scale.
+    checklist.innerHTML = `
+      <label class="inventory-user-checkbox inventory-user-all">
+        <input type="checkbox" id="inventory-user-all" />
+        Everyone
       </label>
-    `).join('');
+      ${allUsers.map(u => `
+        <label class="inventory-user-checkbox">
+          <input type="checkbox" value="${u.id}" ${u.id === currentUserId ? 'checked' : ''} />
+          ${u.username}${u.id === currentUserId ? ' (me)' : ''}
+        </label>
+      `).join('')}
+    `;
+
+    syncUserAllToggle();
 
     if (!checklist.dataset.wired) {
       checklist.dataset.wired = 'true';
       checklist.addEventListener('change', (e) => {
-        let checked = Array.from(checklist.querySelectorAll('input[type="checkbox"]:checked'))
+        // "Everyone" drives the others rather than being one of them, so it is
+        // applied first and then falls through to the same read-and-load path.
+        if (e.target.id === 'inventory-user-all') {
+          const on = e.target.checked;
+          checklist.querySelectorAll('input[value]').forEach((cb) => {
+            // Unticking "Everyone" leaves you looking at your own collection,
+            // which is the only selection that is never empty.
+            cb.checked = on || parseInt(cb.value, 10) === currentUserId;
+          });
+        }
+
+        let checked = Array.from(checklist.querySelectorAll('input[value]:checked'))
           .map(cb => parseInt(cb.value, 10));
 
         // Refuse to leave nobody selected — re-check the box that was just
@@ -357,6 +383,7 @@ async function setupAdminUserFilter() {
         // endpoints, no owners breakdown clutter on every card).
         selectedUserIds = (checked.length === 1 && checked[0] === currentUserId) ? null : checked;
 
+        syncUserAllToggle();
         currentPage = 1;
         loadInventoryData();
       });
@@ -366,6 +393,22 @@ async function setupAdminUserFilter() {
     row.classList.add('hidden');
     selectedUserIds = null;
   }
+}
+
+/**
+ * Point the "Everyone" box at the current selection: on when every user is
+ * ticked, indeterminate when some are, off when only one is.
+ */
+function syncUserAllToggle() {
+  const checklist = document.getElementById('inventory-user-checklist');
+  const all = document.getElementById('inventory-user-all');
+  if (!checklist || !all) return;
+
+  const boxes = Array.from(checklist.querySelectorAll('input[value]'));
+  const checked = boxes.filter((cb) => cb.checked).length;
+
+  all.checked = checked === boxes.length;
+  all.indeterminate = checked > 0 && checked < boxes.length;
 }
 
 function setupViewToggle() {
@@ -1254,6 +1297,57 @@ function renderStats(stats) {
       </div>
     </div>
   `;
+
+  renderTypeBreakdown(stats.typeBreakdown);
+}
+
+/**
+ * What the collection is made of, shown beside the quick-add box.
+ *
+ * Each chip is a filter: the type split is only half an answer without a way
+ * to see the cards behind a number, and the type dropdown it drives is the
+ * same one in the filter row below.
+ */
+function renderTypeBreakdown(breakdown) {
+  const container = document.getElementById('inventory-type-breakdown');
+  if (!container) return;
+
+  const types = (breakdown || []).filter((t) => t.total_cards > 0);
+
+  if (types.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const active = document.getElementById('inventory-type')?.value || 'all';
+
+  container.innerHTML = types.map((t) => `
+    <button
+      type="button"
+      class="inventory-type-chip${t.type === active ? ' is-active' : ''}"
+      data-type="${escapeHtml(t.type)}"
+    >
+      ${escapeHtml(t.type)}
+      <span class="inventory-type-chip-count">${t.total_cards.toLocaleString()}</span>
+    </button>
+  `).join('');
+
+  container.querySelectorAll('.inventory-type-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const select = document.getElementById('inventory-type');
+      if (!select) return;
+
+      // "Other" is a bucket the breakdown invents, not a value the type
+      // filter offers, so it has nothing to select — the chip stays a
+      // readout. Clicking the active chip clears the filter, which is the
+      // only way back to everything without reaching for the dropdown.
+      const wanted = chip.dataset.type;
+      if (!Array.from(select.options).some((o) => o.value === wanted)) return;
+
+      select.value = select.value === wanted ? 'all' : wanted;
+      select.dispatchEvent(new Event('change'));
+    });
+  });
 }
 
 // `cards` defaults to everything loaded so far. Endless scroll passes just

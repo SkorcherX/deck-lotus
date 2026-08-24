@@ -744,6 +744,18 @@ body {
   color: var(--text-secondary);
 }
 
+/* Checkboxes, radios and range thumbs are painted by the browser, and the
+   browser's idea of "selected" is its own blue — which is the one colour in
+   the app no theme can reach. Every tick in the UI was that blue, not just the
+   ones on the inventory user list. `accent-color` is the only hook there is
+   for a native control, so it is set once, globally, rather than per widget. */
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"],
+progress {
+  accent-color: var(--primary);
+}
+
 .form-group input,
 .form-group select,
 .form-group textarea,
@@ -3851,12 +3863,61 @@ button.btn-icon.active {
 
 /* Quick Add Search */
 .inventory-quick-add {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
   margin-bottom: 1.5rem;
 }
 
 .quick-add-wrapper {
   position: relative;
-  max-width: 500px;
+  flex: 0 1 500px;
+}
+
+/* The collection's type split, filling the row beside the quick-add box.
+   Right-aligned so it reads as a companion to the field rather than a second
+   control queued behind it, and allowed to wrap before it will squeeze the
+   input below its 500px. */
+.inventory-type-breakdown {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.inventory-type-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.inventory-type-chip:hover {
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.inventory-type-chip.is-active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+.inventory-type-chip-count {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 #inventory-quick-search {
@@ -4538,8 +4599,21 @@ body.maintenance-locked #app {
   .list-col-available::before { content: 'Available:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
   .list-col-price::before { content: 'Price:'; color: var(--text-secondary); font-weight: 400; font-size: 0.8rem; }
 
+  /* Stacked below 768px: the chips have nowhere to sit beside a field that
+     now wants the full width. */
+  .inventory-quick-add {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
   .quick-add-wrapper {
+    flex: 1 1 auto;
     max-width: 100%;
+  }
+
+  .inventory-type-breakdown {
+    justify-content: flex-start;
   }
 }
 
@@ -5011,6 +5085,14 @@ body.maintenance-locked #app {
   gap: 0.35rem;
   font-size: 0.875rem;
   cursor: pointer;
+}
+
+/* The "Everyone" toggle governs the boxes after it rather than joining them,
+   so it is set off by a rule instead of reading as the first user in the list. */
+.inventory-user-all {
+  font-weight: 600;
+  padding-right: 0.75rem;
+  border-right: 1px solid var(--border);
 }
 
 /* Inline foil marker used in list rows and the card detail modal */
@@ -5532,6 +5614,30 @@ body.maintenance-locked #app {
   margin-bottom: 1.5rem;
 }
 
+/* Both of these used to be free-standing cards above the deck list, and the
+   add-cards row in particular claimed a full-width band for one input. Inside
+   the deck panel they are part of that card rather than cards of their own, so
+   they drop the surface and padding they carried as siblings — a panel inset
+   in a panel in the same colour just draws a box around nothing. The open
+   collection panel keeps a surface, because it is a drawer that covers the
+   list underneath and needs an edge. */
+.deck-panel > .search-panel-row {
+  background: none;
+  padding: 0 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.deck-panel > .inventory-panel {
+  background: var(--bg-tertiary);
+  padding: 1rem;
+  margin: 0 0.75rem 0.75rem;
+}
+
+/* The oversized add-cards input made sense as the page's hero control. As one
+   field in the deck panel's header it matches the filter box below it. */
+.deck-panel > .search-panel-row #card-search { padding: 0.6rem 0.75rem; }
+.deck-panel > .search-panel-row #inventory-panel-toggle { padding: 0.6rem 1rem; }
+
 .inventory-panel-head {
   display: flex;
   align-items: center;
@@ -5802,99 +5908,14 @@ body.maintenance-locked #app {
   }
 }
 
-/* ---- Running tally ---- */
+/* ---- Deck guidance ---- */
 
-.deck-tally {
-  position: sticky;
-  top: var(--navbar-height);
-  z-index: 20;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem 1.5rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  padding: 0.85rem 1.25rem;
-  margin-bottom: 1.5rem;
-}
-
-.deck-tally-counts {
-  display: flex;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.tally-block {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-}
-
-.tally-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-secondary);
-}
-
-.tally-value {
-  font-size: 1.35rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.tally-target {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Whether the count meets the format's requirement is the one thing worth
-   reading at a glance, so it is carried by colour as well as by the number. */
-.tally-block.is-met .tally-value { color: var(--success); }
-.tally-block.is-over .tally-value { color: var(--danger); }
-.tally-block.is-under .tally-value { color: var(--text); }
-
-.deck-tally-types {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-left: auto;
-}
-
-.tally-type {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  font-size: 0.8rem;
-  white-space: nowrap;
-}
-
-.tally-type-count {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.tally-empty {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-
-@media (max-width: 768px) {
-  .deck-tally {
-    position: static;
-    gap: 0.75rem;
-  }
-
-  .deck-tally-types {
-    margin-left: 0;
-  }
+/* The guidance panel closes the stats card, so it gets a rule above it rather
+   than a surface of its own — it is the same card continuing, not a new one. */
+.deck-guidance-panel:not(:empty) {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
 }
 
 /* ---- Deck check (format hard rules) ---- */
@@ -6599,6 +6620,21 @@ body.maintenance-locked #app {
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
+/* Once the gutter rails are showing, the footer stops at their inner edge
+   instead of running under them. It cannot simply sit behind them: the rails
+   are opaque art with no mask, so a footer painted underneath would be hidden
+   at the ends and read as a band that stops short for no reason. Insetting it
+   by exactly the rail width — the same formula .art-rail uses — makes it
+   nestle between them, which is what the full-bleed band was reaching for
+   anyway.
+
+   The breakpoint has to match the one that reveals the rails, or the footer
+   pulls in while the gutters are still empty. */
+@media (min-width: 1700px) {
+  .has-art-rail-left .app-footer { margin-left: calc((100vw - var(--page-max)) / 2); }
+  .has-art-rail-right .app-footer { margin-right: calc((100vw - var(--page-max)) / 2); }
+}
+
 .app-footer-brand { font-weight: 600; letter-spacing: 0.03em; }
 .app-footer-meta { display: flex; align-items: center; gap: var(--space-4); }
 

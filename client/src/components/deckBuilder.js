@@ -26,8 +26,7 @@ let activeTab = 'mainboard'; // Track which tab is currently active ('mainboard'
 let pricingMode = false; // Track if pricing mode is enabled
 let setGroupMode = false; // Track if set grouping mode is enabled
 let currentPriceData = null; // Store current price data for cards
-let lastStats = null; // Last stats payload, so the tally can re-render without refetching
-let lastRules = null; // Last format-rules check, shared by the tally and the deck check
+let lastRules = null; // Last format-rules check, shared by the rules and guidance panels
 let optimizerState = {
   suggestions: [],
   currentIndex: 0,
@@ -138,13 +137,13 @@ export function setupDeckBuilder() {
     }
   });
 
-  // Picking a format changes what the tally counts toward, so reflect it
-  // immediately rather than waiting for Save.
+  // Picking a format changes what the deck is checked against, so reflect it
+  // immediately rather than waiting for Save. loadDeckRules() re-renders the
+  // rules and guidance panels itself.
   deckFormatSelect.addEventListener('change', async () => {
     if (!currentDeck) return;
     currentDeck.format = deckFormatSelect.value;
     await loadDeckRules();
-    renderTally(lastStats);
   });
 
   // Save deck
@@ -1454,8 +1453,8 @@ function switchTab(tab) {
 
 async function loadDeckStats() {
   try {
-    // The rules check has to land before the stats render, since the tally
-    // reads its targets from it.
+    // Both panels of the stats card come from these two calls, so they are
+    // fetched together rather than leaving one half a frame behind.
     const [stats] = await Promise.all([
       api.getDeckStats(currentDeckId),
       loadDeckRules()
@@ -1967,10 +1966,16 @@ async function loadDeckRules() {
 
 function renderRules() {
   const container = document.getElementById('deck-rules');
+
+  // Legality and advice render into two containers at opposite ends of the
+  // stats panel: the verdict belongs at the top with the Check Legality button
+  // that produces it, the advice below the numbers it was measured from.
+  const guidanceContainer = document.getElementById('deck-guidance');
   if (!container) return;
 
   if (!lastRules) {
     container.innerHTML = '';
+    if (guidanceContainer) guidanceContainer.innerHTML = '';
     return;
   }
 
@@ -2050,11 +2055,14 @@ function renderRules() {
     </div>
   `;
 
-  container.innerHTML = rulesHtml + guidanceHtml;
+  container.innerHTML = rulesHtml;
+
+  if (!guidanceContainer) return;
+  guidanceContainer.innerHTML = guidanceHtml;
 
   // Each suggestion can put the relevant cards in front of you, which is the
   // difference between advice that gets acted on and advice that gets ignored.
-  container.querySelectorAll('.deck-guidance-action[data-guidance]').forEach((btn) => {
+  guidanceContainer.querySelectorAll('.deck-guidance-action[data-guidance]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const item = guidance[parseInt(btn.dataset.guidance, 10)];
       if (item?.action?.filter) openInventoryPanelWith(item.action.filter);
@@ -2064,7 +2072,7 @@ function renderRules() {
   // "You have 11" is only half an answer without "and here they are". This
   // filters the deck itself rather than the collection, so a suggestion can
   // show the cards it counted instead of cards to add.
-  container.querySelectorAll('[data-deck-guidance]').forEach((btn) => {
+  guidanceContainer.querySelectorAll('[data-deck-guidance]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const item = guidance[parseInt(btn.dataset.deckGuidance, 10)];
       const filter = item?.deckAction?.filter;
@@ -2128,84 +2136,7 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-/**
- * The running count against the format's targets, plus what the deck is made
- * of. Sits above the deck so it stays in view while cards are being added.
- */
-function renderTally(stats) {
-  const tally = document.getElementById('deck-tally');
-  if (!tally || !currentDeck) return;
-
-  const cards = currentDeck.cards || [];
-  const sum = (list) => list.reduce((total, c) => total + c.quantity, 0);
-
-  const mainboard = sum(cards.filter(isMainboardCard));
-  const sideboard = sum(cards.filter(isSideboardCard));
-
-  // Targets come from the rules service, so the tally and the deck check
-  // cannot disagree about what the format requires.
-  const targets = lastRules && lastRules.known ? lastRules.targets : null;
-
-  applyCount('mainboard', mainboard, targets ? targets.mainboard : null, targets ? targets.mainboardExact : false);
-
-  // Commander has no sideboard, so showing an empty 0 / 0 would be noise.
-  const sideboardBlock = document.getElementById('tally-sideboard-block');
-  const showSideboard = !targets || targets.sideboardMax > 0 || sideboard > 0;
-  sideboardBlock.classList.toggle('hidden', !showSideboard);
-
-  if (showSideboard) {
-    applyCount('sideboard', sideboard, targets ? targets.sideboardMax : null, false, true);
-  }
-
-  // Types come from the deck stats query, so this breakout and the one in the
-  // stats panel always agree on how a card is categorised.
-  const types = document.getElementById('tally-types');
-  const distribution = (stats?.typeDistribution || []).filter((t) => t.total_cards > 0);
-
-  types.innerHTML = distribution.length === 0
-    ? '<span class="tally-empty">No cards yet</span>'
-    : distribution
-        .slice()
-        .sort((a, b) => b.total_cards - a.total_cards)
-        .map((item) => `
-          <span class="tally-type">
-            ${item.type}
-            <span class="tally-type-count">${item.total_cards}</span>
-          </span>
-        `).join('');
-}
-
-/**
- * Set one count and say whether it satisfies the format. `isMaximum` marks a
- * ceiling (a sideboard) rather than a floor: going over is the failure.
- */
-function applyCount(which, count, target, exact, isMaximum = false) {
-  const value = document.getElementById(`tally-${which}`);
-  const label = document.getElementById(`tally-${which}-target`);
-  const block = value.closest('.tally-block');
-
-  value.textContent = count;
-  block.classList.remove('is-met', 'is-over', 'is-under');
-
-  if (target === null) {
-    label.textContent = '';
-    return;
-  }
-
-  label.textContent = exact ? `/ ${target} exactly` : isMaximum ? `/ ${target} max` : `/ ${target} min`;
-
-  if (exact) {
-    block.classList.add(count === target ? 'is-met' : count > target ? 'is-over' : 'is-under');
-  } else if (isMaximum) {
-    block.classList.add(count > target ? 'is-over' : 'is-met');
-  } else {
-    block.classList.add(count >= target ? 'is-met' : 'is-under');
-  }
-}
-
 function renderStats(stats) {
-  lastStats = stats;
-  renderTally(stats);
 
   // Calculate statistics for mana values
   const mainboardCards = currentDeck.cards.filter(isMainboardCard);

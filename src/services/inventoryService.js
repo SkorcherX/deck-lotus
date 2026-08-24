@@ -393,6 +393,31 @@ export function getInventoryStats(userIds) {
     WHERE op.user_id ${scope.clause}
   `, scope.params);
 
+  // What the collection is made of. The CASE is deliberately the same ladder,
+  // in the same order, as the deck stats query in deckService.js — an artifact
+  // land has to land in the same bucket in both places, or the two breakdowns
+  // disagree about a card the user can see in each.
+  const typeBreakdown = db.all(`
+    SELECT
+      CASE
+        WHEN c.type_line LIKE '%Creature%' THEN 'Creature'
+        WHEN c.type_line LIKE '%Instant%' THEN 'Instant'
+        WHEN c.type_line LIKE '%Sorcery%' THEN 'Sorcery'
+        WHEN c.type_line LIKE '%Enchantment%' THEN 'Enchantment'
+        WHEN c.type_line LIKE '%Artifact%' THEN 'Artifact'
+        WHEN c.type_line LIKE '%Planeswalker%' THEN 'Planeswalker'
+        WHEN c.type_line LIKE '%Land%' THEN 'Land'
+        ELSE 'Other'
+      END as type,
+      COALESCE(SUM(op.quantity), 0) as total_cards
+    FROM owned_printings op
+    JOIN printings p ON op.printing_id = p.id
+    JOIN cards c ON p.card_id = c.id
+    WHERE op.user_id ${scope.clause}
+    GROUP BY type
+    ORDER BY total_cards DESC
+  `, scope.params);
+
   const totalOwned = totalCopies?.count || 0;
   const totalInDecks = inDecks?.count || 0;
 
@@ -401,7 +426,8 @@ export function getInventoryStats(userIds) {
     totalCopies: totalOwned,
     inDecks: totalInDecks,
     available: totalOwned - totalInDecks,
-    estimatedValue: estimatedValue?.total || 0
+    estimatedValue: estimatedValue?.total || 0,
+    typeBreakdown: typeBreakdown || []
   };
 }
 

@@ -474,120 +474,6 @@
                     <!-- Cards traded away that this deck still lists, awaiting a decision -->
                     <div id="deck-traded-banner" class="hidden" style="margin: 0 0 0.75rem;"></div>
 
-                    <!-- Running tally against the format's targets -->
-                    <div id="deck-tally" class="deck-tally">
-                        <div class="deck-tally-counts">
-                            <div class="tally-block">
-                                <span class="tally-label">Mainboard</span>
-                                <span id="tally-mainboard" class="tally-value">0</span>
-                                <span id="tally-mainboard-target" class="tally-target"></span>
-                            </div>
-                            <div id="tally-sideboard-block" class="tally-block">
-                                <span class="tally-label">Sideboard</span>
-                                <span id="tally-sideboard" class="tally-value">0</span>
-                                <span id="tally-sideboard-target" class="tally-target"></span>
-                            </div>
-                        </div>
-                        <div id="tally-types" class="deck-tally-types"></div>
-                    </div>
-
-                    <!-- Card Search - Full Width Row -->
-                    <div class="search-panel-row">
-                        <div class="search-box">
-                            <input
-                                type="text"
-                                id="card-search"
-                                placeholder="Add new cards..."
-                                autocomplete="off"
-                            />
-                            <div
-                                id="search-results"
-                                class="search-results hidden"
-                            ></div>
-                        </div>
-                        <button
-                            id="inventory-panel-toggle"
-                            class="btn btn-secondary"
-                            aria-expanded="false"
-                            aria-controls="inventory-panel"
-                        >
-                            From Inventory
-                        </button>
-                    </div>
-
-                    <!-- Build from cards you own -->
-                    <div id="inventory-panel" class="inventory-panel hidden">
-                        <div class="inventory-panel-head">
-                            <h3>Your Collection</h3>
-                            <span id="inventory-panel-count" class="inventory-panel-total"></span>
-                            <div class="inventory-panel-head-actions">
-                                <button id="inventory-panel-undo" class="btn btn-secondary btn-sm" disabled>Undo</button>
-                                <button id="inventory-panel-close" class="btn-icon" aria-label="Close collection panel">
-                                    <i class="ph ph-x"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="inventory-panel-filters">
-                            <input
-                                type="text"
-                                id="inventory-panel-search"
-                                placeholder="Filter your cards..."
-                                autocomplete="off"
-                            />
-                            <select id="inventory-panel-type">
-                                <option value="all">All types</option>
-                                <option value="Creature">Creature</option>
-                                <option value="Land">Land</option>
-                                <option value="Instant">Instant</option>
-                                <option value="Sorcery">Sorcery</option>
-                                <option value="Artifact">Artifact</option>
-                                <option value="Enchantment">Enchantment</option>
-                                <option value="Planeswalker">Planeswalker</option>
-                            </select>
-                            <div id="inventory-panel-colors" class="inventory-panel-colors" role="group" aria-label="Filter by color">
-                                <button type="button" class="ip-color" data-color="W" aria-pressed="false" aria-label="White" title="White"><i class="ms ms-w"></i></button>
-                                <button type="button" class="ip-color" data-color="U" aria-pressed="false" aria-label="Blue" title="Blue"><i class="ms ms-u"></i></button>
-                                <button type="button" class="ip-color" data-color="B" aria-pressed="false" aria-label="Black" title="Black"><i class="ms ms-b"></i></button>
-                                <button type="button" class="ip-color" data-color="R" aria-pressed="false" aria-label="Red" title="Red"><i class="ms ms-r"></i></button>
-                                <button type="button" class="ip-color" data-color="G" aria-pressed="false" aria-label="Green" title="Green"><i class="ms ms-g"></i></button>
-                                <button type="button" class="ip-color" data-color="C" aria-pressed="false" aria-label="Colorless" title="Colorless"><i class="ms ms-c"></i></button>
-                            </div>
-                            <label class="inventory-panel-check">
-                                <input type="checkbox" id="inventory-panel-only-free" />
-                                Still available
-                            </label>
-                            <label class="inventory-panel-check">
-                                <input type="checkbox" id="inventory-panel-format-legal" />
-                                Legal in format
-                            </label>
-                            <label class="inventory-panel-check">
-                                <input type="checkbox" id="inventory-panel-identity" />
-                                Commander colors
-                            </label>
-                            <button
-                                type="button"
-                                id="inventory-panel-cmc-note"
-                                class="inventory-panel-cmc-note hidden"
-                                title="Remove this filter"
-                            ></button>
-                            <button
-                                type="button"
-                                id="inventory-panel-role-note"
-                                class="inventory-panel-cmc-note hidden"
-                                title="Remove this filter"
-                            ></button>
-                        </div>
-
-                        <div id="inventory-panel-list" class="inventory-panel-list"></div>
-
-                        <div id="inventory-panel-pager" class="inventory-panel-pager hidden">
-                            <button id="inventory-panel-prev" class="btn btn-secondary btn-sm">Previous</button>
-                            <span id="inventory-panel-page"></span>
-                            <button id="inventory-panel-next" class="btn btn-secondary btn-sm">Next</button>
-                        </div>
-                    </div>
-
                     <div class="deck-builder-content">
                         <!-- Deck List -->
                         <div class="deck-panel">
@@ -627,6 +513,103 @@
                                     </button>
                                 </div>
                             </div>
+                        <!-- Card Search - Full Width Row -->
+                        <div class="search-panel-row">
+                            <div class="search-box">
+                                <input
+                                    type="text"
+                                    id="card-search"
+                                    placeholder="Add new cards..."
+                                    autocomplete="off"
+                                />
+                                <div
+                                    id="search-results"
+                                    class="search-results hidden"
+                                ></div>
+                            </div>
+                            <button
+                                id="inventory-panel-toggle"
+                                class="btn btn-secondary"
+                                aria-expanded="false"
+                                aria-controls="inventory-panel"
+                            >
+                                From Inventory
+                            </button>
+                        </div>
+
+                        <!-- Build from cards you own -->
+                        <div id="inventory-panel" class="inventory-panel hidden">
+                            <div class="inventory-panel-head">
+                                <h3>Your Collection</h3>
+                                <span id="inventory-panel-count" class="inventory-panel-total"></span>
+                                <div class="inventory-panel-head-actions">
+                                    <button id="inventory-panel-undo" class="btn btn-secondary btn-sm" disabled>Undo</button>
+                                    <button id="inventory-panel-close" class="btn-icon" aria-label="Close collection panel">
+                                        <i class="ph ph-x"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="inventory-panel-filters">
+                                <input
+                                    type="text"
+                                    id="inventory-panel-search"
+                                    placeholder="Filter your cards..."
+                                    autocomplete="off"
+                                />
+                                <select id="inventory-panel-type">
+                                    <option value="all">All types</option>
+                                    <option value="Creature">Creature</option>
+                                    <option value="Land">Land</option>
+                                    <option value="Instant">Instant</option>
+                                    <option value="Sorcery">Sorcery</option>
+                                    <option value="Artifact">Artifact</option>
+                                    <option value="Enchantment">Enchantment</option>
+                                    <option value="Planeswalker">Planeswalker</option>
+                                </select>
+                                <div id="inventory-panel-colors" class="inventory-panel-colors" role="group" aria-label="Filter by color">
+                                    <button type="button" class="ip-color" data-color="W" aria-pressed="false" aria-label="White" title="White"><i class="ms ms-w"></i></button>
+                                    <button type="button" class="ip-color" data-color="U" aria-pressed="false" aria-label="Blue" title="Blue"><i class="ms ms-u"></i></button>
+                                    <button type="button" class="ip-color" data-color="B" aria-pressed="false" aria-label="Black" title="Black"><i class="ms ms-b"></i></button>
+                                    <button type="button" class="ip-color" data-color="R" aria-pressed="false" aria-label="Red" title="Red"><i class="ms ms-r"></i></button>
+                                    <button type="button" class="ip-color" data-color="G" aria-pressed="false" aria-label="Green" title="Green"><i class="ms ms-g"></i></button>
+                                    <button type="button" class="ip-color" data-color="C" aria-pressed="false" aria-label="Colorless" title="Colorless"><i class="ms ms-c"></i></button>
+                                </div>
+                                <label class="inventory-panel-check">
+                                    <input type="checkbox" id="inventory-panel-only-free" />
+                                    Still available
+                                </label>
+                                <label class="inventory-panel-check">
+                                    <input type="checkbox" id="inventory-panel-format-legal" />
+                                    Legal in format
+                                </label>
+                                <label class="inventory-panel-check">
+                                    <input type="checkbox" id="inventory-panel-identity" />
+                                    Commander colors
+                                </label>
+                                <button
+                                    type="button"
+                                    id="inventory-panel-cmc-note"
+                                    class="inventory-panel-cmc-note hidden"
+                                    title="Remove this filter"
+                                ></button>
+                                <button
+                                    type="button"
+                                    id="inventory-panel-role-note"
+                                    class="inventory-panel-cmc-note hidden"
+                                    title="Remove this filter"
+                                ></button>
+                            </div>
+
+                            <div id="inventory-panel-list" class="inventory-panel-list"></div>
+
+                            <div id="inventory-panel-pager" class="inventory-panel-pager hidden">
+                                <button id="inventory-panel-prev" class="btn btn-secondary btn-sm">Previous</button>
+                                <span id="inventory-panel-page"></span>
+                                <button id="inventory-panel-next" class="btn btn-secondary btn-sm">Next</button>
+                            </div>
+                        </div>
+
                             <div style="padding: 0.75rem; position: relative;">
                                 <input
                                     type="text"
@@ -690,6 +673,12 @@
                                     ></div>
                                 </div>
                             </div>
+                            <!--
+                              Advice, last. It is the longest thing in the panel
+                              and the least urgent — putting it above the charts
+                              pushed the numbers it is derived from off-screen.
+                            -->
+                            <div id="deck-guidance" class="deck-guidance-panel"></div>
                         </div>
                     </div>
 
@@ -1005,7 +994,14 @@
                 <!-- Stats row -->
                 <div id="inventory-stats" class="inventory-stats"></div>
 
-                <!-- Quick Add search bar -->
+                <!--
+                  Quick Add search bar, with what the collection is made of
+                  beside it. The field is capped at 500px because a
+                  full-width single-card input reads as a page search rather
+                  than an add box — which left two thirds of the row empty.
+                  The type split fills it with the one summary the stats row
+                  above does not already give.
+                -->
                 <div class="inventory-quick-add">
                     <div class="quick-add-wrapper">
                         <input
@@ -1016,6 +1012,7 @@
                         />
                         <div id="inventory-quick-results" class="inventory-quick-results hidden"></div>
                     </div>
+                    <div id="inventory-type-breakdown" class="inventory-type-breakdown"></div>
                 </div>
 
                 <!-- Filters -->
