@@ -19,6 +19,14 @@ let sessionState = {
   skipped: new Set(), // card IDs skipped for now
 };
 
+// Mana Pool's /search page 404s, but /card/{slug} goes straight to the
+// card's page — same slugging Mana Pool itself uses (lowercase, non
+// alphanumerics collapsed to single hyphens, no leading/trailing hyphen).
+function manaPoolCardUrl(name) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `https://manapool.com/card/${slug}`;
+}
+
 export function setupShopping() {
   window.addEventListener('page:shopping', loadShoppingData);
 
@@ -845,7 +853,7 @@ function renderSetCards(cards) {
                   <button class="btn-icon skip-btn" data-card-key="${cardKey}" title="Skip">
                     <i class="ph ph-x"></i>
                   </button>
-                  <a href="https://manapool.com/search?q=${encodeURIComponent(card.name)}" target="_blank" rel="noopener" class="btn-icon" title="Buy on Mana Pool" style="text-decoration:none;color:inherit;">
+                  <a href="${manaPoolCardUrl(card.name)}" target="_blank" rel="noopener" class="btn-icon" title="Buy on Mana Pool" style="text-decoration:none;color:inherit;">
                     <i class="ph ph-shopping-cart-simple"></i>
                   </a>
                 </div>
@@ -942,7 +950,7 @@ function renderSetCards(cards) {
                 <button class="btn btn-sm btn-secondary skip-btn" data-card-key="${cardKey}">
                   <i class="ph ph-x"></i> Skip
                 </button>
-                <a href="https://manapool.com/search?q=${encodeURIComponent(card.name)}" target="_blank" rel="noopener" class="btn btn-sm btn-secondary" title="Buy on Mana Pool" style="text-decoration:none;">
+                <a href="${manaPoolCardUrl(card.name)}" target="_blank" rel="noopener" class="btn btn-sm btn-secondary" title="Buy on Mana Pool" style="text-decoration:none;">
                   <i class="ph ph-shopping-cart-simple"></i> Mana Pool
                 </a>
               </div>

@@ -12,6 +12,13 @@ import {
 import { setupDeckRecord, renderDeckRecordLabel } from './deckRecord.js';
 import { renderDisruptionBanner } from './trades.js';
 
+// Mana Pool's /search page 404s, but /card/{slug} goes straight to the
+// card's page — same slugging Mana Pool itself uses.
+function manaPoolCardUrl(name) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `https://manapool.com/card/${slug}`;
+}
+
 let currentDeck = null;
 let currentDeckId = null;
 let searchTimeout = null;
@@ -886,7 +893,7 @@ function renderCardItem(card) {
                 ${card.board_type !== 'maybeboard' ? `<div class="move-submenu-item" data-deck-card-id="${card.deck_card_id}" data-board-type="maybeboard">Maybeboard</div>` : ''}
               </div>
             </div>
-            <a class="card-actions-menu-item" href="https://manapool.com/search?q=${encodeURIComponent(card.name)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;">
+            <a class="card-actions-menu-item" href="${manaPoolCardUrl(card.name)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;">
               <i class="ph ph-shopping-cart-simple"></i>
               Buy on Mana Pool
             </a>
