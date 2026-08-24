@@ -15,7 +15,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * So the modules are served (dev) and copied (build) to /tools/ alongside the
  * page, which imports them relatively. One source, two front ends, no paste.
  */
-const FORGE_MODULES = ['slots.js', 'prompt.js'];
+const FORGE_MODULES = ['slots.js', 'prompt.js', 'registry.js'];
 
 function forgeModules() {
   const src = (name) => resolve(HERE, 'src/themes', name);

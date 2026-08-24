@@ -329,12 +329,14 @@
 /* The slot spec and the prompt wording are owned by src/themes/. vite.config.js
    serves and copies them next to this page so there is exactly one copy of
    both — resize a slot there and this wizard changes with it. */
-let ART_SLOTS, ANCHOR_SLOT, buildPrompt;
+let ART_SLOTS, ANCHOR_SLOT, buildPrompt, THEMES;
 try {
   ({ ART_SLOTS, ANCHOR_SLOT, buildPrompt } = await import('./prompt.js'));
+  ({ THEMES } = await import('./registry.js'));
 } catch (err) {
   document.querySelector('main').innerHTML =
-    '<h1>Theme forge</h1><p>Could not load the slot spec from <code>/tools/prompt.js</code>. ' +
+    '<h1>Theme forge</h1><p>Could not load the slot spec from <code>/tools/prompt.js</code> ' +
+    'or the theme list from <code>/tools/registry.js</code>. ' +
     'That file is written by the client build, so this page needs to be opened from the running ' +
     'app (or <code>npm run client:dev</code>) rather than off the filesystem.</p>' +
     '<pre>' + String(err) + '</pre>';
@@ -757,9 +759,17 @@ function renderOutputs() {
   $('out').value = cssFor(p, state.slug);
   $('outjson').value = jsonFor(state);
   $('outreg').value = registryFor(state, p);
-  const known = ['arcane', 'classic', 'strixhaven'];
+  // Built from the registry rather than a list typed in here, which went
+  // stale the moment a fourth theme shipped — the generated line would have
+  // silently dropped whatever it did not know about.
+  //
+  // Keys are quoted because slugs may contain hyphens, and `purple-lotus: 1`
+  // unquoted parses as a subtraction. This line goes into the inline script
+  // that runs before first paint, so a syntax error there costs everyone
+  // their theme, on every theme.
+  const known = THEMES.map(t => t.slug);
   if (!known.includes(state.slug)) known.push(state.slug);
-  $('outknown').value = `var KNOWN = { ${known.map(s => `${s}: 1`).join(', ')} };`;
+  $('outknown').value = `var KNOWN = { ${known.map(s => `"${s}": 1`).join(', ')} };`;
 }
 
 function download(name, text, type) {
