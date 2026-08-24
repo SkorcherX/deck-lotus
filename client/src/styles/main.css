@@ -6539,7 +6539,14 @@ body.maintenance-locked #app {
   position: fixed;
   top: 0;
   bottom: 0;
-  width: calc((100vw - var(--page-max)) / 2);
+  /* Not 100vw: that includes the scrollbar, while the 1400px content column is
+     centred in the document, which does not. On a 1900px window with a 15px
+     scrollbar the two disagree by 8px, and the rail spent those 8px sitting
+     under the page content — clipping the inner fade that is the whole reason
+     the rail does not read as a stripe. A fixed element's percentage resolves
+     against the initial containing block, which excludes the scrollbar, so
+     100% lands exactly on the column edge. */
+  width: calc((100% - var(--page-max)) / 2);
   z-index: 0;
   pointer-events: none;
   background-repeat: repeat-y;
@@ -6595,18 +6602,49 @@ body.maintenance-locked #app {
   background-position: center;
 }
 
-/* Scrim. Titles have to stay legible over whatever art a future theme ships,
-   so the band darkens toward the bottom where the text sits. */
+/* Scrim, in two layers.
+   
+   Vertical: titles have to stay legible over whatever art a future theme
+   ships, so the band darkens toward the bottom where the text sits.
+
+   Horizontal: the band is exactly as wide as the content column, and on a
+   wide window the gutter rails start where it ends. Two unrelated opaque
+   images meeting at a hard vertical line is the same defect as a rail that
+   does not tile, and it has the same fix — both sides of the junction have to
+   be the page colour. So the last few dozen pixels at each end resolve to
+   flat --bg, and the rail's inner edge is already asked to do likewise. The
+   two meet in the background rather than in the artwork.
+
+   This is CSS rather than a prompt change on purpose: it works on every theme
+   already shipped, and asking the art to fade somewhere it is then painted
+   over would be redundant.
+
+   `rgb(var(--bg-rgb) / 0)` and not `transparent` — the keyword is transparent
+   *black*, so a gradient running to it drags every theme's fade through a
+   grey haze on the way. Interpolating between two alphas of the same colour
+   is what makes the fade invisible.
+
+   The fade is a fixed width, not a percentage: it exists to hide a seam whose
+   size does not change with the viewport, and a percentage would eat the
+   artwork on a wide screen while leaving the seam showing on a narrow one. */
 .has-art-banner .page-header::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    rgb(var(--bg-rgb) / 0.25),
-    rgb(var(--bg-rgb) / 0.88)
-  );
+  background:
+    linear-gradient(
+      to right,
+      rgb(var(--bg-rgb) / 1) 0,
+      rgb(var(--bg-rgb) / 0) 88px,
+      rgb(var(--bg-rgb) / 0) calc(100% - 88px),
+      rgb(var(--bg-rgb) / 1) 100%
+    ),
+    linear-gradient(
+      to bottom,
+      rgb(var(--bg-rgb) / 0.25),
+      rgb(var(--bg-rgb) / 0.88)
+    );
 }
 .has-art-banner .page-header > * { position: relative; z-index: 1; }
 
@@ -6653,8 +6691,11 @@ body.maintenance-locked #app {
    The breakpoint has to match the one that reveals the rails, or the footer
    pulls in while the gutters are still empty. */
 @media (min-width: 1700px) {
-  .has-art-rail-left .app-footer { margin-left: calc((100vw - var(--page-max)) / 2); }
-  .has-art-rail-right .app-footer { margin-right: calc((100vw - var(--page-max)) / 2); }
+  /* 100% and not 100vw, for the same scrollbar reason as .art-rail — and it
+     has to be the same formula as the rails or the footer stops 8px short of
+     them and the gap it was inset to avoid reappears at both ends. */
+  .has-art-rail-left .app-footer { margin-left: calc((100% - var(--page-max)) / 2); }
+  .has-art-rail-right .app-footer { margin-right: calc((100% - var(--page-max)) / 2); }
 }
 
 .app-footer-brand { font-weight: 600; letter-spacing: 0.03em; }
@@ -6672,6 +6713,17 @@ body.maintenance-locked #app {
     margin: -1rem -1rem 1.5rem;
     padding: 1.25rem;
     min-height: 110px;
+  }
+
+  /* No rails at this width, so there is no junction to hide — and 88px of an
+     already-narrow band is most of the artwork. The vertical scrim stays; it
+     is doing a different job. */
+  .has-art-banner .page-header::after {
+    background: linear-gradient(
+      to bottom,
+      rgb(var(--bg-rgb) / 0.25),
+      rgb(var(--bg-rgb) / 0.88)
+    );
   }
   .app-footer-inner { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 }
