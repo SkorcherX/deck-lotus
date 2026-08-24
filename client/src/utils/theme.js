@@ -142,8 +142,14 @@ function storeTheme(slug) {
  * property set?", and a themed band that reserves its height whether or not
  * art arrives would leave an empty stripe on every art-less theme.
  */
-function applyArtSlots(slug, art) {
+function applyArtSlots(slug, art, { mirrorRails = false } = {}) {
   const root = document.documentElement;
+
+  // A mirrored theme ships one rail and reflects it. The right rail has no
+  // file of its own, so it would otherwise be treated as absent and stay
+  // hidden — it needs its has-art class on the strength of the left one.
+  const mirroring = Boolean(mirrorRails && art && art['rail-left'] && !art['rail-right']);
+
   for (const slot of ART_SLOTS) {
     const file = art && art[slot.id];
     if (file) {
@@ -152,8 +158,12 @@ function applyArtSlots(slug, art) {
       // A theme without this slot must degrade to no image, never a 404 box.
       root.style.removeProperty(slot.cssVar);
     }
-    root.classList.toggle(`has-art-${slot.id}`, Boolean(file));
+
+    const present = Boolean(file) || (mirroring && slot.id === 'rail-right');
+    root.classList.toggle(`has-art-${slot.id}`, present);
   }
+
+  root.classList.toggle('rails-mirrored', mirroring);
 }
 
 function loadStylesheet(slug) {
@@ -203,7 +213,9 @@ export async function applyTheme(slug, { persist = true } = {}) {
   }
 
   const manifest = await loadManifest(target);
-  applyArtSlots(target, manifest && manifest.art);
+  applyArtSlots(target, manifest && manifest.art, {
+    mirrorRails: Boolean(manifest && manifest.mirrorRails),
+  });
 
   // Token values just changed underneath the memoised reads.
   clearTokenCache();

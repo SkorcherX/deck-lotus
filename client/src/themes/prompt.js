@@ -33,6 +33,19 @@ export function simplifyRatio(w, h) {
   return `${w / g}:${h / g}`;
 }
 
+/** Soft-wrap slot prose so the generated prompt stays readable in a textarea. */
+function wrap(text, width) {
+  const out = [];
+  let line = '';
+  for (const word of String(text).split(/\s+/)) {
+    if (!line) line = word;
+    else if ((line + ' ' + word).length <= width) line += ' ' + word;
+    else { out.push(line); line = word; }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
 function listEdges(edges) {
   if (!edges || !edges.length) return 'outer edges';
   if (edges.length === 1 && edges[0] === 'all') return 'outer edges';
@@ -80,8 +93,22 @@ export function buildPrompt(slot, { mood, palette = null, isAnchor = false, grou
 
   if (slot.tiles === 'vertical') {
     lines.push('');
-    lines.push('TILING: This panel repeats vertically. The top and bottom edges must match');
-    lines.push('so the seam is invisible when it repeats.');
+    lines.push('TILING — THIS IS THE HARDEST REQUIREMENT, READ IT TWICE:');
+    lines.push('This panel is repeated down the page. The last row of pixels at the bottom');
+    lines.push('sits directly against the first row at the top, over and over, with nothing');
+    lines.push('between them. Any difference between those two rows shows as a horizontal');
+    lines.push('line across the artwork, repeating every screenful.');
+    lines.push('');
+    lines.push('Do not try to make the drawing continue across the join. Instead END THE');
+    lines.push('ARTWORK BEFORE BOTH ENDS. The composition must occupy the middle of the');
+    lines.push('panel and fade completely away well before the top and bottom, so that the');
+    lines.push('top and bottom thirds are empty background and the two rows that meet are');
+    lines.push('both the same flat colour. Two identical flat rows cannot show a seam, and');
+    lines.push('that is the only reliable way to get one.');
+    lines.push('');
+    lines.push('Think of it as a single motif floating in a tall dark column with generous');
+    lines.push('empty space above and below it — not as a continuous pattern running off');
+    lines.push('both ends.');
   }
 
   if (palette) {
@@ -96,6 +123,15 @@ export function buildPrompt(slot, { mood, palette = null, isAnchor = false, grou
     lines.push('');
     lines.push('MATCH THE ATTACHED IMAGE: same palette, same lighting, same brush character.');
     lines.push('This belongs to the same set as the banner, not merely the same idea.');
+
+    // Every non-anchor slot is told to match the banner, which for a slot the
+    // same shape as the banner is an instruction to redraw it. Slots that
+    // need distance as well as kinship say so here.
+    if (slot.variation) {
+      lines.push('');
+      lines.push('BUT NOT THE SAME PICTURE:');
+      for (const line of wrap(slot.variation, 74)) lines.push(line);
+    }
   }
 
   lines.push('');

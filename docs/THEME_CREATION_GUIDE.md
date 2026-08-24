@@ -35,7 +35,7 @@ client/public/themes/<slug>/
   art/
     banner.webp        2400 x 300
     rail-left.webp      400 x 2000  (tiles vertically)
-    rail-right.webp     400 x 2000  (tiles vertically)
+    rail-right.webp     400 x 2000  (tiles vertically; omit if mirroring)
     footer.webp        2400 x 200
 ```
 
@@ -271,12 +271,35 @@ on screen together.
 
 Slot-specific notes:
 
-- **Rails** (400×2000, one per side) — these are the gutter tapestries. They must
-  **tile vertically without a visible seam**, and the *inner* edge (facing the content)
-  must fade to nothing. Composition runs vertically: think banner, tapestry, column,
-  vine — not a scene.
-- **Footer** (2400×200) — same treatment as the banner but shallower, fading upward
-  into the page.
+- **Rails** (400×2000, one per side) — the gutter tapestries. Two separate
+  requirements, and the second is the one that goes wrong:
+
+  1. The *inner* edge (facing the content) must fade to the exact page colour.
+     This one the prompt gets right reliably.
+  2. They **tile vertically**, so the bottom row of pixels sits against the top
+     row forever. Any difference between those two rows draws a horizontal line
+     across the artwork, once every screenful.
+
+  Do not try to make the drawing continue across that join — models are bad at
+  it and you cannot check it by eye. Instead **end the artwork well before both
+  ends**, so the top and bottom thirds are empty background and the two rows
+  that meet are the same flat colour. Two identical flat rows cannot show a
+  seam. Think of a single motif floating in a tall dark column, not a pattern
+  running off both ends. The wizard measures this when you drop the image in
+  and tells you the seam distance.
+
+- **Mirrored rails.** Set `"mirrorRails": true` in `theme.json` and ship only
+  `rail-left`; the right rail becomes that image flipped in CSS. This is the
+  default in the wizard, and worth taking: two rails generated separately come
+  back as two ideas about one subject, and the mismatch is obvious with both on
+  screen. The flip also puts the soft edge on the correct side for free. Ship
+  both files only when the two sides genuinely need to differ.
+
+- **Footer** (2400×200) — same treatment as the banner but shallower, fading
+  upward into the page. Its prompt carries an extra instruction the others do
+  not: the banner is attached as a *style* reference, not a subject one. Asking
+  for a wide dark band in the same mood with the banner attached otherwise
+  returns the banner again, slightly shorter.
 > Rails only render above 1700px of viewport width, and they SCALE to whatever
 > gutter is left beside the 1400px content column — so the art is rarely shown at
 > its native 400px. Two consequences when generating it: the inner-edge fade must

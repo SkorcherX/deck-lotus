@@ -39,11 +39,19 @@ export const ART_SLOTS = [
     filename: 'rail-left.webp',
     width: 400,
     height: 2000,
-    safeArea: 'inner edge (right) must dissolve to nothing',
+    safeArea: 'inner edge (right) must dissolve to nothing; top and bottom must end in flat background so the vertical repeat has no seam',
     overlaidText: false,
     scrim: 'to right, opaque -> transparent',
-    edgeFade: ['right'],
+    // Top and bottom are in the list for tiling, not for the page edge. A
+    // panel that ends in the flat ground colour at both ends tiles seamlessly
+    // whatever is drawn between them, which is a far easier thing to ask an
+    // image model for than two edges whose detail continues into each other.
+    edgeFade: ['right', 'top', 'bottom'],
     tiles: 'vertical',
+    // The right rail can be this one flipped — see `mirrorRails` in a theme
+    // manifest. Nothing here changes when it is; the manifest just omits the
+    // other rail and the CSS mirrors this file in place.
+    mirrorable: true,
   },
   {
     id: 'rail-right',
@@ -51,10 +59,10 @@ export const ART_SLOTS = [
     filename: 'rail-right.webp',
     width: 400,
     height: 2000,
-    safeArea: 'inner edge (left) must dissolve to nothing',
+    safeArea: 'inner edge (left) must dissolve to nothing; top and bottom must end in flat background so the vertical repeat has no seam',
     overlaidText: false,
     scrim: 'to left, opaque -> transparent',
-    edgeFade: ['left'],
+    edgeFade: ['left', 'top', 'bottom'],
     tiles: 'vertical',
   },
   {
@@ -68,6 +76,12 @@ export const ART_SLOTS = [
     scrim: 'to top, transparent -> --bg',
     edgeFade: ['top'],
     tiles: false,
+    // The footer is generated from the same mood sentence as the banner, with
+    // the banner attached as a style reference — which reliably produced the
+    // banner again, slightly shorter. It is the only slot that has to be told
+    // what to do *differently*, because it is the only one whose brief would
+    // otherwise be identical to the anchor's.
+    variation: 'The banner is attached as a style reference, not as a subject reference. Do not repeat its composition, its focal point or its main motif. This band sits at the far end of a long page from the banner and should read as a different view of the same world — if the banner is a figure or a structure, this is landscape, horizon, ground detail, or distant architecture. Quieter and emptier than the banner: it closes the page rather than opening it.',
   },
 ];
 

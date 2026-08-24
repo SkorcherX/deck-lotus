@@ -266,6 +266,11 @@
         chrome just stays plain. Skip any you do not want and it will be left out of the manifest.</p>
     </div>
 
+    <p class="note" style="margin-top:1rem">
+      <label><input type="checkbox" id="mirrorrails" checked> Use one rail on both sides, mirrored</label>
+    </p>
+    <p class="note" id="mirrornote"></p>
+
     <div id="slotlist"></div>
 
     <nav class="steps"><button class="btn ghost" data-back>Back</button><button class="btn" data-next>Next</button></nav>
@@ -547,12 +552,24 @@ function cssFor(p, slug) {
 
 function jsonFor(state) {
   const art = {};
-  for (const s of ART_SLOTS) if (state.have[s.id]) art[s.id] = `art/${s.filename}`;
-  return JSON.stringify({
+  for (const s of ART_SLOTS) {
+    if (mirroring() && s.id === 'rail-right') continue;
+    if (state.have[s.id]) art[s.id] = `art/${s.filename}`;
+  }
+  const manifest = {
     slug: state.slug, name: state.name || state.slug,
     appearance: 'dark',
-    art,
-  }, null, 2) + '\n';
+  };
+  // Only written when it is doing something. A manifest carrying
+  // "mirrorRails": false says nothing the absence of the key does not.
+  if (mirroring()) manifest.mirrorRails = true;
+  manifest.art = art;
+  return JSON.stringify(manifest, null, 2) + '\n';
+}
+
+/** Mirroring only means anything once there is a left rail to mirror. */
+function mirroring() {
+  return Boolean(state.mirrorRails && state.have['rail-left']);
 }
 
 function registryFor(state, p) {
@@ -571,6 +588,10 @@ const STORE = 'themeForgeDraft';
 const state = {
   step: 0, name: '', slug: '', desc: '', author: '', mood: '',
   hue: 300, chroma: 20, ground: null, palette: null,
+  // Mirrored by default: it is one fewer image to generate and it is the only
+  // way to guarantee the two rails are the same tapestry rather than two
+  // takes on one idea.
+  mirrorRails: true,
   have: { banner: true },
 };
 try { Object.assign(state, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch { /* ignore */ }
@@ -704,8 +725,44 @@ function refreshPrompts() {
   renderOutputs();
 }
 
+/* The rails are the one pair in the set, and asking for them separately is
+   how you get two different tapestries facing each other across the page.
+   Mirroring is the default for that reason as much as for the saved
+   generation — and the flip is done in CSS, so there is only ever one file. */
+function setupMirrorToggle() {
+  const box = $('mirrorrails');
+  if (!box) return;
+
+  box.checked = !!state.mirrorRails;
+
+  box.addEventListener('change', () => {
+    state.mirrorRails = box.checked;
+
+    // The right rail's "I made this one" tick would otherwise survive being
+    // hidden and put a file into the manifest that the theme does not use.
+    if (box.checked) delete state.have['rail-right'];
+
+    save();
+    renderSlotList();
+    renderOutputs();
+    renderMirrorNote();
+  });
+
+  renderMirrorNote();
+}
+
+function renderMirrorNote() {
+  const note = $('mirrornote');
+  if (!note) return;
+
+  note.textContent = state.mirrorRails
+    ? 'Make the left rail only. The right side is the same image flipped, so the two always match and there is one less picture to get right.'
+    : 'You will be asked for both rails. Generate them from the same prompt and the same reference so they read as a pair, not as two ideas.';
+}
+
 function renderSlotList() {
-  const rest = ART_SLOTS.filter(s => s.id !== ANCHOR_SLOT);
+  const rest = ART_SLOTS.filter(s => s.id !== ANCHOR_SLOT)
+    .filter(s => !(state.mirrorRails && s.id === 'rail-right'));
   const p = state.palette;
   $('slotlist').innerHTML = rest.map(s => {
     const prompt = p && state.mood ? buildPrompt(s, {
@@ -983,6 +1040,25 @@ function checkSlotImage(id, file) {
         notes.push(`<li>The ${k} edge averages <span class="mono">${r.hex}</span>, ${r.lighter ? 'lighter' : 'darker'} than <span class="mono">${state.ground}</span>${r.off >= 2.5 ? ' — <strong>this will show as a line</strong>' : ' — close enough that only a careful eye will see it'}.</li>`);
       }
     }
+
+    /* The seam, measured directly. A tiling panel's bottom row sits against
+       its top row forever, so the difference between those two is the defect
+       — and it is not the same question as whether either one meets the page.
+       Two ends could both be off-ground in the same direction and tile
+       perfectly, or both be close to ground and still differ enough to draw a
+       line. Only comparing them to each other answers it. */
+    if (slot.tiles === 'vertical' && edges.top && edges.bottom) {
+      const a = rgbToOklab(...hexToRgb(edges.top.hex));
+      const b = rgbToOklab(...hexToRgb(edges.bottom.hex));
+      const seam = Math.hypot(a.L - b.L, a.a - b.a, a.b - b.b) * 100;
+
+      if (seam < 1) {
+        notes.push('<li>Top and bottom match — this will tile without a seam.</li>');
+      } else {
+        bad = true;
+        notes.push(`<li><strong>Top and bottom do not match (off by ${seam.toFixed(1)}).</strong> Where this panel repeats, that difference draws a horizontal line across the art, once every screenful. Regenerate with the artwork ending well before both ends so the two rows that meet are the same flat background.</li>`);
+      }
+    }
     out.innerHTML = `<div class="callout ${bad ? 'bad' : 'good'}"><ul class="checks">${notes.join('')}</ul>${bad ? '<p>Worth one more regeneration.</p>' : '<p class="note">Good to keep.</p>'}</div>`;
     if (!bad) {
       const box = document.querySelector(`[data-have="${id}"]`);
@@ -1061,6 +1137,7 @@ $('mood').value = state.mood;
 $('hue').value = state.hue;
 $('chroma').value = state.chroma;
 if (state.slug) slugEdited = true;
+setupMirrorToggle();
 renderGround();
 moodChanged();
 show(state.step);

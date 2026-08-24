@@ -6549,6 +6549,24 @@ body.maintenance-locked #app {
 .art-rail-left { left: 0; background-image: var(--art-rail-left); background-position: right top; }
 .art-rail-right { right: 0; background-image: var(--art-rail-right); background-position: left top; }
 
+/* Mirrored rails: one piece of art, flipped for the other side.
+   A theme that sets `mirrorRails` in its manifest ships only rail-left, and
+   the right rail becomes that same image reflected. This is not just a saving
+   of one generation — two rails asked for separately come back as two ideas
+   about the same subject, and the mismatch is visible when both are on screen
+   at once. Flipping guarantees they are the same tapestry.
+
+   The flip also lands the fade on the correct side for free: the left rail's
+   soft edge is its right one, and scaleX(-1) puts that on the left, which is
+   the inner edge over here. background-size is 100% auto, so the image fills
+   the element's width exactly and the horizontal background-position has
+   nothing left to do — only the vertical origin matters, and both rails
+   share it. */
+.rails-mirrored .art-rail-right {
+  background-image: var(--art-rail-left);
+  transform: scaleX(-1);
+}
+
 /* 1700px leaves a 150px gutter each side. Below that the art is squeezed past
    a third of its natural width and reads as a smear rather than a tapestry, so
    it is better not shown at all. */
