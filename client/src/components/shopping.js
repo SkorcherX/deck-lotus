@@ -230,7 +230,12 @@ async function runShoppingOptimizer() {
       if (existing) {
         existing.quantity += wanted;
       } else {
-        items.push({ name: card.name, quantity: wanted });
+        items.push({
+          name: card.name,
+          quantity: wanted,
+          setCode: card.setCode,
+          collectorNumber: card.collectorNumber,
+        });
       }
     }
   }

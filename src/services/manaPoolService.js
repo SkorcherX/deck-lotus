@@ -133,7 +133,7 @@ function toConditionIds(condition) {
 }
 
 // POST /buyer/optimizer — finds cheapest combination of sellers for a list of cards
-// items: [{ name, quantity, condition?, foil? }]
+// items: [{ name, quantity, condition?, foil?, setCode?, collectorNumber? }]
 // model: 'lowest_price' | 'balanced' | 'fewest_packages' | 'gathered_shipping_only'
 // Response: { cart: [{ inventory_id, quantity_selected }], totals: { subtotal_cents, shipping_cents, buyer_fee_cents, total_cents, seller_count } }
 export async function optimizeCart(items, model = 'lowest_price') {
@@ -143,14 +143,23 @@ export async function optimizeCart(items, model = 'lowest_price') {
   const body = {
     model,
     destination_country: 'US',
-    cart: items.map(item => ({
-      type: 'mtg_single',
-      name: item.name,
-      quantity_requested: item.quantity ?? 1,
-      language_ids: ['EN'],
-      finish_ids: item.foil ? ['FO'] : ['NF'],
-      condition_ids: toConditionIds(item.condition),
-    })),
+    cart: items.map(item => {
+      // Mana Pool requires card_id, mtgjson_id, or set_code + collector_number
+      // to identify a card — bare `name` alone is rejected with a 400.
+      const identity = item.setCode && item.collectorNumber
+        ? { set_code: item.setCode, collector_number: item.collectorNumber }
+        : { card_id: item.cardId, mtgjson_id: item.mtgjsonId };
+
+      return {
+        type: 'mtg_single',
+        name: item.name,
+        ...identity,
+        quantity_requested: item.quantity ?? 1,
+        language_ids: ['EN'],
+        finish_ids: item.foil ? ['FO'] : ['NF'],
+        condition_ids: toConditionIds(item.condition),
+      };
+    }),
   };
 
   return apiPost('/buyer/optimizer', body);

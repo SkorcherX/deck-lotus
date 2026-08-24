@@ -215,7 +215,12 @@ export function setupDeckBuilder() {
     btn.innerHTML = '<i class="ph ph-spinner"></i> Optimizing…';
     resultsEl.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Finding best deals across Mana Pool sellers…</div>';
 
-    const items = cards.map(c => ({ name: c.name, quantity: c.quantity ?? 1 }));
+    const items = cards.map(c => ({
+      name: c.name,
+      quantity: c.quantity ?? 1,
+      setCode: c.set_code,
+      collectorNumber: c.collector_number,
+    }));
     try {
       const result = await api.manaPoolOptimize(items, model);
       renderOptimizerResults(result, resultsEl);
