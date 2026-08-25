@@ -184,3 +184,109 @@ test('every entry is quoted for at least one copy', () => {
 
   assert.equal(sets[0].cards[0].quantityNeeded, 1);
 });
+
+// ---------------------------------------------------------------------------
+// Shortfall: what a deck lists versus what you actually have to buy
+// ---------------------------------------------------------------------------
+
+// Deck rows now carry the card-level ownership figures alongside the row's own
+// quantity, because owning a copy is a fact about the card and not about the
+// printing the deck happens to list.
+const ownedRow = (over = {}) =>
+  deckRow({ card_needed: 4, card_owned: 0, card_elsewhere: 0, ...over });
+
+test('owning part of a playset shops for the difference, not the whole thing', () => {
+  const { sets } = groupIntoSets([ownedRow({ quantity: 4, card_owned: 1 })], 1);
+
+  assert.equal(sets[0].cards[0].quantityNeeded, 3);
+  assert.equal(sets[0].cards[0].listed, 4);
+  assert.equal(sets[0].cards[0].owned, 1);
+});
+
+test('a card you already own in full drops off the list', () => {
+  // The bug this path exists to fix ran the other way — owning one copy of a
+  // four-of removed the card entirely. Owning all four should.
+  const { sets } = groupIntoSets([ownedRow({ quantity: 4, card_owned: 4 })], 1);
+
+  assert.deepEqual(sets, []);
+});
+
+test('a set left with no cards is dropped rather than rendered empty', () => {
+  const { sets, totalCards } = groupIntoSets(
+    [
+      ownedRow({ quantity: 4, card_owned: 4 }),
+      ownedRow({
+        card_id: 2,
+        name: 'Counterspell',
+        printing_id: 22,
+        set_code: 'ICE',
+        set_name: 'Ice Age',
+        quantity: 2,
+        card_needed: 2,
+        card_owned: 0,
+      }),
+    ],
+    1
+  );
+
+  assert.equal(sets.length, 1);
+  assert.equal(sets[0].setName, 'Ice Age');
+  assert.equal(totalCards, 1);
+});
+
+test('a shortfall is handed out across printings, not repeated for each', () => {
+  // Two printings of one card, two copies each, one copy owned. Three to buy
+  // in total — not three against each printing, which would price the card
+  // once per set it was ever printed in.
+  const rows = [
+    ownedRow({ quantity: 2, printing_id: 11, card_needed: 4, card_owned: 1 }),
+    ownedRow({
+      quantity: 2,
+      printing_id: 22,
+      set_code: 'ICE',
+      set_name: 'Ice Age',
+      card_needed: 4,
+      card_owned: 1,
+    }),
+  ];
+
+  const { sets } = groupIntoSets(rows, 1);
+  const quoted = sets.flatMap((s) => s.cards).reduce((sum, c) => sum + c.quantityNeeded, 0);
+
+  assert.equal(quoted, 3);
+});
+
+test('copies owned but committed to unselected decks are contested, not bought', () => {
+  // Own the playset; another deck has three of them. Nothing to buy for the
+  // deck as listed, but the bulk view still wants to hear about it.
+  const { sets } = groupIntoSets(
+    [ownedRow({ quantity: 4, card_owned: 4, card_elsewhere: 3 })],
+    1
+  );
+
+  const card = sets[0].cards[0];
+  assert.equal(card.quantityNeeded, 0);
+  assert.equal(card.contested, 3);
+});
+
+test('the wanted half still wins when it asks for more than the shortfall', () => {
+  // Need one more copy for the deck, but asked for three on your own account.
+  const rows = [
+    ownedRow({ quantity: 4, card_owned: 3 }),
+    wantedRow({ wanted_quantity: 3 }),
+  ];
+
+  const { sets } = groupIntoSets(rows, 1);
+
+  // The larger claim, not the sum — three, not four.
+  assert.equal(sets[0].cards[0].quantityNeeded, 3);
+});
+
+test('rows without ownership figures keep the old behaviour', () => {
+  // The wanted half sends no card totals, and neither would a caller still on
+  // the old query. What is listed is what is quoted.
+  const { sets } = groupIntoSets([deckRow({ quantity: 4 })], 1);
+
+  assert.equal(sets[0].cards[0].quantityNeeded, 4);
+  assert.equal(sets[0].cards[0].owned, null);
+});

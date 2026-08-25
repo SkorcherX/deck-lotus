@@ -22,6 +22,21 @@ let sessionState = {
 // Mana Pool's /search page 404s, but /card/{slug} goes straight to the
 // card's page — same slugging Mana Pool itself uses (lowercase, non
 // alphanumerics collapsed to single hyphens, no leading/trailing hyphen).
+/**
+ * Why a four-of is only quoting three.
+ *
+ * The list shops for the shortfall, not for what the deck lists, so a
+ * partially-owned card shows fewer copies than the deck asks for. Without
+ * saying so the number just looks wrong — and the reflex is to assume the
+ * page has lost a copy somewhere.
+ */
+function ownedHint(card) {
+  if (!card.owned || !card.listed || card.owned >= card.listed) return '';
+
+  const title = `Your decks list ${card.listed}; you already own ${card.owned}`;
+  return `<span class="shopping-owned-hint" title="${title}">owns ${card.owned}/${card.listed}</span>`;
+}
+
 function manaPoolCardUrl(name) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   return `https://manapool.com/card/${slug}`;
@@ -840,6 +855,7 @@ function renderSetCards(cards) {
                 <span class="compact-card-qty">${totalQuantity}x</span>
                 ${card.wanted ? '<span class="wanted-badge" title="On your wanted list"><i class="ph ph-bookmark-simple"></i></span>' : ''}
                 <span class="compact-card-name">${card.name}</span>
+                ${ownedHint(card)}
                 <span class="compact-card-number">#${card.collectorNumber || '?'}</span>
                 ${card.price ? `<span class="compact-card-price">$${card.price.toFixed(2)}</span>` : ''}
                 ${isHighPriority ? `<span class="compact-priority-badge" title="Format staple!"><i class="ph ph-star-fill"></i></span>` : ''}
@@ -896,6 +912,7 @@ function renderSetCards(cards) {
             <div class="shopping-card-info">
               <div class="shopping-card-name-row">
                 <span class="shopping-card-name">${card.name}</span>
+                ${ownedHint(card)}
                 ${isMultiDeck ? `
                   <span class="multi-deck-badge ${isHighPriority ? 'high-priority-badge' : ''}"
                         title="${isHighPriority ? 'Format staple! Appears in ' + card.decks.length + ' decks' : 'Appears in ' + card.decks.length + ' decks'}">

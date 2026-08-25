@@ -52,12 +52,74 @@ const PRICE_FOR = (foilExpr) => `
           LIMIT 1)
       )`;
 
+// ---------------------------------------------------------------------------
+// Ownership, at card level
+// ---------------------------------------------------------------------------
+//
+// What a deck lists is not what you have to buy. Owning three of a four-of
+// means buying one — and until this existed, owning *one* meant the card
+// vanished from the list entirely, because the old query asked only whether a
+// copy existed at all. That silently hid exactly the partial playsets a
+// shopping list is for.
+//
+// All three numbers below are per card, not per printing: a copy in any set
+// fills the slot, in either finish. The rows still arrive per printing so the
+// page can price and link a specific one, and shoppingMerge.js hands the
+// card's shortfall out across them.
+
+// Every copy owned, any printing, either finish.
+//
+// owned_printings, not owned_cards. The latter is a legacy presence table kept
+// for backward compatibility whose quantity is written as a literal 1 (see
+// cardService.js) — which is precisely why the old query here could only ask
+// whether a copy existed. Counting it would put the partial-playset bug back.
+const CARD_OWNED = `(
+  SELECT COALESCE(SUM(op.quantity), 0)
+    FROM owned_printings op
+    JOIN printings op_p ON op.printing_id = op_p.id
+   WHERE op.user_id = ? AND op_p.card_id = c.id
+)`;
+
+// What the decks being shopped for want between them. Deliberately counts
+// every board including the maybeboard, which is what this list has always
+// done: a maybeboard is a list of cards you are considering buying, and this
+// is the page you buy them on.
+const CARD_NEEDED_IN = (placeholders) => `(
+  SELECT COALESCE(SUM(sel.quantity), 0)
+    FROM deck_cards sel
+    JOIN printings sel_p ON sel.printing_id = sel_p.id
+    JOIN decks sel_d ON sel.deck_id = sel_d.id
+   WHERE sel_d.user_id = ?
+     AND sel_d.id IN (${placeholders})
+     AND sel_p.card_id = c.id
+)`;
+
+// Copies the decks you did *not* select have already claimed. Maybeboards are
+// excluded here, unlike above: a card another deck is merely considering is
+// not spoken for, and treating it as committed would report copies as
+// contested that are sitting free in the binder.
+const CARD_ELSEWHERE_NOT_IN = (placeholders) => `(
+  SELECT COALESCE(SUM(oth.quantity), 0)
+    FROM deck_cards oth
+    JOIN printings oth_p ON oth.printing_id = oth_p.id
+    JOIN decks oth_d ON oth.deck_id = oth_d.id
+   WHERE oth_d.user_id = ?
+     AND oth_d.id NOT IN (${placeholders})
+     AND oth_p.card_id = c.id
+     AND COALESCE(oth.board_type, CASE WHEN oth.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END)
+         IN ('mainboard', 'sideboard')
+)`;
+
 
 /**
- * Get shopping list for selected decks
- * Returns cards needed (not owned) grouped by set
+ * Get shopping list for selected decks, grouped by set.
+ *
+ * "Needed" means the shortfall, not what the decks list: owning three of a
+ * four-of puts one copy on the list, and owning all four puts none. Until this
+ * counted quantities, owning a single copy removed the card outright — which
+ * hid exactly the partial playsets the page exists to fill.
  */
-export function getShoppingList(userId, deckIds) {
+export function getShoppingList(userId, deckIds, { includeContested = false } = {}) {
   // No decks selected is no longer the same as nothing to shop for: the
   // wanted list stands on its own, and returning early here is what used to
   // make the page go blank the moment you deselected everything.
@@ -65,30 +127,56 @@ export function getShoppingList(userId, deckIds) {
     return groupIntoSets(wantedCards(userId), 0);
   }
 
-  // Get all unique cards needed from selected decks that user doesn't own
   const placeholders = deckIds.map(() => '?').join(',');
 
+  // Wrapped so the filter can be written once against the computed columns. It
+  // is a filter rather than a job for the merge module because otherwise every
+  // card in every selected deck comes back over the wire.
+  //
+  // Which filter depends on what the caller is shopping for. By default:
+  // copies that do not exist in the collection — the shopping list proper.
+  //
+  // `includeContested` widens it to copies that exist but are committed to a
+  // deck you did not select. Those need no purchase for the selected decks to
+  // be *listed* correctly, so they are off by default: every consumer of this
+  // payload reads `quantityNeeded || 1`, and a zero-quantity entry would
+  // become one copy of a card you already own sitting in the cart. The
+  // bulk-bin view asks for them deliberately, and quotes them itself.
   const query = `
-    SELECT DISTINCT
-      ${CARD_COLUMNS},
-      d.id as deck_id,
-      d.name as deck_name,
-      dc.quantity,
-      COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) as board_type,
-      ${PRICE_FOR('dc.is_foil = 1')} as price
-    FROM deck_cards dc
-    JOIN decks d ON dc.deck_id = d.id
-    JOIN printings p ON dc.printing_id = p.id
-    JOIN cards c ON p.card_id = c.id
-    LEFT JOIN sets s ON p.set_code = s.code
-    LEFT JOIN owned_cards oc ON oc.user_id = ? AND oc.card_id = c.id
-    WHERE d.user_id = ?
-      AND d.id IN (${placeholders})
-      AND oc.id IS NULL
-    ORDER BY s.name, p.collector_number, c.name
+    SELECT * FROM (
+      SELECT DISTINCT
+        ${CARD_COLUMNS},
+        d.id as deck_id,
+        d.name as deck_name,
+        dc.quantity,
+        COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) as board_type,
+        ${PRICE_FOR('dc.is_foil = 1')} as price,
+        ${CARD_NEEDED_IN(placeholders)} as card_needed,
+        ${CARD_OWNED} as card_owned,
+        ${CARD_ELSEWHERE_NOT_IN(placeholders)} as card_elsewhere
+      FROM deck_cards dc
+      JOIN decks d ON dc.deck_id = d.id
+      JOIN printings p ON dc.printing_id = p.id
+      JOIN cards c ON p.card_id = c.id
+      LEFT JOIN sets s ON p.set_code = s.code
+      WHERE d.user_id = ?
+        AND d.id IN (${placeholders})
+    )
+    WHERE ${includeContested
+      ? 'MAX(0, card_owned - card_elsewhere) < card_needed'
+      : 'card_owned < card_needed'}
+    ORDER BY set_name, collector_number, name
   `;
 
-  const params = [userId, userId, ...deckIds];
+  // Bound in the order the `?`s appear: the three correlated subqueries in the
+  // SELECT come before the WHERE clause, and two of them carry the deck list.
+  const params = [
+    userId, ...deckIds,   // card_needed
+    userId,               // card_owned
+    userId, ...deckIds,   // card_elsewhere
+    userId, ...deckIds,   // WHERE
+  ];
+
   const cards = db.all(query, params);
 
   return groupIntoSets([...cards, ...wantedCards(userId)], deckIds.length);

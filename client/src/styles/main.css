@@ -952,6 +952,18 @@ select option {
 .deck-readiness[data-state="needs_assembly"] { color: var(--primary); }
 .deck-readiness[data-state="empty"] { color: var(--text-secondary); }
 
+/* "owns 1/4" — why a playset is quoting fewer copies than the deck lists.
+   Quiet by design: it is an explanation, not a warning. */
+.shopping-owned-hint {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  white-space: nowrap;
+}
+
 /* The shortfall breakdown on the deck builder page. Sits where the
    traded-away banner sits, and behaves the same way: it reports, it never
    edits the deck. */

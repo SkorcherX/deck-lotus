@@ -37,8 +37,14 @@ const STATES = {
  * already have excluded the deck being measured, or every card in it would
  * count as competing with itself and a perfectly built deck would report as
  * needing cannibalisation.
+ *
+ * Exported because the shopping list asks the same question of a *set* of
+ * decks: "needed" is what the selected decks want between them and
+ * "elsewhere" is every deck they did not select. Two copies of this rule
+ * drifting apart would mean the deck page and the shopping list disagreeing
+ * about what you are short of.
  */
-function assessCard({ needed, owned, elsewhere }) {
+export function assessCard({ needed, owned, elsewhere }) {
   // Copies not spoken for by another deck. Over-commitment across decks can
   // push this negative, so it floors at zero.
   const free = Math.max(0, owned - elsewhere);
