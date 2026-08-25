@@ -64,6 +64,7 @@ export function setupDeckBuilder() {
   const buyDeckBtn = document.getElementById('buy-deck-btn');
   const deckNameInput = document.getElementById('deck-name');
   const deckFormatSelect = document.getElementById('deck-format');
+  const deckStatusSelect = document.getElementById('deck-status');
 
   // Building from the collection. The panel writes straight to the deck, so it
   // needs to read the current deck and ask for a re-render afterwards.
@@ -159,6 +160,7 @@ export function setupDeckBuilder() {
 
     const name = deckNameInput.value;
     const format = deckFormatSelect.value;
+    const status = deckStatusSelect.value;
 
     if (!name) {
       showToast('Please enter a deck name', 'warning');
@@ -167,9 +169,12 @@ export function setupDeckBuilder() {
 
     try {
       showLoading();
-      await api.updateDeck(currentDeckId, { name, format });
+      await api.updateDeck(currentDeckId, { name, format, status });
       hideLoading();
       showToast('Deck saved!', 'success');
+      // The deck list badges the status, so it has to re-read rather than
+      // keep what it had from the last visit.
+      window.dispatchEvent(new CustomEvent('decks:changed'));
     } catch (error) {
       hideLoading();
       showToast('Failed to save deck: ' + error.message, 'error');
@@ -543,8 +548,14 @@ async function loadDeck(deckId) {
     // Populate deck info
     document.getElementById('deck-name').value = currentDeck.name;
     document.getElementById('deck-format').value = currentDeck.format || '';
+    document.getElementById('deck-status').value = currentDeck.status || 'building';
 
     renderDeckRecordLabel(currentDeck.record);
+
+    // What the deck is short of, and whether that is a shop trip or a
+    // teardown. Derived on every read, so it cannot disagree with the
+    // collection it came from.
+    renderReadinessPanel(currentDeck.readiness);
 
     // Render deck cards
     renderDeckCards();
@@ -568,6 +579,68 @@ async function loadDeck(deckId) {
     hideLoading();
     showToast('Failed to load deck: ' + error.message, 'error');
   }
+}
+
+/**
+ * What this deck is short of, split by what you would have to do about it.
+ *
+ * "Buy" and "reclaim" are separate lists rather than one sorted table because
+ * they are separate trips: one is a shopping problem, the other is a decision
+ * about which of your own decks gets taken apart. A combined "short 7" hides
+ * which one you are looking at.
+ *
+ * Nothing here is stored or acted on — the deck is shown exactly as listed,
+ * the same way the traded-away banner leaves the deck alone until its owner
+ * decides.
+ */
+function renderReadinessPanel(readiness) {
+  const panel = document.getElementById('deck-readiness-panel');
+  if (!panel) return;
+
+  // An empty deck has nothing to be short of, and a ready one needs no panel —
+  // the deck list already badges it. A banner saying everything is fine is
+  // just something to scroll past.
+  if (!readiness || readiness.state === 'ready' || readiness.state === 'empty') {
+    panel.classList.add('hidden');
+    panel.innerHTML = '';
+    return;
+  }
+
+  const shortfalls = readiness.shortfalls || [];
+  const toBuy = shortfalls.filter((c) => c.missing > 0);
+  const toReclaim = shortfalls.filter((c) => c.contested > 0);
+
+  const list = (cards, countOf) => cards
+    .map((c) => `<li><strong>${countOf(c)}×</strong> ${escapeHtml(c.name)}</li>`)
+    .join('');
+
+  const sections = [];
+
+  if (toBuy.length) {
+    sections.push(`
+      <div class="deck-readiness-group">
+        <h4><i class="ph ph-shopping-cart"></i> Not in your collection (${readiness.missingCopies})</h4>
+        <ul>${list(toBuy, (c) => c.missing)}</ul>
+      </div>`);
+  }
+
+  if (toReclaim.length) {
+    sections.push(`
+      <div class="deck-readiness-group">
+        <h4><i class="ph ph-arrows-split"></i> Owned, but in other decks (${readiness.contestedCopies})</h4>
+        <ul>${list(toReclaim, (c) => c.contested)}</ul>
+      </div>`);
+  }
+
+  panel.innerHTML = `
+    <div class="deck-readiness-banner" data-state="${readiness.state}">
+      <div class="deck-readiness-heading">
+        <span class="deck-readiness" data-state="${readiness.state}">${escapeHtml(readiness.label)}</span>
+      </div>
+      <div class="deck-readiness-groups">${sections.join('')}</div>
+    </div>
+  `;
+  panel.classList.remove('hidden');
 }
 
 function displaySearchResults(cards) {

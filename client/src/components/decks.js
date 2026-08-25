@@ -3,6 +3,29 @@ import { showLoading, hideLoading, formatDate, showError, showToast, confirmDial
 
 let decks = [];
 
+/**
+ * The manual status vocabulary, mirroring DECK_STATUSES on the server.
+ *
+ * Deliberately not the words the derived readiness badge uses. The two sit on
+ * the same card — status is what you intend, readiness is what your collection
+ * says — and a hand-set "Needs Buying" next to a computed "Ready" would read as
+ * the app contradicting itself rather than as two different facts.
+ */
+const DECK_STATUSES = [
+  { value: 'ready', label: 'Ready' },
+  { value: 'building', label: 'Building' },
+  { value: 'idea', label: 'Idea' },
+  { value: 'retired', label: 'Retired' },
+];
+
+const STATUS_LABELS = Object.fromEntries(DECK_STATUSES.map((s) => [s.value, s.label]));
+
+// 'all' plus one entry per status. Retired decks are included in 'all' rather
+// than hidden by default: a status you set yourself vanishing from the list is
+// how decks get lost.
+let statusFilter = 'all';
+let deckSort = 'updated';
+
 export function setupDecks() {
   const newDeckBtn = document.getElementById('new-deck-btn');
   const importDeckBtn = document.getElementById('import-deck-btn');
@@ -46,6 +69,14 @@ function showNewDeckModal() {
           <option value="pauper">Pauper</option>
         </select>
       </div>
+      <div class="form-group">
+        <label for="new-deck-status">Status</label>
+        <select id="new-deck-status">
+          ${DECK_STATUSES.map(
+            (s) => `<option value="${s.value}" ${s.value === 'building' ? 'selected' : ''}>${s.label}</option>`
+          ).join('')}
+        </select>
+      </div>
       <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
         <button type="submit" class="btn btn-primary" style="flex: 1;">Create Deck</button>
         <button type="button" class="btn btn-secondary" id="cancel-new-deck">Cancel</button>
@@ -60,11 +91,12 @@ function showNewDeckModal() {
     e.preventDefault();
     const name = document.getElementById('new-deck-name').value;
     const format = document.getElementById('new-deck-format').value;
+    const status = document.getElementById('new-deck-status').value;
 
     try {
       showLoading();
       modal.classList.add('hidden');
-      await api.createDeck(name, format, '');
+      await api.createDeck(name, format, '', status);
       await loadDecks();
       hideLoading();
     } catch (error) {
@@ -92,8 +124,84 @@ async function loadDecks() {
   }
 }
 
+/**
+ * The filter chips and sort control above the grid.
+ *
+ * Counts are shown per status so an empty result is self-explaining — a
+ * "Retired (0)" chip you can see is better than clicking it and wondering
+ * whether the filter is broken.
+ */
+function renderDecksToolbar() {
+  const toolbar = document.getElementById('decks-toolbar');
+  if (!toolbar) return;
+
+  const countFor = (value) =>
+    value === 'all' ? decks.length : decks.filter((d) => (d.status || 'building') === value).length;
+
+  const chip = (value, label) => `
+    <button class="deck-filter-chip" data-status-filter="${value}"
+            aria-pressed="${statusFilter === value}">
+      ${label} (${countFor(value)})
+    </button>`;
+
+  toolbar.innerHTML = `
+    ${chip('all', 'All')}
+    ${DECK_STATUSES.map((s) => chip(s.value, s.label)).join('')}
+    <div class="decks-toolbar-spacer"></div>
+    <select id="deck-sort" class="deck-status-select" aria-label="Sort decks">
+      <option value="updated" ${deckSort === 'updated' ? 'selected' : ''}>Recently updated</option>
+      <option value="readiness" ${deckSort === 'readiness' ? 'selected' : ''}>Needs work first</option>
+      <option value="name" ${deckSort === 'name' ? 'selected' : ''}>Name</option>
+    </select>
+  `;
+
+  toolbar.querySelectorAll('[data-status-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      statusFilter = btn.dataset.statusFilter;
+      renderDecks();
+    });
+  });
+
+  toolbar.querySelector('#deck-sort').addEventListener('change', (e) => {
+    deckSort = e.target.value;
+    renderDecks();
+  });
+}
+
+/**
+ * Filtering and sorting happen here rather than server-side: the list endpoint
+ * already returns every deck a user owns, and a round trip per chip click would
+ * be a request to re-fetch data the page is holding.
+ */
+function visibleDecks() {
+  const filtered =
+    statusFilter === 'all'
+      ? [...decks]
+      : decks.filter((d) => (d.status || 'building') === statusFilter);
+
+  switch (deckSort) {
+    case 'readiness':
+      // Worst first — the whole point of the sort is surfacing what needs a
+      // shop trip or a teardown, so a deck with no readiness data sinks.
+      return filtered.sort(
+        (a, b) =>
+          (b.readiness?.rank || 0) - (a.readiness?.rank || 0) ||
+          (b.readiness?.missingCopies || 0) - (a.readiness?.missingCopies || 0) ||
+          a.name.localeCompare(b.name)
+      );
+    case 'name':
+      return filtered.sort((a, b) => a.name.localeCompare(b.name));
+    case 'updated':
+    default:
+      // The server already returns them in updated_at order.
+      return filtered;
+  }
+}
+
 function renderDecks() {
   const decksList = document.getElementById('decks-list');
+
+  renderDecksToolbar();
 
   if (decks.length === 0) {
     decksList.innerHTML = `
@@ -106,7 +214,20 @@ function renderDecks() {
     return;
   }
 
-  decksList.innerHTML = decks.map(deck => {
+  const shown = visibleDecks();
+
+  if (shown.length === 0) {
+    decksList.innerHTML = `
+      <div class="empty-state">
+        <i class="ph ph-funnel empty-state-icon" aria-hidden="true"></i>
+        <h3>No ${STATUS_LABELS[statusFilter] || ''} decks</h3>
+        <p>Nothing here yet — try another status.</p>
+      </div>
+    `;
+    return;
+  }
+
+  decksList.innerHTML = shown.map(deck => {
     // Use art_crop version of the image for better background display
     const backgroundImage = deck.preview_image
       ? deck.preview_image.replace('/normal/', '/art_crop/')
@@ -117,18 +238,24 @@ function renderDecks() {
       : '';
 
     return `
-      <div class="deck-card" data-deck-id="${deck.id}" style="${backgroundStyle}">
+      <div class="deck-card" data-deck-id="${deck.id}" data-status="${deck.status || 'building'}" style="${backgroundStyle}">
         <div class="deck-card-header">
           <div>
             <h3>${deck.name}</h3>
             ${deck.format ? `<span class="deck-format">${deck.format}</span>` : ''}
             ${deck.traded_away_count ? `<span class="deck-format" style="background:var(--drift-traded-amber);color:var(--on-accent);" title="Traded away, still listed in this deck">${deck.traded_away_count} traded away</span>` : ''}
           </div>
+          <select class="deck-status-select" data-deck-id="${deck.id}" aria-label="Status for ${deck.name.replace(/"/g, '&quot;')}">
+            ${DECK_STATUSES.map(
+              (s) => `<option value="${s.value}" ${(deck.status || 'building') === s.value ? 'selected' : ''}>${s.label}</option>`
+            ).join('')}
+          </select>
         </div>
         <div class="deck-card-stats">
           <span>Main: ${deck.mainboard_count || 0} cards</span>
           <span>Side: ${deck.sideboard_count || 0} cards</span>
           ${recordBadge(deck.record)}
+          ${readinessBadge(deck.readiness)}
         </div>
         <div class="deck-card-actions">
           <button class="btn btn-primary btn-edit" data-deck-id="${deck.id}">Edit</button>
@@ -181,12 +308,65 @@ function renderDecks() {
     });
   });
 
+  decksList.querySelectorAll('.deck-status-select').forEach(select => {
+    // The whole card opens the deck builder, so every interaction with the
+    // control has to stop there — otherwise picking a status navigates away
+    // before the change lands.
+    select.addEventListener('click', (e) => e.stopPropagation());
+
+    select.addEventListener('change', async (e) => {
+      e.stopPropagation();
+      const deckId = parseInt(select.dataset.deckId, 10);
+      const status = select.value;
+      const deck = decks.find((d) => d.id === deckId);
+      const previous = deck?.status || 'building';
+
+      // Updated locally first so the chip counts and any active filter move
+      // with the change instead of lagging a request behind.
+      if (deck) deck.status = status;
+      renderDecks();
+
+      try {
+        await api.updateDeck(deckId, { status });
+      } catch (error) {
+        if (deck) deck.status = previous;
+        renderDecks();
+        showToast('Failed to update status: ' + error.message, 'error');
+      }
+    });
+  });
+
   decksList.querySelectorAll('.deck-card').forEach(card => {
     card.addEventListener('click', () => {
       const deckId = card.dataset.deckId;
       openDeckBuilder(deckId);
     });
   });
+}
+
+/**
+ * Whether the deck can actually be sleeved up, derived from the collection on
+ * every read and never stored.
+ *
+ * Two shortfalls are not the same errand, so they do not get the same badge:
+ * cards you do not own need a shop, cards owned but committed to another deck
+ * need a teardown. The title spells out both, since the badge only has room
+ * for the blocking one.
+ */
+function readinessBadge(readiness) {
+  if (!readiness || readiness.state === 'empty') return '';
+
+  const detail = [];
+  if (readiness.missingCopies) {
+    detail.push(`${readiness.missingCopies} copies not in your collection`);
+  }
+  if (readiness.contestedCopies) {
+    detail.push(`${readiness.contestedCopies} copies committed to other decks`);
+  }
+
+  const title = detail.length ? detail.join('; ') : 'Every card owned and free';
+
+  return `<span class="deck-readiness" data-state="${readiness.state}" title="${title}">${readiness.label}</span>`;
 }
 
 /**

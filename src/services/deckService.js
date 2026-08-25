@@ -6,6 +6,29 @@ import { getDeckRecords, getDeckRecord } from './deckGameService.js';
 import { getDeckReadinessSummaries, getDeckReadiness } from './deckReadinessService.js';
 
 /**
+ * What the owner says the deck is for. Deliberately not the vocabulary the
+ * derived readiness states use — the two are shown side by side, and a manual
+ * "Needs Buying" next to a computed "Ready" would read as a contradiction
+ * rather than as intent versus fact. See 034-add-deck-status.js.
+ */
+export const DECK_STATUSES = ['ready', 'building', 'idea', 'retired'];
+
+/**
+ * Validation lives here rather than in a CHECK constraint, so adding a fifth
+ * status later does not mean rebuilding a table four other tables reference.
+ * Undefined means "not being changed" and passes through; an unrecognised
+ * value throws rather than silently landing the deck in a status nothing
+ * filters on.
+ */
+function validateStatus(status) {
+  if (status === undefined) return undefined;
+  if (!DECK_STATUSES.includes(status)) {
+    throw new Error(`Unknown deck status: ${status}`);
+  }
+  return status;
+}
+
+/**
  * Get all decks for a user
  */
 export function getUserDecks(userId) {
@@ -136,9 +159,14 @@ export function getDeckById(deckId, userId) {
  * Create a new deck
  */
 export function createDeck(userId, name, format, description, context = {}) {
+  // A deck being created is being built, unless the caller says otherwise —
+  // the column default says the same thing, but cloneDeck and the importers
+  // pass a status through and should not have to know what the default is.
+  const status = validateStatus(context.status) || 'building';
+
   const result = db.run(
-    `INSERT INTO decks (user_id, name, format, description) VALUES (?, ?, ?, ?)`,
-    [userId, name, format || null, description || null]
+    `INSERT INTO decks (user_id, name, format, description, status) VALUES (?, ?, ?, ?, ?)`,
+    [userId, name, format || null, description || null, status]
   );
 
   recordDeckEvent({
@@ -147,7 +175,7 @@ export function createDeck(userId, name, format, description, context = {}) {
     source: context.source || 'deck_builder',
     deckId: result.lastInsertRowid,
     deckName: name,
-    detail: { format: format || null },
+    detail: { format: format || null, status },
   });
 
   return {
@@ -164,12 +192,13 @@ export function createDeck(userId, name, format, description, context = {}) {
  */
 export function updateDeck(deckId, userId, updates) {
   const { name, format, description } = updates;
+  const status = validateStatus(updates.status);
 
   // Check if deck belongs to user. The current values come along so the audit
   // row can say what a rename was *from* — "deck renamed" on its own does not
   // help anybody find the deck they are looking for.
   const deck = db.get(
-    `SELECT id, name, format, description FROM decks WHERE id = ? AND user_id = ?`,
+    `SELECT id, name, format, description, status FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
 
@@ -192,6 +221,10 @@ export function updateDeck(deckId, userId, updates) {
     fields.push('description = ?');
     params.push(description);
   }
+  if (status !== undefined) {
+    fields.push('status = ?');
+    params.push(status);
+  }
 
   fields.push('updated_at = CURRENT_TIMESTAMP');
 
@@ -213,11 +246,17 @@ export function updateDeck(deckId, userId, updates) {
     deckId,
     deckName: name !== undefined ? name : deck.name,
     detail: {
-      from: { name: deck.name, format: deck.format, description: deck.description },
+      from: {
+        name: deck.name,
+        format: deck.format,
+        description: deck.description,
+        status: deck.status,
+      },
       to: {
         name: name !== undefined ? name : deck.name,
         format: format !== undefined ? format : deck.format,
         description: description !== undefined ? description : deck.description,
+        status: status !== undefined ? status : deck.status,
       },
     },
   });
@@ -805,6 +844,10 @@ export function cloneDeck(deckId, userId, newName = null) {
   const name = (newName && newName.trim()) || `${source.name} (copy)`;
 
   const newDeckId = db.transaction(() => {
+    // Status is deliberately not copied — the clone takes the column default
+    // of 'building'. A copy of a Ready deck is not itself ready: its cards are
+    // now claimed twice over, and readiness will report every one of them as
+    // contested. Inheriting 'ready' here would state the opposite.
     const result = db.run(
       `INSERT INTO decks (user_id, name, format, description) VALUES (?, ?, ?, ?)`,
       [userId, name, source.format || null, source.description || null]

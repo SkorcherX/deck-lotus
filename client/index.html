@@ -402,6 +402,7 @@
                         </button>
                     </div>
                 </div>
+                <div id="decks-toolbar" class="decks-toolbar"></div>
                 <div id="decks-list" class="decks-grid"></div>
             </div>
 
@@ -424,6 +425,12 @@
                                 <option value="legacy">Legacy</option>
                                 <option value="vintage">Vintage</option>
                                 <option value="pauper">Pauper</option>
+                            </select>
+                            <select id="deck-status" class="deck-format-select" aria-label="Deck status">
+                                <option value="ready">Ready</option>
+                                <option value="building">Building</option>
+                                <option value="idea">Idea</option>
+                                <option value="retired">Retired</option>
                             </select>
                             <div class="deck-actions">
                                 <button
@@ -473,6 +480,7 @@
 
                     <!-- Cards traded away that this deck still lists, awaiting a decision -->
                     <div id="deck-traded-banner" class="hidden" style="margin: 0 0 0.75rem;"></div>
+                    <div id="deck-readiness-panel" class="hidden" style="margin: 0 0 0.75rem;"></div>
 
                     <div class="deck-builder-content">
                         <!-- Deck List -->

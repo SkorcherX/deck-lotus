@@ -16,6 +16,7 @@ import {
   importSharedDeck,
   cloneDeck,
   checkDeckLegality,
+  DECK_STATUSES,
 } from '../services/deckService.js';
 import {
   getDeckGames,
@@ -56,13 +57,19 @@ router.get('/', authenticate, (req, res, next) => {
  */
 router.post('/', authenticate, (req, res, next) => {
   try {
-    const { name, format, description } = req.body;
+    const { name, format, description, status } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Deck name is required' });
     }
 
-    const deck = createDeck(req.user.id, name, format, description);
+    // Caught here as well as in the service so a bad value is a 400 the client
+    // can show, rather than a thrown Error surfacing as a 500.
+    if (status !== undefined && !DECK_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Status must be one of: ${DECK_STATUSES.join(', ')}` });
+    }
+
+    const deck = createDeck(req.user.id, name, format, description, { status });
     res.status(201).json({ deck });
   } catch (error) {
     next(error);
@@ -95,9 +102,13 @@ router.get('/:id', authenticate, (req, res, next) => {
 router.put('/:id', authenticate, (req, res, next) => {
   try {
     const deckId = parseInt(req.params.id);
-    const { name, format, description } = req.body;
+    const { name, format, description, status } = req.body;
 
-    const deck = updateDeck(deckId, req.user.id, { name, format, description });
+    if (status !== undefined && !DECK_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Status must be one of: ${DECK_STATUSES.join(', ')}` });
+    }
+
+    const deck = updateDeck(deckId, req.user.id, { name, format, description, status });
     res.json({ deck });
   } catch (error) {
     next(error);

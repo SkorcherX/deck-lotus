@@ -199,10 +199,10 @@ class ApiClient {
     return this.request(`/decks/${id}`);
   }
 
-  async createDeck(name, format, description) {
+  async createDeck(name, format, description, status) {
     return this.request('/decks', {
       method: 'POST',
-      body: JSON.stringify({ name, format, description }),
+      body: JSON.stringify({ name, format, description, status }),
     });
   }
 
