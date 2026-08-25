@@ -216,19 +216,37 @@ describe('backup and restore round trip', () => {
     assert.equal(disruption.resolution, null, 'an unacknowledged disruption must stay unacknowledged');
   });
 
-  test('the audit log returns keyed on uuid, not on a reassigned integer', () => {
+  test('the audit log comes back with its card identity intact', () => {
     const backup = createBackup();
     wipeUserData();
     restoreBackup(backup, { overwrite: false });
 
-    const entry = db.get(`SELECT printing_uuid, printing_id, card_name, quantity_delta FROM audit_log`);
+    const entry = db.get(`SELECT printing_uuid, card_name, quantity_delta FROM audit_log WHERE card_name IS NOT NULL`);
     assert.equal(entry.printing_uuid, printings['Counterspell'].uuid);
     assert.equal(entry.card_name, 'Counterspell');
     assert.equal(entry.quantity_delta, 2);
-    // printing_id is not restored on purpose: the weekly MTGJSON rebuild
-    // reassigns it, so a number carried over from the old database would point
-    // at an unrelated card.
-    assert.equal(entry.printing_id, null);
+  });
+
+  test('a legacy audit row keeps the printing_id that is its only handle', () => {
+    // Rows written before commit 951ddd1 have no uuid and no name; the stale
+    // printing_id is the only thing scripts/backfill-audit-cards.js can use to
+    // work out what they were about. An earlier version of this restore nulled
+    // it on principle — the column really is invalidated by the weekly rebuild
+    // — which would have made 1000+ rows of real history permanently
+    // unidentifiable the first time anyone restored. Carrying it preserves the
+    // live database's situation instead of degrading it.
+    db.run(
+      `INSERT INTO audit_log (user_id, actor_user_id, entity_type, action, source, printing_id)
+       VALUES (?,?,'inventory','inventory.add','api',?)`,
+      [userId, userId, printings['Sol Ring'].id]
+    );
+
+    const backup = createBackup();
+    wipeUserData();
+    restoreBackup(backup, { overwrite: false });
+
+    const legacy = db.get(`SELECT printing_id FROM audit_log WHERE card_name IS NULL`);
+    assert.equal(legacy.printing_id, printings['Sol Ring'].id);
   });
 
   test('per-user settings survive', () => {

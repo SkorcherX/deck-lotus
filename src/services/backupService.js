@@ -142,13 +142,22 @@ export function createBackup(userId = null) {
     WHERE user_id IN (${userIdsStr})
   `).all();
 
-  // The audit log already carries everything it needs about a card — it
-  // denormalises name, set and collector number precisely because the card
-  // tables are rebuilt weekly — so it is copied as it stands, minus the
-  // printing_id integer that the rebuild invalidates.
+  // The audit log already carries what it needs about a card — it denormalises
+  // name, set and collector number precisely because the card tables are
+  // rebuilt weekly — so it is copied as it stands.
+  //
+  // `printing_id` comes too, despite being the one column a rebuild
+  // invalidates. Rows written before commit 951ddd1 have no `printing_uuid`
+  // and no name, and that stale integer is the only handle left for
+  // recovering what they were about (see scripts/backfill-audit-cards.js,
+  // which corroborates it against a table the import restores by uuid before
+  // trusting it). Dropping it here would make those rows permanently
+  // unidentifiable the first time somebody restored a backup. Carrying it
+  // preserves exactly the situation in the live database rather than
+  // degrading it — nothing reads this column directly, and nothing should.
   backup.data.audit_log = db.prepare(`
     SELECT id, user_id, actor_user_id, entity_type, action, source,
-           printing_uuid, card_name, set_code, collector_number, is_foil,
+           printing_id, printing_uuid, card_name, set_code, collector_number, is_foil,
            quantity_before, quantity_after, quantity_delta,
            deck_id, deck_name, trade_id, detail, created_at
     FROM audit_log
@@ -628,20 +637,24 @@ export function restoreBackup(backupData, options = {}) {
 
     // ---- Audit log -------------------------------------------------------
     //
-    // printing_id is deliberately left null. The column has no foreign key and
-    // is invalidated by every MTGJSON rebuild; printing_uuid is the identifier
-    // that survives, and is what anything reading this table should join on.
+    // `printing_uuid` is the identifier that survives a rebuild and the only
+    // one anything should join on. `printing_id` is restored anyway, as-is,
+    // because pre-951ddd1 rows have no uuid and it is their last handle — see
+    // the note in createBackup. Restoring it changes nothing about how
+    // trustworthy it is; dropping it would end the possibility of ever
+    // recovering those rows.
     const insertAudit = db.prepare(`
       INSERT OR REPLACE INTO audit_log (id, user_id, actor_user_id, entity_type, action, source,
                                         printing_id, printing_uuid, card_name, set_code,
                                         collector_number, is_foil, quantity_before, quantity_after,
                                         quantity_delta, deck_id, deck_name, trade_id, detail, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     restoreRows('audit_log', (backupData.data.audit_log || []).filter(mine), (row) => {
       insertAudit.run(
         row.id, row.user_id, row.actor_user_id, row.entity_type, row.action, row.source,
+        row.printing_id ?? null,
         row.printing_uuid, row.card_name, row.set_code, row.collector_number, row.is_foil,
         row.quantity_before, row.quantity_after, row.quantity_delta,
         row.deck_id, row.deck_name, row.trade_id, row.detail, row.created_at
