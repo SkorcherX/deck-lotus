@@ -26,6 +26,9 @@ export const ROUTES = [
   ['shopping', '/shopping'],
   ['scan', '/scan'],
   ['trades', '/trades'],
+  // The trade shop is a page for history's sake but not a linkable one: see
+  // the note on parsePath below.
+  ['trade-shop', '/trades/shop'],
   ['price-monitoring', '/price-monitoring'],
   ['settings', '/settings'],
   ['audit', '/audit'],
@@ -64,6 +67,14 @@ export function parsePath(pathname) {
   // back to the list, is the single most common move in the app.
   const deckMatch = clean.match(/^\/decks\/(\d+)$/);
   if (deckMatch) return { page: 'deck-builder', deckId: Number(deckMatch[1]) };
+
+  // /trades/shop resolves like any other page, but unlike the deck builder it
+  // cannot be rebuilt from its URL: the shop carries who you are trading with,
+  // what they have already asked for, and a callback to run when you are done.
+  // None of that is in the path, and inventing a partner would be worse than
+  // not opening. It exists as a route so Back closes the shop; opened cold it
+  // sends the user to the trades list instead (see tradeShop.js).
+  if (clean === '/trades/shop') return { page: 'trade-shop' };
 
   const page = PAGE_BY_PATH.get(clean);
   return page ? { page } : { page: DEFAULT_PAGE };

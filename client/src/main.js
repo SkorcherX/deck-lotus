@@ -160,6 +160,15 @@ class App {
       return;
     }
 
+    // Same shape as the deck builder: the component owns its own showing,
+    // because it has state this router cannot reconstruct and has to decide
+    // for itself whether it can be shown at all.
+    if (pageName === 'trade-shop') {
+      this.hideAllPages();
+      window.dispatchEvent(new CustomEvent('trade-shop:show'));
+      return;
+    }
+
     // Hide all pages
     this.hideAllPages();
 
@@ -224,7 +233,15 @@ class App {
     // reaching into the app.
     window.addEventListener('navigate', (e) => {
       const page = e.detail?.page;
-      if (page) this.showPage(page, { deckId: e.detail?.deckId ?? null });
+      if (!page) return;
+
+      // `replace` is for a correction rather than a move — a dead end sending
+      // the user somewhere real. Pushing there would leave a history entry
+      // that goes back into the dead end.
+      this.showPage(page, {
+        deckId: e.detail?.deckId ?? null,
+        history: e.detail?.replace ? 'replace' : 'push',
+      });
     });
 
     // Back and forward. The browser has already moved by the time this fires,

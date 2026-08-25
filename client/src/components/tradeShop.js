@@ -585,6 +585,14 @@ async function sendCart() {
 
     window.dispatchEvent(new CustomEvent('trades:changed'));
 
+    // The shop's job is finished, so it closes. Replacing rather than pushing:
+    // Back should return to wherever you were before the shop, not to a
+    // completed shopping session whose cart has already been sent.
+    state.partner = null;
+    window.dispatchEvent(new CustomEvent('navigate', {
+      detail: { page: 'trades', replace: true },
+    }));
+
     if (state.onDone) state.onDone();
   } catch (error) {
     hideLoading();
@@ -642,8 +650,14 @@ export function openTradeShop({
          from your collection, and the trade only happens if you both agree.
        </div>`;
 
-  showShopPage(true);
-  loadPage();
+  // Routed rather than shown directly, so the shop is a history entry and the
+  // browser's Back button closes it instead of leaving the app.
+  goTo('trade-shop');
+}
+
+/** Send the app to a page, the same way a nav link would. */
+function goTo(page) {
+  window.dispatchEvent(new CustomEvent('navigate', { detail: { page } }));
 }
 
 function showShopPage(show) {
@@ -655,9 +669,31 @@ function showShopPage(show) {
 }
 
 export function setupTradeShop() {
+  /*
+   * The app has navigated to /trades/shop and wants the shop shown.
+   *
+   * Reached two ways. Normally openTradeShop has just filled in `state` and
+   * navigated here, and there is a partner to browse. But the URL can also be
+   * arrived at cold — a refresh, a bookmark, or Forward after backing out —
+   * and then there is no partner, no trade being countered and no callback to
+   * run at the end. A shop with no counterparty is not a page, so that case
+   * goes to the trades list, replacing the entry rather than pushing one, or
+   * Back would bounce straight into the same dead end.
+   */
+  window.addEventListener('trade-shop:show', () => {
+    if (!state.partner) {
+      window.dispatchEvent(new CustomEvent('navigate', {
+        detail: { page: 'trades', replace: true },
+      }));
+      return;
+    }
+
+    showShopPage(true);
+    loadPage();
+  });
+
   document.getElementById('trade-shop-back').addEventListener('click', () => {
-    showShopPage(false);
-    window.dispatchEvent(new CustomEvent('page:trades'));
+    goTo('trades');
   });
 
   document.getElementById('trade-shop-review').addEventListener('click', () => {
