@@ -183,13 +183,23 @@ router.get('/printing/:uuid', authenticate, (req, res, next) => {
 /**
  * POST /api/cards/:id/owned
  * Toggle card ownership for the authenticated user
+ *
+ * Marking a card as not-owned deletes every printing and finish of it, which
+ * on the browse grid is one press of a 32px icon. So the removal half asks
+ * first: unless the request carries `confirmRemoveAll: true`, a card owned in
+ * more than a single non-foil copy comes back untouched with
+ * `requiresConfirmation` and the counts to show the user.
  */
 router.post('/:id/owned', authenticate, (req, res, next) => {
   try {
     const cardId = parseInt(req.params.id);
     const userId = req.user.id;
+    const { confirmRemoveAll = false } = req.body || {};
 
-    const result = toggleCardOwnership(userId, cardId, { source: 'card_page' });
+    const result = toggleCardOwnership(userId, cardId, {
+      source: 'card_page',
+      confirmRemoveAll: confirmRemoveAll === true,
+    });
     res.json(result);
   } catch (error) {
     next(error);

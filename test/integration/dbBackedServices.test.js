@@ -31,7 +31,7 @@ const { runMigrations, closeDb } = await import('../../src/db/index.js');
 const { default: db } = await import('../../src/db/connection.js');
 const { getDeckReadiness } = await import('../../src/services/deckReadinessService.js');
 const { getBulkBinList } = await import('../../src/services/shoppingService.js');
-const { addOwnedPrintingQuantity, setOwnedPrintingQuantity } =
+const { addOwnedPrintingQuantity, setOwnedPrintingQuantity, toggleCardOwnership } =
   await import('../../src/services/cardService.js');
 
 let userId;
@@ -418,5 +418,102 @@ describe('adding copies adds, and does not overwrite', () => {
   test('the setter still sets, because the card page needs it to', () => {
     setOwnedPrintingQuantity(userId, printings['Opt'].printingId, 2, false);
     assert.equal(ownedOf('Opt'), 2);
+  });
+});
+
+
+/**
+ * The ownership tick is a 32px icon rendered fifty times a page, and pressing
+ * it on an owned card used to delete every printing and every finish of that
+ * card — sixteen copies of Mountain across five rows, from one press, with no
+ * confirmation and no undo. The guard belongs in the service, not the click
+ * handler, because the API has the same one-press property.
+ */
+describe('the ownership toggle asks before it empties a shelf', () => {
+  const cardIdOf = (name) => db.get(`SELECT id FROM cards WHERE name = ?`, [name]).id;
+  const rowsFor = (name) =>
+    db.all(
+      `SELECT op.quantity, op.is_foil FROM owned_printings op
+         JOIN printings p ON op.printing_id = p.id
+        WHERE op.user_id = ? AND p.card_id = ?`,
+      [userId, cardIdOf(name)]
+    );
+
+  before(() => {
+    // Arcane Signet, held the way a real collection holds a staple: several
+    // copies, more than one printing, one of them foil.
+    const cardId = cardIdOf('Arcane Signet');
+    db.run(`DELETE FROM owned_printings WHERE user_id = ? AND printing_id IN
+              (SELECT id FROM printings WHERE card_id = ?)`, [userId, cardId]);
+    db.run(`INSERT INTO printings (card_id, set_code, collector_number, uuid)
+            VALUES (?, 'TST', '999', 'uuid-signet-second')`, [cardId]);
+    const second = db.get(`SELECT id FROM printings WHERE uuid = 'uuid-signet-second'`).id;
+    setOwnedPrintingQuantity(userId, printings['Arcane Signet'].printingId, 4, false);
+    setOwnedPrintingQuantity(userId, second, 2, true);
+  });
+
+  test('a stocked card is not removed, and nothing is written', () => {
+    const before = rowsFor('Arcane Signet');
+    const result = toggleCardOwnership(userId, cardIdOf('Arcane Signet'));
+
+    assert.equal(result.requiresConfirmation, true);
+    assert.equal(result.removed, false);
+    assert.equal(result.owned, true, 'the card is still owned, and must still read as owned');
+    assert.deepEqual(rowsFor('Arcane Signet'), before, 'rows moved on an unconfirmed toggle');
+  });
+
+  test('the counts come back, because the prompt has to say what it costs', () => {
+    const result = toggleCardOwnership(userId, cardIdOf('Arcane Signet'));
+    assert.equal(result.copyCount, 6);
+    assert.equal(result.printingCount, 2);
+    assert.equal(result.foilCount, 2);
+  });
+
+  test('confirming removes everything, and logs every row it took', () => {
+    const cardId = cardIdOf('Arcane Signet');
+    const result = toggleCardOwnership(userId, cardId, { confirmRemoveAll: true });
+
+    assert.equal(result.owned, false);
+    assert.equal(result.removed, true);
+    assert.equal(rowsFor('Arcane Signet').length, 0);
+
+    const logged = db.all(
+      `SELECT quantity_before, is_foil FROM audit_log
+        WHERE user_id = ? AND card_name = 'Arcane Signet' AND quantity_after = 0
+        ORDER BY id DESC LIMIT 2`,
+      [userId]
+    );
+    assert.equal(logged.length, 2, 'a deleted row went unlogged, so it cannot be put back');
+    assert.deepEqual(logged.map((r) => r.quantity_before).sort(), [2, 4]);
+  });
+
+  test('undoing your own press needs no ceremony', () => {
+    const cardId = cardIdOf('Arcane Signet');
+
+    const added = toggleCardOwnership(userId, cardId);
+    assert.equal(added.owned, true);
+    assert.equal(rowsFor('Arcane Signet').length, 1);
+
+    // One printing, one copy, not foil — exactly what the press above created.
+    const removed = toggleCardOwnership(userId, cardId);
+    assert.equal(removed.removed, true, 'the toggle asked about the single copy it had just added');
+    assert.equal(rowsFor('Arcane Signet').length, 0);
+  });
+
+  test('two copies of one printing is already enough to ask', () => {
+    const cardId = cardIdOf('Arcane Signet');
+    setOwnedPrintingQuantity(userId, printings['Arcane Signet'].printingId, 2, false);
+
+    assert.equal(toggleCardOwnership(userId, cardId).requiresConfirmation, true);
+    assert.equal(rowsFor('Arcane Signet')[0].quantity, 2);
+  });
+
+  test('a single foil is asked about too — it is not what the toggle adds', () => {
+    const cardId = cardIdOf('Arcane Signet');
+    setOwnedPrintingQuantity(userId, printings['Arcane Signet'].printingId, 0, false);
+    setOwnedPrintingQuantity(userId, printings['Arcane Signet'].printingId, 1, true);
+
+    assert.equal(toggleCardOwnership(userId, cardId).requiresConfirmation, true);
+    assert.equal(rowsFor('Arcane Signet').length, 1);
   });
 });

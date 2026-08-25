@@ -644,8 +644,27 @@ export function getAllSubtypes() {
 }
 
 /**
- * Toggle card ownership for a user
- * This now manages owned_printings instead of owned_cards
+ * Toggle whether a user owns a card at all.
+ *
+ * The two directions are not mirror images, and pretending they were is what
+ * made this dangerous. Adding is one copy of one printing. Removing is
+ * *everything* — every printing, both finishes, whatever the quantities were.
+ * On the browse grid this is a 32x32 icon rendered fifty times a page, so a
+ * single mis-click used to delete sixteen copies of Mountain across five rows
+ * and answer "Card removed from collection".
+ *
+ * So removal is now confirmed rather than assumed, and the check lives here
+ * rather than in the click handler: an API caller can mis-click too, and the
+ * property worth keeping is that *no single request* can throw away a
+ * collection. Pass `confirmRemoveAll: true` to mean it.
+ *
+ * The exception is the state this toggle itself creates — one printing, one
+ * copy, non-foil. Undoing a press you just made is not a bulk delete and
+ * asking about it would train people to dismiss the question that matters.
+ *
+ * When confirmation is needed nothing is written, and the caller is told what
+ * it would have cost: `requiresConfirmation`, with the row and copy counts to
+ * put in front of the user.
  */
 export function toggleCardOwnership(userId, cardId, context = {}) {
   const source = context.source || 'card_page';
@@ -662,6 +681,26 @@ export function toggleCardOwnership(userId, cardId, context = {}) {
   );
 
   if (ownedPrintings.length > 0) {
+    const copies = ownedPrintings.reduce((sum, row) => sum + row.quantity, 0);
+    const foils = ownedPrintings.reduce((sum, row) => sum + (row.is_foil ? row.quantity : 0), 0);
+
+    // One printing, one copy, no foil: exactly what a press of this button
+    // adds, so a press that takes it away again is not a surprise.
+    const undoingOwnPress = ownedPrintings.length === 1 && copies === 1 && foils === 0;
+
+    if (!undoingOwnPress && !context.confirmRemoveAll) {
+      return {
+        owned: true,
+        removed: false,
+        requiresConfirmation: true,
+        printingCount: ownedPrintings.length,
+        copyCount: copies,
+        foilCount: foils,
+        message: `Removing this card would delete ${copies} cop${copies === 1 ? 'y' : 'ies'} `
+          + `across ${ownedPrintings.length} printing${ownedPrintings.length === 1 ? '' : 's'}`,
+      };
+    }
+
     // Remove all owned printings for this card
     db.run(
       `DELETE FROM owned_printings
@@ -691,7 +730,13 @@ export function toggleCardOwnership(userId, cardId, context = {}) {
       });
     }
 
-    return { owned: false, message: 'Card removed from collection' };
+    return {
+      owned: false,
+      removed: true,
+      printingCount: ownedPrintings.length,
+      copyCount: copies,
+      message: 'Card removed from collection',
+    };
   } else {
     // Add the first printing with quantity 1
     const firstPrinting = db.get(
@@ -722,7 +767,7 @@ export function toggleCardOwnership(userId, cardId, context = {}) {
         detail: { via: 'toggle_ownership' },
       });
     }
-    return { owned: true, message: 'Card added to collection' };
+    return { owned: true, added: true, message: 'Card added to collection' };
   }
 }
 

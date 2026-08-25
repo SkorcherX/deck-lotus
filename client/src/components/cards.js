@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, formatOracleText, debounce, showModal, hideModal, showToast } from '../utils/ui.js';
+import { toggleOwnership, ownershipToggleAttrs, paintOwnershipToggle } from '../utils/ownershipToggle.js';
 
 let currentPage = 1;
 let currentFilters = {
@@ -476,8 +477,8 @@ function renderCards(cards) {
              style="width: 100%; border-radius: 8px; margin-bottom: 0.5rem; pointer-events: none;">
       ` : ''}
       <button class="quick-add-btn" data-card-id="${card.id}" style="position: absolute; top: 8px; right: 8px; background: rgb(var(--scrim-rgb) / 0.8); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; z-index: 10;">+</button>
-      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" data-card-id="${card.id}" style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; z-index: 10;">
-        <i class="ph ${card.is_owned ? 'ph-check-circle' : 'ph-circle'}"></i>
+      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; z-index: 10;">
+        <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
       </button>
       <!--
         Shopping, as distinct from owning. The tick above says "I have this";
@@ -565,20 +566,10 @@ function renderCards(cards) {
 
 async function toggleCardOwnership(cardId, buttonEl) {
   try {
-    const result = await api.toggleCardOwnership(cardId);
-
-    // Update button appearance
-    if (result.owned) {
-      buttonEl.classList.add('owned');
-      buttonEl.style.background = 'rgb(var(--success-rgb) / 0.9)';
-      buttonEl.innerHTML = '<i class="ph ph-check-circle"></i>';
-      showToast('Added to collection', 'success', 1500);
-    } else {
-      buttonEl.classList.remove('owned');
-      buttonEl.style.background = 'rgb(var(--scrim-rgb) / 0.8)';
-      buttonEl.innerHTML = '<i class="ph ph-circle"></i>';
-      showToast('Removed from collection', 'success', 1500);
-    }
+    // Removing asks first, and the user may say no — in which case the button
+    // is already showing the truth and must be left alone.
+    const { owned, changed } = await toggleOwnership(cardId, buttonEl.dataset.cardName);
+    if (changed) paintOwnershipToggle(buttonEl, owned);
   } catch (error) {
     showToast('Failed to update collection', 'error');
     console.error('Toggle ownership error:', error);
@@ -1703,15 +1694,10 @@ function updateBrowseGridOwnership(cardId, isOwned) {
   const ownershipBtn = cardItem.querySelector('.ownership-toggle-btn');
   if (!ownershipBtn) return;
 
-  if (isOwned) {
-    ownershipBtn.classList.add('owned');
-    ownershipBtn.style.background = 'rgb(var(--success-rgb) / 0.9)';
-    ownershipBtn.innerHTML = '<i class="ph ph-check-circle"></i>';
-  } else {
-    ownershipBtn.classList.remove('owned');
-    ownershipBtn.style.background = 'rgb(var(--scrim-rgb) / 0.8)';
-    ownershipBtn.innerHTML = '<i class="ph ph-circle"></i>';
-  }
+  // Through the shared painter, so the accessible name follows the colour.
+  // A tick that says "Owned" to the eye and "Not owned" to a screen reader is
+  // worse than either on its own.
+  paintOwnershipToggle(ownershipBtn, isOwned);
 }
 
 let browseDraggedCardId = null;

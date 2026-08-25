@@ -165,9 +165,14 @@ class ApiClient {
     return this.request(`/cards/advanced?${params}`);
   }
 
-  async toggleCardOwnership(cardId) {
+  // Removing ownership deletes every printing and finish of the card, so the
+  // server refuses to do it on a single request unless `confirmRemoveAll` says
+  // the user was shown what it costs. Without it, an owned card comes back
+  // untouched with `requiresConfirmation` and the counts to put in the prompt.
+  async toggleCardOwnership(cardId, { confirmRemoveAll = false } = {}) {
     return this.request(`/cards/${cardId}/owned`, {
       method: 'POST',
+      body: JSON.stringify({ confirmRemoveAll }),
     });
   }
 
