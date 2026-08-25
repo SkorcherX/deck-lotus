@@ -826,6 +826,32 @@ function bulkKey(card) {
   return `card-${card.cardId}`;
 }
 
+/**
+ * The colour pips at the head of a bulk row.
+ *
+ * This list is read while flipping through a box a card a second, and the
+ * thing you can tell about a card before you have read a word of it is its
+ * colour. So the pips are the leftmost thing on the row and every row gets the
+ * same width for them, whether it uses it or not — an aligned column can be
+ * scanned straight down, a ragged one has to be read.
+ *
+ * Colour identity rather than mana cost, and a colourless card gets a pip of
+ * its own rather than a blank: blank reads as missing data, and "this one is
+ * an artifact" is exactly as useful to know as "this one is red".
+ */
+function colorPips(card) {
+  const colors = card.colors || [];
+  const symbols = colors.length ? colors : ['C'];
+
+  const label = colors.length
+    ? colors.join('')
+    : 'Colourless';
+
+  return `<span class="bulk-colors" title="${label}" aria-label="${label}">
+      ${symbols.map((c) => `<i class="ms ms-${c.toLowerCase()} ms-cost"></i>`).join('')}
+    </span>`;
+}
+
 function bulkRow(card) {
   const where = card.setCode
     ? `<span class="bulk-printing">${card.setCode.toUpperCase()} #${card.collectorNumber}</span>`
@@ -848,6 +874,7 @@ function bulkRow(card) {
 
   return `
     <li class="bulk-row${found ? ' is-found' : ''}" data-card-key="${bulkKey(card)}" data-found="${found}">
+      ${colorPips(card)}
       <span class="bulk-qty">${card.quantity}x</span>
       <span class="bulk-name">${card.name}</span>
       ${where}
@@ -909,7 +936,10 @@ function exportBulkList() {
   for (const card of visible) {
     const where = card.setCode ? ` — ${card.setCode.toUpperCase()} #${card.collectorNumber}` : '';
     const note = card.contested ? `  (${card.contested} in other decks)` : '';
-    lines.push(`[ ] ${card.quantity}x ${card.name}${where} — $${card.price.toFixed(2)}${note}`);
+    // Padded so the colours line up in a monospaced paste the same way the
+    // pips line up on screen. {C} for colourless, as the pips do.
+    const colors = `{${(card.colors || []).join('') || 'C'}}`.padEnd(7);
+    lines.push(`[ ] ${colors} ${card.quantity}x ${card.name}${where} — $${card.price.toFixed(2)}${note}`);
   }
 
   if (bulkData.unpriced.length) {

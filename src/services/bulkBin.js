@@ -27,6 +27,38 @@
 /** What a bulk box actually holds. Rares turn up, but not reliably. */
 const BIN_RARITIES = ['common', 'uncommon'];
 
+/** WUBRG order. Anything else — including a stray lowercase — is dropped. */
+const COLOR_ORDER = ['W', 'U', 'B', 'R', 'G'];
+
+/**
+ * Colour identity as an ordered list of pips.
+ *
+ * Stored as a comma-joined string by scripts/import-mtgjson.js ("G,U"), but
+ * older rows and other sources have been seen bare ("GU"), so the split is on
+ * "not a letter" and then filtered against the five real colours rather than
+ * trusting the separator.
+ *
+ * Sorted into WUBRG rather than left in whatever order the source used: the
+ * whole point is a column you scan straight down, and Golgari drawn as B,G on
+ * one line and G,B on the next defeats that.
+ *
+ * An empty result is meaningful and not an error — it is a colourless card,
+ * which the reader still wants marked.
+ */
+export function colorPips(colorIdentity) {
+  if (!colorIdentity) return [];
+
+  const seen = new Set(
+    String(colorIdentity)
+      .toUpperCase()
+      .split(/[^A-Z]+/)
+      .join('')
+      .split('')
+  );
+
+  return COLOR_ORDER.filter((c) => seen.has(c));
+}
+
 /**
  * Build the list.
  *
@@ -86,6 +118,9 @@ export function buildBulkList(entries, cheapest, options = {}) {
       // are a card you already own somewhere else. They are not the same news.
       toBuy,
       contested,
+      // Pre-split, so the page renders pips rather than re-parsing a database
+      // format it should not have to know about.
+      colors: colorPips(entry.colorIdentity),
       printingId: printing.printingId,
       printingUuid: printing.printingUuid,
       // The set and number of the *cheapest* printing, so you can check the
@@ -147,6 +182,10 @@ export function flattenShoppingSets(sets) {
       byCard.set(card.cardId, {
         cardId: card.cardId,
         name: card.name,
+        // Colour identity, not the mana cost: this is for spotting a card in a
+        // box at a glance, and the cost of a card you are looking for is not
+        // something you can see while it is still face-down in the row.
+        colorIdentity: card.colorIdentity,
         quantityNeeded: card.quantityNeeded || 0,
         contested: card.contested || 0,
         decks: [...(card.decks || [])],

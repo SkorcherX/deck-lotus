@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildBulkList, flattenShoppingSets } from '../src/services/bulkBin.js';
+import { buildBulkList, flattenShoppingSets, colorPips } from '../src/services/bulkBin.js';
 
 const entry = (over = {}) => ({
   cardId: 1,
@@ -178,4 +178,50 @@ test('a card printed in several sets becomes one line, not two', () => {
 test('flattening an empty payload is empty, not a crash', () => {
   assert.deepEqual(flattenShoppingSets(undefined), []);
   assert.deepEqual(flattenShoppingSets([]), []);
+});
+
+/*
+ * The colour pips. They exist so a list can be scanned rather than read while
+ * flipping through a box, which only works if the same card always draws the
+ * same way — hence the fixed WUBRG order and the tolerance for both storage
+ * formats the column has been seen in.
+ */
+test('colour identity is drawn in WUBRG order, not the order it was stored in', () => {
+  assert.deepEqual(colorPips('G,U'), ['U', 'G']);
+  assert.deepEqual(colorPips('U,G'), ['U', 'G']);
+  assert.deepEqual(colorPips('B,G,R,U,W'), ['W', 'U', 'B', 'R', 'G']);
+});
+
+test('a bare string without separators parses the same way', () => {
+  assert.deepEqual(colorPips('GU'), ['U', 'G']);
+});
+
+test('a colourless card is an empty list, not a missing one', () => {
+  assert.deepEqual(colorPips(''), []);
+  assert.deepEqual(colorPips(null), []);
+  assert.deepEqual(colorPips(undefined), []);
+});
+
+test('a repeated colour is drawn once', () => {
+  assert.deepEqual(colorPips('R,R,G'), ['R', 'G']);
+});
+
+test('junk between the letters is ignored rather than drawn', () => {
+  assert.deepEqual(colorPips('["W","U"]'), ['W', 'U']);
+});
+
+test('the pips reach the row the page renders', () => {
+  const entries = flattenShoppingSets([
+    {
+      cards: [
+        { cardId: 1, name: 'Llanowar Elves', colorIdentity: 'G', quantityNeeded: 2, contested: 0, decks: [] },
+      ],
+    },
+  ]);
+
+  const list = buildBulkList(entries, {
+    1: { printingId: 10, setCode: 'DOM', collectorNumber: '168', rarity: 'common', price: 0.2 },
+  });
+
+  assert.deepEqual(list.cards[0].colors, ['G']);
 });

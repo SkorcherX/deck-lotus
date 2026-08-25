@@ -1235,6 +1235,26 @@ select option {
   background: var(--bg-tertiary);
 }
 
+/*
+ * Colour identity, first thing on the row.
+ *
+ * Fixed width, and the same width on every row including the colourless ones,
+ * so the pips form a column you can run your eye down while your hands are
+ * busy in a box. Five pips is the widest a card gets and the column is sized
+ * for that — measured at 95px, so 6.5rem leaves headroom — rather than for
+ * the widest card on today's list. Sized any smaller and a single five-colour
+ * card shunts its own name out of line with every other row, which is the one
+ * thing this column exists to prevent.
+ */
+.bulk-colors {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  min-width: 6.5rem;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
 .bulk-qty {
   font-weight: 700;
   color: var(--primary);
