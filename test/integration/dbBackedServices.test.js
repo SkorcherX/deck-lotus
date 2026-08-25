@@ -32,6 +32,8 @@ const { default: db } = await import('../../src/db/connection.js');
 const { getDeckReadiness } = await import('../../src/services/deckReadinessService.js');
 const { getBulkBinList, getShoppingList } =
   await import('../../src/services/shoppingService.js');
+const { addCardToDeck, updateDeckCard, getDeckById } =
+  await import('../../src/services/deckService.js');
 const { addOwnedPrintingQuantity, setOwnedPrintingQuantity, toggleCardOwnership } =
   await import('../../src/services/cardService.js');
 
@@ -571,5 +573,136 @@ describe('the shopping list can explain a contested card', () => {
 
     db.run(`DELETE FROM deck_cards WHERE deck_id = ? AND printing_id = ?`,
       [statusDecks.idea, printings['Giant Growth'].printingId]);
+  });
+});
+
+
+/**
+ * deck_cards was keyed UNIQUE(deck_id, printing_id, is_sideboard, is_foil) — a
+ * boolean standing in for three boards. Mainboard and maybeboard both mean
+ * is_sideboard = 0, so a card you were playing could not also be a card you
+ * were considering, and the attempt surfaced as a 500 carrying the constraint
+ * text. Migration 038 keys on board_type and makes the two columns agree.
+ */
+describe('a card can be on more than one board', () => {
+  const boardsOf = (deckId, name) =>
+    db.all(
+      `SELECT dc.board_type, dc.is_sideboard, dc.quantity FROM deck_cards dc
+         JOIN printings p ON p.id = dc.printing_id
+         JOIN cards c ON c.id = p.card_id
+        WHERE dc.deck_id = ? AND c.name = ?
+        ORDER BY dc.board_type`,
+      [deckId, name]
+    );
+
+  let boardDeck;
+
+  before(() => {
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,'Board Test','commander','building')`,
+      [userId]);
+    boardDeck = db.get(`SELECT id FROM decks WHERE name = 'Board Test'`).id;
+  });
+
+  test('the same printing lands on all three boards', () => {
+    const printingId = printings['Giant Growth'].printingId;
+
+    addCardToDeck(boardDeck, userId, printingId, 1, false, false, 'mainboard', false);
+    addCardToDeck(boardDeck, userId, printingId, 1, false, false, 'sideboard', false);
+    addCardToDeck(boardDeck, userId, printingId, 1, false, false, 'maybeboard', false);
+
+    assert.deepEqual(
+      boardsOf(boardDeck, 'Giant Growth').map((r) => r.board_type),
+      ['mainboard', 'maybeboard', 'sideboard']
+    );
+  });
+
+  test('adding to a board it is already on adds up, rather than colliding', () => {
+    const printingId = printings['Giant Growth'].printingId;
+    addCardToDeck(boardDeck, userId, printingId, 2, false, false, 'mainboard', false);
+
+    const main = boardsOf(boardDeck, 'Giant Growth').find((r) => r.board_type === 'mainboard');
+    assert.equal(main.quantity, 3);
+  });
+
+  test('is_sideboard follows the board, whatever the caller sent', () => {
+    // The old bug: boardType without isSideboard wrote a row saying both.
+    const rows = boardsOf(boardDeck, 'Giant Growth');
+    for (const row of rows) {
+      assert.equal(
+        row.is_sideboard,
+        row.board_type === 'sideboard' ? 1 : 0,
+        `${row.board_type} row disagrees with its own flag`
+      );
+    }
+  });
+
+  test('moving a card onto a board it is already on merges, rather than failing', () => {
+    const printingId = printings['Giant Growth'].printingId;
+    const maybe = db.get(
+      `SELECT id, quantity FROM deck_cards
+        WHERE deck_id = ? AND printing_id = ? AND board_type = 'maybeboard'`,
+      [boardDeck, printingId]
+    );
+    const sideBefore = db.get(
+      `SELECT id, quantity FROM deck_cards
+        WHERE deck_id = ? AND printing_id = ? AND board_type = 'sideboard'`,
+      [boardDeck, printingId]
+    );
+
+    // Deliberately contradictory input: the board says sideboard, the legacy
+    // flag says otherwise. The board wins and the flag is derived.
+    updateDeckCard(boardDeck, userId, maybe.id, { boardType: 'sideboard', isSideboard: false });
+
+    assert.equal(
+      db.get(`SELECT id FROM deck_cards WHERE id = ?`, [maybe.id]),
+      undefined,
+      'the moved row survived alongside the one it moved onto'
+    );
+
+    const sideAfter = db.get(`SELECT quantity, is_sideboard, board_type FROM deck_cards WHERE id = ?`,
+      [sideBefore.id]);
+    assert.equal(sideAfter.quantity, sideBefore.quantity + maybe.quantity, 'copies were lost in the move');
+    assert.equal(sideAfter.board_type, 'sideboard');
+    assert.equal(sideAfter.is_sideboard, 1);
+  });
+
+  test('a plain move to an empty board still just moves', () => {
+    const printingId = printings['Giant Growth'].printingId;
+    const main = db.get(
+      `SELECT id, quantity FROM deck_cards
+        WHERE deck_id = ? AND printing_id = ? AND board_type = 'mainboard'`,
+      [boardDeck, printingId]
+    );
+
+    updateDeckCard(boardDeck, userId, main.id, { boardType: 'maybeboard' });
+
+    const moved = db.get(`SELECT board_type, is_sideboard, quantity FROM deck_cards WHERE id = ?`,
+      [main.id]);
+    assert.equal(moved.board_type, 'maybeboard');
+    assert.equal(moved.is_sideboard, 0);
+    assert.equal(moved.quantity, main.quantity);
+  });
+
+  test('an unknown board is refused as a client error, not a 500', () => {
+    const printingId = printings['Llanowar Elves'].printingId;
+    assert.throws(
+      () => addCardToDeck(boardDeck, userId, printingId, 1, false, false, 'sidebaord', false),
+      (err) => err.statusCode === 400 && /Unknown board/.test(err.message)
+    );
+
+    assert.equal(boardsOf(boardDeck, 'Llanowar Elves').length, 0, 'a typo still wrote a row');
+  });
+
+  test('the database itself refuses a contradictory row', () => {
+    // The guard is in the schema, not only in the service — a future writer
+    // that forgets to derive the flag fails loudly instead of storing a row
+    // that says two things.
+    assert.throws(() =>
+      db.run(
+        `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, board_type, is_foil)
+         VALUES (?,?,1,0,'sideboard',0)`,
+        [boardDeck, printings['Llanowar Elves'].printingId]
+      )
+    );
   });
 });

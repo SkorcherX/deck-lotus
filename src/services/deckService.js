@@ -301,6 +301,31 @@ export function deleteDeck(deckId, userId) {
 }
 
 /**
+ * The three boards, and the one place that decides what a board is.
+ *
+ * `is_sideboard` predates `board_type` and is kept in step rather than passed
+ * alongside it: callers used to send `boardType: 'sideboard'` without
+ * `isSideboard: true` and write a row that said two different things. Migration
+ * 038 makes that disagreement a CHECK violation, so deriving it here is what
+ * keeps the writes legal as well as honest.
+ */
+export const BOARD_TYPES = ['mainboard', 'sideboard', 'maybeboard'];
+
+function resolveBoard(boardType, isSideboard) {
+  const board = boardType || (isSideboard ? 'sideboard' : 'mainboard');
+
+  if (!BOARD_TYPES.includes(board)) {
+    // Named, not silently corrected. A typo'd board that quietly became the
+    // mainboard would put a card in a deck the user did not put it in.
+    const error = new Error(`Unknown board "${board}" - expected one of ${BOARD_TYPES.join(', ')}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return { board, sideboardFlag: board === 'sideboard' ? 1 : 0 };
+}
+
+/**
  * Add card to deck
  */
 export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSideboard = false, isCommander = false, boardType = null, isFoil = false) {
@@ -314,8 +339,9 @@ export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSidebo
     throw new Error('Deck not found or access denied');
   }
 
-  // Determine board type
-  const finalBoardType = boardType || (isSideboard ? 'sideboard' : 'mainboard');
+  // Determine board type. The sideboard flag is derived from it, never taken
+  // from the caller alongside it — see resolveBoard.
+  const { board: finalBoardType, sideboardFlag } = resolveBoard(boardType, isSideboard);
   const foilFlag = isFoil ? 1 : 0;
 
   // Check if card already exists in deck. Finish is part of the identity: a
@@ -339,7 +365,7 @@ export function addCardToDeck(deckId, userId, printingId, quantity = 1, isSidebo
     db.run(
       `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [deckId, printingId, quantity, isSideboard ? 1 : 0, isCommander ? 1 : 0, finalBoardType, foilFlag]
+      [deckId, printingId, quantity, sideboardFlag, isCommander ? 1 : 0, finalBoardType, foilFlag]
     );
   }
 
@@ -396,18 +422,15 @@ export function updateDeckCard(deckId, userId, deckCardId, updates) {
     fields.push('quantity = ?');
     params.push(quantity);
   }
-  if (boardType !== undefined) {
+  // Either name for the board is accepted, and both columns are written from
+  // whichever arrived. They are one fact, and migration 038 now refuses a row
+  // where they disagree.
+  if (boardType !== undefined || isSideboard !== undefined) {
+    const { board, sideboardFlag } = resolveBoard(boardType, isSideboard);
     fields.push('board_type = ?');
-    params.push(boardType);
-    // Update is_sideboard for backward compatibility
+    params.push(board);
     fields.push('is_sideboard = ?');
-    params.push(boardType === 'sideboard' ? 1 : 0);
-  } else if (isSideboard !== undefined) {
-    // Backward compatibility
-    fields.push('is_sideboard = ?');
-    params.push(isSideboard ? 1 : 0);
-    fields.push('board_type = ?');
-    params.push(isSideboard ? 'sideboard' : 'mainboard');
+    params.push(sideboardFlag);
   }
   if (isCommander !== undefined) {
     fields.push('is_commander = ?');
@@ -424,6 +447,56 @@ export function updateDeckCard(deckId, userId, deckCardId, updates) {
 
   if (fields.length === 0) {
     return getDeckById(deckId, userId);
+  }
+
+  // Moving a card onto a board it is already on is a merge, not a collision.
+  //
+  // The row's identity is (deck, printing, board, finish), so an edit that
+  // changes any of those can land on top of a row that already exists — moving
+  // a maybeboard copy to the sideboard where a sideboard copy is already
+  // listed, or swapping a printing to one the deck already names. The user
+  // means "put it there", and the honest result is one row holding both
+  // quantities. Left to the database this was a UNIQUE violation, which
+  // reached the user as a 500.
+  if (before) {
+    const target = {
+      printingId: printingId !== undefined ? printingId : before.printing_id,
+      board: boardType !== undefined || isSideboard !== undefined
+        ? resolveBoard(boardType, isSideboard).board
+        : before.board_type,
+      foil: isFoil !== undefined ? (isFoil ? 1 : 0) : before.is_foil,
+    };
+
+    const collides = db.get(
+      `SELECT id, quantity FROM deck_cards
+        WHERE deck_id = ? AND printing_id = ? AND board_type = ? AND is_foil = ? AND id != ?`,
+      [deckId, target.printingId, target.board, target.foil, deckCardId]
+    );
+
+    if (collides) {
+      const moved = quantity !== undefined ? quantity : before.quantity;
+
+      db.run(
+        `UPDATE deck_cards SET quantity = quantity + ? WHERE id = ?`,
+        [moved, collides.id]
+      );
+      db.run(`DELETE FROM deck_cards WHERE id = ? AND deck_id = ?`, [deckCardId, deckId]);
+      db.run(`UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [deckId]);
+
+      recordDeckEvent({
+        userId,
+        action: AUDIT_ACTIONS.DECK_CARD_UPDATE,
+        deckId,
+        deckName: deck.name,
+        printingId: before.printing_id,
+        isFoil: before.is_foil === 1,
+        quantityBefore: collides.quantity,
+        quantityAfter: collides.quantity + moved,
+        detail: { mergedInto: collides.id, boardType: target.board, via: 'board_move' },
+      });
+
+      return getDeckById(deckId, userId);
+    }
   }
 
   params.push(deckCardId, deckId);
@@ -802,7 +875,11 @@ export function importSharedDeck(shareToken, userId) {
     db.run(
       `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [newDeck.id, card.printing_id, card.quantity, card.is_sideboard, card.is_commander,
+      // The board is the fact; the flag follows it. Reading them independently
+      // off the source row is what let a copy arrive claiming both.
+      [newDeck.id, card.printing_id, card.quantity,
+       (card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')) === 'sideboard' ? 1 : 0,
+       card.is_commander,
        card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard'), card.is_foil ? 1 : 0]
     );
 
@@ -863,7 +940,7 @@ export function cloneDeck(deckId, userId, newName = null) {
           clonedId,
           card.printing_id,
           card.quantity,
-          card.is_sideboard ? 1 : 0,
+          (card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')) === 'sideboard' ? 1 : 0,
           card.is_commander ? 1 : 0,
           card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard'),
           card.is_foil ? 1 : 0,

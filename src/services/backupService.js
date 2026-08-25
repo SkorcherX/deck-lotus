@@ -228,7 +228,7 @@ export function createBackup(userId = null) {
   if (deckIds.length > 0) {
     const deckIdsStr = deckIds.join(',');
 
-    // is_foil is part of UNIQUE(deck_id, printing_id, is_sideboard, is_foil).
+    // is_foil is part of UNIQUE(deck_id, printing_id, board_type, is_foil).
     // Version 1 omitted it, so a deck listing a card in both finishes restored
     // as one row and the second was discarded.
     backup.data.deck_cards = db.prepare(`
@@ -552,13 +552,19 @@ export function restoreBackup(backupData, options = {}) {
         results.errors.push(`Printing UUID ${row.printing_uuid} not found in database`);
         return false;
       }
+      // The board decides the flag, even when the backup disagrees with
+       // itself: rows written before migration 038 can carry
+       // board_type='sideboard' with is_sideboard=0, and restoring that pair
+       // verbatim now fails the CHECK rather than landing a contradictory row.
+      const boardType = row.board_type || 'mainboard';
       insertDeckCard.run(
-        row.deck_id, printingId, row.quantity, row.is_sideboard, row.is_commander,
+        row.deck_id, printingId, row.quantity,
+        boardType === 'sideboard' ? 1 : 0, row.is_commander,
         // Version 1 backups have no finish. Non-foil is the safe assumption:
         // it is what the deck builder defaults to, and the alternative marks
         // every card in the deck as a foil nobody owns.
         row.is_foil ? 1 : 0,
-        row.board_type || 'mainboard',
+        boardType,
         row.added_at
       );
     }, () => 'Deck card');

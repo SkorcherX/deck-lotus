@@ -250,8 +250,9 @@ export function importDeck(userId, deckName, format, cardList) {
   });
 
   // Add cards to deck. Finish and board are part of a deck card's identity —
-  // deck_cards is keyed UNIQUE(deck_id, printing_id, is_sideboard, is_foil) —
-  // so the same printing listed twice has to add up rather than collide.
+  // deck_cards is keyed UNIQUE(deck_id, printing_id, board_type, is_foil) since
+  // migration 038 — so the same printing listed twice has to add up rather than
+  // collide.
   const insertCard = db.prepare(
     `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -281,14 +282,16 @@ export function importDeck(userId, deckName, format, cardList) {
       continue;
     }
 
-    const isSideboard = cardData.isSideboard ? 1 : 0;
     const isFoil = cardData.isFoil ? 1 : 0;
     const boardType = cardData.isSideboard ? 'sideboard' : 'mainboard';
+    const isSideboard = boardType === 'sideboard' ? 1 : 0;
 
+    // Matched on the board, the same thing the key is on. Looking one up by
+    // is_sideboard and inserting by board_type is how the two disagreed.
     const existing = db.get(
       `SELECT id, quantity FROM deck_cards
-       WHERE deck_id = ? AND printing_id = ? AND is_sideboard = ? AND is_foil = ?`,
-      [deckId, card.printing_id, isSideboard, isFoil]
+       WHERE deck_id = ? AND printing_id = ? AND board_type = ? AND is_foil = ?`,
+      [deckId, card.printing_id, boardType, isFoil]
     );
 
     const before = existing?.quantity || 0;

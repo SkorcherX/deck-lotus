@@ -17,6 +17,20 @@ export function errorHandler(err, req, res, next) {
     statusCode = err.statusCode;
   }
 
+  // A driver error is not an explanation. Adding the same card to a deck twice
+  // used to answer with "UNIQUE constraint failed: deck_cards.deck_id,
+  // deck_cards.printing_id, deck_cards.is_sideboard, deck_cards.is_foil" —
+  // which tells the person nothing they can act on and tells everyone else the
+  // shape of the schema. The full error is still logged above; only what goes
+  // over the wire is replaced.
+  if (typeof err.code === 'string' && err.code.startsWith('SQLITE_')) {
+    const isConstraint = err.code.startsWith('SQLITE_CONSTRAINT');
+    statusCode = err.statusCode || (isConstraint ? 409 : 500);
+    message = isConstraint
+      ? 'That change conflicts with something already saved'
+      : 'Internal server error';
+  }
+
   // Send error response
   res.status(statusCode).json({
     error: message,
