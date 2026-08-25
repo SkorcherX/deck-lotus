@@ -470,28 +470,43 @@ function renderCards(cards) {
 
   cardsGrid.innerHTML = cards.map(card => `
     <div class="card-item" data-card-id="${card.id}" draggable="true" style="position: relative;">
-      ${card.image_url ? `
-        <img src="${card.large_image_url || card.image_url}"
-             alt="${card.name}"
-             data-fallback="${card.image_url}"
-             class="card-image"
-             style="width: 100%; border-radius: 8px; margin-bottom: 0.5rem; pointer-events: none;">
-      ` : ''}
-      <button class="quick-add-btn" data-card-id="${card.id}" style="position: absolute; top: 8px; right: 8px; background: rgb(var(--scrim-rgb) / 0.8); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; z-index: 10;">+</button>
-      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; z-index: 10;">
-        <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
-      </button>
       <!--
-        Shopping, as distinct from owning. The tick above says "I have this";
-        this says "I want this" and puts the card on the shopping list, where
-        it gets priced alongside everything the decks need. Sits under the
-        ownership tick rather than beside the + so the two collection actions
-        stay on the left and adding-to-a-list stays its own thing.
+        The controls hang off the bottom of the artwork, not the top. A Magic
+        card puts its name and mana cost along the top edge, which is exactly
+        what you read when skimming a grid, so buttons parked up there hid the
+        two things the grid exists to show. The bottom edge carries the set and
+        collector line, which nobody scans for at a glance.
+
+        Two clusters, one per side, each a row rather than a stack: the
+        collection actions stay together on the left and the list actions on
+        the right, and a row only covers a 32px strip instead of eating 78px of
+        the rules text.
       -->
-      <button class="want-btn" data-card-id="${card.id}" title="Add to shopping list" style="position: absolute; top: 46px; left: 8px; background: rgb(var(--scrim-rgb) / 0.8); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10;">
-        <i class="ph ph-bookmark-simple"></i>
-      </button>
-      ${zoomButton(card.large_image_url || card.image_url, card.name, { className: 'on-art' })}
+      <div class="card-item-art">
+        ${card.image_url ? `
+          <img src="${card.large_image_url || card.image_url}"
+               alt="${card.name}"
+               data-fallback="${card.image_url}"
+               class="card-image">
+        ` : ''}
+        <div class="card-tile-actions card-tile-actions-left">
+          <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'};">
+            <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
+          </button>
+          <!--
+            Shopping, as distinct from owning. The tick beside it says "I have
+            this"; this says "I want this" and puts the card on the shopping
+            list, where it gets priced alongside everything the decks need.
+          -->
+          <button class="want-btn" data-card-id="${card.id}" title="Add to shopping list">
+            <i class="ph ph-bookmark-simple"></i>
+          </button>
+        </div>
+        <div class="card-tile-actions card-tile-actions-right">
+          ${zoomButton(card.large_image_url || card.image_url, card.name)}
+          <button class="quick-add-btn" data-card-id="${card.id}" title="Add to a deck">+</button>
+        </div>
+      </div>
       <div class="card-name" style="pointer-events: none;">${card.name}</div>
       <div class="card-mana" style="pointer-events: none;">${formatMana(card.mana_cost)}</div>
       <div class="card-type" style="pointer-events: none;">${card.type_line || ''}</div>
@@ -599,12 +614,24 @@ async function showQuickAddMenu(cardId, buttonEl) {
       return;
     }
 
-    // Create dropdown
+    // Create dropdown.
+    //
+    // Measured against the tile, not against offsetParent: the button sits in
+    // an absolutely positioned cluster at the foot of the artwork, so
+    // offsetParent is that 70px-wide cluster and a 200px menu hung off it
+    // landed off the side of the card.
+    //
+    // It opens upward, over the art, because the button it belongs to is now
+    // at the bottom of the tile and a downward menu ran off the end of it.
+    const tile = buttonEl.closest('.card-item') || buttonEl.offsetParent;
+    const tileRect = tile.getBoundingClientRect();
+    const btnRect = buttonEl.getBoundingClientRect();
+
     const dropdown = document.createElement('div');
     dropdown.style.cssText = `
       position: absolute;
-      top: ${buttonEl.offsetTop + 40}px;
-      right: ${buttonEl.offsetParent.offsetWidth - buttonEl.offsetLeft - buttonEl.offsetWidth}px;
+      bottom: ${tileRect.bottom - btnRect.top + 8}px;
+      right: ${tileRect.right - btnRect.right}px;
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
       border-radius: 8px;
@@ -622,7 +649,7 @@ async function showQuickAddMenu(cardId, buttonEl) {
       </div>
     `).join('');
 
-    buttonEl.offsetParent.appendChild(dropdown);
+    tile.appendChild(dropdown);
 
     dropdown.querySelectorAll('.deck-option').forEach(opt => {
       opt.addEventListener('mouseenter', () => opt.style.background = 'var(--bg-tertiary)');

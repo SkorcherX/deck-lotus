@@ -1,6 +1,7 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, showToast, debounce, formatMana, openModal, closeModal } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
+import { zoomButton } from '../utils/cardZoom.js';
 
 /**
  * Shopping somebody else's collection.
@@ -183,6 +184,7 @@ function renderGrid(container) {
               <i class="ph ph-stack"></i> ${printingCount}
             </div>
           ` : ''}
+          ${zoomButton(card.image_url, card.name, { className: 'on-art' })}
         </div>
         <div class="inventory-card-info">
           <div class="inventory-card-name">
@@ -245,7 +247,10 @@ function renderList(container) {
 
       return `
         <div class="inventory-list-item" data-card-id="${card.card_id}">
-          <div class="list-col-name">${escapeHtml(card.name)}</div>
+          <div class="list-col-name">
+            ${zoomButton(card.image_url, card.name, { className: 'inline-glass' })}
+            <span class="list-col-name-text">${escapeHtml(card.name)}</span>
+          </div>
           <div>${escapeHtml((card.type_line || '').split('—')[0].trim())}</div>
           <div>${formatMana(card.mana_cost || '')}</div>
           <div>${card.total_owned}</div>

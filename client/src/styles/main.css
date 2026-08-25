@@ -7908,16 +7908,7 @@ body.maintenance-locked #app {
   background: rgb(var(--scrim-rgb) / 0.95);
 }
 
-/*
-  Placement per surface. Browse Cards already stacks the ownership tick and the
-  wanted bookmark down the left of a tile and the quick-add on the right, so the
-  glass takes the second slot on the right rather than the default corner.
-*/
-.card-item .card-zoom-btn.on-art {
-  top: 46px;
-  right: 8px;
-  bottom: auto;
-}
+/* Placement per surface. */
 
 /* The shopping thumbnail is a plain 80px box; the glass needs it to be the
    positioning context before it can sit in its corner. */
@@ -7946,4 +7937,82 @@ body.maintenance-locked #app {
    which the row's own click handler already ignores. */
 .deck-card-controls .card-zoom-btn {
   color: var(--text-secondary);
+}
+
+/* ------------------------------------------------------------------
+   Browse Cards tile controls.
+
+   A Magic card prints its name and mana cost along the top edge, which is
+   exactly what the eye lands on when skimming a grid — so the controls sit
+   against the bottom of the artwork instead, over the set and collector line
+   that nobody scans for. Two rows rather than two stacks: a row covers a 32px
+   strip, where a stack of two ate 78px of the rules text.
+------------------------------------------------------------------ */
+
+.card-item-art {
+  position: relative;
+  margin-bottom: 0.5rem;
+  /* Keeps a band for the controls on the rare printing with no image, so they
+     do not collapse onto the card name. */
+  min-height: 2.75rem;
+}
+
+.card-item .card-image {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.card-tile-actions {
+  position: absolute;
+  bottom: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-tile-actions-left {
+  left: 8px;
+}
+
+.card-tile-actions-right {
+  right: 8px;
+}
+
+.card-tile-actions > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  /* .quick-add-btn carries an !important padding from the quick-search rows it
+     shares a class with; this is the same button at a fixed size. */
+  padding: 0 !important;
+  border: none;
+  border-radius: 50%;
+  background: rgb(var(--scrim-rgb) / 0.8);
+  color: #fff;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s var(--ease), transform 0.15s var(--ease);
+}
+
+.card-tile-actions > button:hover,
+.card-tile-actions .card-zoom-btn:hover {
+  transform: scale(1.1);
+}
+
+.card-tile-actions .quick-add-btn {
+  font-size: 20px;
+}
+
+.card-tile-actions .ownership-toggle-btn {
+  font-size: 18px;
+}
+
+.card-tile-actions .want-btn {
+  font-size: 16px;
 }
