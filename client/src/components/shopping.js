@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, debounce, confirmDialog } from '../utils/ui.js';
+import { zoomButton } from '../utils/cardZoom.js';
 
 let selectedDeckIds = new Set();
 let shoppingData = null;
@@ -1338,6 +1339,7 @@ function renderSetCards(cards) {
               <div class="compact-card-details">
                 <span class="compact-card-decks">${deckDetails || (card.wanted ? 'On your wanted list' : '')}</span>
                 <div class="compact-card-actions">
+                  ${zoomButton(card.imageUrl, card.name, { className: 'inline-glass' })}
                   <button class="btn-icon found-btn" data-card-key="${cardKey}" data-card-id="${card.cardId}" title="Found it!">
                     <i class="ph ph-check"></i>
                   </button>
@@ -1383,6 +1385,7 @@ function renderSetCards(cards) {
                   onerror="this.style.display='none'"
                 />
               ` : ''}
+              ${zoomButton(card.imageUrl, card.name, { className: 'on-art' })}
             </div>
             <div class="shopping-card-info">
               <div class="shopping-card-name-row">

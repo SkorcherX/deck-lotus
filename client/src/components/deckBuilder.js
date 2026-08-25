@@ -12,6 +12,7 @@ import {
 } from './inventoryPanel.js';
 import { setupDeckRecord, renderDeckRecordLabel } from './deckRecord.js';
 import { renderDisruptionBanner } from './trades.js';
+import { zoomButton } from '../utils/cardZoom.js';
 
 // Mana Pool's /search page 404s, but /card/{slug} goes straight to the
 // card's page — same slugging Mana Pool itself uses.
@@ -1006,6 +1007,7 @@ function renderCardItem(card) {
           <span class="card-name">${card.name}</span>
           <span class="card-mana">${formatMana(card.mana_cost || '')}</span>
         </div>
+        ${zoomButton(card.image_url, card.name, { className: 'inline-glass' })}
         <div class="card-actions-dropdown">
           <button class="card-actions-menu-btn" data-deck-card-id="${card.deck_card_id}" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle('hidden')">
             <i class="ph ph-dots-three-vertical"></i>
@@ -1055,6 +1057,7 @@ function renderCardItem(card) {
           <span class="card-mana">${formatMana(card.mana_cost || '')}</span>
         </div>
         <div class="deck-card-controls">
+          ${zoomButton(card.image_url, card.name, { className: 'inline-glass' })}
           ${showCommanderIcon ? `
             <button class="commander-toggle-btn ${card.is_commander ? 'active' : ''}"
                     data-deck-card-id="${card.deck_card_id}"
@@ -1098,6 +1101,7 @@ function renderCardItem(card) {
         </div>
       </div>
       <div class="deck-card-controls">
+        ${zoomButton(card.image_url, card.name, { className: 'inline-glass' })}
         ${showCommanderIcon ? `
           <button class="commander-toggle-btn ${card.is_commander ? 'active' : ''}"
                   data-deck-card-id="${card.deck_card_id}"

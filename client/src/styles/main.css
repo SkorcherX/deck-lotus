@@ -5124,6 +5124,13 @@ body.maintenance-locked #app {
   text-overflow: ellipsis;
 }
 
+/* The name is a flex item beside the glass and the badges, so it, rather than
+   the column, is what has to clip when a long name runs out of room. */
+.list-col-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .list-col-type {
   color: var(--text-secondary);
   font-size: 0.875rem;
@@ -7777,4 +7784,166 @@ body.maintenance-locked #app {
 
 .nav-scroll-hint.hidden {
   display: none;
+}
+
+/* ------------------------------------------------------------------
+   Card zoom — the magnifying glass on card rows and tiles, and the
+   full-size viewer it opens. See client/src/utils/cardZoom.js.
+------------------------------------------------------------------ */
+
+.card-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgb(var(--scrim-rgb) / 0.65);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: background 0.15s var(--ease), transform 0.15s var(--ease);
+}
+
+.card-zoom-btn:hover {
+  background: rgb(var(--scrim-rgb) / 0.9);
+  transform: scale(1.1);
+}
+
+.card-zoom-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/*
+  On image tiles the glass floats over the art. Tiles put their ownership tick
+  top-left and their add button top-right, so the glass takes the bottom-right
+  corner where nothing else lives.
+*/
+.card-zoom-btn.on-art {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 10;
+}
+
+/* In text rows there is no art to sit on, so it reads as a plain control. */
+.card-zoom-btn.inline-glass {
+  background: transparent;
+  color: var(--text-secondary);
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.95rem;
+}
+
+.card-zoom-btn.inline-glass:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+}
+
+.card-zoom-modal {
+  cursor: zoom-out;
+}
+
+.card-zoom-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: min(90vw, 640px);
+}
+
+.card-zoom-image {
+  display: block;
+  width: 100%;
+  max-height: 82vh;
+  object-fit: contain;
+  /*
+    Cards are rounded rectangles with the corners cut out of the artwork
+    itself, so the radius here has to match or the image shows square corners
+    against the backdrop.
+  */
+  border-radius: 4.75% / 3.5%;
+  box-shadow: var(--shadow-xl);
+}
+
+.card-zoom-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: default;
+}
+
+.card-zoom-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgb(var(--scrim-rgb) / 0.8);
+}
+
+.card-zoom-close {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 50%;
+  background: rgb(var(--scrim-rgb) / 0.75);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+
+.card-zoom-close:hover {
+  background: rgb(var(--scrim-rgb) / 0.95);
+}
+
+/*
+  Placement per surface. Browse Cards already stacks the ownership tick and the
+  wanted bookmark down the left of a tile and the quick-add on the right, so the
+  glass takes the second slot on the right rather than the default corner.
+*/
+.card-item .card-zoom-btn.on-art {
+  top: 46px;
+  right: 8px;
+  bottom: auto;
+}
+
+/* The shopping thumbnail is a plain 80px box; the glass needs it to be the
+   positioning context before it can sit in its corner. */
+.shopping-card-image {
+  position: relative;
+}
+
+/* Inventory list rows and the deck-card name row keep their name and glass on
+   one baseline; the name column clips its overflow, so the glass goes first
+   where it cannot be ellipsed away. */
+.list-col-name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.deck-card-header .card-zoom-btn {
+  /* Three items in a space-between header would strand the glass in the
+     middle; the auto margin parks it against the status select instead. */
+  margin-left: auto;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+/* Deck-builder rows put it at the head of the right-hand control cluster,
+   which the row's own click handler already ignores. */
+.deck-card-controls .card-zoom-btn {
+  color: var(--text-secondary);
 }

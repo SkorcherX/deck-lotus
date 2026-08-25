@@ -59,7 +59,7 @@ export function getUserDecks(userId) {
   // Get a random card image for each deck (prefer creatures)
   return decks.map(deck => {
     const randomCard = db.get(
-      `SELECT p.image_url, p.uuid
+      `SELECT p.image_url, p.uuid, c.name
        FROM deck_cards dc
        JOIN printings p ON dc.printing_id = p.id
        JOIN cards c ON p.card_id = c.id
@@ -74,6 +74,10 @@ export function getUserDecks(userId) {
     return {
       ...deck,
       preview_image: randomCard?.image_url || null,
+      // Named so the deck tile's magnifying glass can caption the card it
+      // enlarges. The preview is a random mainboard card, not the commander,
+      // so without this the viewer would title itself with the deck's name.
+      preview_name: randomCard?.name || null,
       traded_away_count: disruptions.get(deck.id)?.cards || 0,
       record: records.get(deck.id) || {
         wins: 0, losses: 0, draws: 0, played: 0, winRate: null

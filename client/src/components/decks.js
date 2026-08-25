@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatDate, showError, showToast, confirmDialog } from '../utils/ui.js';
+import { zoomButton } from '../utils/cardZoom.js';
 
 let decks = [];
 
@@ -271,6 +272,7 @@ function renderDecks() {
       <div class="deck-card" data-deck-id="${deck.id}" data-status="${deck.status || 'building'}" style="${backgroundStyle}">
         <div class="deck-card-header">
           <h3>${deck.name}</h3>
+          ${zoomButton(deck.preview_image, deck.preview_name || deck.name, { className: 'inline-glass' })}
           <select class="deck-status-select" data-deck-id="${deck.id}" aria-label="Status for ${deck.name.replace(/"/g, '&quot;')}">
             ${DECK_STATUSES.map(
               (s) => `<option value="${s.value}" ${(deck.status || 'building') === s.value ? 'selected' : ''}>${s.label}</option>`

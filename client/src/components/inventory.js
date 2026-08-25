@@ -1,6 +1,7 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog, debounce } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
+import { zoomButton } from '../utils/cardZoom.js';
 
 // 54 = 9 rows of 6 at the grid's usual column count, so a full page ends on
 // a complete row instead of trailing off mid-row.
@@ -1449,6 +1450,7 @@ function renderGridView(container, cards, append = false) {
               <i class="ph ph-stack"></i> ${printingCount}
             </div>
           ` : ''}
+          ${zoomButton(card.image_url, card.name, { className: 'on-art' })}
         </div>
         <div class="inventory-card-info">
           <div class="inventory-card-name">
@@ -1580,7 +1582,8 @@ function renderListView(container, cards, append = false) {
             </span>
           ` : ''}
           <span class="list-col-name">
-            ${card.name}
+            ${zoomButton(card.image_url, card.name, { className: 'inline-glass' })}
+            <span class="list-col-name-text">${card.name}</span>
             ${foilCount > 0 ? `<span class="foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned"><i class="ph ph-sparkle"></i> ${foilCount}</span>` : ''}
             ${card.owners && card.owners.length > 0 ? `<span class="owners-badge" title="${getOwnersTooltip(card).replace(/"/g, '&quot;')}"><i class="ph ph-users"></i> ${card.owners.length}</span>` : ''}
           </span>

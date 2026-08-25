@@ -1,6 +1,7 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, formatOracleText, debounce, showModal, hideModal, showToast } from '../utils/ui.js';
 import { toggleOwnership, ownershipToggleAttrs, paintOwnershipToggle } from '../utils/ownershipToggle.js';
+import { zoomButton } from '../utils/cardZoom.js';
 
 let currentPage = 1;
 let currentFilters = {
@@ -490,6 +491,7 @@ function renderCards(cards) {
       <button class="want-btn" data-card-id="${card.id}" title="Add to shopping list" style="position: absolute; top: 46px; left: 8px; background: rgb(var(--scrim-rgb) / 0.8); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10;">
         <i class="ph ph-bookmark-simple"></i>
       </button>
+      ${zoomButton(card.large_image_url || card.image_url, card.name, { className: 'on-art' })}
       <div class="card-name" style="pointer-events: none;">${card.name}</div>
       <div class="card-mana" style="pointer-events: none;">${formatMana(card.mana_cost)}</div>
       <div class="card-type" style="pointer-events: none;">${card.type_line || ''}</div>
