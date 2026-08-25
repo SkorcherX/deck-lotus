@@ -10,6 +10,7 @@ import { setupInventory } from './components/inventory.js';
 import { setupMaintenanceWatch, stopMaintenanceWatch, fetchMaintenanceStatus } from './components/maintenance.js';
 import { setupScan } from './components/scan.js';
 import { setupSharedDeck, loadSharedDeck } from './components/sharedDeck.js';
+import { parsePath, setRoute, onPopState, isExternalPath, DEFAULT_PAGE } from './utils/router.js';
 import { setupPriceMonitoring } from './components/priceMonitoring.js';
 import { setupTrades, refreshTradeBadge } from './components/trades.js';
 import { setupTradeShop } from './components/tradeShop.js';
@@ -106,7 +107,11 @@ class App {
     refreshTradeBadge();
     window.addEventListener('trades:changed', refreshTradeBadge);
 
-    this.showPage('decks');
+    // Whatever the URL asked for — a bookmark, a refresh, a link someone
+    // pasted — rather than always the deck list. 'replace' because this is
+    // the first entry in the session and there is nothing to go back to.
+    const route = parsePath(window.location.pathname);
+    this.showPage(route.page, { history: 'replace', deckId: route.deckId });
   }
 
   renderFooterTheme() {
@@ -124,7 +129,16 @@ class App {
     });
   }
 
-  showPage(pageName) {
+  /**
+   * Show a page, and put it in the address bar.
+   *
+   * `history: 'push'` is the default because that is what a click is — a move
+   * the user should be able to undo with Back. 'replace' corrects the URL
+   * without adding an entry (resolving `/` to `/decks`, say) and 'none' is for
+   * a popstate, where the browser has already moved and pushing again would
+   * fight it.
+   */
+  showPage(pageName, { history = 'push', deckId = null } = {}) {
     // Components that hold a resource while their page is visible — the scan
     // page's camera stream — need to know they are being navigated away from.
     if (this.currentPage && this.currentPage !== pageName) {
@@ -132,6 +146,19 @@ class App {
     }
 
     this.currentPage = pageName;
+
+    if (history !== 'none') {
+      setRoute(pageName, { deckId }, { replace: history === 'replace' });
+    }
+
+    // The deck builder is a page like any other as far as history is
+    // concerned, but it has to fetch before it can render, so it owns its own
+    // showing. Everything below here is for the plain pages.
+    if (pageName === 'deck-builder') {
+      this.hideAllPages();
+      window.dispatchEvent(new CustomEvent('open-deck', { detail: { deckId, fromHistory: true } }));
+      return;
+    }
 
     // Hide all pages
     this.hideAllPages();
@@ -197,7 +224,14 @@ class App {
     // reaching into the app.
     window.addEventListener('navigate', (e) => {
       const page = e.detail?.page;
-      if (page) this.showPage(page);
+      if (page) this.showPage(page, { deckId: e.detail?.deckId ?? null });
+    });
+
+    // Back and forward. The browser has already moved by the time this fires,
+    // so the page is shown without touching history again.
+    onPopState(({ page, deckId }) => {
+      if (!api.token) return this.showAuthPage();
+      this.showPage(page, { history: 'none', deckId });
     });
   }
 

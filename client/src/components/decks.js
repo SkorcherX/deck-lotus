@@ -483,9 +483,18 @@ function showCloneModal(deckId, deckName) {
   });
 }
 
+/**
+ * Open a deck.
+ *
+ * Goes through the app's navigation rather than straight to the deck builder,
+ * so it lands in the address bar as /decks/:id and the browser's Back button
+ * returns to this list. Before that it was a plain event and the URL never
+ * moved, which made Back leave the app altogether.
+ */
 function openDeckBuilder(deckId) {
-  // Dispatch event to open deck builder
-  window.dispatchEvent(new CustomEvent('open-deck', { detail: { deckId } }));
+  window.dispatchEvent(new CustomEvent('navigate', {
+    detail: { page: 'deck-builder', deckId },
+  }));
 }
 
 function showImportModal() {

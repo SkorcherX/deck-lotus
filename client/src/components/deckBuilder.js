@@ -373,11 +373,11 @@ export function setupDeckBuilder() {
     });
   });
 
-  // Back to decks
+  // Back to decks. Routed rather than swapping the two pages' classes
+  // directly, so the address bar keeps up and this button and the browser's
+  // own Back button end up in the same place.
   backToDecksBtn.addEventListener('click', () => {
-    document.getElementById('deck-builder-page').classList.add('hidden');
-    document.getElementById('decks-page').classList.remove('hidden');
-    window.dispatchEvent(new CustomEvent('page:decks'));
+    window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'decks' } }));
   });
 
   // Share deck button
@@ -496,10 +496,19 @@ export function setupDeckBuilder() {
     }
   });
 
-  // Listen for open deck event
+  // Opening a deck, either from the deck list or from a /decks/:id URL the
+  // browser has just navigated to.
   window.addEventListener('open-deck', async (e) => {
     const { deckId } = e.detail;
-    await loadDeck(deckId);
+
+    // A deck id from a URL can be stale — a bookmark to something since
+    // deleted, or another user's deck. Falling back to the list beats leaving
+    // an empty builder on screen.
+    if (!(await loadDeck(deckId))) {
+      window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'decks' } }));
+      return;
+    }
+
     showDeckBuilder();
   });
 
@@ -579,9 +588,15 @@ async function loadDeck(deckId) {
     dealExampleHand();
 
     hideLoading();
+    return true;
   } catch (error) {
     hideLoading();
     showToast('Failed to load deck: ' + error.message, 'error');
+    // Reported rather than thrown: the disruption banner passes this as a
+    // refresh callback and nothing awaits it there, so a rejection would
+    // surface as an unhandled one. The caller that navigated here checks the
+    // result and can send the user back to the list.
+    return false;
   }
 }
 

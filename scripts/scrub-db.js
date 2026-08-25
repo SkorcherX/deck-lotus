@@ -26,13 +26,18 @@
  * next sync anyway.
  */
 import Database from 'better-sqlite3';
+import bcrypt from 'bcrypt';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 
-// bcrypt hash of "test". A real hash rather than a placeholder so the rows
-// still look like what the app expects, and logging in as anybody is trivial.
-const KNOWN_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+// Hashed here rather than pasted in as a constant. The first version of this
+// script carried a hardcoded string described as bcrypt("test"); it was not a
+// hash of "test" or of anything else guessable, so every account in a scrubbed
+// database was unreachable and the reassuring line this script prints at the
+// end was false. Generating it means the promise is true by construction.
+const SCRUBBED_PASSWORD = 'test';
+const KNOWN_HASH = bcrypt.hashSync(SCRUBBED_PASSWORD, 10);
 
 const target = process.argv[2];
 const vacuum = process.argv.includes('--vacuum');
