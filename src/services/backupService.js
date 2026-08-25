@@ -13,6 +13,17 @@ const __dirname = dirname(__filename);
 const DATA_DIR = process.env.DATA_PATH || path.join(__dirname, '../../data');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 
+// node-cron reads a bare cron expression in the *process's* timezone, which in
+// a container with no TZ set is UTC. "Daily at 2 AM" therefore fired at 2 AM
+// UTC — 6 or 7 PM the previous day on the US west coast — so the schedule did
+// not mean what the settings page said it meant.
+//
+// Same fix and same env vars as the weekly MTGJSON sync (syncService.js), so
+// one setting governs both and they cannot drift into different days.
+// BACKUP_TIMEZONE overrides, SYNC_TIMEZONE and TZ are the fallbacks.
+const BACKUP_TIMEZONE =
+  process.env.BACKUP_TIMEZONE || process.env.SYNC_TIMEZONE || process.env.TZ || 'UTC';
+
 // Ensure backup directory exists
 if (!fs.existsSync(BACKUP_DIR)) {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
@@ -829,9 +840,15 @@ export function configureScheduledBackups(config, { persist = true } = {}) {
       } catch (error) {
         console.error('Scheduled backup failed:', error.message);
       }
-    });
+    }, { timezone: BACKUP_TIMEZONE });
 
-    console.log(`✓ Scheduled backups enabled: ${backupConfig.frequency} (keeping last ${backupConfig.retainCount})`);
+    // The resolved zone is logged, not just the frequency: a schedule that
+    // silently runs in UTC looks identical to one running locally until you
+    // notice the timestamps, and this line is the quickest way to check.
+    console.log(
+      `✓ Scheduled backups enabled: ${backupConfig.frequency} ${BACKUP_TIMEZONE}` +
+      ` (keeping last ${backupConfig.retainCount})`
+    );
   } else {
     console.log('✓ Scheduled backups disabled');
   }
@@ -851,5 +868,8 @@ export function initScheduledBackups() {
  * Get current backup configuration
  */
 export function getBackupConfig() {
-  return { ...backupConfig };
+  // The timezone rides along read-only. It is deployment configuration rather
+  // than a per-install preference, but the settings page has to be able to say
+  // which zone "2 AM" means or the times it shows are a guess.
+  return { ...backupConfig, timezone: BACKUP_TIMEZONE };
 }

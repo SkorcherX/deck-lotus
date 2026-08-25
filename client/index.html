@@ -2075,6 +2075,14 @@
                                         <option value="daily" selected>Daily (2 AM)</option>
                                         <option value="weekly">Weekly (Sunday 2 AM)</option>
                                     </select>
+                                    <!--
+                                      Which zone those times mean. node-cron
+                                      runs a bare expression in the process's
+                                      timezone, which in a container with no TZ
+                                      set is UTC — so "2 AM" is a promise this
+                                      page cannot keep without saying where.
+                                    -->
+                                    <p id="backup-timezone-note" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;"></p>
                                 </div>
                             </div>
 

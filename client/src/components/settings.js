@@ -681,6 +681,17 @@ async function loadBackupConfig() {
     document.getElementById('backup-frequency').value = config.frequency;
     document.getElementById('backup-retain-count').value = config.retainCount;
 
+    // Say which zone the times above are in. It is set on the server
+    // (BACKUP_TIMEZONE, falling back to SYNC_TIMEZONE then TZ), so it is shown
+    // rather than edited — but a schedule that does not say where "2 AM" is
+    // can be a whole day out from what the reader assumes.
+    const zoneNote = document.getElementById('backup-timezone-note');
+    if (zoneNote) {
+      zoneNote.textContent = config.timezone
+        ? `Times are in ${config.timezone}${config.timezone === 'UTC' ? ' — set BACKUP_TIMEZONE or TZ for local time' : ''}`
+        : '';
+    }
+
     const lastRunEl = document.getElementById('backup-last-run');
     if (config.lastRun) {
       const date = new Date(config.lastRun);
