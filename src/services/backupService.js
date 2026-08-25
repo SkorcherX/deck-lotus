@@ -24,6 +24,27 @@ const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const BACKUP_TIMEZONE =
   process.env.BACKUP_TIMEZONE || process.env.SYNC_TIMEZONE || process.env.TZ || 'UTC';
 
+/**
+ * Today's date in the backup schedule's own timezone, as YYYY-MM-DD.
+ *
+ * The filename used `toISOString().split('T')[0]`, which is UTC. A backup
+ * taken at 9:43 PM Pacific was therefore stamped with tomorrow's date, while
+ * the page beside it rendered the same moment in local time — so "Last backup:
+ * 8/24" sat directly above a file called `...-2026-08-25-...`. Both were
+ * right; they were just answering in different timezones, which reads as the
+ * app having lost track of a day.
+ *
+ * en-CA because its short date format is already YYYY-MM-DD, which sorts.
+ */
+export function backupDateStamp(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: BACKUP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 // Ensure backup directory exists
 if (!fs.existsSync(BACKUP_DIR)) {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
@@ -698,8 +719,9 @@ export function importBackupFromFile(filePath) {
  */
 export function createScheduledBackup() {
   const backup = createBackup(); // Backup all users
-  const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const filename = `scheduled-backup-${timestamp}-${Date.now()}.json`;
+  // Dated in the schedule's timezone, so the name agrees with the timestamp
+  // the page shows beside it. See backupDateStamp.
+  const filename = `scheduled-backup-${backupDateStamp()}-${Date.now()}.json`;
   const filepath = path.join(BACKUP_DIR, filename);
 
   exportBackupToFile(backup, filepath);

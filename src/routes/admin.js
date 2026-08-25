@@ -8,7 +8,8 @@ import {
   loadBackupFile,
   deleteBackupFile,
   configureScheduledBackups,
-  getBackupConfig
+  getBackupConfig,
+  backupDateStamp,
 } from '../services/backupService.js';
 import { getAllUsers, updateUser, deleteUser, resetUserPassword } from '../services/authService.js';
 import { getSettings, updateSettings } from '../services/settingsService.js';
@@ -101,7 +102,9 @@ router.post('/backup', authenticate, (req, res, next) => {
 
     // Set headers for file download
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="deck-lotus-backup-${new Date().toISOString().split('T')[0]}.json"`);
+    // Same timezone as the scheduled filenames, so a manual download and a
+    // scheduled file taken minutes apart cannot claim different days.
+    res.setHeader('Content-Disposition', `attachment; filename="deck-lotus-backup-${backupDateStamp()}.json"`);
 
     res.json(backup);
   } catch (error) {

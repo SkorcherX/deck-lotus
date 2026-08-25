@@ -785,6 +785,32 @@ input::placeholder {
   color: var(--text-muted);
 }
 
+/*
+ * The same colours for controls that are not inside a .form-group.
+ *
+ * Only `.form-group input/select/textarea` set a colour, so a control written
+ * on its own — as several on the settings page were, with an inline
+ * `background: var(--bg-secondary)` and nothing else — kept the user agent's
+ * black text and painted a near-black background behind it. Legible in a light
+ * theme by luck, unreadable in every dark one.
+ *
+ * Element selectors, so `.form-group` and every utility class still win. Types
+ * are listed rather than using a bare `input`, because checkbox, radio and
+ * range are drawn by the platform and take their colour from accent-color
+ * above; giving them a background paints a box around the control.
+ */
+select,
+textarea,
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"] {
+  background-color: var(--bg-tertiary);
+  color: var(--text);
+}
+
 /* ---- Modern select control: reset native chrome + custom chevron ---- */
 select,
 .form-group select,

@@ -735,16 +735,20 @@ function renderBackups(backups) {
 
     return `
       <div class="backup-item" style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
-        <div style="flex: 1;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-            <strong>${backup.filename}</strong>
-            <span style="background: ${typeBadgeColor}; color: white; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">${typeBadge}</span>
-          </div>
+        <div style="flex: 1; min-width: 0;">
+          <strong style="display: block; margin-bottom: 0.25rem; overflow-wrap: anywhere;">${backup.filename}</strong>
           <div style="font-size: 0.875rem; color: var(--text-secondary);">
             ${date.toLocaleString()} • ${sizeKB} KB
           </div>
         </div>
-        <div style="display: flex; gap: 0.5rem;">
+        <!--
+          The type badge sits with the buttons rather than beside the filename.
+          Next to the name it rode on whatever line the name happened to wrap
+          to, so no two rows lined up; here it is the first item in a fixed
+          row of controls and every backup reads across at the same height.
+        -->
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-shrink: 0;">
+          <span style="background: ${typeBadgeColor}; color: var(--on-accent); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; white-space: nowrap;">${typeBadge}</span>
           <button class="btn btn-secondary btn-sm" onclick="downloadBackup('${backup.filename}')">
             <i class="ph ph-download-simple"></i> Download
           </button>
