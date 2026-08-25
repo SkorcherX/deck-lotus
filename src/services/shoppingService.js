@@ -3,6 +3,7 @@ import { parseDeckList, findCard } from './importService.js';
 import { groupIntoSets } from './shoppingMerge.js';
 import { buildBulkList, flattenShoppingSets } from './bulkBin.js';
 import { isBasicLandSql } from './basicLands.js';
+import { deckPrioritySql } from './deckPriority.js';
 
 /**
  * The shopping list has two halves.
@@ -96,10 +97,44 @@ const CARD_NEEDED_IN = (placeholders) => `(
      AND sel_p.card_id = c.id
 )`;
 
-// Copies the decks you did *not* select have already claimed. Maybeboards are
-// excluded here, unlike above: a card another deck is merely considering is
-// not spoken for, and treating it as committed would report copies as
-// contested that are sitting free in the binder.
+/**
+ * The best claim any *selected* deck has on this card, as a priority rank.
+ *
+ * Used to decide which unselected decks are allowed to contest it. Taking the
+ * MIN — the most committed selected deck that wants the card — means shopping
+ * for a Ready deck is not told its cards are tied up in an idea somebody
+ * imported and never built.
+ *
+ * Per card rather than per selection, so a mixed bag of selected decks is
+ * judged card by card instead of all being levelled to the weakest deck in
+ * the set. That also keeps this identical to the readiness rule when a single
+ * deck is selected, which is what stops the deck page and the shopping page
+ * disagreeing about the same card.
+ *
+ * NULL when no selected deck lists the card — a wanted-list row, say. The
+ * comparison below is written so that case counts every claim, because
+ * without a deck of your own asking for it there is nothing to outrank.
+ */
+const BEST_SELECTED_PRIORITY = (placeholders) => `(
+  SELECT MIN(${deckPrioritySql('pri_d')})
+    FROM deck_cards pri
+    JOIN printings pri_p ON pri.printing_id = pri_p.id
+    JOIN decks pri_d ON pri.deck_id = pri_d.id
+   WHERE pri_d.user_id = ?
+     AND pri_d.id IN (${placeholders})
+     AND pri_p.card_id = c.id
+)`;
+
+// Copies the decks you did *not* select have already claimed. Three things
+// narrow this.
+//
+// Maybeboards are excluded, unlike CARD_NEEDED_IN above: a card another deck
+// is merely considering is not spoken for, and treating it as committed would
+// report copies as contested that are sitting free in the binder.
+//
+// The priority comparison excludes decks less committed than the one you are
+// shopping for, so an idea nobody has built cannot make a finished deck look
+// short. See deckPriority.js.
 const CARD_ELSEWHERE_NOT_IN = (placeholders) => `(
   SELECT COALESCE(SUM(oth.quantity), 0)
     FROM deck_cards oth
@@ -110,6 +145,7 @@ const CARD_ELSEWHERE_NOT_IN = (placeholders) => `(
      AND oth_p.card_id = c.id
      AND COALESCE(oth.board_type, CASE WHEN oth.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END)
          IN ('mainboard', 'sideboard')
+     AND ${deckPrioritySql('oth_d')} <= COALESCE(${BEST_SELECTED_PRIORITY(placeholders)}, 99)
 )`;
 
 const IS_BASIC_LAND = isBasicLandSql('c');
@@ -183,6 +219,7 @@ export function getShoppingList(userId, deckIds, { includeContested = false } = 
     userId, ...deckIds,   // card_needed
     userId,               // card_owned
     userId, ...deckIds,   // card_elsewhere
+    userId, ...deckIds,   // ...and its nested BEST_SELECTED_PRIORITY
     userId, ...deckIds,   // WHERE
   ];
 
@@ -502,10 +539,24 @@ function decksHoldingCards(userId, cardIds, excludeDeckIds) {
     ? `AND d.id NOT IN (${excluded.map(() => '?').join(',')})`
     : '';
 
+  // Must match CARD_ELSEWHERE_NOT_IN's priority rule exactly. If it did not,
+  // a row would name a deck as holding a copy that the contested count above
+  // it never counted — and the number and the name sit on the same line.
+  const prioritySql = excluded.length
+    ? `AND ${deckPrioritySql('d')} <= COALESCE((
+         SELECT MIN(${deckPrioritySql('pri_d')})
+           FROM deck_cards pri
+           JOIN printings pri_p ON pri.printing_id = pri_p.id
+           JOIN decks pri_d ON pri.deck_id = pri_d.id
+          WHERE pri_d.id IN (${excluded.map(() => '?').join(',')})
+            AND pri_p.card_id = p.card_id
+       ), 99)`
+    : '';
+
   // The deck list rides in the same statement, so it comes out of the same
   // variable budget — without this a user with a lot of decks could push a
   // full chunk past SQLite's limit and the whole view would 500.
-  for (const chunk of chunked(cardIds, Math.max(1, PARAM_CHUNK - excluded.length - 1))) {
+  for (const chunk of chunked(cardIds, Math.max(1, PARAM_CHUNK - (excluded.length * 2) - 1))) {
     const rows = db.all(
       `SELECT p.card_id as card_id,
               d.id as deck_id,
@@ -516,12 +567,13 @@ function decksHoldingCards(userId, cardIds, excludeDeckIds) {
          JOIN printings p ON dc.printing_id = p.id
         WHERE d.user_id = ?
           ${excludeSql}
+          ${prioritySql}
           AND p.card_id IN (${chunk.map(() => '?').join(',')})
           AND COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END)
               IN ('mainboard', 'sideboard')
         GROUP BY p.card_id, d.id
         ORDER BY d.name`,
-      [userId, ...excluded, ...chunk]
+      [userId, ...excluded, ...(excluded.length ? excluded : []), ...chunk]
     );
 
     for (const row of rows) {

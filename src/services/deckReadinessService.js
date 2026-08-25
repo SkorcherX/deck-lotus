@@ -1,6 +1,7 @@
 import db from '../db/connection.js';
 import { assessDecks, describeState, stateRank } from './deckReadiness.js';
 import { isBasicLandSql } from './basicLands.js';
+import { deckPrioritySql } from './deckPriority.js';
 
 /**
  * The database half of deck readiness. The arithmetic lives in
@@ -39,9 +40,15 @@ const OWNED_TOTAL = `(
    WHERE op.user_id = ? AND op_p.card_id = c.id
 )`;
 
-// Copies this user's *other* decks have claimed. The `d2.id != d.id` is the
-// load-bearing part: without it every card in the deck being measured would
-// compete with itself and a finished deck would report as needing a teardown.
+// Copies this user's *other* decks have claimed. Two conditions carry this.
+//
+// `d2.id != d.id` stops a deck competing with itself, without which every
+// finished deck would report as needing a teardown.
+//
+// The priority comparison stops a deck being blamed for a less serious one's
+// ambitions: only decks at least as committed as this one can take a card
+// away from it, so an EDHREC list left as an idea no longer reports a sleeved
+// deck as short of cards sitting in its own box. See deckPriority.js.
 const ELSEWHERE_TOTAL = `(
   SELECT COALESCE(SUM(dc2.quantity), 0)
     FROM deck_cards dc2
@@ -49,6 +56,7 @@ const ELSEWHERE_TOTAL = `(
     JOIN decks d2 ON dc2.deck_id = d2.id
    WHERE d2.user_id = ?
      AND d2.id != d.id
+     AND ${deckPrioritySql('d2')} <= ${deckPrioritySql('d')}
      AND dc2_p.card_id = c.id
      AND ${PLAYED_BOARDS_FOR('dc2')}
 )`;

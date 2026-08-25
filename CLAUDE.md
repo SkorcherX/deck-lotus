@@ -210,5 +210,17 @@ taken on GitHub — only do it when explicitly asked.
   `test/integration/backupRoundTrip.test.js` backs up, wipes and restores, and
   is the only thing that catches this class of bug — a backup that never gets
   restored looks perfect.
+- A deck's status is a claim on cards, not just a label. `deckPriority.js`
+  ranks them ready(1) > building(2) > idea(3) > retired(4), and a deck's cards
+  are contested **only by decks at least as committed as it is**. Without this
+  an EDHREC list left as an `idea` reported a sleeved `ready` deck as short of
+  cards sitting in its own box. Equal statuses still contest each other — two
+  ready decks over one copy is a real shortfall, which is why this is a
+  priority order rather than a rule exempting ready decks. Retired sits below
+  idea: out of rotation, so its cards read as available, though it still gets
+  a readiness verdict of its own. Readiness (`deckReadinessService.js`) and
+  shopping (`shoppingService.js`) share the rule and must stay in step —
+  including `decksHoldingCards`, which names the holders behind the count and
+  would otherwise name a deck the count never included.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.

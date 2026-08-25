@@ -36,6 +36,7 @@ let userId;
 let deckA;
 let deckB;
 const printings = {};
+const statusDecks = {};
 
 /**
  * A collection with one of each interesting shape in it:
@@ -111,6 +112,51 @@ before(async () => {
 
   own('Arcane Signet', 1);
   own('Opt', 1);
+
+  // A separate cast for the status-priority tests, on cards no other test
+  // touches, so adding them cannot quietly change what the tests above mean.
+  for (const name of ['Llanowar Elves', 'Giant Growth']) {
+    db.run(
+      `INSERT INTO cards (name, name_normalized, type_line, color_identity) VALUES (?,?,'Creature — Elf','G')`,
+      [name, name.toLowerCase()]
+    );
+    const cardId = db.get(`SELECT id FROM cards WHERE name = ?`, [name]).id;
+    const uuid = `uuid-${name.replace(/\s+/g, '-')}`;
+    db.run(
+      `INSERT INTO printings (card_id, uuid, set_code, collector_number, rarity)
+       VALUES (?,?,'TST','2','common')`,
+      [cardId, uuid]
+    );
+    db.run(
+      `INSERT INTO prices (printing_uuid, provider, price_type, price) VALUES (?,'tcgplayer','normal',0.25)`,
+      [uuid]
+    );
+    printings[name] = {
+      cardId,
+      printingId: db.get(`SELECT id FROM printings WHERE uuid = ?`, [uuid]).id,
+    };
+  }
+
+  for (const [name, status] of [
+    ['Sleeved Deck', 'ready'],
+    ['Half Built', 'building'],
+    ['EDHREC Import', 'idea'],
+    ['Old Deck', 'retired'],
+  ]) {
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,?,'commander',?)`,
+      [userId, name, status]);
+    statusDecks[status] = db.get(`SELECT id FROM decks WHERE name = ?`, [name]).id;
+  }
+
+  // Every one of them wants the single Llanowar Elves that exists.
+  for (const deckId of Object.values(statusDecks)) {
+    db.run(
+      `INSERT INTO deck_cards (deck_id, printing_id, quantity, board_type)
+       VALUES (?,?,1,'mainboard')`,
+      [deckId, printings['Llanowar Elves'].printingId]
+    );
+  }
+  own('Llanowar Elves', 1);
 });
 
 after(() => {
@@ -213,5 +259,96 @@ describe('the bulk bin, against real SQL', () => {
     // One copy owned, two decks listing it: one copy still has to be bought.
     assert.equal(signet.contested, 0);
     assert.equal(signet.toBuy, 1);
+  });
+});
+
+/*
+ * Whose claim on a card wins.
+ *
+ * A deck's status is its owner's statement about how real it is, and the app
+ * used to ignore it: a list imported from EDHREC and left as an idea reported
+ * a sleeved, finished deck as short of cards sitting in its own box. The deck
+ * that could not be built was the import; the app blamed the deck that was
+ * already built.
+ *
+ * Fixture: one Llanowar Elves owned, and four decks — ready, building, idea,
+ * retired — each listing a copy.
+ */
+describe('deck status decides whose claim wins', () => {
+  const readinessFor = (deckId) => getDeckReadiness(userId, deckId);
+
+  test('a Ready deck is untouched by an idea nobody has built', () => {
+    const readiness = readinessFor(statusDecks.ready);
+    const elves = readiness.shortfalls.find((c) => c.name === 'Llanowar Elves');
+
+    assert.equal(elves, undefined, 'a less committed deck took a card from a Ready one');
+    assert.equal(readiness.state, 'ready');
+  });
+
+  test('the idea deck is the one that comes up short', () => {
+    const readiness = readinessFor(statusDecks.idea);
+    const elves = readiness.shortfalls.find((c) => c.name === 'Llanowar Elves');
+
+    assert.equal(elves.contested, 1);
+    // Contested, not missing: the copy exists, it is just spoken for by decks
+    // that mean it more.
+    assert.equal(elves.missing, 0);
+  });
+
+  test('Building loses to Ready but not to Idea', () => {
+    const readiness = readinessFor(statusDecks.building);
+    const elves = readiness.shortfalls.find((c) => c.name === 'Llanowar Elves');
+
+    // The Ready deck outranks it, so the one copy is spoken for...
+    assert.equal(elves.contested, 1);
+    // ...but the count is 1, not 2 — the idea deck below it does not add to
+    // the claim, or the shortfall would double-count decks that cannot take
+    // the card in the first place.
+    assert.equal(elves.elsewhere, 1);
+  });
+
+  test('a retired deck takes nothing from anybody', () => {
+    // Retired sits below Idea: out of rotation, so its cards read as
+    // available. It still gets a verdict of its own — "could I rebuild this?"
+    // stays answerable — it just stops being everyone else's problem.
+    const readiness = readinessFor(statusDecks.retired);
+    const elves = readiness.shortfalls.find((c) => c.name === 'Llanowar Elves');
+
+    assert.equal(elves.contested, 1, 'the retired deck should still know it cannot be rebuilt');
+    assert.equal(readinessFor(statusDecks.ready).state, 'ready');
+  });
+
+  test('two decks of equal status still contest each other', () => {
+    // The whole reason this is a priority order and not a rule exempting
+    // Ready decks: two finished decks fighting over one copy is a real
+    // shortfall and must keep showing up.
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,'Second Sleeved','commander','ready')`, [userId]);
+    const rivalId = db.get(`SELECT id FROM decks WHERE name='Second Sleeved'`).id;
+    db.run(
+      `INSERT INTO deck_cards (deck_id, printing_id, quantity, board_type) VALUES (?,?,1,'mainboard')`,
+      [rivalId, printings['Llanowar Elves'].printingId]
+    );
+
+    const elves = readinessFor(statusDecks.ready).shortfalls.find((c) => c.name === 'Llanowar Elves');
+    assert.equal(elves.contested, 1, 'two Ready decks over one copy is a real shortfall');
+
+    db.run(`DELETE FROM deck_cards WHERE deck_id = ?`, [rivalId]);
+    db.run(`DELETE FROM decks WHERE id = ?`, [rivalId]);
+  });
+
+  test('the shopping list agrees with the deck page', () => {
+    // The two pages answering differently about the same card is the reason
+    // this rule is shared rather than implemented twice.
+    const forReady = getBulkBinList(userId, [statusDecks.ready], { threshold: 5 });
+    assert.equal(
+      forReady.cards.some((c) => c.name === 'Llanowar Elves'),
+      false,
+      'shopping for a Ready deck quoted a card an idea deck was sitting on'
+    );
+
+    const forIdea = getBulkBinList(userId, [statusDecks.idea], { threshold: 5 });
+    const elves = forIdea.cards.find((c) => c.name === 'Llanowar Elves');
+    assert.equal(elves.contested, 1);
+    assert.deepEqual(elves.heldBy.map((d) => d.deckName).sort(), ['Half Built', 'Sleeved Deck']);
   });
 });
