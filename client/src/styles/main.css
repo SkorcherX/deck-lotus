@@ -952,6 +952,184 @@ select option {
 .deck-readiness[data-state="needs_assembly"] { color: var(--primary); }
 .deck-readiness[data-state="empty"] { color: var(--text-secondary); }
 
+/* ---------------------------------------------------------------------------
+   The bulk-bin view
+   ---------------------------------------------------------------------------
+   Read at arm's length, one-handed, in a shop. So: a flat list, generous row
+   height, the quantity and the name carrying the weight, and everything else
+   set back. No card images — they would be lovely and would also mean
+   scrolling past four of them to check one line. */
+
+.shopping-mode-section {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+.shopping-mode-switch {
+  display: inline-flex;
+  gap: 0.25rem;
+  background: var(--bg-tertiary);
+  border-radius: 0.5rem;
+  padding: 0.25rem;
+}
+
+.shopping-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  border-radius: 0.375rem;
+  padding: 0.45rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s;
+}
+
+.shopping-mode-btn:hover {
+  color: var(--text);
+}
+
+.shopping-mode-btn[aria-selected="true"] {
+  background: var(--primary);
+  color: var(--on-accent);
+}
+
+.bulk-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+}
+
+.bulk-threshold-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bulk-threshold-prefix {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.bulk-controls-actions {
+  margin-left: auto;
+  align-self: flex-end;
+}
+
+.bulk-summary {
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  margin-bottom: 0.75rem;
+}
+
+.bulk-summary-note {
+  margin-left: 0.5rem;
+  font-size: 0.8125rem;
+  opacity: 0.8;
+}
+
+.bulk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.bulk-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.bulk-row:last-child {
+  border-bottom: none;
+}
+
+/* Zebra striping rather than hover-only: you are reading across a row of
+   small text with a card in your other hand. */
+.bulk-row:nth-child(even) {
+  background: var(--bg-tertiary);
+}
+
+.bulk-qty {
+  font-weight: 700;
+  color: var(--primary);
+  min-width: 2.2rem;
+}
+
+.bulk-name {
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 10rem;
+}
+
+.bulk-printing {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  white-space: nowrap;
+}
+
+.bulk-price {
+  font-weight: 600;
+  color: var(--success);
+  min-width: 3.5rem;
+  text-align: right;
+}
+
+.bulk-contested {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.bulk-decks {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  flex-basis: 100%;
+  order: 10;
+}
+
+.bulk-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.bulk-unpriced {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.bulk-unpriced h4 {
+  font-size: 0.8125rem;
+  margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 /* "owns 1/4" — why a playset is quoting fewer copies than the deck lists.
    Quiet by design: it is an explanation, not a warning. */
 .shopping-owned-hint {

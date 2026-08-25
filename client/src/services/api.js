@@ -448,6 +448,24 @@ class ApiClient {
   }
 
   // Shopping methods
+  async getBulkBinList(deckIds, { threshold, commonsOnly, includeContested } = {}) {
+    const params = new URLSearchParams();
+    if (deckIds && deckIds.length) params.set('deckIds', deckIds.join(','));
+    if (threshold != null) params.set('threshold', String(threshold));
+    if (commonsOnly === false) params.set('commonsOnly', 'false');
+    if (includeContested === false) params.set('includeContested', 'false');
+
+    const query = params.toString();
+    return this.request(`/shopping/bulk${query ? `?${query}` : ''}`);
+  }
+
+  async saveBulkThreshold(threshold) {
+    return this.request('/shopping/bulk/threshold', {
+      method: 'PUT',
+      body: JSON.stringify({ threshold }),
+    });
+  }
+
   async getShoppingList(deckIds) {
     const params = new URLSearchParams();
     if (deckIds && deckIds.length > 0) {

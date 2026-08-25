@@ -14,6 +14,25 @@ let filters = {
   budgetMode: false,
   compactView: false, // Toggle between full and compact view
 };
+/**
+ * Which lens the page is showing.
+ *
+ * 'sets' groups by set and is for buying singles online. 'bulk' is the flat
+ * A-Z list you read standing at a shop's cheap-card boxes. Same underlying
+ * shopping list; different question being asked of it.
+ */
+let viewMode = 'sets';
+let bulkData = null;
+
+// commonsOnly and includeContested are session-only on purpose — they are
+// "what am I looking at right now" switches. The threshold is the one that
+// persists, and only when saved explicitly.
+let bulkOptions = {
+  threshold: null,
+  commonsOnly: true,
+  includeContested: true,
+};
+
 let sessionState = {
   found: new Set(), // card IDs marked as found
   skipped: new Set(), // card IDs skipped for now
@@ -46,7 +65,56 @@ export function setupShopping() {
   window.addEventListener('page:shopping', loadShoppingData);
 
   document.getElementById('shopping-optimize-btn')?.addEventListener('click', runShoppingOptimizer);
+  document.getElementById('shopping-mode-sets')?.addEventListener('click', () => switchViewMode('sets'));
+  document.getElementById('shopping-mode-bulk')?.addEventListener('click', () => switchViewMode('bulk'));
   setupWantedList();
+}
+
+/**
+ * Swap lenses.
+ *
+ * The by-set filters do not travel: they operate on set grouping and price of
+ * the deck's own printing, neither of which the bulk view uses. Showing them
+ * above a list they cannot affect would be worse than hiding them.
+ */
+function switchViewMode(mode) {
+  if (viewMode === mode) return;
+  viewMode = mode;
+
+  const bulk = mode === 'bulk';
+
+  document.getElementById('shopping-mode-sets')?.setAttribute('aria-selected', String(!bulk));
+  document.getElementById('shopping-mode-bulk')?.setAttribute('aria-selected', String(bulk));
+
+  document.getElementById('shopping-filters-section')?.classList.toggle('hidden', bulk);
+  document.getElementById('shopping-sets-section')?.classList.toggle('hidden', bulk);
+  document.getElementById('shopping-bulk-section')?.classList.toggle('hidden', !bulk);
+
+  // The Mana Pool optimizer quotes the printings the by-set list names. The
+  // bulk list is about walking into a shop, so the two do not belong on screen
+  // together.
+  const optimizer = document.getElementById('shopping-optimizer-section');
+  if (optimizer) optimizer.style.display = bulk ? 'none' : '';
+
+  if (bulk) refreshBulkData();
+}
+
+/** Re-read whichever list is on screen. */
+async function refreshActiveView() {
+  if (viewMode === 'bulk') return refreshBulkData();
+  return refreshShoppingData();
+}
+
+/**
+ * Repaint the list on screen from data already held.
+ *
+ * Ticking a card off is a session decision, not a reason to go back to the
+ * server — and marking one found in either view calls addOwnedCard, so the
+ * next real refresh drops it from both.
+ */
+function repaintActiveList() {
+  if (viewMode === 'bulk') return renderBulkList();
+  return renderShoppingList();
 }
 
 // ---------------------------------------------------------------------------
@@ -405,13 +473,13 @@ function renderDeckSelector() {
   document.getElementById('select-all-decks').addEventListener('click', () => {
     selectedDeckIds = new Set(allDecks.map(d => d.id));
     document.querySelectorAll('.deck-checkbox').forEach(cb => cb.checked = true);
-    refreshShoppingData();
+    refreshActiveView();
   });
 
   document.getElementById('deselect-all-decks').addEventListener('click', () => {
     selectedDeckIds.clear();
     document.querySelectorAll('.deck-checkbox').forEach(cb => cb.checked = false);
-    refreshShoppingData();
+    refreshActiveView();
   });
 
   document.querySelectorAll('.deck-checkbox').forEach(checkbox => {
@@ -422,7 +490,7 @@ function renderDeckSelector() {
       } else {
         selectedDeckIds.delete(deckId);
       }
-      refreshShoppingData();
+      refreshActiveView();
     });
   });
 }
@@ -585,6 +653,255 @@ function renderFilters() {
   });
 
   document.getElementById('export-list-btn').addEventListener('click', exportShoppingList);
+}
+
+// ---------------------------------------------------------------------------
+// The bulk-bin view
+// ---------------------------------------------------------------------------
+
+async function refreshBulkData() {
+  try {
+    showLoading();
+    bulkData = await api.getBulkBinList(Array.from(selectedDeckIds), bulkOptions);
+    // The server answers with the stored threshold on the first call, when the
+    // page has none yet. Adopting it here keeps the box showing what the list
+    // was actually built with.
+    if (bulkOptions.threshold == null) bulkOptions.threshold = bulkData.threshold;
+    renderBulkControls();
+    renderBulkList();
+    hideLoading();
+  } catch (error) {
+    hideLoading();
+    showError('Failed to build bulk list: ' + error.message);
+  }
+}
+
+function renderBulkControls() {
+  const container = document.getElementById('shopping-bulk-controls');
+  if (!container) return;
+
+  const threshold = bulkOptions.threshold ?? 1;
+
+  container.innerHTML = `
+    <div class="bulk-controls">
+      <div class="filter-group">
+        <label for="bulk-threshold">Max price per card</label>
+        <div class="bulk-threshold-row">
+          <span class="bulk-threshold-prefix">$</span>
+          <input type="number" id="bulk-threshold" class="filter-input"
+                 min="0" max="1000" step="0.25" value="${threshold}" style="width: 90px;" />
+          <button id="bulk-threshold-save" class="btn btn-secondary btn-sm" title="Remember this for next time">
+            Save as default
+          </button>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label>Show</label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="bulk-commons-only" ${bulkOptions.commonsOnly ? 'checked' : ''} />
+          Commons &amp; uncommons only
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="bulk-include-contested" ${bulkOptions.includeContested ? 'checked' : ''} />
+          Cards tied up in other decks
+        </label>
+      </div>
+
+      <div class="filter-group bulk-controls-actions">
+        <button id="bulk-export-btn" class="btn btn-primary btn-sm">
+          <i class="ph ph-export"></i> Copy list
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Changing the number rebuilds the list but does not save it: trying $2 to
+  // see what a different shop would yield should not rewrite your default.
+  const thresholdInput = document.getElementById('bulk-threshold');
+  thresholdInput.addEventListener('change', () => {
+    bulkOptions.threshold = parseFloat(thresholdInput.value) || 0;
+    refreshBulkData();
+  });
+
+  document.getElementById('bulk-threshold-save').addEventListener('click', async () => {
+    try {
+      const saved = await api.saveBulkThreshold(bulkOptions.threshold ?? 1);
+      bulkOptions.threshold = saved.threshold;
+      showToast(`Default set to $${saved.threshold.toFixed(2)}`, 'success');
+    } catch (error) {
+      showToast('Could not save the default: ' + error.message, 'error');
+    }
+  });
+
+  document.getElementById('bulk-commons-only').addEventListener('change', (e) => {
+    bulkOptions.commonsOnly = e.target.checked;
+    refreshBulkData();
+  });
+
+  document.getElementById('bulk-include-contested').addEventListener('change', (e) => {
+    bulkOptions.includeContested = e.target.checked;
+    refreshBulkData();
+  });
+
+  document.getElementById('bulk-export-btn').addEventListener('click', exportBulkList);
+}
+
+/**
+ * One flat alphabetical column.
+ *
+ * No set grouping, on purpose: the boxes at a shop are not sorted by set — or
+ * by anything else — so the list is ordered for the person reading it. Each
+ * line still names the set and collector number of the printing being quoted,
+ * so a card in hand can be checked against the price.
+ */
+function renderBulkList() {
+  const container = document.getElementById('shopping-bulk-container');
+  if (!container) return;
+
+  if (!bulkData) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const visible = bulkData.cards.filter(
+    (card) => !sessionState.found.has(bulkKey(card)) && !sessionState.skipped.has(bulkKey(card))
+  );
+
+  if (visible.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+        <i class="ph ph-tray" style="font-size: 4rem; opacity: 0.3;"></i>
+        <h3>Nothing under $${(bulkOptions.threshold ?? 1).toFixed(2)}</h3>
+        <p>${bulkExclusionNote() || 'Try raising the price or selecting more decks.'}</p>
+      </div>
+    `;
+    return;
+  }
+
+  const copies = visible.reduce((sum, c) => sum + c.quantity, 0);
+  const total = visible.reduce((sum, c) => sum + c.lineTotal, 0);
+
+  container.innerHTML = `
+    <div class="bulk-summary">
+      <strong>${visible.length}</strong> cards · <strong>${copies}</strong> copies ·
+      about <strong>$${total.toFixed(2)}</strong>
+      ${bulkExclusionNote() ? `<span class="bulk-summary-note">${bulkExclusionNote()}</span>` : ''}
+    </div>
+
+    <ol class="bulk-list">
+      ${visible.map(bulkRow).join('')}
+    </ol>
+
+    ${bulkData.unpriced.length ? `
+      <div class="bulk-unpriced">
+        <h4><i class="ph ph-question"></i> No price data — check these by hand (${bulkData.unpriced.length})</h4>
+        <p>${bulkData.unpriced.map((c) => `${c.quantity}x ${c.name}`).join(', ')}</p>
+      </div>
+    ` : ''}
+  `;
+}
+
+/** Session keys are card-level here; the by-set view keys on printing. */
+function bulkKey(card) {
+  return `card-${card.cardId}`;
+}
+
+function bulkRow(card) {
+  const where = card.setCode
+    ? `<span class="bulk-printing">${card.setCode.toUpperCase()} #${card.collectorNumber}</span>`
+    : '';
+
+  // A card you own but that another deck is using is a different message from
+  // one you simply do not have: this copy is findable at home, for a price
+  // already paid somewhere else.
+  const contested = card.contested
+    ? `<span class="bulk-contested" title="You own ${card.contested} of these, but another deck is using them">
+         <i class="ph ph-arrows-split"></i> ${card.contested} in other decks
+       </span>`
+    : '';
+
+  const decks = card.decks.length
+    ? card.decks.map((d) => d.deckName).filter(Boolean).join(', ')
+    : card.wanted ? 'On your wanted list' : '';
+
+  return `
+    <li class="bulk-row" data-card-key="${bulkKey(card)}">
+      <span class="bulk-qty">${card.quantity}x</span>
+      <span class="bulk-name">${card.name}</span>
+      ${where}
+      <span class="bulk-price">$${card.price.toFixed(2)}</span>
+      ${contested}
+      <span class="bulk-decks">${decks}</span>
+      <span class="bulk-actions">
+        <button class="btn-icon found-btn" data-card-key="${bulkKey(card)}" data-card-id="${card.cardId}" title="Found it!">
+          <i class="ph ph-check"></i>
+        </button>
+        <button class="btn-icon skip-btn" data-card-key="${bulkKey(card)}" title="Skip">
+          <i class="ph ph-x"></i>
+        </button>
+      </span>
+    </li>
+  `;
+}
+
+/**
+ * Why the list is shorter than the shopping list.
+ *
+ * A filtered-out card and a lost card look identical while you are standing at
+ * a box, so the exclusions are counted rather than silently applied.
+ */
+function bulkExclusionNote() {
+  if (!bulkData) return '';
+
+  const parts = [];
+  if (bulkData.excluded.overThreshold) parts.push(`${bulkData.excluded.overThreshold} over the price`);
+  if (bulkData.excluded.tooRare) parts.push(`${bulkData.excluded.tooRare} too rare for a bin`);
+
+  return parts.length ? `${parts.join(', ')} hidden` : '';
+}
+
+function exportBulkList() {
+  if (!bulkData || bulkData.cards.length === 0) {
+    showToast('Nothing to export', 'warning');
+    return;
+  }
+
+  // What is on screen, not what was fetched: cards already ticked off should
+  // not come back in the copy you paste into your phone.
+  const visible = bulkData.cards.filter(
+    (card) => !sessionState.found.has(bulkKey(card)) && !sessionState.skipped.has(bulkKey(card))
+  );
+
+  const threshold = bulkOptions.threshold ?? 1;
+  const copies = visible.reduce((sum, c) => sum + c.quantity, 0);
+  const total = visible.reduce((sum, c) => sum + c.lineTotal, 0);
+
+  const lines = [
+    'BULK BIN LIST',
+    `Under $${threshold.toFixed(2)} · ${copies} copies · ~$${total.toFixed(2)}`,
+    ''.padEnd(40, '='),
+    '',
+  ];
+
+  for (const card of visible) {
+    const where = card.setCode ? ` — ${card.setCode.toUpperCase()} #${card.collectorNumber}` : '';
+    const note = card.contested ? `  (${card.contested} in other decks)` : '';
+    lines.push(`[ ] ${card.quantity}x ${card.name}${where} — $${card.price.toFixed(2)}${note}`);
+  }
+
+  if (bulkData.unpriced.length) {
+    lines.push('', 'No price data (check these by hand):');
+    for (const card of bulkData.unpriced) {
+      lines.push(`[ ] ${card.quantity}x ${card.name}`);
+    }
+  }
+
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    showToast('Bulk list copied to clipboard!', 'success');
+  }).catch(() => {
+    showToast('Failed to copy to clipboard', 'error');
+  });
 }
 
 async function refreshShoppingData() {
@@ -1046,7 +1363,7 @@ document.addEventListener('click', async (e) => {
       showToast('Card marked as found!', 'success', 1500);
     }
 
-    renderShoppingList();
+    repaintActiveList();
   }
 
   if (e.target.closest('.skip-btn')) {
@@ -1054,7 +1371,7 @@ document.addEventListener('click', async (e) => {
     const cardKey = btn.dataset.cardKey;
     sessionState.skipped.add(cardKey);
     showToast('Card skipped', 'info', 1500);
-    renderShoppingList();
+    repaintActiveList();
   }
 
   // Wanted-list quantity. Stepping to zero removes the row, which is what the

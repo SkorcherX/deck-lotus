@@ -1,6 +1,7 @@
 import db from '../db/connection.js';
 import { parseDeckList, findCard } from './importService.js';
 import { groupIntoSets } from './shoppingMerge.js';
+import { buildBulkList, flattenShoppingSets } from './bulkBin.js';
 
 /**
  * The shopping list has two halves.
@@ -370,4 +371,128 @@ export function cheapestPrintingOf(cardId) {
       LIMIT 1`,
     [cardId]
   )?.id || null;
+}
+
+// ---------------------------------------------------------------------------
+// The bulk-bin view
+// ---------------------------------------------------------------------------
+
+// SQLite's default limit is 999 bound parameters, and a shopping list for a
+// few Commander decks clears that easily. Splitting the lookup is cheaper than
+// raising the limit at the connection.
+const PARAM_CHUNK = 900;
+
+function chunked(values, size = PARAM_CHUNK) {
+  const out = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  return out;
+}
+
+/**
+ * The cheapest priced printing of each card, keyed by card id.
+ *
+ * Card level, not printing level, because that is the question a bulk box
+ * answers: any copy fills the slot, so the price that matters is the best one
+ * in print anywhere, not the one the deck happens to name.
+ *
+ * The bare columns alongside MIN() are deliberate and are not a GROUP BY
+ * mistake: SQLite guarantees that when a query uses a single MIN() or MAX()
+ * aggregate, the other columns come from the row that produced it. That is
+ * what makes this one query rather than one per card.
+ */
+export function cheapestPrintingsFor(cardIds) {
+  const found = {};
+  if (!cardIds || cardIds.length === 0) return found;
+
+  for (const chunk of chunked([...new Set(cardIds)])) {
+    const placeholders = chunk.map(() => '?').join(',');
+
+    const rows = db.all(
+      `SELECT
+         p.card_id as card_id,
+         p.id as printing_id,
+         p.uuid as printing_uuid,
+         p.set_code,
+         p.collector_number,
+         p.rarity,
+         MIN(pr.price) as price
+       FROM printings p
+       JOIN prices pr
+         ON pr.printing_uuid = p.uuid
+        AND pr.provider = 'tcgplayer'
+        AND pr.price_type = 'normal'
+      WHERE p.card_id IN (${placeholders})
+        AND pr.price IS NOT NULL
+        AND pr.price > 0
+      GROUP BY p.card_id`,
+      chunk
+    );
+
+    for (const row of rows) {
+      found[row.card_id] = {
+        printingId: row.printing_id,
+        printingUuid: row.printing_uuid,
+        setCode: row.set_code,
+        collectorNumber: row.collector_number,
+        rarity: row.rarity,
+        price: row.price,
+      };
+    }
+  }
+
+  return found;
+}
+
+/** The user's bulk price ceiling, falling back to the column default. */
+export function getBulkThreshold(userId) {
+  const row = db.get(`SELECT bulk_price_threshold FROM users WHERE id = ?`, [userId]);
+  return row?.bulk_price_threshold ?? 1;
+}
+
+/**
+ * Save the ceiling. Clamped rather than rejected: the control is a number box
+ * on the page, and a stray keystroke should not throw an error at somebody
+ * who is halfway out the door to a card shop.
+ */
+export function setBulkThreshold(userId, value) {
+  const parsed = Number.parseFloat(value);
+  const threshold = Number.isFinite(parsed) ? Math.min(1000, Math.max(0, parsed)) : 1;
+
+  db.run(
+    `UPDATE users SET bulk_price_threshold = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [threshold, userId]
+  );
+
+  return threshold;
+}
+
+/**
+ * What to look for in a shop's cheap-card boxes.
+ *
+ * Built on the same shopping list as the set-grouped view, asked with
+ * `includeContested` — a cheap common tied up in another deck is worth
+ * grabbing a spare of rather than shuttling between decks, and that is exactly
+ * the card a bin turns up. The filtering and ordering are in bulkBin.js, which
+ * is pure and tested.
+ */
+export function getBulkBinList(userId, deckIds, options = {}) {
+  const threshold = options.threshold != null ? Number(options.threshold) : getBulkThreshold(userId);
+
+  const shopping = getShoppingList(userId, deckIds, { includeContested: true });
+  const entries = flattenShoppingSets(shopping.sets);
+  const cheapest = cheapestPrintingsFor(entries.map((e) => e.cardId));
+
+  const list = buildBulkList(entries, cheapest, {
+    threshold,
+    commonsOnly: options.commonsOnly !== false,
+    includeContested: options.includeContested !== false,
+  });
+
+  return {
+    ...list,
+    threshold,
+    commonsOnly: options.commonsOnly !== false,
+    includeContested: options.includeContested !== false,
+    totalDecks: shopping.totalDecks,
+  };
 }

@@ -990,10 +990,34 @@
                         <div id="shopping-deck-selector"></div>
                     </div>
 
+                    <!--
+                      Two ways to read the same list. By Set is for buying
+                      singles online. Bulk Bin is for standing at a shop's
+                      cheap-card boxes with a phone in one hand — flat, A-Z,
+                      and priced on the cheapest printing anywhere rather than
+                      the one a deck happens to name.
+                    -->
+                    <div class="shopping-section shopping-mode-section">
+                        <div class="shopping-mode-switch" role="tablist">
+                            <button id="shopping-mode-sets" class="shopping-mode-btn" role="tab" aria-selected="true">
+                                <i class="ph ph-squares-four"></i> By Set
+                            </button>
+                            <button id="shopping-mode-bulk" class="shopping-mode-btn" role="tab" aria-selected="false">
+                                <i class="ph ph-tray"></i> Bulk Bin
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Filters -->
-                    <div class="shopping-section">
+                    <div class="shopping-section" id="shopping-filters-section">
                         <h3 style="margin-bottom: 1rem;">Filters & Sorting</h3>
                         <div id="shopping-filters"></div>
+                    </div>
+
+                    <!-- Bulk bin view -->
+                    <div class="shopping-section hidden" id="shopping-bulk-section">
+                        <div id="shopping-bulk-controls"></div>
+                        <div id="shopping-bulk-container"></div>
                     </div>
 
                     <!-- Statistics -->
@@ -1019,7 +1043,7 @@
                     </div>
 
                     <!-- Shopping List by Set -->
-                    <div class="shopping-section">
+                    <div class="shopping-section" id="shopping-sets-section">
                         <div id="shopping-list-container"></div>
                     </div>
                 </div>

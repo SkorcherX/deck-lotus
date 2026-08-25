@@ -7,10 +7,21 @@ import {
   removeWantedCard,
   clearWantedCards,
   cheapestPrintingOf,
+  getBulkBinList,
+  setBulkThreshold,
 } from '../services/shoppingService.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
+
+/** deckIds arrives as a comma-separated query param on both list endpoints. */
+function parseDeckIds(param) {
+  if (!param) return [];
+  return param
+    .split(',')
+    .map((id) => parseInt(id.trim(), 10))
+    .filter((id) => !isNaN(id));
+}
 
 /**
  * GET /api/shopping
@@ -22,14 +33,7 @@ const router = express.Router();
  */
 router.get('/', authenticate, (req, res, next) => {
   try {
-    const deckIdsParam = req.query.deckIds;
-    let deckIds = [];
-
-    if (deckIdsParam) {
-      deckIds = deckIdsParam.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-    }
-
-    const shoppingList = getShoppingList(req.user.id, deckIds);
+    const shoppingList = getShoppingList(req.user.id, parseDeckIds(req.query.deckIds));
     res.json(shoppingList);
   } catch (error) {
     next(error);
@@ -116,6 +120,45 @@ router.delete('/wanted/:id', authenticate, (req, res, next) => {
 router.delete('/wanted', authenticate, (req, res, next) => {
   try {
     res.json(clearWantedCards(req.user.id));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/shopping/bulk
+ * The bulk-bin list: cheap cards to look for while rummaging at a shop.
+ *
+ * Query params: deckIds, threshold, commonsOnly, includeContested. The last
+ * three are the on-page controls; only the threshold is remembered between
+ * visits, and only when saved explicitly via PUT below — changing the number
+ * to see what a different shop would yield should not rewrite your default.
+ */
+router.get('/bulk', authenticate, (req, res, next) => {
+  try {
+    const { threshold, commonsOnly, includeContested } = req.query;
+
+    const list = getBulkBinList(req.user.id, parseDeckIds(req.query.deckIds), {
+      threshold: threshold !== undefined ? threshold : undefined,
+      // Both default to on, so only an explicit 'false' turns them off.
+      commonsOnly: commonsOnly !== 'false',
+      includeContested: includeContested !== 'false',
+    });
+
+    res.json(list);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/shopping/bulk/threshold
+ * Remember this price ceiling for next time.
+ */
+router.put('/bulk/threshold', authenticate, (req, res, next) => {
+  try {
+    const threshold = setBulkThreshold(req.user.id, req.body?.threshold);
+    res.json({ threshold });
   } catch (error) {
     next(error);
   }
