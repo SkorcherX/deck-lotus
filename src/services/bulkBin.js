@@ -131,6 +131,11 @@ export function buildBulkList(entries, cheapest, options = {}) {
       price: printing.price,
       lineTotal: printing.price * quantity,
       decks: entry.decks || [],
+      // The decks you are NOT shopping for that hold copies you own. This is
+      // the reason a contested row is on the list at all, so a row that has
+      // contested copies and cannot say where they are is a row that reads as
+      // "buy a card you already own".
+      heldBy: entry.heldBy || [],
       wanted: !!entry.wanted,
     });
   }

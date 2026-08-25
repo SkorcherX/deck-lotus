@@ -225,3 +225,64 @@ test('the pips reach the row the page renders', () => {
 
   assert.deepEqual(list.cards[0].colors, ['G']);
 });
+
+/*
+ * Contested rows have to be able to say where the copy is.
+ *
+ * The row exists because a deck you are not shopping for is holding a card you
+ * own. Reaching the page without that name, it reads as "buy a card you
+ * already own for the deck that already has it", which is what sent someone
+ * looking for a bug that was not there.
+ */
+test('a contested row carries the decks holding the copies', () => {
+  const entries = [
+    {
+      cardId: 7,
+      name: 'Arcane Signet',
+      quantityNeeded: 0,
+      contested: 1,
+      decks: [{ deckId: 1, deckName: 'Deck A' }],
+      heldBy: [{ deckId: 2, deckName: 'Deck B', quantity: 1 }],
+    },
+  ];
+
+  const list = buildBulkList(entries, {
+    7: { printingId: 3, setCode: 'ELD', collectorNumber: '331', rarity: 'common', price: 0.4 },
+  });
+
+  assert.equal(list.cards.length, 1);
+  assert.deepEqual(list.cards[0].heldBy, [{ deckId: 2, deckName: 'Deck B', quantity: 1 }]);
+  assert.equal(list.cards[0].contested, 1);
+  assert.equal(list.cards[0].toBuy, 0);
+});
+
+test('a row with nothing holding it still has a list, not undefined', () => {
+  const entries = [
+    { cardId: 8, name: 'Opt', quantityNeeded: 1, contested: 0, decks: [] },
+  ];
+
+  const list = buildBulkList(entries, {
+    8: { printingId: 4, setCode: 'ELD', collectorNumber: '59', rarity: 'common', price: 0.1 },
+  });
+
+  assert.deepEqual(list.cards[0].heldBy, []);
+});
+
+test('turning contested copies off drops a row that was only contested', () => {
+  const entries = [
+    {
+      cardId: 7,
+      name: 'Arcane Signet',
+      quantityNeeded: 0,
+      contested: 1,
+      decks: [],
+      heldBy: [{ deckId: 2, deckName: 'Deck B', quantity: 1 }],
+    },
+  ];
+
+  const list = buildBulkList(entries, {
+    7: { printingId: 3, setCode: 'ELD', collectorNumber: '331', rarity: 'common', price: 0.4 },
+  }, { includeContested: false });
+
+  assert.equal(list.cards.length, 0);
+});

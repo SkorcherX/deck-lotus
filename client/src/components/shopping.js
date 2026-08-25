@@ -821,6 +821,43 @@ function renderBulkList() {
   `;
 }
 
+/**
+ * "You own this, it is in Deck B."
+ *
+ * A contested row is on the list because a deck you are *not* shopping for is
+ * holding the copy you own. The row used to say only "1 in other decks" beside
+ * the name of the deck you are shopping for, which reads as though the list
+ * were quoting a card you already have for a deck that already has it. Naming
+ * the deck that is holding it is the whole explanation for the row.
+ *
+ * The count stays the one the server worked out — it is capped by what the
+ * selected decks actually list, which the per-deck quantities here are not —
+ * so this only supplies names. Where several decks hold copies the names go in
+ * the title rather than the line: this list is read at arm's length in a shop,
+ * and three deck names inline is not something you can scan past.
+ */
+function contestedNote(card) {
+  if (!card.contested) return '';
+
+  const holders = (card.heldBy || []).map((d) => d.deckName).filter(Boolean);
+
+  const where =
+    holders.length === 1 ? `in ${escapeHtml(holders[0])}`
+    : holders.length > 1 ? `in ${holders.length} other decks`
+    // No names came back — the copies are owned but sitting in no deck at all,
+    // or the lookup found nothing. Say the honest, vaguer thing rather than
+    // inventing a deck.
+    : 'owned elsewhere';
+
+  const title = holders.length
+    ? `You own ${card.contested}, currently in: ${holders.join(', ')}`
+    : `You own ${card.contested} of these already`;
+
+  return `<span class="bulk-contested" title="${escapeHtml(title)}">
+       <i class="ph ph-arrows-split"></i> ${card.contested} ${where}
+     </span>`;
+}
+
 /** Session keys are card-level here; the by-set view keys on printing. */
 function bulkKey(card) {
   return `card-${card.cardId}`;
@@ -860,17 +897,15 @@ function bulkRow(card) {
     ? `<span class="bulk-printing">${card.setCode.toUpperCase()} #${card.collectorNumber}</span>`
     : '<span class="bulk-printing is-empty"></span>';
 
-  // A card you own but that another deck is using is a different message from
-  // one you simply do not have: this copy is findable at home, for a price
-  // already paid somewhere else.
-  const contested = card.contested
-    ? `<span class="bulk-contested" title="You own ${card.contested} of these, but another deck is using them">
-         <i class="ph ph-arrows-split"></i> ${card.contested} in other decks
-       </span>`
-    : '';
+  const contested = contestedNote(card);
 
-  const decks = card.decks.length
-    ? card.decks.map((d) => d.deckName).filter(Boolean).join(', ')
+  // Which decks want it. Labelled "For" whenever the row is also naming the
+  // deck that is holding your copy, because otherwise the line carries two
+  // deck names with nothing to say which is which — and the reading that
+  // costs you money is the wrong one.
+  const wantedBy = card.decks.map((d) => d.deckName).filter(Boolean);
+  const decks = wantedBy.length
+    ? `${card.contested ? 'For ' : ''}${wantedBy.join(', ')}`
     : card.wanted ? 'On your wanted list' : '';
 
   const found = isFound(card.cardId);
@@ -940,7 +975,10 @@ function exportBulkList() {
 
   for (const card of visible) {
     const where = card.setCode ? ` — ${card.setCode.toUpperCase()} #${card.collectorNumber}` : '';
-    const note = card.contested ? `  (${card.contested} in other decks)` : '';
+    const holders = (card.heldBy || []).map((d) => d.deckName).filter(Boolean);
+    const note = card.contested
+      ? `  (own ${card.contested}${holders.length ? `, in ${holders.join(', ')}` : ''})`
+      : '';
     // Padded so the colours line up in a monospaced paste the same way the
     // pips line up on screen. {C} for colourless, as the pips do.
     const colors = `{${(card.colors || []).join('') || 'C'}}`.padEnd(7);

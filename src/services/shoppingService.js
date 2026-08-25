@@ -475,6 +475,69 @@ export function setBulkThreshold(userId, value) {
 }
 
 /**
+ * Which of your *other* decks are holding copies of these cards.
+ *
+ * A contested row is on the bulk list because a deck you are not shopping for
+ * has the copy you own. Without naming that deck the row reads as a card you
+ * need for the deck you selected — which you already own, so the list looks
+ * like it is telling you to buy something twice. The name is the whole
+ * explanation for the row's presence.
+ *
+ * Deliberately names decks without counting them: the number on the row is
+ * `contested`, worked out by the merge and capped by what the selected decks
+ * actually list. A second count derived here would be the same figure computed
+ * a different way, and the two would disagree the first time a card was listed
+ * in more places than it was owned.
+ *
+ * Board rule matches CARD_ELSEWHERE_NOT_IN exactly. If it did not, a card
+ * could be reported as held by a deck that the count above says is not holding
+ * it.
+ */
+function decksHoldingCards(userId, cardIds, excludeDeckIds) {
+  if (!cardIds || cardIds.length === 0) return new Map();
+
+  const byCard = new Map();
+  const excluded = excludeDeckIds || [];
+  const excludeSql = excluded.length
+    ? `AND d.id NOT IN (${excluded.map(() => '?').join(',')})`
+    : '';
+
+  // The deck list rides in the same statement, so it comes out of the same
+  // variable budget — without this a user with a lot of decks could push a
+  // full chunk past SQLite's limit and the whole view would 500.
+  for (const chunk of chunked(cardIds, Math.max(1, PARAM_CHUNK - excluded.length - 1))) {
+    const rows = db.all(
+      `SELECT p.card_id as card_id,
+              d.id as deck_id,
+              d.name as deck_name,
+              SUM(dc.quantity) as quantity
+         FROM deck_cards dc
+         JOIN decks d ON dc.deck_id = d.id
+         JOIN printings p ON dc.printing_id = p.id
+        WHERE d.user_id = ?
+          ${excludeSql}
+          AND p.card_id IN (${chunk.map(() => '?').join(',')})
+          AND COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END)
+              IN ('mainboard', 'sideboard')
+        GROUP BY p.card_id, d.id
+        ORDER BY d.name`,
+      [userId, ...excluded, ...chunk]
+    );
+
+    for (const row of rows) {
+      if (!byCard.has(row.card_id)) byCard.set(row.card_id, []);
+      byCard.get(row.card_id).push({
+        deckId: row.deck_id,
+        deckName: row.deck_name,
+        quantity: row.quantity,
+      });
+    }
+  }
+
+  return byCard;
+}
+
+/**
  * What to look for in a shop's cheap-card boxes.
  *
  * Built on the same shopping list as the set-grouped view, asked with
@@ -489,6 +552,13 @@ export function getBulkBinList(userId, deckIds, options = {}) {
   const shopping = getShoppingList(userId, deckIds, { includeContested: true });
   const entries = flattenShoppingSets(shopping.sets);
   const cheapest = cheapestPrintingsFor(entries.map((e) => e.cardId));
+
+  // One query for the whole list, not one per contested card — this view
+  // renders every cheap card several decks are fighting over.
+  const holders = decksHoldingCards(userId, entries.map((e) => e.cardId), deckIds);
+  for (const entry of entries) {
+    entry.heldBy = holders.get(entry.cardId) || [];
+  }
 
   const list = buildBulkList(entries, cheapest, {
     threshold,
