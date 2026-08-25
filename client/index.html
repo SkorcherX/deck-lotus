@@ -466,6 +466,22 @@
                                 id="deck-total-price"
                                 class="deck-price-display"
                             ></div>
+                            <!--
+                              The shortfall alert. It lives in the empty middle
+                              of this row rather than in a card of its own
+                              below: it is one line of status about the deck
+                              the row is already describing, and a standalone
+                              banner for it pushed the deck list down the page
+                              every time something was missing. Pressing it
+                              opens the breakdown underneath.
+                            -->
+                            <button
+                                id="deck-readiness-chip"
+                                class="deck-readiness-chip hidden"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="deck-readiness-panel"
+                            ></button>
                             <div style="display: flex; gap: 0.5rem;">
                                 <button id="optimize-printings-btn" class="btn btn-secondary">
                                     <i class="ph ph-magic-wand btn-icon"></i>
@@ -1007,6 +1023,15 @@
                             </button>
                         </div>
                     </div>
+
+                    <!--
+                      The found pile. Marking a card found does not add it to
+                      the collection: what you pull out of a bulk box shares a
+                      name with the card your deck lists and almost never a
+                      printing. The pile is saved on every press and reviewed
+                      here, at a keyboard, where printings can be chosen.
+                    -->
+                    <div id="shopping-found-bar" class="shopping-found-bar hidden"></div>
 
                     <!-- Filters -->
                     <div class="shopping-section" id="shopping-filters-section">

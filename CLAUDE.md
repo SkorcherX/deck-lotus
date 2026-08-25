@@ -179,5 +179,24 @@ taken on GitHub — only do it when explicitly asked.
   chosen *before* the anchor art exists, which is why the wizard asks for it in
   step 3 and why palette extraction then takes the surface hue from that choice
   rather than from the artwork.
+- Basic lands are free, everywhere. `src/services/basicLands.js` holds the one
+  predicate (`isBasicLandSql` for queries, `isBasicLand` for rows) used by
+  inventory availability, trades, deck readiness and the shopping list. It is
+  deliberately *basic* lands and not lands: exempting every land would drop
+  fetches and duals — the most expensive things on a buy list — off it
+  silently. A deck short of nothing but Islands reads as ready.
+- "Found it!" on the shopping and bulk-bin lists does **not** add to the
+  collection, and must not be changed back. The card pulled out of a bulk box
+  shares a name with the one the deck lists and almost never its printing, so
+  the tick writes to `found_cards` (see migration 036) — a saved-on-press,
+  press-again-to-undo pile that is reviewed at home and turned into inventory
+  through the normal `bulkAddToInventory` path, where printings get chosen.
+  `found_cards.card_id` is a plain integer with the name denormalised beside
+  it, same shape and same reason as `audit_log`.
+- Readiness has two surfaces and they say different amounts. The deck list
+  shows a bare coloured dot (the label is in the tooltip) because the wording
+  wrapped to three lines inside the card; the deck builder shows the wording as
+  a chip in the price row, and the per-card breakdown only when that chip is
+  pressed. Anything that grows the label has to survive both.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.

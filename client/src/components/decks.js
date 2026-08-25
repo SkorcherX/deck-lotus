@@ -366,7 +366,12 @@ function readinessBadge(readiness) {
 
   const title = detail.length ? detail.join('; ') : 'Every card owned and free';
 
-  return `<span class="deck-readiness" data-state="${readiness.state}" title="${title}">${readiness.label}</span>`;
+  // A dot, not the label. The words belong on the deck page, where there is
+  // room for them and something to do about them; here they wrapped across
+  // three lines and pushed the buttons around. The label is still in the
+  // tooltip, and it is still what screen readers get.
+  return `<span class="deck-readiness is-dot" data-state="${readiness.state}"
+                title="${readiness.label} — ${title}">${readiness.label}</span>`;
 }
 
 /**

@@ -2,6 +2,7 @@ import db from '../db/connection.js';
 import { parseDeckList, findCard } from './importService.js';
 import { groupIntoSets } from './shoppingMerge.js';
 import { buildBulkList, flattenShoppingSets } from './bulkBin.js';
+import { isBasicLandSql } from './basicLands.js';
 
 /**
  * The shopping list has two halves.
@@ -111,6 +112,7 @@ const CARD_ELSEWHERE_NOT_IN = (placeholders) => `(
          IN ('mainboard', 'sideboard')
 )`;
 
+const IS_BASIC_LAND = isBasicLandSql('c');
 
 /**
  * Get shopping list for selected decks, grouped by set.
@@ -162,6 +164,12 @@ export function getShoppingList(userId, deckIds, { includeContested = false } = 
       LEFT JOIN sets s ON p.set_code = s.code
       WHERE d.user_id = ?
         AND d.id IN (${placeholders})
+        -- Basic lands are never shopped for. See basicLands.js: they are
+        -- exempt from availability everywhere, so a list that quoted 24
+        -- Islands would be quoting a trip nobody makes. Hand-added wanted
+        -- rows below are untouched — putting an Island on the list yourself
+        -- is a decision, not a derived shortfall.
+        AND NOT ${IS_BASIC_LAND}
     )
     WHERE ${includeContested
       ? 'MAX(0, card_owned - card_elsewhere) < card_needed'

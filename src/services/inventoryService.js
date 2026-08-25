@@ -6,6 +6,7 @@ import {
 } from '../utils/cardNameMatch.js';
 import { ROLE_FILTERS } from './cardRoleService.js';
 import { colorFilterSql } from '../utils/colorFilter.js';
+import { isBasicLandSql } from './basicLands.js';
 import { recordInventoryChange } from './auditService.js';
 
 // Price of one owned copy, honouring its finish. Foil copies are worth their
@@ -790,10 +791,7 @@ export function getOwnedSets(userId) {
  * Basic lands are exempt from availability accounting. Nobody tracks how many
  * Islands they own, and a deck asking for 24 of them is not over-allocated.
  */
-const IS_BASIC_LAND = `(
-  (c.supertypes IS NOT NULL AND c.supertypes LIKE '%Basic%' AND c.type_line LIKE '%Land%')
-  OR c.type_line LIKE 'Basic %Land%'
-)`;
+const IS_BASIC_LAND = isBasicLandSql('c');
 
 
 /**

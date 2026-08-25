@@ -1,5 +1,6 @@
 import db from '../db/connection.js';
 import { assessDecks, describeState, stateRank } from './deckReadiness.js';
+import { isBasicLandSql } from './basicLands.js';
 
 /**
  * The database half of deck readiness. The arithmetic lives in
@@ -19,6 +20,10 @@ import { assessDecks, describeState, stateRank } from './deckReadiness.js';
 const PLAYED_BOARDS = `
   COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END)
     IN ('mainboard', 'sideboard')`;
+
+// Basic lands never count, for or against. A deck is not short of Islands and
+// an Island in another deck is not competing with this one — see basicLands.js.
+const NOT_BASIC_LAND = `NOT ${isBasicLandSql('c')}`;
 
 const PLAYED_BOARDS_FOR = (alias) => `
   COALESCE(${alias}.board_type, CASE WHEN ${alias}.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END)
@@ -68,6 +73,7 @@ function claimRows(userId, deckId = null) {
     JOIN printings p ON dc.printing_id = p.id
     JOIN cards c ON p.card_id = c.id
    WHERE d.user_id = ?
+     AND ${NOT_BASIC_LAND}
      AND ${PLAYED_BOARDS}${scoped}
    GROUP BY d.id, c.id`;
 

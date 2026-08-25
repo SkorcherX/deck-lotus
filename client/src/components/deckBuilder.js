@@ -181,6 +181,10 @@ export function setupDeckBuilder() {
     }
   });
 
+  // The shortfall alert in the price row opens its own breakdown.
+  document.getElementById('deck-readiness-chip')
+    ?.addEventListener('click', toggleReadinessPanel);
+
   // Buy Deck Modal
   buyDeckBtn.addEventListener('click', () => {
     if (!currentDeck || !currentDeck.cards || currentDeck.cards.length === 0) {
@@ -595,6 +599,7 @@ async function loadDeck(deckId) {
  */
 function renderReadinessPanel(readiness) {
   const panel = document.getElementById('deck-readiness-panel');
+  const chip = document.getElementById('deck-readiness-chip');
   if (!panel) return;
 
   // An empty deck has nothing to be short of, and a ready one needs no panel —
@@ -603,7 +608,25 @@ function renderReadinessPanel(readiness) {
   if (!readiness || readiness.state === 'ready' || readiness.state === 'empty') {
     panel.classList.add('hidden');
     panel.innerHTML = '';
+    if (chip) {
+      chip.classList.add('hidden');
+      chip.innerHTML = '';
+      chip.setAttribute('aria-expanded', 'false');
+    }
     return;
+  }
+
+  // The alert itself, in the price row. The detail below it stays collapsed
+  // until asked for: what you need on sight is that something is missing, and
+  // a list of forty cards answers a question you have not asked yet.
+  if (chip) {
+    chip.classList.remove('hidden');
+    chip.dataset.state = readiness.state;
+    chip.innerHTML = `
+      <span class="deck-readiness" data-state="${readiness.state}">${escapeHtml(readiness.label)}</span>
+      <i class="ph ph-caret-down deck-readiness-chip-caret"></i>
+    `;
+    chip.setAttribute('aria-expanded', String(!panel.classList.contains('hidden')));
   }
 
   const shortfalls = readiness.shortfalls || [];
@@ -632,15 +655,35 @@ function renderReadinessPanel(readiness) {
       </div>`);
   }
 
+  // Collapsed on every render, including when switching decks — otherwise a
+  // panel left open on one deck reappears full of another deck's shortfalls.
+  panel.classList.add('hidden');
+  document.getElementById('deck-readiness-chip')?.classList.remove('is-open');
+
+  // The heading the banner used to carry is now the chip that opens it, so it
+  // is not repeated here.
   panel.innerHTML = `
     <div class="deck-readiness-banner" data-state="${readiness.state}">
-      <div class="deck-readiness-heading">
-        <span class="deck-readiness" data-state="${readiness.state}">${escapeHtml(readiness.label)}</span>
-      </div>
       <div class="deck-readiness-groups">${sections.join('')}</div>
     </div>
   `;
-  panel.classList.remove('hidden');
+}
+
+/**
+ * Open or close the breakdown.
+ *
+ * Closed on every load, including after a save: it is reference material for
+ * a decision, not something to keep on screen while you edit the deck it is
+ * describing.
+ */
+function toggleReadinessPanel() {
+  const panel = document.getElementById('deck-readiness-panel');
+  const chip = document.getElementById('deck-readiness-chip');
+  if (!panel || !panel.innerHTML) return;
+
+  const open = panel.classList.toggle('hidden') === false;
+  chip?.setAttribute('aria-expanded', String(open));
+  chip?.classList.toggle('is-open', open);
 }
 
 function displaySearchResults(cards) {

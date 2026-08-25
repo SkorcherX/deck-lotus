@@ -501,6 +501,32 @@ class ApiClient {
     return this.request('/shopping/wanted', { method: 'DELETE' });
   }
 
+  // The found pile: cards ticked off at a shop but not yet owned. Marking one
+  // found deliberately does NOT touch the collection — the printing you pull
+  // out of a bulk box is rarely the one your deck lists, so the pile is
+  // reviewed at home and added through the normal bulk-add path.
+  async getFoundPile() {
+    return this.request('/shopping/found');
+  }
+
+  async toggleFoundCard(cardId) {
+    return this.request('/shopping/found', {
+      method: 'POST',
+      body: JSON.stringify({ cardId }),
+    });
+  }
+
+  async setFoundQuantity(cardId, quantity) {
+    return this.request(`/shopping/found/${cardId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ quantity }),
+    });
+  }
+
+  async clearFoundPile() {
+    return this.request('/shopping/found', { method: 'DELETE' });
+  }
+
   // Inventory methods
   async getInventory(filters = {}) {
     const params = new URLSearchParams();

@@ -10,6 +10,12 @@ import {
   getBulkBinList,
   setBulkThreshold,
 } from '../services/shoppingService.js';
+import {
+  getFoundPile,
+  toggleFound,
+  setFoundQuantity,
+  clearFoundPile,
+} from '../services/foundPileService.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -159,6 +165,69 @@ router.put('/bulk/threshold', authenticate, (req, res, next) => {
   try {
     const threshold = setBulkThreshold(req.user.id, req.body?.threshold);
     res.json({ threshold });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * The found pile — cards ticked off at a shop.
+ *
+ * Deliberately not an inventory write: see migration 036. These endpoints only
+ * record what was picked up; turning the pile into owned cards goes through
+ * the normal bulk-add path, where printings get chosen.
+ */
+
+/** GET /api/shopping/found — the pile, for the review screen and the ticks. */
+router.get('/found', authenticate, (req, res, next) => {
+  try {
+    res.json({ found: getFoundPile(req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/shopping/found — toggle one card.
+ *
+ * A toggle, because the button is pressed over a bulk box one-handed and the
+ * second press is a misclick correction. Saved on the press so a trip
+ * survives the phone dying.
+ */
+router.post('/found', authenticate, (req, res, next) => {
+  try {
+    const cardId = parseInt(req.body?.cardId, 10);
+
+    if (!Number.isFinite(cardId)) {
+      return res.status(400).json({ error: 'cardId is required' });
+    }
+
+    res.json(toggleFound(req.user.id, cardId, { quantity: req.body?.quantity }));
+  } catch (error) {
+    if (error.status === 404) return res.status(404).json({ error: error.message });
+    next(error);
+  }
+});
+
+/** PUT /api/shopping/found/:cardId — how many copies. Zero unfinds it. */
+router.put('/found/:cardId', authenticate, (req, res, next) => {
+  try {
+    const cardId = parseInt(req.params.cardId, 10);
+
+    if (!Number.isFinite(cardId)) {
+      return res.status(400).json({ error: 'cardId is required' });
+    }
+
+    res.json(setFoundQuantity(req.user.id, cardId, req.body?.quantity));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** DELETE /api/shopping/found — empty the pile once it has been dealt with. */
+router.delete('/found', authenticate, (req, res, next) => {
+  try {
+    res.json({ cleared: clearFoundPile(req.user.id) });
   } catch (error) {
     next(error);
   }

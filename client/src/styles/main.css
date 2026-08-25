@@ -903,7 +903,14 @@ select option {
   color: var(--text-secondary);
   border: 1px solid var(--border);
   border-radius: 0.375rem;
-  padding: 0.2rem 0.5rem;
+  /* Extra room on the right, and it has to be here rather than left to the
+     browser: a select sizes itself to its widest *option*, measured without
+     the uppercasing and letter-spacing this rule then applies to the value it
+     renders. "BUILDING" therefore came out wider than the box holding it and
+     lost its last letter. `width: auto` stops a flex parent squeezing it back
+     down again. */
+  padding: 0.2rem 1rem 0.2rem 0.5rem;
+  width: auto;
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -934,6 +941,26 @@ select option {
   font-size: 0.8125rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/*
+ * On a deck card the badge is a dot and nothing else.
+ *
+ * The wording — "Short 73 to buy · 23 in other decks" — is honest but it is a
+ * sentence, and a sentence wraps to three lines inside a card whose whole job
+ * is the deck's name and its buttons. The colour still ranks the decks at a
+ * glance (and keeps the "Needs work first" sort meaning something), the title
+ * carries the numbers on hover, and the full breakdown lives on the deck page
+ * where there is room to act on it.
+ */
+.deck-readiness.is-dot {
+  gap: 0;
+  font-size: 0;
+}
+
+.deck-readiness.is-dot::before {
+  width: 0.6rem;
+  height: 0.6rem;
 }
 
 .deck-readiness::before {
@@ -1055,6 +1082,113 @@ select option {
   border-bottom: none;
 }
 
+/* A row already picked up. It stays on the list rather than vanishing, because
+   the tick is pressed one-handed over a box and the second press is how a
+   misclick gets undone — a row that disappeared could only be recovered from
+   the found-pile drawer, which is not where the person's attention is. */
+.bulk-row.is-found {
+  opacity: 0.55;
+}
+
+.bulk-row.is-found .bulk-name {
+  text-decoration: line-through;
+}
+
+.found-btn.is-found {
+  color: var(--success);
+}
+
+/* ---------------------------------------------------------------------------
+   The found pile
+   ---------------------------------------------------------------------------
+   Sits above both shopping views because it belongs to neither: cards get
+   ticked in the bulk view and reviewed against the by-set one. The wording
+   works hard to say the cards are NOT owned yet — the previous behaviour
+   added them outright, and anyone used to that needs to see that it changed.
+*/
+.shopping-found-bar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.shopping-found-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.shopping-found-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text);
+  font-size: 0.9375rem;
+}
+
+.shopping-found-note {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  flex: 1;
+  min-width: 12rem;
+}
+
+.shopping-found-drawer {
+  margin-top: 0.85rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+}
+
+.shopping-found-list {
+  list-style: none;
+  margin: 0 0 0.85rem;
+  padding: 0;
+  /* A real trip is dozens of rows. It scrolls inside the drawer rather than
+     pushing the list it sits above off the screen. */
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.shopping-found-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.shopping-found-row:last-child {
+  border-bottom: none;
+}
+
+.shopping-found-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 5rem;
+}
+
+.shopping-found-name {
+  flex: 1;
+  color: var(--text);
+}
+
+.shopping-found-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.shopping-found-hint {
+  margin: 0.6rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
 /* Zebra striping rather than hover-only: you are reading across a row of
    small text with a card in your other hand. */
 .bulk-row:nth-child(even) {
@@ -1142,9 +1276,50 @@ select option {
   white-space: nowrap;
 }
 
+/*
+ * The shortfall alert, in the deck header's price row.
+ *
+ * It sits in the gap between the deck's value and its buy buttons — a row
+ * that was already there and already half empty. The breakdown it opens is
+ * the banner below; giving the summary a card of its own meant the deck list
+ * started a screenful further down whenever anything was missing.
+ */
+.deck-readiness-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+  cursor: pointer;
+  font: inherit;
+  /* Long labels stay on one line and truncate rather than growing the header:
+     the full wording is in the drawer a press away. */
+  max-width: 24rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.deck-readiness-chip:hover {
+  border-color: var(--border-strong);
+}
+
+.deck-readiness-chip[data-state="needs_buying"] { border-left: 3px solid var(--warning); }
+.deck-readiness-chip[data-state="needs_assembly"] { border-left: 3px solid var(--primary); }
+
+.deck-readiness-chip-caret {
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+}
+
+.deck-readiness-chip.is-open .deck-readiness-chip-caret {
+  transform: rotate(180deg);
+}
+
 /* The shortfall breakdown on the deck builder page. Sits where the
    traded-away banner sits, and behaves the same way: it reports, it never
-   edits the deck. */
+   edits the deck. Collapsed until the alert above it is pressed. */
 .deck-readiness-banner {
   background: var(--bg-secondary);
   border: 1px solid var(--border);

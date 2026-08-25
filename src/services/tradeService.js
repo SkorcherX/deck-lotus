@@ -2,6 +2,7 @@ import db from '../db/connection.js';
 import { setOwnedPrintingQuantity } from './cardService.js';
 import { getInventory, getInventoryStats } from './inventoryService.js';
 import { recordTradeEvent, describeCounterparty, AUDIT_ACTIONS } from './auditService.js';
+import { isBasicLandSql } from './basicLands.js';
 
 /**
  * Card trades between users of the same instance.
@@ -36,10 +37,7 @@ function boardOf(row) {
  * app (see inventoryService's IS_BASIC_LAND), so they are exempt here too:
  * trading away a Mountain should not report every deck as broken.
  */
-const IS_BASIC_LAND = `(
-  (c.supertypes IS NOT NULL AND c.supertypes LIKE '%Basic%' AND c.type_line LIKE '%Land%')
-  OR c.type_line LIKE 'Basic %Land%'
-)`;
+const IS_BASIC_LAND = isBasicLandSql('c');
 
 /** Card and printing detail for a set of printing ids, keyed by printing id. */
 function describePrintings(printingIds) {
