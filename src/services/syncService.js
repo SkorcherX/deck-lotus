@@ -13,9 +13,44 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// The sync begins at 03:00 on Sundays. The cron fires WARNING_LEAD_MS earlier
-// so users get told before their collection disappears out from under them.
-const SYNC_CRON = '55 2 * * 0';
+/**
+ * When the sync is advertised to begin: 03:00 on Sundays.
+ *
+ * This is the only place the hour is written down. The cron expression is
+ * derived from it by subtracting the warning lead, and so is the line logged
+ * at startup - because the cron does *not* fire at the advertised time, it
+ * fires WARNING_LEAD_MS before it, and that lead time is the warning users
+ * get. Two constants in two files with nothing tying them together was an
+ * invariant that existed only in a comment: changing either one alone moved
+ * the sync off its advertised hour, or shortened the warning to nothing, and
+ * nothing would have said so.
+ *
+ * test/syncSchedule.test.js asserts the round trip.
+ */
+export const SYNC_START = { weekday: 0, hour: 3, minute: 0 };
+
+/**
+ * The cron expression that fires the *warning*, `leadMs` before `start`.
+ *
+ * Whole minutes only - cron has no finer resolution - and the subtraction
+ * wraps backwards through midnight and into the previous day, which is what a
+ * 03:00 Sunday start would need the moment the lead time grew past three
+ * hours.
+ */
+export function warningCronFor(start = SYNC_START, leadMs = WARNING_LEAD_MS) {
+  const leadMinutes = Math.round(leadMs / 60000);
+  const startOfWeek = ((start.weekday * 24 + start.hour) * 60) + start.minute;
+  const minutesInWeek = 7 * 24 * 60;
+  const fireAt = ((startOfWeek - leadMinutes) % minutesInWeek + minutesInWeek) % minutesInWeek;
+
+  const minute = fireAt % 60;
+  const hour = Math.floor(fireAt / 60) % 24;
+  const weekday = Math.floor(fireAt / (24 * 60));
+
+  return `${minute} ${hour} * * ${weekday}`;
+}
+
+const SYNC_CRON = warningCronFor();
 
 // node-cron reads bare cron expressions in the process's own timezone, which
 // in a container with no TZ set is UTC — so "Sundays at 3 AM" fired at 8 PM
@@ -124,9 +159,19 @@ export function scheduleSyncWithWarning({ leadMs = WARNING_LEAD_MS, trigger = 's
   return { scheduled: true, startsAt };
 }
 
+const DAY_NAMES = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
+
+function clockFromCron(expression) {
+  const [minute, hour, , , weekday] = expression.split(' ');
+  return {
+    weekday: Number(weekday),
+    time: `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`,
+  };
+}
+
 /**
- * Setup weekly sync schedule (begins at 3 AM every Sunday, announced five
- * minutes ahead)
+ * Setup weekly sync schedule (begins at the advertised SYNC_START, announced
+ * WARNING_LEAD_MS ahead)
  */
 export function setupDailySync() {
   cron.schedule(SYNC_CRON, () => {
@@ -134,8 +179,15 @@ export function setupDailySync() {
     scheduleSyncWithWarning({ trigger: 'scheduled' });
   }, { timezone: SYNC_TIMEZONE });
 
+  // Both times are read off the same derivation rather than typed out. A log
+  // line claiming 3:00 while the cron fired at some other hour would be the
+  // most convincing wrong answer in the system — it is the line people check.
+  const warning = clockFromCron(SYNC_CRON);
+  const start = `${String(SYNC_START.hour).padStart(2, '0')}:${String(SYNC_START.minute).padStart(2, '0')}`;
+  const warnDay = warning.weekday === SYNC_START.weekday ? '' : ` on ${DAY_NAMES[warning.weekday]}`;
+
   console.log(
-    `✓ Weekly sync scheduled for Sundays at 3:00 AM ${SYNC_TIMEZONE}` +
-    ` (users warned from 2:55 AM)`
+    `✓ Weekly sync scheduled for ${DAY_NAMES[SYNC_START.weekday]} at ${start} ${SYNC_TIMEZONE}` +
+    ` (users warned from ${warning.time}${warnDay})`
   );
 }
