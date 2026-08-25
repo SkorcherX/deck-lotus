@@ -17,7 +17,10 @@
     "theme:slots": "node scripts/theme-forge.mjs slots",
     "check:tokens": "node scripts/check-tokens.mjs",
     "theme:forge": "node scripts/open-forge.mjs",
-    "test:integration": "node --test test/integration/*.test.js"
+    "test:integration": "node --test test/integration/*.test.js",
+    "test:env": "node scripts/test-env.mjs start",
+    "test:env:reset": "node scripts/test-env.mjs reset",
+    "test:env:fresh": "node scripts/test-env.mjs fresh"
   },
   "keywords": [
     "mtg",

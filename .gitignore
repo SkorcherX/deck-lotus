@@ -2,6 +2,8 @@ node_modules/
 .env
 data/*.db
 data/*.db-*
+# The test environment's disposable working copy of the fixture
+data/test-run/
 data/*.sqlite
 data/*.bz2
 client/dist/

@@ -203,10 +203,22 @@ async function start() {
       console.log(`✓ Found ${cardCount.count} cards, ${priceCount.count} prices, ${setCount.count} sets in database`);
     }
 
-    // Setup daily sync schedule
-    setupDailySync();
-    setupPriceMonitoringSchedule();
-    initScheduledBackups();
+    // Background schedules: the weekly MTGJSON sync, the price checker and
+    // scheduled backups.
+    //
+    // DISABLE_SCHEDULED_JOBS exists for the test environment, and it is not a
+    // nicety. The weekly sync CLEARS `printings` and rebuilds it from a
+    // multi-gigabyte download; the price checker talks to live external APIs.
+    // Neither is something you want firing against a database copy you are
+    // using to reproduce a bug, and a test run that quietly ate its own
+    // fixture would be worse than no test run.
+    if (process.env.DISABLE_SCHEDULED_JOBS === 'true') {
+      console.log('⏸  Scheduled jobs disabled (DISABLE_SCHEDULED_JOBS=true)');
+    } else {
+      setupDailySync();
+      setupPriceMonitoringSchedule();
+      initScheduledBackups();
+    }
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`\n🚀 Deck Lotus server running on port ${PORT}`);

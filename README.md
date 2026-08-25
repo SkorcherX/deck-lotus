@@ -124,6 +124,52 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 ---
 
+## Test Environment
+
+Runs the real app against a scrubbed copy of a real database, on port 3100, so
+a change can be checked against production-shaped data before it is pushed.
+
+```bash
+npm run test:env:fresh
+```
+
+Then open <http://localhost:3100> and log in as `admin`, `Valoxi`, `MacTheCat`
+or `Viewaskewfool` — every account's password is `test`.
+
+| Command | What it does |
+|---|---|
+| `npm run test:env:reset` | Fresh working copy from the master fixture |
+| `npm run test:env` | Start the server against the existing copy |
+| `npm run test:env:fresh` | Reset, then start |
+
+**The fixture is never written to.** `data/deck-lotus-test.db` is the master and
+the server never opens it; every run works on `data/test-run/deck-lotus.db`,
+which `reset` replaces. The app migrates its database on startup, so the first
+thing any run does is write — without the disposable copy the master would
+drift away from what was handed over, one run at a time.
+
+**Scheduled jobs are off** (`DISABLE_SCHEDULED_JOBS=true`). The weekly MTGJSON
+sync clears `printings` and rebuilds it from a multi-gigabyte download, and the
+price checker calls live APIs. Neither belongs near a fixture. That flag is
+honoured by `src/server.js` and is useful in CI for the same reason.
+
+Registration is disabled for the run, so a stray signup cannot change what the
+next person testing sees.
+
+To make a fixture of your own:
+
+```bash
+cp data/deck-lotus.db data/deck-lotus-test.db
+node scripts/scrub-db.js data/deck-lotus-test.db --vacuum
+```
+
+The scrub replaces passwords with `test`, deletes API keys, rewrites emails and
+regenerates share tokens, while keeping the decks, inventory, trades and prices
+that make a bug reproducible. `test:env:reset` re-checks the password and fixes
+it if the fixture was scrubbed by an older version of that script.
+
+---
+
 ## Build from Source
 
 ```bash
