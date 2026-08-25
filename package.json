@@ -16,7 +16,8 @@
     "theme:prompt": "node scripts/theme-forge.mjs prompt",
     "theme:slots": "node scripts/theme-forge.mjs slots",
     "check:tokens": "node scripts/check-tokens.mjs",
-    "theme:forge": "node scripts/open-forge.mjs"
+    "theme:forge": "node scripts/open-forge.mjs",
+    "test:integration": "node --test test/integration/*.test.js"
   },
   "keywords": [
     "mtg",
@@ -27,7 +28,7 @@
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
-    "better-sqlite3": "^9.2.2",
+    "better-sqlite3": "^12.11.1",
     "bcrypt": "^5.1.1",
     "jsonwebtoken": "^9.0.2",
     "crypto": "^1.0.1",
