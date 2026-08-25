@@ -853,9 +853,12 @@ function colorPips(card) {
 }
 
 function bulkRow(card) {
+  // Rendered even when there is nothing to put in it: an omitted cell lets the
+  // grid pull the price left on that row alone, which is the ragged edge this
+  // column exists to avoid.
   const where = card.setCode
     ? `<span class="bulk-printing">${card.setCode.toUpperCase()} #${card.collectorNumber}</span>`
-    : '';
+    : '<span class="bulk-printing is-empty"></span>';
 
   // A card you own but that another deck is using is a different message from
   // one you simply do not have: this copy is findable at home, for a price
@@ -879,8 +882,10 @@ function bulkRow(card) {
       <span class="bulk-name">${card.name}</span>
       ${where}
       <span class="bulk-price">$${card.price.toFixed(2)}</span>
-      ${contested}
-      <span class="bulk-decks">${decks}</span>
+      <span class="bulk-meta">
+        ${contested}
+        <span class="bulk-decks">${decks}</span>
+      </span>
       <span class="bulk-actions">
         <button class="btn-icon found-btn${found ? ' is-found' : ''}" data-card-key="${bulkKey(card)}" data-card-id="${card.cardId}"
                 title="${found ? 'Press again to unmark' : 'Found it!'}" aria-pressed="${found}">

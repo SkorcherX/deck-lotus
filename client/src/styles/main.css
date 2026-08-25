@@ -1109,13 +1109,67 @@ select option {
   overflow: hidden;
 }
 
+/*
+ * A grid, not a flex row.
+ *
+ * Flex sized each cell to its own content, so the set and number rode along
+ * next to the price and got shoved left the moment a row also had "2 in other
+ * decks" to say. Every row then put its set code in a different place, and a
+ * list you are meant to scan a card a second became a list you have to read.
+ *
+ * Fixed tracks fix that: colours, quantity, set and price each own a column of
+ * the same width on every row whether they use it or not, and only the name
+ * flexes. The deck names and the contested note drop to a second line under
+ * the name, where growing costs nothing.
+ */
 .bulk-row {
+  display: grid;
+  grid-template-columns: 6.5rem 2.5rem minmax(0, 1fr) 7rem 4.5rem auto;
+  grid-template-areas:
+    "colors qty  name printing price actions"
+    ".      .    meta meta     meta  .";
+  align-items: center;
+  column-gap: 0.6rem;
+  row-gap: 0.15rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.bulk-colors { grid-area: colors; }
+.bulk-qty { grid-area: qty; }
+.bulk-name { grid-area: name; }
+.bulk-printing { grid-area: printing; }
+.bulk-price { grid-area: price; }
+.bulk-meta { grid-area: meta; }
+.bulk-actions { grid-area: actions; }
+
+.bulk-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.6rem;
-  padding: 0.7rem 0.9rem;
-  border-bottom: 1px solid var(--border);
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+/*
+ * Narrow enough to be a phone, which is where this view is actually used.
+ * Six fixed columns will not fit, so the name takes the whole second line and
+ * the set, price and buttons share the first with the colours — the pips stay
+ * leftmost either way, because that is the thing being scanned.
+ */
+@media (max-width: 640px) {
+  .bulk-row {
+    grid-template-columns: auto 2.5rem 1fr auto;
+    grid-template-areas:
+      "colors qty printing price"
+      "name   name name     actions"
+      "meta   meta meta     meta";
+    row-gap: 0.3rem;
+  }
+
+  .bulk-price {
+    text-align: right;
+  }
 }
 
 .bulk-row:last-child {
@@ -1264,8 +1318,9 @@ select option {
 .bulk-name {
   font-weight: 600;
   color: var(--text);
-  flex: 1;
-  min-width: 10rem;
+  /* The one cell allowed to flex. minmax(0, 1fr) on its track is what lets a
+     long card name shrink instead of widening the whole grid. */
+  min-width: 0;
 }
 
 .bulk-printing {
@@ -1276,12 +1331,23 @@ select option {
   border-radius: 0.25rem;
   padding: 0.1rem 0.4rem;
   white-space: nowrap;
+  /* Left-aligned inside its own track so the set codes stack under each other.
+     Justified to start rather than stretched, so the chip is only as wide as
+     the code it holds. */
+  justify-self: start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A card with no printing to quote still holds the column open. */
+.bulk-printing.is-empty {
+  background: none;
+  padding: 0;
 }
 
 .bulk-price {
   font-weight: 600;
   color: var(--success);
-  min-width: 3.5rem;
   text-align: right;
 }
 
@@ -1298,8 +1364,6 @@ select option {
 .bulk-decks {
   font-size: 0.75rem;
   color: var(--text-secondary);
-  flex-basis: 100%;
-  order: 10;
 }
 
 .bulk-actions {
