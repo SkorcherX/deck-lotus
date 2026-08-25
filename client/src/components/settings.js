@@ -6,6 +6,46 @@ import { refreshUserMenu } from './userMenu.js';
 import { THEMES, DEFAULT_THEME } from '../themes/registry.js';
 import { applyTheme, currentTheme } from '../utils/theme.js';
 
+/**
+ * What a restore actually put back, listed from the results rather than from a
+ * fixed list of table names.
+ *
+ * It used to name six tables. When the backup started carrying the rest of a
+ * user's data the modal would still have reported those six — and, worse,
+ * would have gone on printing "Owned Cards: 0" while the real collection
+ * restored perfectly, because `owned_cards` is a legacy presence table and the
+ * inventory lives in `owned_printings`. A restore that under-reports itself is
+ * how the gap went unnoticed in the first place.
+ *
+ * Zero counts are dropped: a list of empty tables buries the ones that matter,
+ * and "no trades restored" is not news to someone who has never traded.
+ */
+function restoredCounts(results) {
+  const LABELS = {
+    users: 'Users',
+    owned_printings: 'Collection (cards)',
+    owned_cards: 'Owned cards (legacy)',
+    decks: 'Decks',
+    deck_cards: 'Deck cards',
+    deck_games: 'Match records',
+    deck_shares: 'Deck shares',
+    deck_card_disruptions: 'Deck disruptions',
+    shopping_list_items: 'Wanted list',
+    found_cards: 'Found pile',
+    price_watches: 'Price watches',
+    trades: 'Trades',
+    trade_items: 'Trade items',
+    audit_log: 'History entries',
+    api_keys: 'API keys',
+  };
+
+  const rows = Object.entries(LABELS)
+    .filter(([key]) => results[key])
+    .map(([key, label]) => `<li>${label}: ${results[key]}</li>`);
+
+  return rows.length ? rows.join('') : '<li>Nothing to restore</li>';
+}
+
 export function setupSettings() {
   setupThemePicker();
   setupAvatarSettings();
@@ -79,12 +119,7 @@ export function setupSettings() {
           showModal('Backup Restored', `
             <p>Successfully restored backup!</p>
             <ul style="text-align: left; margin: 1rem 0;">
-              <li>Users: ${result.results.users}</li>
-              <li>Owned Cards: ${result.results.owned_cards || 0}</li>
-              <li>Decks: ${result.results.decks}</li>
-              <li>Deck Cards: ${result.results.deck_cards}</li>
-              <li>API Keys: ${result.results.api_keys}</li>
-              <li>Deck Shares: ${result.results.deck_shares}</li>
+              ${restoredCounts(result.results)}
             </ul>
             ${result.results.errors.length > 0 ? `
               <p style="color: var(--danger); margin-top: 1rem;">Errors: ${result.results.errors.length}</p>
@@ -756,12 +791,7 @@ window.restoreFromBackup = async function(filename) {
     showModal('Backup Restored', `
       <p>Successfully restored from ${filename}!</p>
       <ul style="text-align: left; margin: 1rem 0;">
-        <li>Users: ${result.results.users}</li>
-        <li>Owned Cards: ${result.results.owned_cards || 0}</li>
-        <li>Decks: ${result.results.decks}</li>
-        <li>Deck Cards: ${result.results.deck_cards}</li>
-        <li>API Keys: ${result.results.api_keys}</li>
-        <li>Deck Shares: ${result.results.deck_shares}</li>
+        ${restoredCounts(result.results)}
       </ul>
       ${result.results.errors.length > 0 ? `
         <p style="color: var(--danger); margin-top: 1rem;">Errors: ${result.results.errors.length}</p>

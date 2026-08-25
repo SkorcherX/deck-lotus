@@ -198,5 +198,17 @@ taken on GitHub — only do it when explicitly asked.
   wrapped to three lines inside the card; the deck builder shows the wording as
   a chip in the price row, and the per-card breakdown only when that chip is
   pressed. Anything that grows the label has to survive both.
+- The backup format (`src/services/backupService.js`) is at version 2, and the
+  rule that shapes it is the weekly MTGJSON sync: `cards` and `printings` are
+  rebuilt every time, so those tables are never backed up and **nothing may be
+  stored as a `printing_id` or `card_id`**. A printing travels as its `uuid`,
+  a card as its `name`. Version 1 got this partly right and still lost data —
+  it saved `owned_cards` (the legacy presence table, quantity always 1) and
+  called it the collection while `owned_printings` went unsaved, and it dropped
+  `is_foil` from `deck_cards` where finish is half the unique key. Adding a
+  user-scoped table means adding it here too, or a restore silently loses it.
+  `test/integration/backupRoundTrip.test.js` backs up, wipes and restores, and
+  is the only thing that catches this class of bug — a backup that never gets
+  restored looks perfect.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.
