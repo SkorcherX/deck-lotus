@@ -1161,6 +1161,21 @@ async function main() {
       }
     }
 
+    // Statistics last, once the tables are in their final shape.
+    //
+    // This import clears and rebuilds `printings` and `cards` wholesale, which
+    // leaves whatever `sqlite_stat1` held describing a database that no longer
+    // exists. Stale statistics are how the two-minute deck list (S7-1) comes
+    // back: without a plausible row count for `owned_printings` the planner
+    // drives the readiness query's correlated subquery from the collection and
+    // scans all of it per deck-card row. Migration 037 fixes that once; this
+    // is what stops the weekly sync silently undoing it.
+    //
+    // Around half a second, against the many minutes the import already took.
+    console.log('\n📊 Updating query planner statistics...');
+    targetDb.exec('ANALYZE;');
+    console.log('  ✓ ANALYZE complete');
+
     targetDb.close();
 
     // Clean up temporary MTGJSON files to save disk space
