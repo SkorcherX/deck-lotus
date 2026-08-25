@@ -31,8 +31,14 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      const body = await response.json().catch(() => ({ error: 'Request failed' }));
+      const error = new Error(body.error || `HTTP ${response.status}`);
+      // The status and the rest of the body travel with the error. A caller
+      // that can do something specific about a 409 — show what the row really
+      // holds — cannot do it from a message string alone.
+      error.status = response.status;
+      error.body = body;
+      throw error;
     }
 
     return response.json();
@@ -188,10 +194,14 @@ class ApiClient {
     return this.request(`/cards/${cardId}/ownership-usage`);
   }
 
-  async setOwnedPrintingQuantity(printingId, quantity, isFoil = false) {
+  // `expectedQuantity` turns this into a compare-and-set: pass what the page
+  // was showing and a row somebody else has changed since answers 409 instead
+  // of quietly taking their copies with it. Omit it for a write that should
+  // land regardless.
+  async setOwnedPrintingQuantity(printingId, quantity, isFoil = false, { expectedQuantity } = {}) {
     return this.request(`/cards/printings/${printingId}/quantity`, {
       method: 'POST',
-      body: JSON.stringify({ quantity, isFoil }),
+      body: JSON.stringify({ quantity, isFoil, expectedQuantity }),
     });
   }
 

@@ -255,20 +255,34 @@ router.get('/:id/ownership-usage', authenticate, (req, res, next) => {
 /**
  * POST /api/cards/printings/:printingId/quantity
  * Set owned quantity for a specific printing
+ *
+ * `expectedQuantity` is optional and is what the caller believed the row held
+ * when it worked out the number it is sending. Send it and a row that has
+ * moved since answers 409 with `currentQuantity`, rather than overwriting
+ * somebody else's edit and reporting success. Omit it and the write is
+ * unconditional, which is what a restore or a trade needs.
  */
 router.post('/printings/:printingId/quantity', authenticate, (req, res, next) => {
   try {
     const printingId = parseInt(req.params.printingId);
     const userId = req.user.id;
-    const { quantity, isFoil = false } = req.body;
+    const { quantity, isFoil = false, expectedQuantity } = req.body;
 
     if (quantity === undefined || quantity === null) {
       return res.status(400).json({ error: 'Quantity is required' });
     }
 
-    const result = setOwnedPrintingQuantity(userId, printingId, parseInt(quantity), isFoil, { source: 'card_page' });
+    const result = setOwnedPrintingQuantity(userId, printingId, parseInt(quantity), isFoil, {
+      source: 'card_page',
+      expectedQuantity,
+    });
     res.json(result);
   } catch (error) {
+    // The conflict carries the number the row actually holds, so the page can
+    // show it without a second round trip.
+    if (error.statusCode === 409) {
+      return res.status(409).json({ error: error.message, currentQuantity: error.currentQuantity });
+    }
     next(error);
   }
 });

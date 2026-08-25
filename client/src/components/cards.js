@@ -1280,7 +1280,7 @@ export async function showCardDetail(cardId) {
         const printingId = parseInt(this.dataset.printingId);
         const currentQty = parseInt(this.dataset.currentQty);
         const isFoil = this.dataset.isFoil === '1';
-        await updateOwnedPrintingQuantity(printingId, currentQty + 1, cardId, isFoil);
+        await updateOwnedPrintingQuantity(printingId, currentQty + 1, cardId, isFoil, currentQty);
       });
     });
 
@@ -1291,7 +1291,7 @@ export async function showCardDetail(cardId) {
         const currentQty = parseInt(this.dataset.currentQty);
         const isFoil = this.dataset.isFoil === '1';
         if (currentQty > 0) {
-          await updateOwnedPrintingQuantity(printingId, currentQty - 1, cardId, isFoil);
+          await updateOwnedPrintingQuantity(printingId, currentQty - 1, cardId, isFoil, currentQty);
         }
       });
     });
@@ -1555,10 +1555,19 @@ async function addPrintingToCollection(printingId, cardId) {
   }
 }
 
-async function updateOwnedPrintingQuantity(printingId, newQuantity, cardId, isFoil = false) {
+/**
+ * `expectedQuantity` is what the row was showing when the new number was
+ * worked out from it. The +/- buttons compute `currentQty + 1` from what is
+ * rendered, so if another tab (or the other half of a household) has changed
+ * the row since this page was drawn, that arithmetic is being done on a stale
+ * number and the write would silently discard their change. Passing it turns
+ * the write into a compare-and-set; a caller that genuinely means "set it to
+ * this whatever it says" leaves it out.
+ */
+async function updateOwnedPrintingQuantity(printingId, newQuantity, cardId, isFoil = false, expectedQuantity) {
   try {
     showLoading();
-    await api.setOwnedPrintingQuantity(printingId, newQuantity, isFoil);
+    await api.setOwnedPrintingQuantity(printingId, newQuantity, isFoil, { expectedQuantity });
 
     // Check if we need to update the browse grid checkbox
     // If quantity is 0, we might need to uncheck if this was the last printing
@@ -1578,6 +1587,23 @@ async function updateOwnedPrintingQuantity(printingId, newQuantity, cardId, isFo
     hideLoading();
   } catch (error) {
     hideLoading();
+
+    // Somebody else got there first. Say so with the number they left, and
+    // redraw — the next press then works from what is actually there, instead
+    // of repeating the same stale arithmetic.
+    if (error.status === 409) {
+      const now = error.body?.currentQuantity;
+      showToast(
+        now === undefined
+          ? 'That card changed somewhere else - reloading'
+          : `That card now holds ${now}, changed somewhere else - reloading`,
+        'warning',
+        3500
+      );
+      await showCardDetail(cardId);
+      return;
+    }
+
     showToast('Failed to update quantity', 'error');
     console.error('Update quantity error:', error);
   }

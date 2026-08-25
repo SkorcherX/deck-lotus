@@ -748,3 +748,87 @@ describe('editing a card that is not in the deck', () => {
     assert.notEqual(untouched.quantity, 4, "the other deck's row was edited anyway");
   });
 });
+
+
+/**
+ * Both collection endpoints take an absolute quantity, so two tabs that each
+ * read 4 and each add one both write 5: the second write was computed from a
+ * row that had already moved, and the copy the first one added is gone. Both
+ * requests answered 200 and nothing said a write had been discarded.
+ *
+ * The add path was made an increment already (see the quick-add tests above),
+ * which is immune by construction. This covers the setter, where "set it to
+ * exactly this" is the point and the caller has to say what it was setting
+ * from.
+ */
+describe('a write computed from a stale number is refused', () => {
+  const printingId = () => printings['Opt'].printingId;
+  const quantityNow = () =>
+    db.get(
+      `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = 0`,
+      [userId, printingId()]
+    )?.quantity ?? 0;
+
+  before(() => {
+    setOwnedPrintingQuantity(userId, printingId(), 4, false);
+  });
+
+  test('the second of two tabs is told, rather than overwriting the first', () => {
+    // Both tabs render 4. The first adds one and lands.
+    setOwnedPrintingQuantity(userId, printingId(), 5, false, { expectedQuantity: 4 });
+    assert.equal(quantityNow(), 5);
+
+    // The second still believes 4, and its 5 would silently undo the first.
+    assert.throws(
+      () => setOwnedPrintingQuantity(userId, printingId(), 5, false, { expectedQuantity: 4 }),
+      (err) => err.statusCode === 409 && err.currentQuantity === 5
+    );
+
+    assert.equal(quantityNow(), 5, 'the refused write moved the row anyway');
+  });
+
+  test('the conflict names the number the row actually holds', () => {
+    // Without it the page can only say "something went wrong", and the user's
+    // next press repeats the same stale arithmetic.
+    try {
+      setOwnedPrintingQuantity(userId, printingId(), 99, false, { expectedQuantity: 1 });
+      assert.fail('a stale write was accepted');
+    } catch (error) {
+      assert.equal(error.currentQuantity, 5);
+      assert.match(error.message, /5 copies/);
+    }
+  });
+
+  test('a write that matches what the caller saw goes through', () => {
+    setOwnedPrintingQuantity(userId, printingId(), 6, false, { expectedQuantity: 5 });
+    assert.equal(quantityNow(), 6);
+  });
+
+  test('omitting it keeps the unconditional write a restore needs', () => {
+    setOwnedPrintingQuantity(userId, printingId(), 2, false);
+    assert.equal(quantityNow(), 2);
+  });
+
+  test('zeroing a row is guarded too, since it discards the most', () => {
+    assert.throws(
+      () => setOwnedPrintingQuantity(userId, printingId(), 0, false, { expectedQuantity: 9 }),
+      (err) => err.statusCode === 409
+    );
+    assert.equal(quantityNow(), 2, 'a refused removal removed the row anyway');
+
+    setOwnedPrintingQuantity(userId, printingId(), 0, false, { expectedQuantity: 2 });
+    assert.equal(quantityNow(), 0);
+  });
+
+  test('an absent row counts as zero, so two tabs cannot both create it', () => {
+    // The row is gone. A tab that still believes it holds 2 must not be able
+    // to write on top of whatever replaced it.
+    assert.throws(
+      () => setOwnedPrintingQuantity(userId, printingId(), 3, false, { expectedQuantity: 2 }),
+      (err) => err.statusCode === 409 && err.currentQuantity === 0
+    );
+
+    setOwnedPrintingQuantity(userId, printingId(), 3, false, { expectedQuantity: 0 });
+    assert.equal(quantityNow(), 3);
+  });
+});

@@ -850,6 +850,34 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = 
     [userId, printingId, foilFlag]
   )?.quantity || 0;
 
+  // Optimistic concurrency, for the callers that can say what they saw.
+  //
+  // This endpoint takes an absolute quantity, so two tabs that each read 4 and
+  // each add one both write 5 — the second write lands on a row that is no
+  // longer the one it was computed from, and the copy the first one added is
+  // gone. Both requests answered 200 and nothing anywhere said a write had
+  // been discarded, which is the part that makes it a data-loss bug rather
+  // than a race.
+  //
+  // `expectedQuantity` is what the caller believed the row held when it worked
+  // out the number it is sending. If the row has moved since, the write is
+  // refused with what it actually holds, and the caller can show that instead
+  // of silently overwriting it. Callers that cannot know — a bulk restore, a
+  // trade settling both sides inside its own transaction — simply omit it and
+  // get the previous behaviour.
+  if (context.expectedQuantity !== undefined && context.expectedQuantity !== null) {
+    const expected = Number(context.expectedQuantity);
+
+    if (Number.isFinite(expected) && expected !== previous) {
+      const error = new Error(
+        `This card now holds ${previous} ${previous === 1 ? 'copy' : 'copies'}, not ${expected} — somewhere else changed it first`
+      );
+      error.statusCode = 409;
+      error.currentQuantity = previous;
+      throw error;
+    }
+  }
+
   const logChange = (after) => recordInventoryChange({
     userId,
     actorUserId: context.actorUserId ?? userId,
