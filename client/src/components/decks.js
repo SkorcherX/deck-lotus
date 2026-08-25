@@ -270,22 +270,31 @@ function renderDecks() {
     return `
       <div class="deck-card" data-deck-id="${deck.id}" data-status="${deck.status || 'building'}" style="${backgroundStyle}">
         <div class="deck-card-header">
-          <div>
-            <h3>${deck.name}</h3>
-            ${deck.format ? `<span class="deck-format">${deck.format}</span>` : ''}
-            ${deck.traded_away_count ? `<span class="deck-format" style="background:var(--drift-traded-amber);color:var(--on-accent);" title="Traded away, still listed in this deck">${deck.traded_away_count} traded away</span>` : ''}
-          </div>
+          <h3>${deck.name}</h3>
           <select class="deck-status-select" data-deck-id="${deck.id}" aria-label="Status for ${deck.name.replace(/"/g, '&quot;')}">
             ${DECK_STATUSES.map(
               (s) => `<option value="${s.value}" ${(deck.status || 'building') === s.value ? 'selected' : ''}>${s.label}</option>`
             ).join('')}
           </select>
         </div>
-        <div class="deck-card-stats">
-          <span>Main: ${deck.mainboard_count || 0} cards</span>
-          <span>Side: ${deck.sideboard_count || 0} cards</span>
-          ${recordBadge(deck.record)}
-          ${readinessBadge(deck.readiness)}
+        <!--
+          Everything except the name is pinned to the bottom of the card, just
+          above the buttons. Laid out from the top down, a deck whose name
+          wrapped to two lines pushed its format tag and its counts down with
+          it, so no two cards in a row read across at the same height. The name
+          is the only part allowed to grow; the rest is a fixed footer.
+        -->
+        <div class="deck-card-meta">
+          <div class="deck-card-badges">
+            ${deck.format ? `<span class="deck-format">${deck.format}</span>` : ''}
+            ${deck.traded_away_count ? `<span class="deck-format" style="background:var(--drift-traded-amber);color:var(--on-accent);" title="Traded away, still listed in this deck">${deck.traded_away_count} traded away</span>` : ''}
+          </div>
+          <div class="deck-card-stats">
+            <span>Main: ${deck.mainboard_count || 0} cards</span>
+            <span>Side: ${deck.sideboard_count || 0} cards</span>
+            ${recordBadge(deck.record)}
+            ${readinessBadge(deck.readiness)}
+          </div>
         </div>
         <div class="deck-card-actions">
           <button class="btn btn-primary btn-edit" data-deck-id="${deck.id}">Edit</button>

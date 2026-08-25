@@ -867,12 +867,40 @@ select option {
   display: flex;
   justify-content: space-between;
   align-items: start;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
 .deck-card h3 {
   font-size: 1.25rem;
-  margin-bottom: 0.5rem;
+  /* The name is the only part of the card that grows. Its own bottom margin
+     would be a gap of a different size depending on whether it wrapped, so
+     the space below it belongs to .deck-card-meta's `margin-top: auto`. */
+  margin-bottom: 0;
+}
+
+/*
+ * The card's footer: badges and counts, held down against the buttons.
+ *
+ * `margin-top: auto` is what does it — the header takes the space it needs at
+ * the top, this takes up the slack, and everything from the format tag down
+ * lands at the same height on every card in the row regardless of how long
+ * the deck's name is.
+ */
+.deck-card-meta {
+  margin-top: auto;
+}
+
+.deck-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+/* Only when there is a badge above them, so a deck with no format set does
+   not get a gap where the tag would have been. */
+.deck-card-badges:not(:empty) + .deck-card-stats {
+  margin-top: 0.75rem;
 }
 
 .deck-card .deck-format {
@@ -888,6 +916,8 @@ select option {
 
 .deck-card-stats {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 1rem;
   color: var(--text-secondary);
   font-size: 0.875rem;
@@ -1420,9 +1450,8 @@ select option {
 .deck-card-actions {
   display: flex;
   gap: 0.5rem;
-  /* Pinned to the bottom of the card rather than trailing the text above it,
-     so every card in a row lines its buttons up. See .deck-card. */
-  margin-top: auto;
+  /* .deck-card-meta above takes up the slack now, so these follow it rather
+     than pushing off the bottom themselves. See .deck-card. */
   padding-top: 1rem;
 }
 
