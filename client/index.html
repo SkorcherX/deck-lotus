@@ -1324,7 +1324,14 @@
                 <div class="page-header">
                     <h2>Scan Cards</h2>
                     <div class="page-header-actions">
-                        <select id="scan-camera-select" class="scan-camera-select" disabled></select>
+                        <select id="scan-camera-select" class="scan-camera-select"
+                                aria-label="Camera" title="Which camera to scan with" disabled>
+                            <!-- Device labels are blank until camera permission is
+                                 granted, so the real list only arrives once scanning
+                                 starts. Until then this names the control rather than
+                                 collapsing to a 21px sliver. -->
+                            <option value="">Default camera</option>
+                        </select>
                         <span id="scan-resolution" class="scan-resolution"></span>
                         <button id="scan-start-btn" class="btn btn-primary">
                             <i class="ph ph-video-camera btn-icon"></i>

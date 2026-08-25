@@ -157,12 +157,16 @@ async function populateCameraList() {
   const cameras = devices.filter((d) => d.kind === 'videoinput');
   const previous = select.value;
 
-  select.innerHTML = cameras
-    .map(
-      (camera, index) =>
-        `<option value="${camera.deviceId}">${camera.label || `Camera ${index + 1}`}</option>`
-    )
-    .join('');
+  // An empty <select> collapses to a sliver — 21px on the page whose entire
+  // premise is picking the right camera. Say what happened instead.
+  select.innerHTML = cameras.length
+    ? cameras
+        .map(
+          (camera, index) =>
+            `<option value="${camera.deviceId}">${camera.label || `Camera ${index + 1}`}</option>`
+        )
+        .join('')
+    : '<option value="">No camera found</option>';
 
   if (previous && cameras.some((c) => c.deviceId === previous)) select.value = previous;
   select.disabled = cameras.length < 2;

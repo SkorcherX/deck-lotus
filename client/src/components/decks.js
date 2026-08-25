@@ -405,12 +405,34 @@ function readinessBadge(readiness) {
 
   const title = detail.length ? detail.join('; ') : 'Every card owned and free';
 
-  // A dot, not the label. The words belong on the deck page, where there is
-  // room for them and something to do about them; here they wrapped across
-  // three lines and pushed the buttons around. The label is still in the
-  // tooltip, and it is still what screen readers get.
-  return `<span class="deck-readiness is-dot" data-state="${readiness.state}"
-                title="${readiness.label} — ${title}">${readiness.label}</span>`;
+  // A dot and a short verdict.
+  //
+  // The full wording — "Short 73 to buy · 23 in other decks" — is a sentence,
+  // and a sentence wrapped to three lines inside a card whose job is the
+  // deck's name and its buttons. So it was cut to a dot, and the words moved
+  // into the `title`. But tooltips do not fire on touch: on a phone that left
+  // readiness as a 10px dot conveying its verdict by hue alone, which is
+  // nothing at all to anyone who cannot separate the hues.
+  //
+  // Two or three words fit where a sentence did not. The numbers stay in the
+  // tooltip and the full breakdown stays on the deck page, where there is room
+  // to act on it.
+  return `<span class="deck-readiness" data-state="${readiness.state}"
+                title="${readiness.label} — ${title}">${shortVerdict(readiness)}</span>`;
+}
+
+/**
+ * Readiness in as few words as will still answer the question.
+ *
+ * Deliberately not `readiness.label` — that is written for the deck page, where
+ * the whole sentence has room. Here the question is only "can I sleeve this
+ * one", and the number is what distinguishes "nearly" from "not close".
+ */
+function shortVerdict(readiness) {
+  if (readiness.state === 'ready') return 'Ready';
+  if (readiness.missingCopies) return `Short ${readiness.missingCopies}`;
+  if (readiness.contestedCopies) return `${readiness.contestedCopies} held`;
+  return readiness.label;
 }
 
 /**

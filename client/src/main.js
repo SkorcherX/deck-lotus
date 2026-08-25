@@ -218,6 +218,57 @@ class App {
     }
   }
 
+  /**
+   * Say out loud that the nav scrolls.
+   *
+   * Eight destinations do not fit a phone: at 375px the row is 344px of links
+   * in 215px of space, so Scan, Price Watch and Audit Log sit off the right
+   * edge on load. They were always reachable by swiping — but nothing said so,
+   * and a fade drawn over the last icon reads as a rendering artifact rather
+   * than an invitation.
+   *
+   * A button, not just a gradient: it is the affordance for a pointer as well
+   * as a finger, and pressing it moves the row rather than requiring the user
+   * to guess that the row moves. It appears only while there is something
+   * off-screen in that direction, so on a desktop where all eight fit there is
+   * nothing to explain and nothing shown.
+   */
+  setupNavOverflowHint() {
+    const nav = document.querySelector('.nav-links');
+    if (!nav || nav.parentElement.querySelector('.nav-scroll-hint')) return;
+
+    const hint = document.createElement('button');
+    hint.type = 'button';
+    hint.className = 'nav-scroll-hint hidden';
+    hint.setAttribute('aria-label', 'Scroll navigation for more pages');
+    hint.title = 'More pages';
+    hint.innerHTML = '<i class="ph ph-caret-right"></i>';
+
+    hint.addEventListener('click', () => {
+      // Assigned, not animated. The row is scroll-snapped, and a smooth scroll
+      // is pulled back to the snap point it started from — pressing this three
+      // times to travel one icon is worse than arriving at once. Assignment
+      // lets the snap settle the final position.
+      nav.scrollLeft = Math.min(
+        nav.scrollWidth,
+        nav.scrollLeft + Math.round(nav.clientWidth * 0.8)
+      );
+    });
+
+    nav.insertAdjacentElement('afterend', hint);
+
+    const update = () => {
+      const more = nav.scrollWidth - nav.clientWidth - nav.scrollLeft > 4;
+      hint.classList.toggle('hidden', !more);
+    };
+
+    nav.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    // The pending-trades badge changes the row's width when it appears.
+    new ResizeObserver(update).observe(nav);
+    update();
+  }
+
   setupNavigation() {
     // Nav links
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -227,6 +278,8 @@ class App {
         this.showPage(page);
       });
     });
+
+    this.setupNavOverflowHint();
 
     // Settings lives in the avatar menu rather than the top row, so it has no
     // .nav-link to hang off. The menu asks for the page by event instead of

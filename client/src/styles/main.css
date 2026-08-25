@@ -1010,23 +1010,23 @@ select option {
 }
 
 /*
- * On a deck card the badge is a dot and nothing else.
+ * On a deck card the badge is a dot and two words.
  *
- * The wording — "Short 73 to buy · 23 in other decks" — is honest but it is a
- * sentence, and a sentence wraps to three lines inside a card whose whole job
- * is the deck's name and its buttons. The colour still ranks the decks at a
- * glance (and keeps the "Needs work first" sort meaning something), the title
- * carries the numbers on hover, and the full breakdown lives on the deck page
- * where there is room to act on it.
+ * It was a dot alone, because the full wording is a sentence and a sentence
+ * wrapped to three lines inside a card whose job is the deck's name and its
+ * buttons. But a tooltip is not a fallback on a touchscreen — it never opens —
+ * so that left a 10px dot saying everything through hue, which is nothing to a
+ * red/green colourblind reader. "Ready" and "Short 12" fit on the line the dot
+ * was already on. The numbers stay in the title; the breakdown stays on the
+ * deck page.
  */
-.deck-readiness.is-dot {
-  gap: 0;
-  font-size: 0;
+.deck-readiness {
+  font-size: 0.75rem;
 }
 
-.deck-readiness.is-dot::before {
-  width: 0.6rem;
-  height: 0.6rem;
+.deck-readiness::before {
+  width: 0.55rem;
+  height: 0.55rem;
 }
 
 .deck-readiness::before {
@@ -7673,4 +7673,108 @@ body.maintenance-locked #app {
 @media (max-width: 700px) {
   .shopping-wanted-entry { flex-direction: column; }
   .shopping-wanted-search { width: 100%; }
+}
+
+
+/* ---------------------------------------------------------------------------
+   Targets big enough to hit
+   ---------------------------------------------------------------------------
+   A control that changes something is worth 24px of finger, and several here
+   were not: the deck status select was 20px tall, the inventory and scan
+   checkboxes were the browser's native 13px, and Shopping's deck checkboxes
+   were 20px.
+
+   The status select is the one that matters most, which is why it is listed
+   first: a deck's status is its priority claim on cards (see deckPriority), so
+   changing it re-derives readiness and shortfalls across every other deck. It
+   was the smallest target on the page and one of the most consequential.
+
+   24px rather than the 44px a touch guideline would ask for: these sit inside
+   dense rows — a card grid, a deck header — and 44px would push the layouts
+   apart. 24px is the floor, and it is a great deal more than 13. */
+.deck-status-select {
+  min-height: 1.75rem;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
+.scan-toggle input[type="checkbox"],
+.deck-selector-item input[type="checkbox"],
+.shopping-filters-grid input[type="checkbox"],
+.checkbox-label input[type="checkbox"] {
+  width: 1.5rem;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* The native checkbox is the hit target as well as the mark, so give the label
+   around it the rest of the height rather than growing the box further. */
+.deck-selector-item,
+.checkbox-label {
+  min-height: 1.5rem;
+}
+
+.shopping-filters-grid .filter-select,
+.shopping-filters-grid .filter-input {
+  min-height: 1.75rem;
+}
+
+/* An empty <select> collapses to a sliver. This one is on the page whose whole
+   premise is choosing the right camera, so it holds a usable width even while
+   it is still looking for one. */
+.scan-camera-select {
+  min-width: 10rem;
+  min-height: 1.75rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Double-faced card names
+   ---------------------------------------------------------------------------
+   "Adventurous Eater // Have a Bite" wants 238px in a 179px box. The rule above
+   gives the name one line and an ellipsis, which on a `//` name cuts exactly
+   where the meaning is: the two halves are different cards, and which one you
+   are looking at is the thing the name is for.
+
+   Two lines, then ellipsis. Only in the inventory list, where the row can grow;
+   the bulk-bin list keeps its single line deliberately, because it is read by
+   flicking down a column in a shop. */
+.inventory-card-name > :first-child {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+
+/* The nav's "there is more this way" button. Sits at the right edge of the
+   links, inside the header row, and is present only while something is
+   actually off-screen — see setupNavOverflowHint. */
+.nav-scroll-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-left: -0.25rem;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.nav-scroll-hint:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.nav-scroll-hint.hidden {
+  display: none;
 }
