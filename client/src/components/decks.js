@@ -24,7 +24,32 @@ const STATUS_LABELS = Object.fromEntries(DECK_STATUSES.map((s) => [s.value, s.la
 // than hidden by default: a status you set yourself vanishing from the list is
 // how decks get lost.
 let statusFilter = 'all';
-let deckSort = 'updated';
+/*
+ * How the grid is ordered.
+ *
+ * Alphabetical by default. It used to be "recently updated", which meant the
+ * cards swapped places whenever anything touched a deck's `updated_at` — so
+ * the deck you were about to click had moved by the time you looked back, for
+ * a reason nothing on screen explained. A list you can find things in twice
+ * beats one that is freshly ranked.
+ *
+ * Remembered per browser, because a sort you have to re-pick on every visit is
+ * not really a setting.
+ */
+const DECK_SORT_KEY = 'deckLotus.deckSort';
+const DECK_SORTS = ['name', 'updated', 'readiness'];
+
+let deckSort = readStoredSort();
+
+function readStoredSort() {
+  try {
+    const stored = localStorage.getItem(DECK_SORT_KEY);
+    return DECK_SORTS.includes(stored) ? stored : 'name';
+  } catch {
+    // Private browsing, or storage turned off. Not a reason to fail to render.
+    return 'name';
+  }
+}
 
 export function setupDecks() {
   const newDeckBtn = document.getElementById('new-deck-btn');
@@ -149,9 +174,9 @@ function renderDecksToolbar() {
     ${DECK_STATUSES.map((s) => chip(s.value, s.label)).join('')}
     <div class="decks-toolbar-spacer"></div>
     <select id="deck-sort" class="deck-status-select" aria-label="Sort decks">
+      <option value="name" ${deckSort === 'name' ? 'selected' : ''}>Name (A–Z)</option>
       <option value="updated" ${deckSort === 'updated' ? 'selected' : ''}>Recently updated</option>
       <option value="readiness" ${deckSort === 'readiness' ? 'selected' : ''}>Needs work first</option>
-      <option value="name" ${deckSort === 'name' ? 'selected' : ''}>Name</option>
     </select>
   `;
 
@@ -164,6 +189,11 @@ function renderDecksToolbar() {
 
   toolbar.querySelector('#deck-sort').addEventListener('change', (e) => {
     deckSort = e.target.value;
+    try {
+      localStorage.setItem(DECK_SORT_KEY, deckSort);
+    } catch {
+      // See readStoredSort: the sort still applies, it just will not persist.
+    }
     renderDecks();
   });
 }
@@ -189,12 +219,12 @@ function visibleDecks() {
           (b.readiness?.missingCopies || 0) - (a.readiness?.missingCopies || 0) ||
           a.name.localeCompare(b.name)
       );
-    case 'name':
-      return filtered.sort((a, b) => a.name.localeCompare(b.name));
     case 'updated':
-    default:
       // The server already returns them in updated_at order.
       return filtered;
+    case 'name':
+    default:
+      return filtered.sort((a, b) => a.name.localeCompare(b.name));
   }
 }
 

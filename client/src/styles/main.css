@@ -848,6 +848,13 @@ select option {
   padding: 1.5rem;
   cursor: pointer;
   transition: all 0.3s;
+  /* A column so the actions can be pushed to the bottom. Grid rows already
+     stretch every card in a row to the tallest one; without this the buttons
+     sat directly under each card's own content, so a two-line deck name next
+     to a one-line one put their Edit buttons at different heights and the row
+     read as broken rather than as two decks. */
+  display: flex;
+  flex-direction: column;
 }
 
 .deck-card:hover {
@@ -903,13 +910,16 @@ select option {
   color: var(--text-secondary);
   border: 1px solid var(--border);
   border-radius: 0.375rem;
-  /* Extra room on the right, and it has to be here rather than left to the
-     browser: a select sizes itself to its widest *option*, measured without
-     the uppercasing and letter-spacing this rule then applies to the value it
-     renders. "BUILDING" therefore came out wider than the box holding it and
-     lost its last letter. `width: auto` stops a flex parent squeezing it back
-     down again. */
-  padding: 0.2rem 1rem 0.2rem 0.5rem;
+  /* The "G" of BUILDING was never clipped by the box — the chevron was drawn
+     on top of it. The global `select` rule above paints a caret as a
+     background image and reserves 2.25rem of right padding for it; this rule
+     comes later in the file, so its shorthand `padding` won that reservation
+     back while the image carried on being painted. The caret is worth keeping
+     — without it this reads as a label rather than a control — so it is moved
+     in and shrunk to chip scale, and the padding holds room for it again. */
+  padding: 0.2rem 1.35rem 0.2rem 0.5rem;
+  background-position: right 0.4rem center;
+  background-size: 10px;
   width: auto;
   font-size: 0.7rem;
   font-weight: 600;
@@ -1410,7 +1420,10 @@ select option {
 .deck-card-actions {
   display: flex;
   gap: 0.5rem;
-  margin-top: 1rem;
+  /* Pinned to the bottom of the card rather than trailing the text above it,
+     so every card in a row lines its buttons up. See .deck-card. */
+  margin-top: auto;
+  padding-top: 1rem;
 }
 
 .deck-card-actions button {
