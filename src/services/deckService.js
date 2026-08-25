@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getDisruptionCounts, getDisruptions } from './tradeService.js';
 import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
 import { getDeckRecords, getDeckRecord } from './deckGameService.js';
+import { getDeckReadinessSummaries, getDeckReadiness } from './deckReadinessService.js';
 
 /**
  * Get all decks for a user
@@ -28,6 +29,10 @@ export function getUserDecks(userId) {
   // out into one lookup per card shown.
   const records = getDeckRecords(userId);
 
+  // Whether each deck can actually be sleeved up, and if not whether that is a
+  // shop trip or a teardown. One query for every deck, same reason as above.
+  const readiness = getDeckReadinessSummaries(userId);
+
   // Get a random card image for each deck (prefer creatures)
   return decks.map(deck => {
     const randomCard = db.get(
@@ -49,7 +54,8 @@ export function getUserDecks(userId) {
       traded_away_count: disruptions.get(deck.id)?.cards || 0,
       record: records.get(deck.id) || {
         wins: 0, losses: 0, draws: 0, played: 0, winRate: null
-      }
+      },
+      readiness: readiness.get(deck.id) || null
     };
   });
 }
@@ -120,6 +126,9 @@ export function getDeckById(deckId, userId) {
     // out — because the owner has not yet said whether it should shrink.
     disruptions: getDisruptions(userId, deckId),
     record: getDeckRecord(deckId, userId),
+    // Derived, never stored: a cached readiness count and the collection it
+    // came from can disagree, and then neither can be trusted.
+    readiness: getDeckReadiness(userId, deckId),
   };
 }
 
