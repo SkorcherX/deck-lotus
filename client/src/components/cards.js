@@ -1542,11 +1542,16 @@ async function quickRemoveCard(cardId, deckId) {
   }
 }
 
+// The card page's printing dropdown lists every printing, owned or not, so
+// "add" here is the same affordance as the Inventory flyout's — and had the
+// same bug: a hardcoded absolute 1 handed to a setter, which reduced an owned
+// stack to a single copy and called it "Added to collection!". It adds one.
 async function addPrintingToCollection(printingId, cardId) {
   try {
     showLoading();
-    await api.setOwnedPrintingQuantity(printingId, 1);
-    showToast('Added to collection!', 'success', 2000);
+    const result = await api.quickAddToInventory(printingId, 1, false, 'card_page');
+    const total = result?.quantity;
+    showToast(total ? `Added — you now have ${total}` : 'Added to collection!', 'success', 2000);
     // Update the browse grid checkbox
     updateBrowseGridOwnership(cardId, true);
     // Reload the card detail to show updated ownership

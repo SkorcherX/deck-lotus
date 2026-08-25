@@ -879,6 +879,86 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = 
 }
 
 /**
+ * Add copies to a row, rather than declaring what it holds.
+ *
+ * `setOwnedPrintingQuantity` is a setter and reads like one from the API, but
+ * that is not what every caller means. "Quick-add", "+", a click on a printing
+ * in the flyout — all of those mean *one more*, and wiring them to the setter
+ * turned five owned copies into one and said "Card added to inventory!" while
+ * doing it. This is the path those callers want.
+ *
+ * The increment happens inside the UPDATE (`quantity = quantity + ?`), the way
+ * bulkAddToInventory already does it, so two adds that arrive together both
+ * land instead of one overwriting the other. Read-modify-write in JavaScript
+ * would reintroduce exactly the loss this function exists to stop.
+ *
+ * Deliberately additive only: `delta` must be a positive whole number. Taking
+ * copies away is `setOwnedPrintingQuantity`'s job, where the caller has to
+ * name the number it expects to be left with — which is the check you want
+ * standing between a stray click and a removed row.
+ */
+export function addOwnedPrintingQuantity(userId, printingId, delta = 1, isFoil = false, context = {}) {
+  if (!Number.isInteger(delta) || delta < 1) {
+    throw new Error('Quantity to add must be a whole number of at least 1');
+  }
+
+  const foilFlag = isFoil ? 1 : 0;
+
+  const printing = db.get(`SELECT card_id FROM printings WHERE id = ?`, [printingId]);
+
+  if (!printing) {
+    throw new Error('Printing not found');
+  }
+
+  const cardId = printing.card_id;
+
+  const existing = db.get(
+    `SELECT id, quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+    [userId, printingId, foilFlag]
+  );
+
+  if (existing) {
+    db.run(
+      `UPDATE owned_printings SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [delta, existing.id]
+    );
+  } else {
+    db.run(
+      `INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil) VALUES (?, ?, ?, ?)`,
+      [userId, printingId, delta, foilFlag]
+    );
+  }
+
+  // The legacy presence mirror, kept in step exactly as the setter does.
+  db.run(
+    `INSERT INTO owned_cards (user_id, card_id, quantity) VALUES (?, ?, 1)
+     ON CONFLICT(user_id, card_id) DO UPDATE SET quantity = 1`,
+    [userId, cardId]
+  );
+
+  // Read back rather than compute: the row is the authority on what it now
+  // holds, and it is what the caller reports to the user.
+  const quantity = db.get(
+    `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+    [userId, printingId, foilFlag]
+  )?.quantity ?? delta;
+
+  recordInventoryChange({
+    userId,
+    actorUserId: context.actorUserId ?? userId,
+    printingId,
+    isFoil,
+    before: quantity - delta,
+    after: quantity,
+    source: context.source || 'api',
+    tradeId: context.tradeId ?? null,
+    detail: context.detail ?? null,
+  });
+
+  return { success: true, quantity, added: delta };
+}
+
+/**
  * Get all decks that contain a specific card
  */
 export function getCardDeckUsage(userId, cardId) {

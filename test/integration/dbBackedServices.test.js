@@ -31,6 +31,8 @@ const { runMigrations, closeDb } = await import('../../src/db/index.js');
 const { default: db } = await import('../../src/db/connection.js');
 const { getDeckReadiness } = await import('../../src/services/deckReadinessService.js');
 const { getBulkBinList } = await import('../../src/services/shoppingService.js');
+const { addOwnedPrintingQuantity, setOwnedPrintingQuantity } =
+  await import('../../src/services/cardService.js');
 
 let userId;
 let deckA;
@@ -350,5 +352,71 @@ describe('deck status decides whose claim wins', () => {
     const elves = forIdea.cards.find((c) => c.name === 'Llanowar Elves');
     assert.equal(elves.contested, 1);
     assert.deepEqual(elves.heldBy.map((d) => d.deckName).sort(), ['Half Built', 'Sleeved Deck']);
+  });
+});
+
+
+/**
+ * The bug this guards against did not look like a bug: quick-add called a
+ * *setter* with a hardcoded 1, so adding one copy of a card you owned five of
+ * left you owning one — and the toast said "Card added to inventory!".
+ * Nothing failed, nothing was logged as an error, and four copies were gone.
+ */
+describe('adding copies adds, and does not overwrite', () => {
+  const ownedOf = (name, isFoil = 0) =>
+    db.get(
+      `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+      [userId, printings[name].printingId, isFoil]
+    )?.quantity ?? 0;
+
+  test('a stack of copies grows by one rather than collapsing to one', () => {
+    setOwnedPrintingQuantity(userId, printings['Opt'].printingId, 5, false);
+
+    const result = addOwnedPrintingQuantity(userId, printings['Opt'].printingId, 1, false, {
+      source: 'quick_add',
+    });
+
+    assert.equal(ownedOf('Opt'), 6, 'adding one copy did not leave six');
+    assert.equal(result.quantity, 6, 'the response has to carry the new total, not the delta');
+    assert.equal(result.added, 1);
+  });
+
+  test('a printing owned by nobody starts at what was added', () => {
+    addOwnedPrintingQuantity(userId, printings['Grizzly Bears'].printingId, 3, false);
+    assert.equal(ownedOf('Grizzly Bears'), 3);
+  });
+
+  test('foil stays a row of its own, as everywhere else', () => {
+    const before = ownedOf('Opt');
+    addOwnedPrintingQuantity(userId, printings['Opt'].printingId, 2, true);
+
+    assert.equal(ownedOf('Opt', 1), 2, 'the foil row did not take the copies');
+    assert.equal(ownedOf('Opt'), before, 'adding a foil moved the non-foil row');
+  });
+
+  test('the audit row records the stack it grew from, not zero', () => {
+    const before = ownedOf('Opt');
+    addOwnedPrintingQuantity(userId, printings['Opt'].printingId, 1, false, { source: 'quick_add' });
+
+    const entry = db.get(
+      `SELECT source, quantity_before, quantity_after FROM audit_log
+        WHERE printing_id = ? AND is_foil = 0 ORDER BY id DESC LIMIT 1`,
+      [printings['Opt'].printingId]
+    );
+    assert.equal(entry.source, 'quick_add');
+    assert.equal(entry.quantity_before, before);
+    assert.equal(entry.quantity_after, before + 1);
+  });
+
+  test('taking copies away is a different function', () => {
+    const before = ownedOf('Opt');
+    assert.throws(() => addOwnedPrintingQuantity(userId, printings['Opt'].printingId, 0, false));
+    assert.throws(() => addOwnedPrintingQuantity(userId, printings['Opt'].printingId, -2, false));
+    assert.equal(ownedOf('Opt'), before, 'a rejected add still moved the row');
+  });
+
+  test('the setter still sets, because the card page needs it to', () => {
+    setOwnedPrintingQuantity(userId, printings['Opt'].printingId, 2, false);
+    assert.equal(ownedOf('Opt'), 2);
   });
 });

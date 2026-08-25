@@ -769,10 +769,20 @@ function closePrintingFlyout() {
   document.querySelectorAll('.quick-result-item').forEach(el => el.classList.remove('active'));
 }
 
+// Reached from the flyout's add button and from a click anywhere on a printing
+// row, so a mis-click lands here. It used to call setOwnedPrintingQuantity with
+// a hardcoded 1 — an *absolute* quantity — which turned five owned copies into
+// one and then said "Card added to inventory!". Adding one copy is what both
+// affordances read as, so it adds one copy.
 async function quickAddPrinting(printingId, isFoil = false) {
   try {
-    await api.setOwnedPrintingQuantity(printingId, 1, isFoil);
-    showToast(isFoil ? 'Foil card added to inventory!' : 'Card added to inventory!', 'success');
+    const result = await api.quickAddToInventory(printingId, 1, isFoil);
+    // The new total, not just "added": the number is the confirmation. If a
+    // click ever lands on the wrong row again, a count that jumped the wrong
+    // way is what makes it visible.
+    const total = result?.quantity;
+    const noun = isFoil ? 'Foil card added' : 'Card added';
+    showToast(total ? `${noun} — you now have ${total}` : `${noun} to inventory!`, 'success');
 
     // Refresh inventory data
     await loadInventoryData();

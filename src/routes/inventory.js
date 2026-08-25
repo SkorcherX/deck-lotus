@@ -9,7 +9,7 @@ import {
   getBuilderInventory,
   getOwnedSets,
 } from '../services/inventoryService.js';
-import { setOwnedPrintingQuantity } from '../services/cardService.js';
+import { addOwnedPrintingQuantity } from '../services/cardService.js';
 import { AUDIT_SOURCES } from '../services/auditService.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -211,6 +211,14 @@ router.post('/bulk-resolve', authenticate, (req, res, next) => {
 /**
  * POST /api/inventory/quick-add
  * Quick-add a single card to inventory
+ *
+ * `quantity` is how many copies to ADD, not what the row should end up
+ * holding. It used to be passed straight to setOwnedPrintingQuantity, so
+ * quick-adding one copy of a card you owned five of left you owning one — and
+ * answered 200. The name of this endpoint is "add"; it now adds.
+ *
+ * The response carries `quantity` (the row's new total) and `added`, so a
+ * caller can tell the user what they now have rather than guessing.
  */
 router.post('/quick-add', authenticate, (req, res, next) => {
   try {
@@ -220,7 +228,14 @@ router.post('/quick-add', authenticate, (req, res, next) => {
       return res.status(400).json({ error: 'printingId is required' });
     }
 
-    const result = setOwnedPrintingQuantity(req.user.id, printingId, quantity, isFoil, {
+    // Rejected here rather than silently coerced: a client sending 0 or -1
+    // means something this endpoint cannot do, and quietly adding 1 instead
+    // would be the same class of surprise this fix exists to remove.
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return res.status(400).json({ error: 'quantity must be a whole number of at least 1' });
+    }
+
+    const result = addOwnedPrintingQuantity(req.user.id, printingId, quantity, isFoil, {
       source: auditSource(source, 'quick_add'),
     });
     res.json(result);

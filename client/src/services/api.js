@@ -637,10 +637,16 @@ class ApiClient {
     });
   }
 
-  async quickAddToInventory(printingId, quantity = 1, isFoil = false) {
+  // `quantity` is how many copies to add, not the total to end up with. The
+  // server increments; the response carries the row's new total back.
+  //
+  // `source` is the audit label for where the click came from, so the history
+  // can tell the Inventory flyout apart from the card page. Anything the
+  // server does not recognise falls back to 'quick_add'.
+  async quickAddToInventory(printingId, quantity = 1, isFoil = false, source = undefined) {
     return this.request('/inventory/quick-add', {
       method: 'POST',
-      body: JSON.stringify({ printingId, quantity, isFoil }),
+      body: JSON.stringify({ printingId, quantity, isFoil, source }),
     });
   }
 
