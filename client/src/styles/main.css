@@ -7942,19 +7942,22 @@ body.maintenance-locked #app {
 /* ------------------------------------------------------------------
    Browse Cards tile controls.
 
-   A Magic card prints its name and mana cost along the top edge, which is
-   exactly what the eye lands on when skimming a grid — so the controls sit
-   against the bottom of the artwork instead, over the set and collector line
-   that nobody scans for. Two rows rather than two stacks: a row covers a 32px
-   strip, where a stack of two ate 78px of the rules text.
+   Off the artwork entirely. A Magic card prints its name and mana cost along
+   the top edge — exactly what the eye lands on when skimming a grid — and
+   overlaying the art anywhere costs you some of the card you came to look at.
+
+   The grid stretches every tile to the tallest in its row, so a card with a
+   short type line leaves dead space at the bottom. The controls go there.
 ------------------------------------------------------------------ */
 
+.card-item {
+  /* A column, so the footer's auto top margin can push it to the bottom. */
+  display: flex;
+  flex-direction: column;
+}
+
 .card-item-art {
-  position: relative;
   margin-bottom: 0.5rem;
-  /* Keeps a band for the controls on the rare printing with no image, so they
-     do not collapse onto the card name. */
-  min-height: 2.75rem;
 }
 
 .card-item .card-image {
@@ -7964,21 +7967,27 @@ body.maintenance-locked #app {
   pointer-events: none;
 }
 
+.card-cmc {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.card-tile-footer {
+  /* Eats the slack the grid left, which both pins the row to the bottom of
+     the tile and puts every tile's buttons on one line across a row. */
+  margin-top: auto;
+  padding-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .card-tile-actions {
-  position: absolute;
-  bottom: 8px;
-  z-index: 10;
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.card-tile-actions-left {
-  left: 8px;
-}
-
-.card-tile-actions-right {
-  right: 8px;
 }
 
 .card-tile-actions > button {

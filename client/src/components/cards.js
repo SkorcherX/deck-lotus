@@ -471,16 +471,19 @@ function renderCards(cards) {
   cardsGrid.innerHTML = cards.map(card => `
     <div class="card-item" data-card-id="${card.id}" draggable="true" style="position: relative;">
       <!--
-        The controls hang off the bottom of the artwork, not the top. A Magic
-        card puts its name and mana cost along the top edge, which is exactly
-        what you read when skimming a grid, so buttons parked up there hid the
-        two things the grid exists to show. The bottom edge carries the set and
-        collector line, which nobody scans for at a glance.
+        The controls are not on the artwork at all. They used to overlay the
+        top edge, which is where a Magic card prints its name and mana cost —
+        the two things you actually read when skimming a grid.
 
-        Two clusters, one per side, each a row rather than a stack: the
-        collection actions stay together on the left and the list actions on
-        the right, and a row only covers a 32px strip instead of eating 78px of
-        the rules text.
+        They live in a footer instead. Grid rows stretch every tile to the
+        tallest in the row, so a card with a short type line leaves dead space
+        at the bottom; that space is where these go. An auto top margin on the
+        footer pins it to the bottom of the tile whatever the text above it
+        does, so the buttons line up across a row instead of floating at the
+        end of each card's own text.
+
+        Two clusters, one per side: the collection actions stay together on the
+        left and the list actions on the right.
       -->
       <div class="card-item-art">
         ${card.image_url ? `
@@ -489,6 +492,12 @@ function renderCards(cards) {
                data-fallback="${card.image_url}"
                class="card-image">
         ` : ''}
+      </div>
+      <div class="card-name" style="pointer-events: none;">${card.name}</div>
+      <div class="card-mana" style="pointer-events: none;">${formatMana(card.mana_cost)}</div>
+      <div class="card-type" style="pointer-events: none;">${card.type_line || ''}</div>
+      <div class="card-cmc" style="pointer-events: none;">Mana Value: ${card.cmc || 0}</div>
+      <div class="card-tile-footer">
         <div class="card-tile-actions card-tile-actions-left">
           <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'};">
             <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
@@ -506,12 +515,6 @@ function renderCards(cards) {
           ${zoomButton(card.large_image_url || card.image_url, card.name)}
           <button class="quick-add-btn" data-card-id="${card.id}" title="Add to a deck">+</button>
         </div>
-      </div>
-      <div class="card-name" style="pointer-events: none;">${card.name}</div>
-      <div class="card-mana" style="pointer-events: none;">${formatMana(card.mana_cost)}</div>
-      <div class="card-type" style="pointer-events: none;">${card.type_line || ''}</div>
-      <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem; pointer-events: none;">
-        Mana Value: ${card.cmc || 0}
       </div>
     </div>
   `).join('');
