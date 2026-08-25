@@ -1,7 +1,7 @@
 # Multi-stage build for minimal image size
 
 # Stage 1: Build frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app/client
 
@@ -18,9 +18,26 @@ COPY client/ ./
 RUN npm run build
 
 # Stage 2: Build backend dependencies
-FROM node:20-alpine AS backend-builder
+#
+# Node 22 rather than 20, and the version is load-bearing rather than
+# housekeeping: better-sqlite3 publishes prebuilt binaries per Node ABI, and
+# from 12.x it stopped publishing them for Node 20 (ABI 115) even though its
+# `engines` field still claims 20.x. On Alpine — musl, so it needs the
+# `linuxmusl` builds specifically — that left npm falling back to compiling
+# from source, which this image has no toolchain for. 12.11.1 publishes
+# linuxmusl prebuilds for ABIs 127, 137, 141 and 147; Node 22 is 127, for both
+# amd64 and arm64.
+FROM node:22-alpine AS backend-builder
 
 WORKDIR /app
+
+# The toolchain is insurance, not the plan. With a matching prebuild published
+# none of it is used and the install is a download. Without one — a future Node
+# bump landing ahead of the prebuilds again — this turns a red build into a
+# slow one, which is the difference between a deploy that waits and a deploy
+# that cannot happen. It lives in a builder stage, so none of it reaches the
+# final image.
+RUN apk add --no-cache python3 make g++
 
 # Copy backend package files
 COPY package*.json ./
@@ -29,7 +46,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 
 # Stage 3: Final production image
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Install bzip2 for MTGJSON decompression
 RUN apk add --no-cache bzip2
