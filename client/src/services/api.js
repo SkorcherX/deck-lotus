@@ -471,11 +471,15 @@ class ApiClient {
     });
   }
 
-  async getShoppingList(deckIds) {
+  // `includeContested` widens the list to copies you own but have committed to
+  // a deck you did not select. They need no purchase, so they are off unless
+  // the page asks — see the note on GET /api/shopping.
+  async getShoppingList(deckIds, { includeContested = false } = {}) {
     const params = new URLSearchParams();
     if (deckIds && deckIds.length > 0) {
       params.append('deckIds', deckIds.join(','));
     }
+    if (includeContested) params.append('includeContested', 'true');
     return this.request(`/shopping?${params}`);
   }
 

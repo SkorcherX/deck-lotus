@@ -13,6 +13,11 @@ let filters = {
   sortBy: 'setName', // setName, price, releaseDate
   budgetMode: false,
   compactView: false, // Toggle between full and compact view
+  // Copies you own that a deck you did not select is holding. Off by default,
+  // because they cost nothing to buy — but reachable, so that a deck reading
+  // "Short 1, in other decks" has somewhere to lead. Unlike the rest of this
+  // object it is answered by the server, so changing it refetches.
+  includeContested: false,
 };
 /**
  * Which lens the page is showing.
@@ -329,7 +334,9 @@ async function runShoppingOptimizer() {
       // basket. Entries carry no bare `quantity` — the deck half keeps its
       // counts per deck and the wanted half in its own row, and the server
       // reconciles the two into this one number.
-      const wanted = card.quantityNeeded || 1;
+      // A contested row is on the list to be explained, not bought.
+      const wanted = purchaseQuantity(card);
+      if (wanted === 0) continue;
       const existing = items.find(i => i.name === card.name);
       if (existing) {
         existing.quantity += wanted;
@@ -436,15 +443,24 @@ async function loadShoppingData() {
     const decksResult = await api.getDecks();
     allDecks = decksResult.decks;
 
-    // Select all decks by default
-    selectedDeckIds = new Set(allDecks.map(d => d.id));
+    // Retired decks are not ticked on arrival. `deckPriority` ranks retired
+    // below idea precisely because a shelved deck is out of rotation, and the
+    // allocation rule honours that — but this page used to select every deck
+    // regardless of status, so a deck you had explicitly shelved still put
+    // cards on your buy list and into the headline totals.
+    //
+    // Only the default. Ticking a retired deck is a legitimate thing to want
+    // (you are rebuilding it), and Select All still means all.
+    selectedDeckIds = new Set(allDecks.filter(d => d.status !== 'retired').map(d => d.id));
 
     // The pile before the list: what is already ticked off decides which rows
     // the list is allowed to show.
     await loadFoundPile();
 
     // Get shopping data
-    const result = await api.getShoppingList(Array.from(selectedDeckIds));
+    const result = await api.getShoppingList(Array.from(selectedDeckIds), {
+      includeContested: filters.includeContested,
+    });
     shoppingData = result;
 
     renderDeckSelector();
@@ -481,12 +497,17 @@ function renderDeckSelector() {
           />
           <span class="deck-selector-name">${deck.name}</span>
           ${deck.format ? `<span class="deck-selector-format">${deck.format}</span>` : ''}
+          ${deck.status === 'retired' ? `
+            <span class="deck-selector-format" title="Retired decks are out of rotation, so they are not shopped for unless you tick them">retired</span>
+          ` : ''}
         </label>
       `).join('')}
     </div>
   `;
 
   // Add event listeners
+  // Literally all, retired included — this is an explicit press, not an
+  // assumption made on the user's behalf.
   document.getElementById('select-all-decks').addEventListener('click', () => {
     selectedDeckIds = new Set(allDecks.map(d => d.id));
     document.querySelectorAll('.deck-checkbox').forEach(cb => cb.checked = true);
@@ -546,6 +567,10 @@ function renderFilters() {
           <label class="checkbox-label">
             <input type="checkbox" id="budget-mode" ${filters.budgetMode ? 'checked' : ''} />
             Budget Mode
+          </label>
+          <label class="checkbox-label" title="Cards you already own, but which a deck you have not selected is holding. They cost nothing to buy, so they are listed without a quantity and left out of the totals, the export and the cart.">
+            <input type="checkbox" id="include-contested" ${filters.includeContested ? 'checked' : ''} />
+            Show held in other decks
           </label>
         </div>
       </div>
@@ -654,6 +679,12 @@ function renderFilters() {
     renderShoppingList();
   });
 
+  // The only filter the server answers, so this one goes back for data.
+  document.getElementById('include-contested').addEventListener('change', (e) => {
+    filters.includeContested = e.target.checked;
+    refreshShoppingData();
+  });
+
   document.getElementById('clear-filters-btn').addEventListener('click', () => {
     filters = {
       priceMin: null,
@@ -664,6 +695,7 @@ function renderFilters() {
       sortBy: 'setName',
       budgetMode: false,
       compactView: filters.compactView, // Preserve compact view setting
+      includeContested: filters.includeContested, // Preserved: it is a lens, not a filter
     };
     renderFilters();
     renderShoppingList();
@@ -999,13 +1031,33 @@ function exportBulkList() {
   });
 }
 
+/**
+ * How many copies of this row you would actually be buying.
+ *
+ * Every consumer used to read `card.quantityNeeded || 1`, which is right for
+ * the rows the list has always carried and wrong for a contested one: a copy
+ * sitting in another deck needs no purchase, and quoting it as one copy would
+ * put a card you already own in the cart, in the estimate and on the printed
+ * list. That hazard is the reason `includeContested` defaults off in the
+ * service; this is what makes it safe to switch on.
+ *
+ * Zero means "listed, not bought". Nothing that totals money or builds a
+ * basket may use anything else.
+ */
+function purchaseQuantity(card) {
+  if (card.contested && !card.quantityNeeded) return 0;
+  return card.quantityNeeded || 1;
+}
+
 async function refreshShoppingData() {
   // Deselecting every deck no longer means there is nothing to fetch: the
   // wanted list comes back either way, and short-circuiting here is what used
   // to blank the page the moment the last deck was unticked.
   try {
     showLoading();
-    const result = await api.getShoppingList(Array.from(selectedDeckIds));
+    const result = await api.getShoppingList(Array.from(selectedDeckIds), {
+      includeContested: filters.includeContested,
+    });
     shoppingData = result;
     renderShoppingList();
     hideLoading();
@@ -1075,7 +1127,7 @@ function applyFiltersToData(data) {
       // Priced per copy needed, not per distinct card. A list that quotes one
       // copy of a four-of is not an estimate of anything.
       totalPrice: filteredCards.reduce(
-        (sum, card) => sum + (card.price || 0) * (card.quantityNeeded || 1),
+        (sum, card) => sum + (card.price || 0) * purchaseQuantity(card),
         0
       ),
       cardCount: filteredCards.length,
@@ -1110,7 +1162,14 @@ function applyFiltersToData(data) {
   return {
     ...data,
     sets: filteredSets,
-    totalCards: filteredSets.reduce((sum, set) => sum + set.cards.length, 0),
+    // Rows you would buy, not rows on screen. With contested rows shown, the
+    // list is longer than the shopping trip is, and "Cards Needed" is the
+    // number people read as the trip.
+    totalCards: filteredSets.reduce(
+      (sum, set) => sum + set.cards.filter((card) => purchaseQuantity(card) > 0).length,
+      0
+    ),
+    totalListed: filteredSets.reduce((sum, set) => sum + set.cards.length, 0),
     totalPrice: filteredSets.reduce((sum, set) => sum + (set.totalPrice || 0), 0),
   };
 }
@@ -1260,14 +1319,15 @@ function renderSetCards(cards) {
             const boardIcon = d.boardType === 'sideboard' ? '📋' : d.boardType === 'maybeboard' ? '🤔' : '📚';
             return `${d.deckName} (${boardIcon} ${d.boardType})`;
           }).join(', ');
-          const totalQuantity = card.quantityNeeded || 1;
+          const totalQuantity = purchaseQuantity(card);
           const isHighPriority = card.decks.length >= 3;
           const cardKey = `${card.printingId}`;
 
           return `
             <div class="shopping-card-compact ${isHighPriority ? 'high-priority' : ''}" data-card-key="${cardKey}">
               <div class="compact-card-main">
-                <span class="compact-card-qty">${totalQuantity}x</span>
+                <span class="compact-card-qty">${totalQuantity ? `${totalQuantity}x` : '&mdash;'}</span>
+                ${contestedNote(card)}
                 ${card.wanted ? '<span class="wanted-badge" title="On your wanted list"><i class="ph ph-bookmark-simple"></i></span>' : ''}
                 <span class="compact-card-name">${card.name}</span>
                 ${ownedHint(card)}
@@ -1307,7 +1367,7 @@ function renderSetCards(cards) {
             ${boardIcon} <strong>${d.deckName}</strong>: ${boardLabel} (${d.quantity}x)
           </div>`;
         }).join('');
-        const totalQuantity = card.quantityNeeded || 1;
+        const totalQuantity = purchaseQuantity(card);
         const isMultiDeck = card.decks.length > 1;
         const isHighPriority = card.decks.length >= 3; // Format staple
         const cardKey = `${card.printingId}`;
@@ -1335,6 +1395,7 @@ function renderSetCards(cards) {
                   </span>
                 ` : ''}
               </div>
+              ${contestedNote(card)}
               <div class="shopping-card-mana">${formatMana(card.manaCost || '')}</div>
               <div class="shopping-card-type">${card.typeLine || ''}</div>
               <div class="shopping-card-rarity">
@@ -1414,10 +1475,16 @@ function exportShoppingList() {
     exportText += `${'-'.repeat(50)}\n`;
 
     set.cards.forEach(card => {
-      const totalQty = card.quantityNeeded || 1;
+      // A contested row is not something you are going to the shop for, so it
+      // gets no quantity and no price on a list you read in one.
+      const totalQty = purchaseQuantity(card);
       const deckDetails = card.decks.map(d => `${d.deckName} (${d.boardType}, ${d.quantity}x)`).join(', ');
-      const price = card.price ? ` • $${(card.price * totalQty).toFixed(2)}` : '';
-      exportText += `${totalQty}x ${card.name} (#${card.collectorNumber})${price}\n`;
+      const price = card.price && totalQty ? ` • $${(card.price * totalQty).toFixed(2)}` : '';
+      const heldBy = (card.heldBy || []).map(d => d.deckName).filter(Boolean);
+      exportText += totalQty
+        ? `${totalQty}x ${card.name} (#${card.collectorNumber})${price}\n`
+        : `-- ${card.name} (#${card.collectorNumber}) — you own ${card.contested}`
+          + `${heldBy.length ? `, in ${heldBy.join(', ')}` : ''}\n`;
 
       // A wanted card has no deck to name, and printing "Decks: " with
       // nothing after it in a list you take to a shop reads as a bug.

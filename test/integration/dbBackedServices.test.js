@@ -30,7 +30,8 @@ process.env.DATABASE_PATH = DB_PATH;
 const { runMigrations, closeDb } = await import('../../src/db/index.js');
 const { default: db } = await import('../../src/db/connection.js');
 const { getDeckReadiness } = await import('../../src/services/deckReadinessService.js');
-const { getBulkBinList } = await import('../../src/services/shoppingService.js');
+const { getBulkBinList, getShoppingList } =
+  await import('../../src/services/shoppingService.js');
 const { addOwnedPrintingQuantity, setOwnedPrintingQuantity, toggleCardOwnership } =
   await import('../../src/services/cardService.js');
 
@@ -515,5 +516,60 @@ describe('the ownership toggle asks before it empties a shelf', () => {
 
     assert.equal(toggleCardOwnership(userId, cardId).requiresConfirmation, true);
     assert.equal(rowsFor('Arcane Signet').length, 1);
+  });
+});
+
+
+/**
+ * The main shopping list could not show a contested card at all: the option
+ * existed in the service and only the bulk view ever passed it, so a deck
+ * reading "Short 1, in other decks" led to a Shopping page that offered
+ * nothing and explained nothing. Exposing it is only safe if a row that needs
+ * no purchase carries a quantity of zero all the way out.
+ */
+describe('the shopping list can explain a contested card', () => {
+  const findCard = (list, name) => {
+    for (const set of list.sets) {
+      const card = set.cards.find((c) => c.name === name);
+      if (card) return card;
+    }
+    return null;
+  };
+
+  test('by default a card held by another deck is simply absent', () => {
+    // Shopping for the idea deck: the ready and building decks hold the one
+    // copy that exists, and no purchase makes the idea deck listable sooner.
+    const list = getShoppingList(userId, [statusDecks.idea]);
+    assert.equal(findCard(list, 'Llanowar Elves'), null);
+  });
+
+  test('asked for, it appears, and says nothing needs buying', () => {
+    const list = getShoppingList(userId, [statusDecks.idea], { includeContested: true });
+    const card = findCard(list, 'Llanowar Elves');
+
+    assert.ok(card, 'the contested card did not appear even when asked for');
+    assert.equal(card.quantityNeeded, 0, 'a contested row must not ask to be bought');
+    assert.equal(card.contested, 1);
+    assert.deepEqual(
+      (card.heldBy || []).map((d) => d.deckName).sort(),
+      ['Half Built', 'Sleeved Deck'],
+      'the row has to name who is holding it, or it reads as a list error'
+    );
+  });
+
+  test('a card genuinely short is still quoted, either way', () => {
+    // Nobody owns Giant Growth, so it is a purchase under both settings.
+    db.run(
+      `INSERT INTO deck_cards (deck_id, printing_id, quantity, board_type) VALUES (?,?,2,'mainboard')`,
+      [statusDecks.idea, printings['Giant Growth'].printingId]
+    );
+
+    for (const opts of [{}, { includeContested: true }]) {
+      const card = findCard(getShoppingList(userId, [statusDecks.idea], opts), 'Giant Growth');
+      assert.equal(card.quantityNeeded, 2, `wrong count with ${JSON.stringify(opts)}`);
+    }
+
+    db.run(`DELETE FROM deck_cards WHERE deck_id = ? AND printing_id = ?`,
+      [statusDecks.idea, printings['Giant Growth'].printingId]);
   });
 });

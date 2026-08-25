@@ -32,14 +32,23 @@ function parseDeckIds(param) {
 /**
  * GET /api/shopping
  * Get shopping list for selected decks
- * Query params: deckIds (comma-separated list of deck IDs)
+ * Query params: deckIds (comma-separated list of deck IDs), includeContested
  *
  * The wanted list is always included, with or without decks — see
  * getShoppingList.
+ *
+ * `includeContested` stays off unless asked for, and the reasoning in
+ * getShoppingList holds: a copy tied up in another deck needs no purchase, and
+ * every consumer of this payload reads `quantityNeeded || 1`. It is exposed
+ * because without it a deck could say "Short 1, in other decks" while the
+ * Shopping page — the obvious place to go next — showed nothing and explained
+ * nothing. Only the bulk view could ask, and only the bulk view could answer.
  */
 router.get('/', authenticate, (req, res, next) => {
   try {
-    const shoppingList = getShoppingList(req.user.id, parseDeckIds(req.query.deckIds));
+    const shoppingList = getShoppingList(req.user.id, parseDeckIds(req.query.deckIds), {
+      includeContested: req.query.includeContested === 'true',
+    });
     res.json(shoppingList);
   } catch (error) {
     next(error);

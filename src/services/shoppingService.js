@@ -225,7 +225,22 @@ export function getShoppingList(userId, deckIds, { includeContested = false } = 
 
   const cards = db.all(query, params);
 
-  return groupIntoSets([...cards, ...wantedCards(userId)], deckIds.length);
+  const list = groupIntoSets([...cards, ...wantedCards(userId)], deckIds.length);
+
+  // A contested row without the name of the deck holding the copy reads as the
+  // list quoting a card you already have. The bulk view learned this first and
+  // decorates its own flattened entries; the set-grouped view needs it for the
+  // same reason, so the lookup happens here — one query for the page, not one
+  // per contested card.
+  if (includeContested) {
+    const entries = list.sets.flatMap((set) => set.cards);
+    const holders = decksHoldingCards(userId, entries.map((e) => e.cardId), deckIds);
+    for (const entry of entries) {
+      if (entry.contested) entry.heldBy = holders.get(entry.cardId) || [];
+    }
+  }
+
+  return list;
 }
 
 /**
