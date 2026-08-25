@@ -706,3 +706,45 @@ describe('a card can be on more than one board', () => {
     );
   });
 });
+
+
+/**
+ * A write endpoint that reports success and does nothing is the shape of bug
+ * that gets diagnosed as "the app lost my edit", days later, by somebody
+ * looking in the wrong place. This one took a deck_cards row id while the
+ * endpoint that adds a card takes a printingId, so passing the wrong one was
+ * an easy mistake — and answered 200.
+ */
+describe('editing a card that is not in the deck', () => {
+  let emptyDeck;
+
+  before(() => {
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,'No Such Card','commander','idea')`,
+      [userId]);
+    emptyDeck = db.get(`SELECT id FROM decks WHERE name = 'No Such Card'`).id;
+  });
+
+  test('an id that matches nothing is a 404, not a silent success', () => {
+    assert.throws(
+      () => updateDeckCard(emptyDeck, userId, 999999, { quantity: 99 }),
+      (err) => err.statusCode === 404
+    );
+  });
+
+  test('a row belonging to a different deck is not editable through this one', () => {
+    // The id exists — just not in this deck. Scoping by deck is what stops one
+    // deck's edit reaching into another's.
+    const other = db.get(
+      `SELECT id FROM deck_cards WHERE deck_id != ? LIMIT 1`,
+      [emptyDeck]
+    );
+
+    assert.throws(
+      () => updateDeckCard(emptyDeck, userId, other.id, { quantity: 4 }),
+      (err) => err.statusCode === 404
+    );
+
+    const untouched = db.get(`SELECT quantity FROM deck_cards WHERE id = ?`, [other.id]);
+    assert.notEqual(untouched.quantity, 4, "the other deck's row was edited anyway");
+  });
+});

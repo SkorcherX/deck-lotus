@@ -15,10 +15,17 @@ function assertConfigured() {
   const missing = [];
   if (!process.env.MANAPOOL_USER_EMAIL) missing.push('MANAPOOL_USER_EMAIL');
   if (!process.env.MANAPOOL_API_TOKEN) missing.push('MANAPOOL_API_TOKEN');
-  throw new Error(
+  // 503, not 500. Nobody has configured the integration, which is an expected
+  // state this app reports on its own status endpoint — not a fault. A 500
+  // files it in the logs as a crash and tells the caller to retry into the
+  // same wall; a 503 says the capability is not available here, which is what
+  // is actually true and what the message goes on to explain.
+  const error = new Error(
     `Mana Pool integration not configured (${missing.join(' and ')} missing). ` +
       'Both MANAPOOL_USER_EMAIL and MANAPOOL_API_TOKEN are required.'
   );
+  error.statusCode = 503;
+  throw error;
 }
 
 function authHeaders() {

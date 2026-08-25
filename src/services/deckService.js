@@ -411,6 +411,19 @@ export function updateDeckCard(deckId, userId, deckCardId, updates) {
     [deckCardId, deckId]
   );
 
+  // No such row is a 404, not a silent success.
+  //
+  // This endpoint takes a `deck_cards` row id while the sibling that adds a
+  // card takes a `printingId`, so passing the wrong one is an easy mistake —
+  // and it used to answer 200 having changed nothing. A write that reports
+  // success and does nothing is the shape of bug that gets diagnosed as "the
+  // app lost my edit", days later, by somebody looking in the wrong place.
+  if (!before) {
+    const error = new Error(`No card ${deckCardId} in this deck`);
+    error.statusCode = 404;
+    throw error;
+  }
+
   const fields = [];
   const params = [];
 
@@ -458,45 +471,43 @@ export function updateDeckCard(deckId, userId, deckCardId, updates) {
   // means "put it there", and the honest result is one row holding both
   // quantities. Left to the database this was a UNIQUE violation, which
   // reached the user as a 500.
-  if (before) {
-    const target = {
-      printingId: printingId !== undefined ? printingId : before.printing_id,
-      board: boardType !== undefined || isSideboard !== undefined
-        ? resolveBoard(boardType, isSideboard).board
-        : before.board_type,
-      foil: isFoil !== undefined ? (isFoil ? 1 : 0) : before.is_foil,
-    };
+  const target = {
+    printingId: printingId !== undefined ? printingId : before.printing_id,
+    board: boardType !== undefined || isSideboard !== undefined
+      ? resolveBoard(boardType, isSideboard).board
+      : before.board_type,
+    foil: isFoil !== undefined ? (isFoil ? 1 : 0) : before.is_foil,
+  };
 
-    const collides = db.get(
-      `SELECT id, quantity FROM deck_cards
-        WHERE deck_id = ? AND printing_id = ? AND board_type = ? AND is_foil = ? AND id != ?`,
-      [deckId, target.printingId, target.board, target.foil, deckCardId]
+  const collides = db.get(
+    `SELECT id, quantity FROM deck_cards
+      WHERE deck_id = ? AND printing_id = ? AND board_type = ? AND is_foil = ? AND id != ?`,
+    [deckId, target.printingId, target.board, target.foil, deckCardId]
+  );
+
+  if (collides) {
+    const moved = quantity !== undefined ? quantity : before.quantity;
+
+    db.run(
+      `UPDATE deck_cards SET quantity = quantity + ? WHERE id = ?`,
+      [moved, collides.id]
     );
+    db.run(`DELETE FROM deck_cards WHERE id = ? AND deck_id = ?`, [deckCardId, deckId]);
+    db.run(`UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [deckId]);
 
-    if (collides) {
-      const moved = quantity !== undefined ? quantity : before.quantity;
+    recordDeckEvent({
+      userId,
+      action: AUDIT_ACTIONS.DECK_CARD_UPDATE,
+      deckId,
+      deckName: deck.name,
+      printingId: before.printing_id,
+      isFoil: before.is_foil === 1,
+      quantityBefore: collides.quantity,
+      quantityAfter: collides.quantity + moved,
+      detail: { mergedInto: collides.id, boardType: target.board, via: 'board_move' },
+    });
 
-      db.run(
-        `UPDATE deck_cards SET quantity = quantity + ? WHERE id = ?`,
-        [moved, collides.id]
-      );
-      db.run(`DELETE FROM deck_cards WHERE id = ? AND deck_id = ?`, [deckCardId, deckId]);
-      db.run(`UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [deckId]);
-
-      recordDeckEvent({
-        userId,
-        action: AUDIT_ACTIONS.DECK_CARD_UPDATE,
-        deckId,
-        deckName: deck.name,
-        printingId: before.printing_id,
-        isFoil: before.is_foil === 1,
-        quantityBefore: collides.quantity,
-        quantityAfter: collides.quantity + moved,
-        detail: { mergedInto: collides.id, boardType: target.board, via: 'board_move' },
-      });
-
-      return getDeckById(deckId, userId);
-    }
+    return getDeckById(deckId, userId);
   }
 
   params.push(deckCardId, deckId);

@@ -83,9 +83,20 @@ app.use('/api/system', systemRoutes);
 app.use('/api/audit', auditRoutes);
 
 // SPA catch-all route (MUST be last)
+//
+// Everything that is not an API call is a deep link into the single-page app —
+// /decks/12 has to serve the shell so the router can pick it up. But the
+// catch-all does not know an API route from a page route, so a typo'd or
+// renamed endpoint used to answer 200 text/html with 162 KB of that shell.
+// The caller then failed on JSON.parse, which reads as "the server is broken"
+// rather than "that route is gone" — and it is exactly the confusion that
+// makes a card-loss bug hard to trace. Non-GET verbs already fell through to
+// the 404 handler, so GETs were the odd one out.
 if (process.env.NODE_ENV === 'production') {
   const clientBuildPath = join(__dirname, '../client/dist');
-  app.get('*', (req, res) => {
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+
     res.sendFile(join(clientBuildPath, 'index.html'));
   });
 }
