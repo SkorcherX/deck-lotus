@@ -585,9 +585,11 @@ export function resolveScanFused({
 
   let hashMatches = [];
   let probe = probes[0];
+  let probeIndex = 0;
 
   if (hashesAvailable()) {
-    for (const candidate of probes) {
+    for (let index = 0; index < probes.length; index++) {
+      const candidate = probes[index];
       if (!candidate.artHash) continue;
 
       const found = findByArtHash(candidate.artHash, candidate.frameHash);
@@ -597,6 +599,7 @@ export function resolveScanFused({
       if (found.length && (!hashMatches.length || found[0].artDistance < hashMatches[0].artDistance)) {
         hashMatches = found;
         probe = candidate;
+        probeIndex = index;
       }
     }
   }
@@ -632,6 +635,8 @@ export function resolveScanFused({
         agreed: false,
         bestArtDistance: null,
         nearest,
+        probes: probes.length,
+        probeIndex: null,
       },
     };
   }
@@ -751,6 +756,12 @@ export function resolveScanFused({
       hash: hashMatches.length,
       agreed,
       bestArtDistance: bestHash ? bestHash.artDistance : null,
+      // Which of the offered framings won. On its own it is trivia; across a
+      // recorded session it says whether the expansions are centred on where
+      // detection actually stops, which is the only way to tune them on
+      // evidence rather than on a guess about black borders.
+      probes: probes.length,
+      probeIndex,
     },
   };
 }

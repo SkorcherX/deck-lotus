@@ -79,6 +79,23 @@ const ANALYSIS_INTERVAL_MS = 100;
  */
 const EXPANSION_PROBES = [1, 1.04, 1.08, 1.12];
 
+/**
+ * Consecutive frames with no card before the shutter re-arms.
+ *
+ * The shutter used to re-arm on frame difference, which cannot tell a card
+ * being swapped from the same card being nudged — so one card sitting under
+ * the lens produced row after row of itself. Arming on the card's *absence*
+ * says exactly the right thing: a new card has to arrive for a new capture to
+ * happen.
+ *
+ * Debounced rather than instant because detection blinks. A hand crossing the
+ * frame, or a moment of blur mid-adjustment, loses the card for a frame or two
+ * while it is still sitting there; re-arming on that would put the same card in
+ * the list twice. Three frames is about 300ms, comfortably longer than a blink
+ * and far shorter than swapping a card.
+ */
+const ABSENCE_FRAMES_TO_REARM = 3;
+
 const MAX_RECENT_CAPTURES = 12;
 
 const state = {
@@ -113,6 +130,16 @@ const state = {
   // null whenever detection loses it. Never a fallback: a stale quad is how a
   // capture comes out legible and matches nothing.
   detected: null,
+  // The shutter fires once per card. It is held after a capture until the card
+  // leaves the frame, which is what makes flipping through a stack produce one
+  // row each rather than a pile of the card that happened to sit still longest.
+  awaitingNewCard: false,
+  absentFrames: 0,
+  // The last card accepted, and whether the frame has emptied since. Together
+  // they separate "the shutter fired twice at one card" from "there are two
+  // copies of this card in the stack", which look identical otherwise.
+  lastCardId: null,
+  sawAbsence: true,
 };
 
 /**
@@ -486,12 +513,30 @@ function startLoop() {
     // empty is precisely how a session fills with legible photographs of a
     // table that match nothing — the failure this detection exists to end.
     if (state.settings.detectEnabled && !state.detected) {
+      state.absentFrames++;
+
+      // Long enough to be a card leaving rather than detection blinking.
+      if (state.absentFrames >= ABSENCE_FRAMES_TO_REARM) {
+        state.awaitingNewCard = false;
+        state.sawAbsence = true;
+      }
+
+      state.autoCapture.reset();
+      return;
+    }
+
+    state.absentFrames = 0;
+
+    // A card is in frame, but it is the one already captured — nothing has left
+    // since. The stability and focus tests below would happily fire on it again.
+    if (state.awaitingNewCard) {
       state.autoCapture.reset();
       return;
     }
 
     if (verdict.shouldCapture) {
       if (state.autoEnabled) {
+        state.awaitingNewCard = true;
         captureFromVideo(video, 'auto');
       } else {
         // evaluate() disarms itself whenever it fires, so re-arm immediately —
@@ -827,10 +872,43 @@ async function resolveCapture(entry) {
     renderCandidates(entry);
 
     const best = resolved.candidates?.[0];
+
+    // The same card, twice, with the frame never having emptied in between.
+    //
+    // Arming on absence should make this impossible, and mostly does — but
+    // detection blinks, and a blink long enough to re-arm puts one physical
+    // card in the review list twice. The identity is the check the geometry
+    // cannot make: two copies of a card scanned one after the other are a
+    // genuine pair and the frame empties between them, while a card that never
+    // left and came back with the same name is one card counted twice.
+    //
+    // Only ever applied to automatic captures. Pressing the shutter at a card
+    // already scanned is an explicit instruction, and a second copy held up
+    // deliberately has to be able to say so.
+    if (
+      entry.trigger === 'auto' &&
+      best &&
+      !state.sawAbsence &&
+      state.lastCardId !== null &&
+      best.cardId === state.lastCardId
+    ) {
+      setReadStatus(`${best.name} — already scanned, skipped`);
+      window.dispatchEvent(new CustomEvent('scan:duplicate', { detail: { id: entry.id } }));
+      return;
+    }
+
+    if (best) {
+      state.lastCardId = best.cardId;
+      state.sawAbsence = false;
+    }
     const near = resolved.signals?.nearest;
+    const won = resolved.signals?.probeIndex;
+    const wonScale = Number.isInteger(won) && entry.probes?.[won]
+      ? ` ×${entry.probes[won].scale}`
+      : '';
     setReadStatus(
       best
-        ? `${best.name} — ${best.setCode} ${best.collectorNumber || ''} (art)`
+        ? `${best.name} — ${best.setCode} ${best.collectorNumber || ''} (art${wonScale})`
         : near
           ? `No match — nearest ${near.artDistance}/${near.bits} bits (needs ≤${near.matchWithin})`
           : 'No art match'
@@ -1328,13 +1406,34 @@ export function setupScan() {
 
   el('scan-torch')?.addEventListener('click', toggleTorch);
 
-  el('scan-shutter-btn')?.addEventListener('click', () => {
+  /**
+   * Capture this card again, deliberately.
+   *
+   * The automatic shutter fires once per card and will not fire again until one
+   * leaves the frame, which is what stops a stack producing rows of whichever
+   * card sat still longest. That leaves one thing it cannot do: a second copy of
+   * a card, held up straight after the first, looks exactly like the same card
+   * still sitting there. This is how you say otherwise — and it is a manual
+   * capture, so the identity check in resolveCapture stands aside for it.
+   */
+  function captureAgain() {
     const video = el('scan-video');
     if (!video?.videoWidth) {
       showToast('Start the camera first', 'error');
       return;
     }
     captureFromVideo(video, 'manual');
+  }
+
+  el('scan-shutter-btn')?.addEventListener('click', captureAgain);
+
+  // Tapping the picture does the same, because on a phone the picture is what
+  // is under your thumb and the button is not.
+  el('scan-stage')?.addEventListener('click', (event) => {
+    // Not while dragging a corner of the marked guide.
+    if (event.target.classList?.contains('scan-handle')) return;
+    if (!state.stream) return;
+    captureAgain();
   });
 
   el('scan-auto-toggle')?.addEventListener('change', (e) => {

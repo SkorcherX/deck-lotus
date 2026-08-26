@@ -656,6 +656,16 @@ export function setupScanSession() {
     applyFailure(event.detail.id, event.detail.message);
   });
 
+  // A second look at a card already in the list. The row was added the moment
+  // the shutter fired, before anything was resolved, so it has to be taken back
+  // out rather than never created. See resolveCapture in scan.js.
+  window.addEventListener('scan:duplicate', (event) => {
+    const index = state.rows.findIndex((row) => row.id === event.detail.id);
+    if (index === -1) return;
+    state.rows.splice(index, 1);
+    render();
+  });
+
   el('scan-review-start')?.addEventListener('click', () => {
     state.phase = 'review';
     // Stop the camera, rather than leaving it firing into the list being worked

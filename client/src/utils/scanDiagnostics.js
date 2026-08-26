@@ -121,6 +121,10 @@ export function recordCapture(entry, context = {}) {
     artHash: entry.artHash || null,
     frameHash: entry.frameHash || null,
     hashError: entry.hashError || null,
+    // The framings offered, by their expansion. Paired with signals.probeIndex
+    // from the resolver, this says which one actually won — and across a
+    // session, whether the spread is centred where detection really stops.
+    probeScales: entry.probes?.map((probe) => probe.scale) || null,
     // Both images: the rectified card is what was hashed, the frame is what it
     // was cut from. Neither alone shows a framing error.
     rectified: encode(entry.card, RECTIFIED_WIDTH),
