@@ -111,3 +111,89 @@ test('the shared module pulls in nothing at all', () => {
     `src/shared/cardHash.js must stay import-free; found: ${specifiers.join(', ')}`
   );
 });
+
+/**
+ * The mirror rule, and the second half of the same lesson.
+ *
+ * Moving cardHash.js to src/shared fixed the runtime image and immediately
+ * broke the build, because the two stages copy different subtrees and I had
+ * only checked one:
+ *
+ *   error during build:
+ *   Could not resolve "../../../src/shared/cardHash.js" from "src/components/scan.js"
+ *
+ * The frontend-builder stage copies `client/` and nothing else, so a client
+ * import that escapes `client/` resolves to a path that does not exist in that
+ * stage. The import is legitimate — the browser resolves at build time and the
+ * module has to be shared — so the stage has to be given what it reaches for.
+ *
+ * Reading the Dockerfile is crude, but it is the only check that runs without a
+ * Docker daemon, and both of these failures were things a full local build could
+ * not see.
+ */
+function frontendBuilderStage() {
+  const dockerfile = readFileSync(join(ROOT, 'Dockerfile'), 'utf8');
+
+  const start = dockerfile.indexOf('AS frontend-builder');
+  assert.ok(start !== -1, 'Dockerfile no longer has a frontend-builder stage');
+
+  const next = dockerfile.indexOf('\nFROM ', start);
+  return dockerfile.slice(start, next === -1 ? undefined : next);
+}
+
+/** Paths copied into a stage from the build context, ignoring --from copies. */
+function copiedPaths(stage) {
+  const paths = [];
+
+  for (const line of stage.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('COPY ') || trimmed.includes('--from=')) continue;
+
+    // COPY <src>... <dest> — every argument but the last is a source.
+    const args = trimmed.slice(5).trim().split(/\s+/);
+    for (const source of args.slice(0, -1)) {
+      paths.push(source.replace(/^\.\//, '').replace(/\/$/, ''));
+    }
+  }
+
+  return paths;
+}
+
+test('everything the client imports from outside client/ is copied into the build stage', () => {
+  const stage = frontendBuilderStage();
+  const copied = copiedPaths(stage);
+
+  const missing = [];
+
+  for (const file of jsFilesUnder(join(ROOT, 'client', 'src'))) {
+    const source = readFileSync(file, 'utf8');
+
+    for (const [, specifier] of source.matchAll(IMPORT_PATTERN)) {
+      if (!specifier.startsWith('.')) continue;
+
+      const target = resolve(file, '..', specifier);
+      const fromRoot = relative(ROOT, target).replace(/\\/g, '/');
+
+      // Still inside client/, so `COPY client/ ./` already covers it.
+      if (!fromRoot.startsWith('../') && fromRoot.startsWith('client/')) continue;
+
+      const covered = copied.some(
+        (path) => fromRoot === path || fromRoot.startsWith(`${path}/`)
+      );
+
+      if (!covered) {
+        missing.push(
+          `${relative(ROOT, file).replace(/\\/g, '/')} imports ${fromRoot}, ` +
+          `which the frontend-builder stage never copies`
+        );
+      }
+    }
+  }
+
+  assert.deepEqual(
+    missing,
+    [],
+    'The client build will fail in Docker:\n  ' + missing.join('\n  ') +
+    '\nAdd a COPY for it to the frontend-builder stage in the Dockerfile.'
+  );
+});

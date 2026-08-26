@@ -11,6 +11,20 @@ COPY client/package*.json ./
 # Install ALL frontend dependencies (including dev, needed for build)
 RUN npm install
 
+# The perceptual-hash module, which lives outside client/ on purpose.
+#
+# It is the one piece of code the browser and the server must run *identically*
+# — a reference hash and a capture hash are only comparable if the same
+# arithmetic produced both — so there is exactly one copy of it, at
+# src/shared/cardHash.js. The client imports it across the boundary, which is
+# safe because the browser resolves imports at build time; the server imports it
+# at runtime, which is why it lives on the server's side.
+#
+# That means this stage needs it too, and needs it at /app/src/shared so the
+# relative import from /app/client resolves. Copied before the client sources
+# below because it changes far less often, so it lands in an earlier cache layer.
+COPY src/shared /app/src/shared
+
 # Copy frontend source
 COPY client/ ./
 
