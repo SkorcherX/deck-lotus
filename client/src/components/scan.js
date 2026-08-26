@@ -5,6 +5,7 @@ import {
   CARD_ASPECT,
   DEFAULT_REGIONS,
   DEFAULT_THRESHOLDS,
+  HANDHELD_THRESHOLDS,
   analyzeFrame,
   cameraAvailability,
   createAutoCapture,
@@ -22,6 +23,7 @@ import {
   warpQuadInto,
   warpRegion,
 } from '../utils/cardCapture.js';
+import { hashRectified } from '../utils/cardHash.js';
 
 /**
  * Camera scan: capture, read, resolve.
@@ -44,7 +46,10 @@ const STORAGE_KEY = 'scan.captureSettings';
 // win forever, so anyone who had used the page once would keep the old defaults
 // and never see a recalibration. The quad survives a bump — it describes the
 // user's desk, not our tuning.
-const SETTINGS_VERSION = 8;
+// 9: the defaults now depend on whether the camera is hand-held — the
+// stability bar a desk webcam was tuned to could never be met by a phone, so a
+// stored version-8 profile would leave the shutter permanently unarmed on one.
+const SETTINGS_VERSION = 9;
 
 // The analysis buffer is deliberately tiny: every metric is a per-pixel pass
 // over it on every frame, and none of them need detail.
@@ -81,23 +86,52 @@ const state = {
   buffers: { source: null, analysis: null, scratch: null },
 };
 
+/**
+ * Is this a camera someone is holding?
+ *
+ * A coarse pointer is the closest thing the browser will say to "phone", and
+ * the distinction genuinely changes what good defaults are: a phone is held
+ * over the card and moves, a webcam is fixed and the card moves. Both the
+ * capture thresholds and whether to chase the card's edges every frame follow
+ * from which one it is, so this is asked once and both follow.
+ *
+ * Only a default. Everything it picks is in the tuning panel and overridable.
+ */
+function looksHandheld() {
+  try {
+    return window.matchMedia?.('(pointer: coarse)').matches === true;
+  } catch {
+    return false;
+  }
+}
+
 function freshSettings() {
+  const handheld = looksHandheld();
+
   return {
     version: SETTINGS_VERSION,
-    thresholds: { ...DEFAULT_THRESHOLDS },
+    thresholds: { ...(handheld ? HANDHELD_THRESHOLDS : DEFAULT_THRESHOLDS) },
     regions: {
       title: { ...DEFAULT_REGIONS.title },
       collector: { ...DEFAULT_REGIONS.collector },
     },
     quad: defaultQuad(),
-    // Off by default. Snapping was built to rescue a loosely marked quad, but
-    // measured against a quad a person had aligned by eye — region boxes sitting
-    // exactly on the print — it moved 39px onto the shadow the card casts on
+    // Off for a fixed camera, on for a hand-held one — and the reason is the
+    // same finding read twice.
+    //
+    // Snapping was measured against a quad a person had aligned by eye on a
+    // desk setup, and it lost: it moved 39px onto the shadow the card casts on
     // cloth and dragged the collector crop off the top line. A person aiming at
-    // the print is more reliable than an edge detector guessing which of several
-    // nearby steps is the card, so the marked quad is used as marked unless the
-    // user asks for help.
-    snapEnabled: false,
+    // the print beats an edge detector guessing between nearby steps.
+    //
+    // But that comparison only exists because the card and the camera both
+    // stayed put, so one careful alignment held all session. Hold the camera
+    // and there is no aligned quad to defend: the card is somewhere new in the
+    // frame every capture, and a fixed guide is wrong for all of them. Chasing
+    // the edges is not better than a good manual quad — it is better than the
+    // stale one that is the only alternative here. Which is also the answer to
+    // the "fiddly to position" complaint: nothing to position.
+    snapEnabled: handheld,
   };
 }
 
@@ -223,6 +257,7 @@ async function startCamera() {
 
   try {
     state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+    setUpTorch(state.stream);
   } catch (error) {
     showToast(`Camera unavailable: ${error.message}`, 'error');
     return;
@@ -501,6 +536,20 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
     at: new Date(),
   };
 
+  // Hash the rectified card immediately, while it is already in hand. This is
+  // the scanner's second opinion and it is cheap — about a millisecond — where
+  // the OCR that follows is seconds, so it never belongs behind the read queue.
+  // It also has to happen here rather than in the reader: the hash is compared
+  // against references built from whole rectified cards, and the reader only
+  // ever sees the two small crops.
+  try {
+    Object.assign(entry, hashRectified(card));
+  } catch (error) {
+    // A capture that cannot be hashed is still a capture worth reading. The
+    // resolver treats a missing hash as "no second signal" and says so.
+    entry.hashError = error.message;
+  }
+
   state.captures.unshift(entry);
   state.captures = state.captures.slice(0, MAX_RECENT_CAPTURES);
   state.autoCapture?.disarm();
@@ -570,16 +619,26 @@ async function runRead(entry) {
     reading = await reader().read(entry);
   } catch (error) {
     setReadStatus(`Read failed: ${error.message}`);
+    window.dispatchEvent(new CustomEvent('scan:read-failed', {
+      detail: { id: entry.id, message: error.message },
+    }));
     return;
   }
 
   entry.reading = reading;
   renderReading(entry);
 
-  // A reading with nothing in it cannot be resolved, and asking the server to
-  // confirm that is a wasted round trip.
-  if (!reading.name && !(reading.setCode && reading.collectorNumber)) {
+  // An unreadable card is not a dead end any more. A pre-2015 card has no
+  // collector block printed on it at all, and a glared-out one reads as though
+  // it has none either — but the art still hashed, and the hash alone is enough
+  // to name the card and offer its printings. Only a capture with neither
+  // signal is genuinely nothing.
+  const readable = reading.name || (reading.setCode && reading.collectorNumber);
+  if (!readable && !entry.artHash) {
     setReadStatus(`Nothing readable (${reading.elapsedMs}ms)`);
+    window.dispatchEvent(new CustomEvent('scan:read-failed', {
+      detail: { id: entry.id, message: 'nothing readable and the art did not hash' },
+    }));
     return;
   }
 
@@ -588,13 +647,83 @@ async function runRead(entry) {
       name: reading.name,
       setCode: reading.setCode,
       collectorNumber: reading.collectorNumber,
-      limit: 5,
+      artHash: entry.artHash,
+      frameHash: entry.frameHash,
+      // Enough for the review table's printing picker to be a real choice. The
+      // tuning panel below only ever showed the top few, but the session's
+      // picker is how a reprint gets corrected, and five is not a list of
+      // printings — it is the beginning of one.
+      limit: 25,
     });
+
     entry.candidates = resolved.candidates;
+    entry.tier = resolved.tier || null;
     renderCandidates(entry);
     setReadStatus(`Read in ${reading.elapsedMs}ms`);
+
+    // The session listens for this. Kept as an event rather than a direct call
+    // so the scan page stays the thing that captures and reads, and knows
+    // nothing about queues, review tables or destinations.
+    window.dispatchEvent(new CustomEvent('scan:resolved', {
+      detail: {
+        id: entry.id,
+        reading,
+        tier: resolved.tier,
+        candidates: resolved.candidates,
+      },
+    }));
   } catch (error) {
     setReadStatus(`Resolve failed: ${error.message}`);
+    window.dispatchEvent(new CustomEvent('scan:read-failed', {
+      detail: { id: entry.id, message: error.message },
+    }));
+  }
+}
+
+/**
+ * Offer the torch, where the camera has one.
+ *
+ * Worth a control of its own because even light is the biggest lever on OCR
+ * accuracy after resolution — ahead of any threshold in the tuning panel. A
+ * card held under a room light picks up a bright band across the collector
+ * block from whatever is above it, and that band is exactly what the reader
+ * loses the set code to. The torch flattens it.
+ *
+ * Feature-detected rather than assumed: `torch` is a non-standard track
+ * capability, absent on desktop and on iOS Safari, so the button only appears
+ * where pressing it would do something.
+ */
+function setUpTorch(stream) {
+  const button = el('scan-torch');
+  if (!button) return;
+
+  const track = stream?.getVideoTracks?.()[0];
+  const capabilities = track?.getCapabilities?.();
+
+  if (!track || !capabilities || !('torch' in capabilities)) {
+    button.classList.add('hidden');
+    state.torchTrack = null;
+    return;
+  }
+
+  state.torchTrack = track;
+  state.torchOn = false;
+  button.classList.remove('hidden');
+  button.textContent = 'Torch off';
+}
+
+async function toggleTorch() {
+  if (!state.torchTrack) return;
+
+  const button = el('scan-torch');
+  const next = !state.torchOn;
+
+  try {
+    await state.torchTrack.applyConstraints({ advanced: [{ torch: next }] });
+    state.torchOn = next;
+    if (button) button.textContent = next ? 'Torch on' : 'Torch off';
+  } catch (error) {
+    if (button) button.textContent = 'Torch unavailable';
   }
 }
 
@@ -845,6 +974,8 @@ export function setupScan() {
     state.cameraChoice = e.target.value;
     if (state.stream) startCamera();
   });
+
+  el('scan-torch')?.addEventListener('click', toggleTorch);
 
   el('scan-shutter-btn')?.addEventListener('click', () => {
     const video = el('scan-video');

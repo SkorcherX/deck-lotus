@@ -23,8 +23,11 @@
  * Hashes live in one flat Uint32Array rather than 112k separate arrays or
  * BigInts. A scan compares its capture against every row, so the inner loop is
  * the whole cost of the feature: a flat array keeps it as integer XOR and
- * popcount with no allocation per row. Measured at boot on the real file, a
- * full search is single-digit milliseconds.
+ * popcount with no allocation per row. Measured on real data — 1ms to search
+ * 6697 rows, so on the order of 20ms across the full 112815, against an OCR
+ * read that takes seconds. Fast enough that no index or bucketing is worth the
+ * complexity, which is just as well: near-matches are the point, and there is
+ * no index for "within 15 bits of this".
  *
  * Rows whose uuid is not in `printings` are kept in the array but marked with
  * printingId -1 and skipped. Dropping them would mean re-packing the array on

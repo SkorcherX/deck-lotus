@@ -158,12 +158,64 @@ class ApiClient {
   }
 
   // Card scanning
-  async resolveScan({ name, setCode, collectorNumber, limit = 10 }) {
+  async resolveScan({ name, setCode, collectorNumber, artHash, frameHash, limit = 10 }) {
     const params = new URLSearchParams({ limit });
     if (name) params.append('name', name);
     if (setCode) params.append('set', setCode);
     if (collectorNumber) params.append('collector', collectorNumber);
+    // Supplying an art hash switches the server to the two-signal resolver and
+    // adds `tier` to the response. Left off, the response is what it always was.
+    if (artHash) params.append('artHash', artHash);
+    if (frameHash) params.append('frameHash', frameHash);
     return this.request(`/scan/resolve?${params}`);
+  }
+
+  /**
+   * Resolve a whole scan session in one request.
+   *
+   * A session is dozens of cards and a round trip each would be dozens of
+   * requests over a phone connection; the server has taken a batch since the
+   * resolve endpoint was written, and this is the client side finally using it.
+   */
+  async resolveScanBatch(scans, limit = 10) {
+    return this.request('/scan/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ scans, limit }),
+    });
+  }
+
+  /** Every printing of a card, for the review table's printing picker. */
+  async scanPrintingsForName(name) {
+    // 250 rather than the shortlist default: the picker is the one caller that
+    // genuinely needs all of them, which is why the server's cap is a parameter.
+    return this.resolveScan({ name, limit: 250 });
+  }
+
+  /** Which of a reviewed session's cards the collection does not cover. */
+  async scanShortfall(items) {
+    return this.request('/scan/shortfall', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+  }
+
+  /** Commit a reviewed session as newly owned copies. */
+  async commitScanToCollection(items) {
+    return this.request('/scan/commit', {
+      method: 'POST',
+      body: JSON.stringify({ destination: 'collection', items }),
+    });
+  }
+
+  /**
+   * Commit a reviewed session as the contents of a deck, leaving inventory
+   * alone unless `alsoAddToCollection` asks for the shortfall to be added too.
+   */
+  async commitScanToDeck(deckId, items, alsoAddToCollection = false) {
+    return this.request('/scan/commit', {
+      method: 'POST',
+      body: JSON.stringify({ destination: 'deck', deckId, items, alsoAddToCollection }),
+    });
   }
 
   async advancedSearch(filters) {

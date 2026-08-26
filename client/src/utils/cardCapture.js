@@ -64,6 +64,32 @@ export const DEFAULT_THRESHOLDS = {
 };
 
 /**
+ * Thresholds for a hand-held camera — a phone over the card rather than a
+ * webcam over a desk.
+ *
+ * DEFAULT_THRESHOLDS were measured with the card lying still on a desk and the
+ * camera bolted to a laptop lid: a resting card moved 0.5-0.7, so a stability
+ * bar of 2.0 was loose. Held in a hand, nothing is ever that still — a steady
+ * grip is several units of frame-to-frame difference and a bar of 2.0 simply
+ * never trips, so the shutter never fires and the page looks broken.
+ *
+ * The compensation is to lean on sharpness instead, and harder than the desk
+ * profile does. A phone autofocuses, so its frames are decisively sharp or
+ * decisively soft in a way a fixed-focus webcam's never are — which makes
+ * focus the more honest "is this frame worth keeping" test once stillness
+ * stops being informative.
+ */
+export const HANDHELD_THRESHOLDS = {
+  ...DEFAULT_THRESHOLDS,
+  stability: 9.0,
+  sharpness: 320,
+  // One more frame of agreement, because the looser stability bar admits
+  // frames the desk profile would have rejected outright.
+  streak: (DEFAULT_THRESHOLDS.streak || 3) + 1,
+};
+
+
+/**
  * The guide rectangle: the largest card-shaped box that fits inside the frame
  * at `fill` of the limiting dimension, centred.
  */

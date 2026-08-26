@@ -1395,6 +1395,9 @@
                                 <i class="ph ph-camera btn-icon"></i>
                                 <span class="btn-text">Capture</span>
                             </button>
+                            <!-- Only shown where the camera track reports a
+                                 torch capability, so it is absent on desktop. -->
+                            <button id="scan-torch" class="btn btn-secondary hidden">Torch off</button>
                             <label class="scan-toggle">
                                 <input type="checkbox" id="scan-auto-toggle" checked />
                                 Auto-capture
@@ -1518,6 +1521,66 @@
                             <span id="scan-count">0 captures this session</span>
                         </div>
                         <div id="scan-recent" class="scan-recent"></div>
+                    </div>
+                </div>
+
+                <!--
+                    The session: scan a stack, look it over, then choose where
+                    it goes. Nothing above this point writes anything, and
+                    nothing here does either until a destination button is
+                    pressed. Hidden until the first capture, so the page opens
+                    on the camera rather than on an empty table.
+                -->
+                <div id="scan-session-panel" class="scan-session hidden">
+                    <div class="scan-session-head">
+                        <h3>This session</h3>
+                        <span id="scan-session-summary" class="scan-session-summary"></span>
+                        <label class="scan-session-foil">
+                            <input type="checkbox" id="scan-session-foil">
+                            Everything in this session is foil
+                        </label>
+                        <button type="button" id="scan-session-clear" class="btn-secondary">Discard</button>
+                        <button type="button" id="scan-review-start" class="btn-primary">Review this session</button>
+                    </div>
+
+                    <div id="scan-review" class="scan-review hidden">
+                        <div class="scan-review-head">
+                            <button type="button" id="scan-review-back" class="btn-secondary">Back to scanning</button>
+                        </div>
+
+                        <div id="scan-review-list" class="scan-review-list"></div>
+
+                        <!--
+                            Two destinations, and they are not the same act.
+                            "Collection" is cards you now own; "deck" records a
+                            deck you built out of cards you already own and
+                            deliberately leaves inventory alone.
+                        -->
+                        <div class="scan-destination">
+                            <h4>Where does this go?</h4>
+                            <div class="scan-destination-buttons">
+                                <button type="button" id="scan-dest-collection" class="btn-secondary">
+                                    Import to collection
+                                    <small>Cards I now own</small>
+                                </button>
+                                <button type="button" id="scan-dest-deck" class="btn-secondary">
+                                    Scan to deck
+                                    <small>A deck built from cards I own — does not add to my collection</small>
+                                </button>
+                            </div>
+
+                            <div id="scan-deck-picker" class="scan-deck-picker hidden">
+                                <label for="scan-deck-select">Deck</label>
+                                <select id="scan-deck-select"></select>
+                            </div>
+
+                            <p id="scan-shortfall" class="scan-shortfall hidden"></p>
+
+                            <button type="button" id="scan-commit" class="btn-primary" disabled>
+                                Choose a destination
+                            </button>
+                            <p id="scan-session-status" class="scan-session-status"></p>
+                        </div>
                     </div>
                 </div>
             </div>

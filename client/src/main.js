@@ -9,6 +9,7 @@ import { setupShopping } from './components/shopping.js';
 import { setupInventory } from './components/inventory.js';
 import { setupMaintenanceWatch, stopMaintenanceWatch, fetchMaintenanceStatus } from './components/maintenance.js';
 import { setupScan } from './components/scan.js';
+import { setupScanSession } from './components/scanSession.js';
 import { setupSharedDeck, loadSharedDeck } from './components/sharedDeck.js';
 import { parsePath, setRoute, onPopState, isExternalPath, DEFAULT_PAGE } from './utils/router.js';
 import { setupPriceMonitoring } from './components/priceMonitoring.js';
@@ -315,6 +316,7 @@ class App {
     setupShopping();
     setupInventory();
     setupScan();
+    setupScanSession();
     setupSettings();
     setupAudit();
     setupPriceMonitoring();
