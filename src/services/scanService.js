@@ -1,5 +1,10 @@
 import db from '../db/connection.js';
-import { findByArtHash, isAvailable as hashesAvailable, isStrongMatch } from './cardHashIndex.js';
+import {
+  findByArtHash,
+  isAvailable as hashesAvailable,
+  isStrongMatch,
+  nearestArtDistance,
+} from './cardHashIndex.js';
 
 /**
  * Resolution layer for camera-scanned cards.
@@ -565,11 +570,25 @@ export function resolveScanFused({
   if (!hashMatches.length) {
     // No hash signal at all — no capture hash, no hash file, or nothing within
     // threshold. Reported honestly as single-signal rather than dressed up.
+    //
+    // When there was a hash and it simply matched nothing, say how close the
+    // nearest reference was. "No match" alone cannot distinguish a capture
+    // framed slightly wrong, which is recoverable, from one that is not a card
+    // at all — and a review screen full of bare "no match" rows leaves nobody,
+    // including whoever has to fix it, any idea which they are looking at.
+    const nearest = artHash && hashesAvailable() ? nearestArtDistance(artHash) : null;
+
     return {
       query: { ...text.query, artHash, frameHash },
       tier: SCAN_TIERS.UNSURE,
       candidates: text.candidates.slice(0, cap),
-      signals: { text: text.candidates.length, hash: 0, agreed: false, bestArtDistance: null },
+      signals: {
+        text: text.candidates.length,
+        hash: 0,
+        agreed: false,
+        bestArtDistance: null,
+        nearest,
+      },
     };
   }
 

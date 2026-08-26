@@ -249,6 +249,52 @@ export function findByArtHash(artHash, frameHash = null, options = {}) {
   return trimmed;
 }
 
+/**
+ * The nearest reference to this hash, whatever the distance.
+ *
+ * findByArtHash answers "what matches"; this answers "how wrong was it", which
+ * is a different and, when nothing matches, far more useful question. A capture
+ * whose nearest reference sits at 60 bits is framed slightly wrong and worth
+ * chasing; one at 130 is not a card at all, or is a card the reference set has
+ * never seen. Told apart, those are two different investigations — reported as
+ * a bare "no match", they are indistinguishable, which is exactly the position
+ * a scanning session was leaving people in.
+ *
+ * Costs the same full pass as a search, which is under two milliseconds, and is
+ * only asked for when a resolve has already come back empty.
+ */
+export function nearestArtDistance(artHash) {
+  const current = ensureLoaded();
+  if (!current.count || !artHash) return null;
+
+  const probe = hexToWords(artHash);
+  if (probe.length !== ART_WORDS) return null;
+
+  let best = Infinity;
+  let bestRow = -1;
+
+  for (let row = 0; row < current.count; row++) {
+    if (current.printingIds[row] < 0) continue;
+
+    const distance = hammingWords(probe, 0, current.hashes, row * WORDS_PER_ROW, ART_WORDS);
+    if (distance < best) {
+      best = distance;
+      bestRow = row;
+    }
+  }
+
+  if (bestRow < 0) return null;
+
+  return {
+    printingId: current.printingIds[bestRow],
+    artDistance: best,
+    bits: ART_BITS,
+    // What it would have taken to match, so the number reads without having to
+    // look the thresholds up.
+    matchWithin: Math.round(ART_MATCH_THRESHOLD * ART_BITS),
+  };
+}
+
 /** Whether the best match is close enough to be believed on its own. */
 export function isStrongMatch(match) {
   return Boolean(match) && match.artDistance / ART_BITS <= ART_STRONG_THRESHOLD;

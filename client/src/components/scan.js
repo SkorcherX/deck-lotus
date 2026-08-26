@@ -796,15 +796,26 @@ async function resolveCapture(entry) {
     renderCandidates(entry);
 
     const best = resolved.candidates?.[0];
+    const near = resolved.signals?.nearest;
     setReadStatus(
-      best ? `${best.name} — ${best.setCode} ${best.collectorNumber || ''} (art)` : 'No art match'
+      best
+        ? `${best.name} — ${best.setCode} ${best.collectorNumber || ''} (art)`
+        : near
+          ? `No match — nearest ${near.artDistance}/${near.bits} bits (needs ≤${near.matchWithin})`
+          : 'No art match'
     );
     renderLiveMatch(best || null);
     diagnostics.attachResolution(entry.id, resolved);
     signalMatch(resolved.tier);
 
     window.dispatchEvent(new CustomEvent('scan:resolved', {
-      detail: { id: entry.id, reading: null, tier: resolved.tier, candidates: resolved.candidates },
+      detail: {
+        id: entry.id,
+        reading: null,
+        tier: resolved.tier,
+        candidates: resolved.candidates,
+        signals: resolved.signals,
+      },
     }));
   } catch (error) {
     setReadStatus(`Match failed: ${error.message}`);
@@ -962,6 +973,7 @@ async function runRead(entry) {
         reading,
         tier: resolved.tier,
         candidates: resolved.candidates,
+        signals: resolved.signals,
       },
     }));
   } catch (error) {

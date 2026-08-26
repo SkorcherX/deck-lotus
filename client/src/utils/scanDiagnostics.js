@@ -141,6 +141,9 @@ export function attachResolution(id, resolved) {
 
   record.resolution = {
     tier: resolved.tier || null,
+    // signals carries `nearest` on a miss — the distance to the closest
+    // reference in the whole set. On a bundle full of misses that one number is
+    // the difference between a framing problem and a wrong-picture problem.
     signals: resolved.signals || null,
     // The distances are the whole point — a miss with the nearest reference at
     // 90 bits is a different fault from one with nothing within threshold.

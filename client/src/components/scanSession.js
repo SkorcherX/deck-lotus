@@ -120,19 +120,28 @@ const THUMB_WIDTH = 112;
  *
  * Twice the display width, so it stays sharp on a phone's 2x screen.
  */
-function thumbnailOf(imageData) {
-  if (!imageData?.width) return null;
+function thumbnailOf(source) {
+  if (!source?.width) return null;
 
   try {
-    const full = document.createElement('canvas');
-    full.width = imageData.width;
-    full.height = imageData.height;
-    full.getContext('2d').putImageData(imageData, 0, 0);
+    // Either shape. warpQuad hands back a *canvas*, and putImageData rejects
+    // one — it throws, the catch below swallowed it, and every review row came
+    // back with no picture at all. Exactly the failure the art hash had, for
+    // exactly the same reason: a canvas and an ImageData both have width and
+    // height, so nothing complains until the call that actually needs pixels.
+    let full = source;
 
-    const scale = (THUMB_WIDTH * 2) / imageData.width;
+    if (!source.getContext) {
+      full = document.createElement('canvas');
+      full.width = source.width;
+      full.height = source.height;
+      full.getContext('2d').putImageData(source, 0, 0);
+    }
+
+    const scale = (THUMB_WIDTH * 2) / full.width;
     const thumb = document.createElement('canvas');
-    thumb.width = Math.round(imageData.width * scale);
-    thumb.height = Math.round(imageData.height * scale);
+    thumb.width = Math.round(full.width * scale);
+    thumb.height = Math.round(full.height * scale);
 
     const context = thumb.getContext('2d');
     context.imageSmoothingQuality = 'high';
@@ -188,13 +197,14 @@ function addCapture(entry) {
  * does not duplicate the read queue — there is one reader and it is already
  * serialised.
  */
-function applyResolution(id, { reading, tier, candidates }) {
+function applyResolution(id, { reading, tier, candidates, signals }) {
   const row = state.rows.find((candidate) => candidate.id === id);
   if (!row) return;
 
   row.reading = reading || null;
   row.tier = tier || TIER.UNSURE;
   row.candidates = candidates || [];
+  row.signals = signals || null;
   row.resolving = false;
 
   // Called more than once per row now: the art hash answers immediately, and an
@@ -284,7 +294,18 @@ function renderRow(row) {
   if (row.resolving) {
     match.textContent = 'Reading…';
   } else if (!pick) {
-    match.textContent = row.error ? `Could not read: ${row.error}` : 'No match found';
+    // How close it came, not just that it failed. The nearest reference sitting
+    // just over the line means the capture was framed slightly wrong and is
+    // worth another try; one sitting miles away means the picture was not of a
+    // card. Those need opposite responses from whoever is holding the cards.
+    const near = row.signals?.nearest;
+    const margin = near
+      ? ` — closest card was ${near.artDistance} of ${near.bits} bits away, needs ${near.matchWithin} or under`
+      : '';
+
+    match.textContent = row.error
+      ? `Could not read: ${row.error}`
+      : `No match found${margin}`;
     match.classList.add('scan-row-empty');
   } else {
     // The matched card's own art, beside the capture. Two pictures side by side
