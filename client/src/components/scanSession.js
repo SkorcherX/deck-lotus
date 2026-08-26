@@ -39,7 +39,10 @@ const TIER = {
 
 /** What each tier is telling the reviewer to do. Shown on the row. */
 const TIER_LABEL = {
-  [TIER.CONFIDENT]: 'Art and text agree',
+  // No longer only "art and text agree": an art match with exactly one printing
+  // behind it is confident on its own, and with the reader off that is the
+  // common case rather than the exception.
+  [TIER.CONFIDENT]: 'Matched',
   [TIER.PICK_PRINTING]: 'Card known — pick the printing',
   [TIER.CONFLICT]: 'Art and text disagree',
   [TIER.UNSURE]: 'Needs checking',
@@ -54,6 +57,18 @@ const state = {
   showConfident: false,
   /** Every card in this session is foil — for scanning a foil binder. */
   sessionFoil: false,
+  /**
+   * Collapse `pick-printing` rows too, taking the closest printing.
+   *
+   * The art hash names the card outright but cannot separate reprints that
+   * share an illustration, so a bulk box resolves to a wall of "pick the
+   * printing" — accurate, and far too slow to work through if what you are
+   * doing is counting what you own rather than cataloguing which printing.
+   * Off by default: the frame hash orders those candidates but was never
+   * strong enough to be believed on its own, so this is a deliberate trade of
+   * printing accuracy for speed and has to be asked for.
+   */
+  autoPickPrinting: false,
   /** Cached deck list for the destination picker. */
   decks: null,
   committing: false,
@@ -73,13 +88,21 @@ function committable() {
   return state.rows.filter((row) => !row.deleted && chosen(row));
 }
 
+/** Tiers that collapse out of the review table rather than being looked at. */
+function collapses(row) {
+  if (row.tier === TIER.CONFIDENT) return true;
+  // Only when asked for, and only where a printing was actually offered — an
+  // empty candidate list is not something to wave through. See autoPickPrinting.
+  return state.autoPickPrinting && row.tier === TIER.PICK_PRINTING && !!chosen(row);
+}
+
 /** Rows the reviewer genuinely has to look at. */
 function needsReview() {
-  return state.rows.filter((row) => !row.deleted && row.tier !== TIER.CONFIDENT);
+  return state.rows.filter((row) => !row.deleted && !collapses(row));
 }
 
 function confidentRows() {
-  return state.rows.filter((row) => !row.deleted && row.tier === TIER.CONFIDENT);
+  return state.rows.filter((row) => !row.deleted && collapses(row));
 }
 
 /** Thumbnail width in the review table. Matches .scan-row-thumb in the CSS. */
@@ -149,6 +172,8 @@ function addCapture(entry) {
     isCommander: false,
     deleted: false,
     resolving: true,
+    // Set once the reviewer chooses a printing themselves. See applyResolution.
+    picked: false,
   };
 
   state.rows.unshift(row);
@@ -170,8 +195,14 @@ function applyResolution(id, { reading, tier, candidates }) {
   row.reading = reading || null;
   row.tier = tier || TIER.UNSURE;
   row.candidates = candidates || [];
-  row.printingId = candidates?.[0]?.printingId ?? null;
   row.resolving = false;
+
+  // Called more than once per row now: the art hash answers immediately, and an
+  // optional OCR read can refine the same row later. A hand-picked printing
+  // survives that second landing; anything else takes the new best.
+  if (!row.picked) {
+    row.printingId = candidates?.[0]?.printingId ?? null;
+  }
 
   render();
 }
@@ -268,6 +299,10 @@ function renderRow(row) {
     }
     picker.addEventListener('change', (event) => {
       row.printingId = Number(event.target.value);
+      // Sticky: the art resolves in milliseconds but an OCR refinement can land
+      // seconds later, and it must not silently undo a printing the reviewer
+      // has already chosen by hand.
+      row.picked = true;
       render();
     });
 
@@ -593,6 +628,11 @@ export function setupScanSession() {
     if (state.rows.length && !window.confirm('Discard this scan session?')) return;
     reset();
     setStatus('');
+  });
+
+  el('scan-session-autopick')?.addEventListener('change', (event) => {
+    state.autoPickPrinting = event.target.checked;
+    render();
   });
 
   el('scan-session-foil')?.addEventListener('change', (event) => {

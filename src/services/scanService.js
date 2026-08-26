@@ -654,8 +654,20 @@ export function resolveScanFused({
     bestText && hashById.has(bestText.printingId) && best && best.printingId === bestText.printingId
   );
 
+  // Printings whose art the search actually agreed with. "Only one printing
+  // matched" is a claim about the art, not about the merged list, which also
+  // carries every text-only candidate below it.
+  const strongEnough = hashMatches.filter(isStrongMatch);
+
   let tier;
   if (agreed && isStrongMatch(bestHash)) {
+    tier = SCAN_TIERS.CONFIDENT;
+  } else if (!bestText && strongEnough.length === 1) {
+    // The art is certain and it matched exactly one printing in the whole
+    // reference set. There is genuinely nothing left to decide, and requiring a
+    // text read here would have meant a tesseract pass to confirm an answer that
+    // had no alternative — which is what made every card need review when the
+    // reader is off.
     tier = SCAN_TIERS.CONFIDENT;
   } else if (!bestText && isStrongMatch(bestHash)) {
     // The art is certain and there is no text to place it: a pre-2015 card, or a

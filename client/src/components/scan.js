@@ -76,7 +76,15 @@ const state = {
   captures: [],
   dragging: null,
   reader: null,
-  ocrEnabled: true,
+  // Off by default. The reader costs seconds a card and ~17MB of engine on
+  // first use, and since the art hash now answers on its own it only has
+  // something to add when two printings share an illustration. Opt in from the
+  // controls when that matters; leave it off to scan a box.
+  ocrEnabled: false,
+  // A tone per resolved card, so a box can be scanned without watching the
+  // screen. See signalMatch.
+  sound: true,
+  audio: null,
   // Null until the user picks a camera themselves; see startCamera.
   cameraChoice: null,
   // Reads are serialised: one tesseract worker cannot recognise two images at
@@ -566,6 +574,17 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
 
   window.dispatchEvent(new CustomEvent('scan:capture', { detail: entry }));
 
+  // Resolve on the art alone, now, before anything is read. This is the whole
+  // shape of the scanner: the hash is ~1ms to compute and 1.7ms to search
+  // against all 112k references, where OCR is seconds. Resolving behind the
+  // reader made every card cost a tesseract pass and made auto-capture look
+  // broken — the shutter would fire again long before the previous card's
+  // answer arrived, so the queue filled with cards nobody had seen resolved.
+  resolveCapture(entry);
+
+  // The reader is now a refinement that lands late and never blocks. It only
+  // earns its seconds when the art has named a card but not a printing, so
+  // that is the only case it runs in unattended.
   if (state.ocrEnabled) readCapture(entry);
 }
 
@@ -618,6 +637,85 @@ async function readCapture(entry) {
   return state.readQueue;
 }
 
+/**
+ * Resolve a capture from its art hash alone, immediately.
+ *
+ * No queue and no worker: this is one fetch, and the server answers it from an
+ * in-memory search that takes under two milliseconds. A card that the art names
+ * unambiguously is done here, and the session collapses it out of review
+ * without the reader ever being asked.
+ */
+async function resolveCapture(entry) {
+  if (!entry.artHash) {
+    // Nothing to go on until the reader speaks. Left resolving rather than
+    // failed, because an OCR pass may still be coming.
+    if (!state.ocrEnabled) {
+      window.dispatchEvent(new CustomEvent('scan:read-failed', {
+        detail: { id: entry.id, message: entry.hashError || 'the art did not hash' },
+      }));
+    }
+    return;
+  }
+
+  try {
+    const resolved = await api.resolveScan({
+      artHash: entry.artHash,
+      frameHash: entry.frameHash,
+      limit: 25,
+    });
+
+    entry.candidates = resolved.candidates;
+    entry.tier = resolved.tier || null;
+    renderCandidates(entry);
+
+    const best = resolved.candidates?.[0];
+    setReadStatus(
+      best ? `${best.name} — ${best.setCode} ${best.collectorNumber || ''} (art)` : 'No art match'
+    );
+    signalMatch(resolved.tier);
+
+    window.dispatchEvent(new CustomEvent('scan:resolved', {
+      detail: { id: entry.id, reading: null, tier: resolved.tier, candidates: resolved.candidates },
+    }));
+  } catch (error) {
+    setReadStatus(`Match failed: ${error.message}`);
+    window.dispatchEvent(new CustomEvent('scan:read-failed', {
+      detail: { id: entry.id, message: error.message },
+    }));
+  }
+}
+
+/**
+ * A short tone per card, pitched by how the match went.
+ *
+ * The point of scanning a box is that you are looking at the cards, not at the
+ * screen. A rising note means it is filed and you can move on; a lower one means
+ * this card will be waiting in review. Built from an oscillator rather than an
+ * asset so it costs nothing to ship and works offline.
+ */
+function signalMatch(tier) {
+  if (!state.sound) return;
+
+  try {
+    state.audio = state.audio || new (window.AudioContext || window.webkitAudioContext)();
+    const context = state.audio;
+    if (context.state === 'suspended') context.resume();
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = tier === 'confident' ? 1320 : 440;
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.15, context.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.12);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.13);
+  } catch {
+    // A missing or blocked AudioContext is not worth failing a scan over.
+  }
+}
+
 async function runRead(entry) {
   setReadStatus('Reading…');
 
@@ -649,6 +747,14 @@ async function runRead(entry) {
     return;
   }
 
+  // The art has already answered and the reader found nothing to add. Re-asking
+  // the server with the same hash and no text would return the same list and
+  // overwrite a good answer with an identical one, so stop here.
+  if (!readable) {
+    setReadStatus(`Read added nothing (${reading.elapsedMs}ms)`);
+    return;
+  }
+
   try {
     const resolved = await api.resolveScan({
       name: reading.name,
@@ -666,7 +772,7 @@ async function runRead(entry) {
     entry.candidates = resolved.candidates;
     entry.tier = resolved.tier || null;
     renderCandidates(entry);
-    setReadStatus(`Read in ${reading.elapsedMs}ms`);
+    setReadStatus(`Refined by text in ${reading.elapsedMs}ms`);
 
     // The session listens for this. Kept as an event rather than a direct call
     // so the scan page stays the thing that captures and reads, and knows
@@ -1004,6 +1110,10 @@ export function setupScan() {
   el('scan-auto-toggle')?.addEventListener('change', (e) => {
     state.autoEnabled = e.target.checked;
     state.autoCapture?.reset();
+  });
+
+  el('scan-sound-toggle')?.addEventListener('change', (e) => {
+    state.sound = e.target.checked;
   });
 
   el('scan-ocr-toggle')?.addEventListener('change', (e) => {

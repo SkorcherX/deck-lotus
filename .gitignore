@@ -18,4 +18,5 @@ client/public/tesseract/
 # it is what ships so the server never has to fetch 112k images — but the raw
 # jsonl it is packed from is a ~15MB build artifact and the log is noise.
 data/card-hashes.raw.jsonl
+data/card-hashes.normal.jsonl
 data/card-hashes.build.log

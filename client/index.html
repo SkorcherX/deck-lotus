@@ -1403,8 +1403,16 @@
                                 Auto-capture
                             </label>
                             <label class="scan-toggle">
-                                <input type="checkbox" id="scan-ocr-toggle" checked />
-                                Read cards
+                                <input type="checkbox" id="scan-sound-toggle" checked />
+                                Beep on match
+                            </label>
+                            <!-- Unchecked by default: the art hash answers on
+                                 its own in milliseconds, where the reader costs
+                                 seconds a card. It is worth turning on only to
+                                 separate reprints that share an illustration. -->
+                            <label class="scan-toggle" title="Slow. Only helps separate reprints that share the same art.">
+                                <input type="checkbox" id="scan-ocr-toggle" />
+                                Also read the text (slow)
                             </label>
                             <label class="scan-toggle">
                                 <input type="checkbox" id="scan-snap-toggle" />
@@ -1538,6 +1546,13 @@
                         <label class="scan-session-foil">
                             <input type="checkbox" id="scan-session-foil">
                             Everything in this session is foil
+                        </label>
+                        <!-- Off by default: this trades printing accuracy for
+                             speed, and only makes sense when you are counting
+                             what you own rather than cataloguing printings. -->
+                        <label class="scan-session-foil" title="Reprints that share art cannot be told apart by the art alone. This takes the closest one instead of asking.">
+                            <input type="checkbox" id="scan-session-autopick">
+                            Don't ask which printing &mdash; take the closest
                         </label>
                         <button type="button" id="scan-session-clear" class="btn-secondary">Discard</button>
                         <button type="button" id="scan-review-start" class="btn-primary">Review this session</button>

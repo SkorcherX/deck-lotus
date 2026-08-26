@@ -211,14 +211,18 @@ describe('resolveScanFused tiers', () => {
     assert.ok(ids.includes(printings[3].id), 'the text match must still be offered');
   });
 
-  test('pick-printing: art is certain, no text to place it', () => {
-    // A pre-2015 card. Nothing printed on it to read, so the hash is alone.
+  test('confident: art alone, when the art matched exactly one printing', () => {
+    // A pre-2015 card. Nothing printed on it to read, so the hash is alone —
+    // and it does not need help, because only one printing in the whole
+    // reference set carries this illustration. Requiring a text read to confirm
+    // an answer with no alternative is what made every card need review once
+    // the reader stopped being run on every capture.
     const result = resolveScanFused({
       artHash: 'a'.repeat(ART_HASH_HEX),
       frameHash: 'a'.repeat(FRAME_HASH_HEX),
     });
 
-    assert.equal(result.tier, SCAN_TIERS.PICK_PRINTING);
+    assert.equal(result.tier, SCAN_TIERS.CONFIDENT);
     assert.equal(result.candidates[0].printingId, printings[4].id);
     assert.equal(result.candidates[0].name, 'Test Antiquity');
     assert.deepEqual(result.candidates[0].matchedBy, ['art-hash']);
