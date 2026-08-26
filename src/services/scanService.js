@@ -1,4 +1,5 @@
 import db from '../db/connection.js';
+import { findByArtHash, isAvailable as hashesAvailable, isStrongMatch } from './cardHashIndex.js';
 
 /**
  * Resolution layer for camera-scanned cards.
@@ -11,7 +12,19 @@ import db from '../db/connection.js';
  * camera.
  */
 
+/**
+ * Default ceiling on returned candidates. A ranked shortlist is all the scan
+ * page needs; a caller that genuinely wants more — the printing picker, which
+ * lists every printing of a name-only match — passes its own limit. This was a
+ * hard constant until the picker needed more than a shortlist.
+ */
 const MAX_CANDIDATES = 20;
+
+/**
+ * The ceiling a caller may raise the limit to. Guards against a client asking
+ * for the whole table; the largest legitimate need is one card's printings.
+ */
+const ABSOLUTE_MAX_CANDIDATES = 250;
 
 /**
  * Normalize a card name the way importService does, so both paths agree on the
@@ -430,14 +443,23 @@ export function resolveScan({ name = null, setCode = null, collectorNumber = nul
   }
 
   if (normalizedName) {
-    collect(findByName(normalizedName), 'name');
+    // Widened to the requested limit rather than left at MAX_CANDIDATES: this
+    // is the strategy the printing picker relies on, and a name-only match on a
+    // card with dozens of printings has to be able to list all of them. Capping
+    // the query at 20 and then slicing to `limit` would silently return a
+    // truncated list that looked complete.
+    const nameLimit = Math.min(
+      Math.max(parseInt(limit, 10) || MAX_CANDIDATES, MAX_CANDIDATES),
+      ABSOLUTE_MAX_CANDIDATES
+    );
+    collect(findByName(normalizedName, nameLimit), 'name');
     if (byPrintingId.size === 0) {
-      collect(findByFuzzyName(normalizedName), 'fuzzy-name');
+      collect(findByFuzzyName(normalizedName, nameLimit), 'fuzzy-name');
     }
   }
 
   const requested = parseInt(limit, 10);
-  const cap = Math.min(Math.max(Number.isNaN(requested) ? 10 : requested, 1), MAX_CANDIDATES);
+  const cap = Math.min(Math.max(Number.isNaN(requested) ? 10 : requested, 1), ABSOLUTE_MAX_CANDIDATES);
 
   const candidates = [...byPrintingId.values()]
     .sort((a, b) => {
@@ -456,5 +478,204 @@ export function resolveScan({ name = null, setCode = null, collectorNumber = nul
       collectorNumberVariants: variants,
     },
     candidates,
+  };
+}
+
+/** Hydrate printings by id, for candidates the hash found and the text did not. */
+function printingsByIds(ids) {
+  if (!ids.length) return [];
+  return db.all(
+    `SELECT ${PRINTING_COLUMNS}
+     FROM cards c
+     JOIN printings p ON c.id = p.card_id
+     WHERE p.id IN (${ids.map(() => '?').join(', ')})`,
+    ids
+  );
+}
+
+/**
+ * What the two signals together concluded, and therefore how much of the
+ * reviewer's attention this row needs.
+ *
+ * `confident` is the only tier that lets a row collapse out of the review
+ * table, so it is deliberately the narrowest of the four. The rest all mean
+ * "look at this" and differ only in what the reviewer is being asked to decide.
+ */
+export const SCAN_TIERS = {
+  /** Art and text independently reached the same printing. Nothing to decide. */
+  CONFIDENT: 'confident',
+  /**
+   * The art is certain but the printing is not — reprints sharing one
+   * illustration, or a pre-2015 card with no collector block to read. The
+   * reviewer is picking a printing, not a card.
+   */
+  PICK_PRINTING: 'pick-printing',
+  /** Both signals are strong and they disagree. The reviewer picks between them. */
+  CONFLICT: 'conflict',
+  /** Weak, or only one signal spoke. The old text-only behaviour. */
+  UNSURE: 'unsure',
+};
+
+/**
+ * Resolve a scan using the OCR text and the capture's perceptual hashes together.
+ *
+ * The point is that the two fail in uncorrelated ways. OCR reads the collector
+ * block and names a printing exactly, when it can read it at all; the art hash
+ * recognises the picture through glare and blur but cannot tell two printings
+ * of one illustration apart. Neither is trustworthy alone, and their agreement
+ * is worth more than a high score from either — which is why CONFIDENT requires
+ * both to point at the same printing and can never be reached by one signal
+ * being emphatic.
+ *
+ * The second gain is subtler and matters more in practice. Once the hash has
+ * produced a shortlist, the OCR text stops being an open-vocabulary read: the
+ * question turns from "is this string a valid set code" into "which of these
+ * few printings is this reading closest to", and nearest-match over a handful
+ * of candidates tolerates character errors that would sink a free-text lookup.
+ *
+ * Degrades to plain resolveScan when no hash is supplied or no hash file is
+ * loaded, so a deployment without data/card-hashes.bin still scans as before.
+ *
+ * @param {object} scan
+ * @param {string|null} scan.name             OCR'd title band
+ * @param {string|null} scan.setCode          OCR'd set code
+ * @param {string|null} scan.collectorNumber  OCR'd collector number
+ * @param {string|null} scan.artHash          Capture's art hash, hex
+ * @param {string|null} scan.frameHash        Capture's frame hash, hex
+ * @param {number} [scan.limit]
+ * @returns {{query: object, tier: string, candidates: Array, signals: object}}
+ */
+export function resolveScanFused({
+  name = null,
+  setCode = null,
+  collectorNumber = null,
+  artHash = null,
+  frameHash = null,
+  limit = 10,
+} = {}) {
+  // Resolved wide and trimmed at the end: a printing that the text ranked 30th
+  // can be the right answer once the art agrees with it, and it has to still be
+  // in the list for that to be noticed.
+  const text = resolveScan({ name, setCode, collectorNumber, limit: ABSOLUTE_MAX_CANDIDATES });
+
+  const cap = Math.min(Math.max(parseInt(limit, 10) || 10, 1), ABSOLUTE_MAX_CANDIDATES);
+
+  const hashMatches = artHash && hashesAvailable() ? findByArtHash(artHash, frameHash) : [];
+
+  if (!hashMatches.length) {
+    // No hash signal at all — no capture hash, no hash file, or nothing within
+    // threshold. Reported honestly as single-signal rather than dressed up.
+    return {
+      query: { ...text.query, artHash, frameHash },
+      tier: SCAN_TIERS.UNSURE,
+      candidates: text.candidates.slice(0, cap),
+      signals: { text: text.candidates.length, hash: 0, agreed: false, bestArtDistance: null },
+    };
+  }
+
+  const textById = new Map(text.candidates.map((candidate) => [candidate.printingId, candidate]));
+  const hashById = new Map(hashMatches.map((match) => [match.printingId, match]));
+
+  // Printings the hash found and the text did not still have to be shown. On a
+  // pre-2015 card the hash is the *only* signal there is, and dropping its finds
+  // for want of a collector block would discard the one thing that worked.
+  const missing = hashMatches
+    .map((match) => match.printingId)
+    .filter((id) => !textById.has(id));
+
+  const hydrated = new Map();
+  for (const row of printingsByIds(missing)) {
+    hydrated.set(row.printing_id, row);
+  }
+
+  const merged = [];
+
+  for (const match of hashMatches) {
+    const existing = textById.get(match.printingId);
+
+    if (existing) {
+      merged.push({
+        ...existing,
+        artDistance: match.artDistance,
+        frameDistance: match.frameDistance,
+        hashConfidence: match.confidence,
+        // Agreement beats either signal alone, but the result stays under 1: it
+        // is still a scan, and the review step is not a formality.
+        confidence:
+          Math.round(
+            Math.min(0.99, existing.confidence * 0.5 + match.confidence * 0.5 + 0.2) * 1000
+          ) / 1000,
+        matchedBy: [...existing.matchedBy, 'art-hash'],
+      });
+      continue;
+    }
+
+    const row = hydrated.get(match.printingId);
+    if (!row) continue;
+
+    merged.push({
+      cardId: row.card_id,
+      name: row.card_name,
+      manaCost: row.mana_cost,
+      typeLine: row.type_line,
+      printingId: row.printing_id,
+      uuid: row.uuid,
+      setCode: row.set_code,
+      collectorNumber: row.collector_number,
+      rarity: row.rarity,
+      imageUrl: row.image_url,
+      isPromo: !!row.is_promo,
+      releasedAt: row.released_at,
+      artDistance: match.artDistance,
+      frameDistance: match.frameDistance,
+      hashConfidence: match.confidence,
+      confidence: Math.round(match.confidence * 1000) / 1000,
+      nameSimilarity: null,
+      matchedBy: ['art-hash'],
+    });
+  }
+
+  // Text-only candidates keep their place, below anything the art agreed with.
+  for (const candidate of text.candidates) {
+    if (hashById.has(candidate.printingId)) continue;
+    merged.push({ ...candidate, artDistance: null, frameDistance: null, hashConfidence: null });
+  }
+
+  merged.sort((a, b) => b.confidence - a.confidence);
+
+  const best = merged[0] || null;
+  const bestHash = hashMatches[0];
+  const bestText = text.candidates[0] || null;
+
+  // Do the two signals name the same printing? Deliberately not "is either one
+  // confident": a strong text read and a strong art match pointing at different
+  // printings is exactly the case that must never collapse out of review.
+  const agreed = Boolean(
+    bestText && hashById.has(bestText.printingId) && best && best.printingId === bestText.printingId
+  );
+
+  let tier;
+  if (agreed && isStrongMatch(bestHash)) {
+    tier = SCAN_TIERS.CONFIDENT;
+  } else if (!bestText && isStrongMatch(bestHash)) {
+    // The art is certain and there is no text to place it: a pre-2015 card, or a
+    // collector block lost to glare. The card is known, the printing is not.
+    tier = SCAN_TIERS.PICK_PRINTING;
+  } else if (bestText && isStrongMatch(bestHash) && !agreed) {
+    tier = SCAN_TIERS.CONFLICT;
+  } else {
+    tier = SCAN_TIERS.UNSURE;
+  }
+
+  return {
+    query: { ...text.query, artHash, frameHash },
+    tier,
+    candidates: merged.slice(0, cap),
+    signals: {
+      text: text.candidates.length,
+      hash: hashMatches.length,
+      agreed,
+      bestArtDistance: bestHash ? bestHash.artDistance : null,
+    },
   };
 }

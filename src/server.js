@@ -112,6 +112,17 @@ async function start() {
     await runMigrations();
     console.log('✓ Database initialized');
 
+    // The scanner's perceptual-hash reference. Loaded after migrations because
+    // it joins itself to `printings`, and never fatal: a deployment without
+    // data/card-hashes.bin falls back to OCR-only scanning rather than
+    // refusing to boot over a feature most requests never touch.
+    try {
+      const { load: loadCardHashes } = await import('./services/cardHashIndex.js');
+      loadCardHashes();
+    } catch (error) {
+      console.error('⚠️  Card hash index unavailable:', error.message);
+    }
+
     // Ensure at least one admin user exists
     const { createAdminUser } = await import('./services/authService.js');
     const crypto = await import('crypto');

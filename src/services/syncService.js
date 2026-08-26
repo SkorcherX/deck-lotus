@@ -110,6 +110,21 @@ export async function runSync({ trigger = 'manual' } = {}) {
     });
 
     lastRun = new Date();
+
+    // scripts/import-mtgjson.js clears and rebuilds `printings`, reassigning
+    // every integer id. The card hashes themselves are keyed on uuid and are
+    // unaffected — that is why they are — but every printing_id the scanner
+    // has cached against them is stale the instant the import finishes, and a
+    // scan would resolve to printings that no longer exist. Re-joining is one
+    // query, and it has to happen before the app serves another scan.
+    try {
+      const { refresh: refreshCardHashes } = await import('./cardHashIndex.js');
+      refreshCardHashes();
+      console.log('✓ Card hash index re-joined to the rebuilt printings');
+    } catch (error) {
+      console.error('⚠️  Could not re-join the card hash index:', error.message);
+    }
+
     markSyncFinished();
     console.log('✓ Sync completed successfully');
 
