@@ -10,6 +10,7 @@ import {
   cameraAvailability,
   createAutoCapture,
   defaultQuad,
+  detectCard,
   frameImageData,
   guideRect,
   imageDataOf,
@@ -25,6 +26,7 @@ import {
   warpRegion,
 } from '../utils/cardCapture.js';
 import { hashRectified } from '../../../src/shared/cardHash.js';
+import * as diagnostics from '../utils/scanDiagnostics.js';
 
 /**
  * Camera scan: capture, read, resolve.
@@ -50,7 +52,10 @@ const STORAGE_KEY = 'scan.captureSettings';
 // 9: the defaults now depend on whether the camera is hand-held — the
 // stability bar a desk webcam was tuned to could never be met by a phone, so a
 // stored version-8 profile would leave the shutter permanently unarmed on one.
-const SETTINGS_VERSION = 9;
+// 10: the card is found in the frame rather than expected in a marked quad, so
+// the thresholds are now measured against the card wherever it is rather than
+// against whatever was sitting inside the guide.
+const SETTINGS_VERSION = 10;
 
 // The analysis buffer is deliberately tiny: every metric is a per-pixel pass
 // over it on every frame, and none of them need detail.
@@ -63,6 +68,15 @@ const ANALYSIS_WIDTH = Math.round(ANALYSIS_HEIGHT * CARD_ASPECT);
 const ANALYSIS_SOURCE_WIDTH = 480;
 
 const ANALYSIS_INTERVAL_MS = 100;
+
+/**
+ * Consecutive tracked frames before detection is made to sweep again.
+ *
+ * 15 at the analysis interval is about a second and a half. See the loop: a
+ * track is only ever consistent with the frame before it, so this is the only
+ * thing that ends a lock that was wrong to begin with.
+ */
+const TRACK_BEFORE_RESWEEP = 15;
 const MAX_RECENT_CAPTURES = 12;
 
 const state = {
@@ -93,6 +107,14 @@ const state = {
   settings: loadSettings(),
   // Reused across frames so the loop allocates nothing per tick.
   buffers: { source: null, analysis: null, scratch: null },
+  // Where the card was last seen, fed back in as the next frame's hint, and
+  // null whenever detection loses it. Never a fallback: a stale quad is how a
+  // capture comes out legible and matches nothing.
+  detected: null,
+  // How many frames in a row have been tracked rather than swept. Tracking
+  // cannot notice that it has been wrong all along — only that something
+  // changed — so it is given a leash and then made to look again.
+  trackedFrames: 0,
 };
 
 /**
@@ -141,6 +163,16 @@ function freshSettings() {
     // stale one that is the only alternative here. Which is also the answer to
     // the "fiddly to position" complaint: nothing to position.
     snapEnabled: handheld,
+
+    // Find the card in the frame rather than expecting it in a marked quad.
+    // On by default and for everyone, hand-held or not: the quad it replaces
+    // is only correct while the card and the camera both stay put, and the
+    // penalty for it being slightly wrong is total rather than gradual — the
+    // hash tolerates about 1% of framing error before a capture matches
+    // nothing at all. Left as a setting because a fixed desk rig with a
+    // carefully marked quad is genuinely the more accurate arrangement, and
+    // because a detector that cannot see the card has to have an off switch.
+    detectEnabled: true,
   };
 }
 
@@ -172,6 +204,9 @@ function loadSettings() {
           ? stored.quad.map((p) => ({ x: p.x, y: p.y }))
           : fallback.quad,
       snapEnabled: stored.snapEnabled === true,
+      // Defaults on: only an explicit false turns it off, so a profile stored
+      // before this existed gains it rather than being stuck without it.
+      detectEnabled: stored.detectEnabled !== false,
     };
   } catch {
     return fallback;
@@ -406,12 +441,40 @@ function startLoop() {
     }
     sourceCtx.drawImage(video, 0, 0, source.width, source.height);
 
+    const sourceFrame = sourceCtx.getImageData(0, 0, source.width, source.height);
+
+    // Find the card, every frame. The marked quad describes a desk; a hand-held
+    // card is wherever the hand is, and the hash tolerates about 1% of framing
+    // error before the art window walks off the illustration. Tracking from the
+    // last frame keeps this to one refinement in the steady state — see
+    // detectCard, which falls back to a full sweep the moment tracking is not
+    // clearly on the card.
+    if (state.settings.detectEnabled) {
+      // Re-sweep periodically even while tracking is succeeding. A track only
+      // ever compares this frame against the last, so a lock that was wrong from
+      // the first frame is perfectly self-consistent and will be held forever.
+      // Roughly every second and a half, the question is asked again from
+      // scratch — cheap at that rate, and it bounds how long a bad lock lasts.
+      const leashed = state.trackedFrames >= TRACK_BEFORE_RESWEEP;
+      const hint = leashed ? null : state.detected?.quad || null;
+
+      state.detected = detectCard(sourceFrame, { hint });
+      state.trackedFrames = state.detected?.tracked ? state.trackedFrames + 1 : 0;
+      renderDetection(state.detected);
+    } else {
+      state.detected = null;
+      state.trackedFrames = 0;
+    }
+
     // Metrics are measured on the rectified card, not on the raw frame, so a
-    // tilted view is judged on the same terms as a flat one.
+    // tilted view is judged on the same terms as a flat one — and on the card
+    // that was actually found rather than on the guide it was expected in.
+    const framing = state.detected?.quad || state.settings.quad;
+
     state.buffers.scratch = warpQuadInto(
       analysisCtx,
-      sourceCtx.getImageData(0, 0, source.width, source.height),
-      state.settings.quad,
+      sourceFrame,
+      framing,
       state.buffers.scratch
     );
 
@@ -420,6 +483,14 @@ function startLoop() {
 
     const verdict = state.autoCapture.evaluate(metrics);
     renderMetrics(metrics, verdict);
+
+    // No card, no capture. Firing on the marked quad because detection came up
+    // empty is precisely how a session fills with legible photographs of a
+    // table that match nothing — the failure this detection exists to end.
+    if (state.settings.detectEnabled && !state.detected) {
+      state.autoCapture.reset();
+      return;
+    }
 
     if (verdict.shouldCapture) {
       if (state.autoEnabled) {
@@ -497,6 +568,22 @@ const SNAP_SOURCE_WIDTH = 960;
  * would crop the table, which is worse than a slightly loose crop.
  */
 function snapQuad(source, frameWidth, frameHeight) {
+  // Automatic detection, where it has found something. The live loop has
+  // already run it on this frame and left the answer in state.detected; using
+  // that rather than detecting again keeps the capture framed exactly as the
+  // overlay showed it, which is the framing the user agreed to by holding still.
+  if (state.settings.detectEnabled && state.detected) {
+    return {
+      quad: state.detected.quad,
+      snap: {
+        moved: Math.round(state.detected.moved || 0),
+        strength: Math.round(state.detected.strength),
+        detected: true,
+        tracked: !!state.detected.tracked,
+      },
+    };
+  }
+
   if (!state.settings.snapEnabled) return { quad: state.settings.quad, snap: null };
 
   const width = Math.min(SNAP_SOURCE_WIDTH, frameWidth);
@@ -569,6 +656,12 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   state.captures = state.captures.slice(0, MAX_RECENT_CAPTURES);
   state.autoCapture?.disarm();
 
+  // Recorded before anything is resolved, so a capture that never comes back
+  // still leaves a trace. The frame goes in beside the rectified card because a
+  // framing fault is only visible in the two together.
+  diagnostics.recordCapture(entry, { frame });
+  renderRecordingStatus();
+
   flashShutter();
   renderCapture(entry);
   renderRecent();
@@ -587,6 +680,39 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   // earns its seconds when the art has named a card but not a printing, so
   // that is the only case it runs in unattended.
   if (state.ocrEnabled) readCapture(entry);
+}
+
+/**
+ * Draw where the card is being seen, live.
+ *
+ * Drawn on the same polygon the marked guide uses, so with detection on the
+ * overlay stops being a target to line the card up against and becomes a report
+ * of what was found. That distinction is the point: when it is not on the card,
+ * you can see that it is not on the card, rather than discovering it later in a
+ * session of captures that matched nothing.
+ */
+function renderDetection(detection) {
+  const outline = el('scan-quad-card');
+  if (outline) {
+    outline.setAttribute(
+      'points',
+      detection ? detection.quad.map((p) => `${p.x * 100},${p.y * 100}`).join(' ') : ''
+    );
+    outline.classList.toggle('scan-quad-found', !!detection);
+  }
+
+  // The handles mark a quad by hand; with detection on there is nothing to drag.
+  for (let i = 0; i < 4; i++) {
+    el(`scan-handle-${i}`)?.classList.toggle('hidden', true);
+  }
+
+  const status = el('scan-detect-status');
+  if (status) {
+    status.textContent = detection
+      ? `Card found${detection.tracked ? ' (tracking)' : ''}`
+      : 'No card in frame';
+    status.classList.toggle('scan-detect-found', !!detection);
+  }
 }
 
 /**
@@ -674,6 +800,7 @@ async function resolveCapture(entry) {
       best ? `${best.name} — ${best.setCode} ${best.collectorNumber || ''} (art)` : 'No art match'
     );
     renderLiveMatch(best || null);
+    diagnostics.attachResolution(entry.id, resolved);
     signalMatch(resolved.tier);
 
     window.dispatchEvent(new CustomEvent('scan:resolved', {
@@ -682,10 +809,29 @@ async function resolveCapture(entry) {
   } catch (error) {
     setReadStatus(`Match failed: ${error.message}`);
     renderLiveMatch(null);
+    diagnostics.attachFailure(entry.id, error.message);
     window.dispatchEvent(new CustomEvent('scan:read-failed', {
       detail: { id: entry.id, message: error.message },
     }));
   }
+}
+
+/** Keep the recording controls honest about what is actually being held. */
+function renderRecordingStatus() {
+  const status = el('scan-record-status');
+  const button = el('scan-record-download');
+  const held = diagnostics.count();
+
+  if (button) button.disabled = held === 0;
+  if (!status) return;
+
+  status.textContent = diagnostics.isRecording()
+    ? held
+      ? `Recording — ${held} capture${held === 1 ? '' : 's'} held.`
+      : 'Recording — scan a card.'
+    : held
+      ? `Stopped — ${held} capture${held === 1 ? '' : 's'} still held.`
+      : 'Off — captures are not being kept.';
 }
 
 /**
@@ -763,6 +909,7 @@ async function runRead(entry) {
   }
 
   entry.reading = reading;
+  diagnostics.attachReading(entry.id, reading);
   renderReading(entry);
 
   // An unreadable card is not a dead end any more. A pre-2015 card has no
@@ -1111,6 +1258,8 @@ export function setupScan() {
     syncTuningInputs();
     const snapToggle = el('scan-snap-toggle');
     if (snapToggle) snapToggle.checked = state.settings.snapEnabled;
+    const detectToggle = el('scan-detect-toggle');
+    if (detectToggle) detectToggle.checked = state.settings.detectEnabled;
     drawOverlay();
     renderRecent();
     updateReferenceLabel();
@@ -1148,6 +1297,34 @@ export function setupScan() {
   el('scan-auto-toggle')?.addEventListener('change', (e) => {
     state.autoEnabled = e.target.checked;
     state.autoCapture?.reset();
+  });
+
+  el('scan-detect-toggle')?.addEventListener('change', (e) => {
+    state.settings.detectEnabled = e.target.checked;
+    saveSettings();
+    // Drop the tracked quad and the overlay together: leaving either behind
+    // shows a card that is no longer being looked for.
+    state.detected = null;
+    if (!state.settings.detectEnabled) {
+      renderDetection(null);
+      el('scan-detect-status').textContent = 'Using the marked guide';
+      drawOverlay();
+      for (let i = 0; i < 4; i++) el(`scan-handle-${i}`)?.classList.remove('hidden');
+    }
+  });
+
+  el('scan-record-toggle')?.addEventListener('change', (e) => {
+    diagnostics.setRecording(e.target.checked);
+    renderRecordingStatus();
+  });
+
+  el('scan-record-download')?.addEventListener('click', () => {
+    // The settings go in with it: thresholds and crop regions are the
+    // difference between a capture that was going to work and one that never
+    // could, and a bundle that does not say which produced it can only be
+    // guessed at.
+    const { captures, bytes } = diagnostics.download(state.settings);
+    showToast(`Saved ${captures} capture${captures === 1 ? '' : 's'} (${Math.round(bytes / 1024)}KB)`, 'success');
   });
 
   el('scan-sound-toggle')?.addEventListener('change', (e) => {

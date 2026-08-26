@@ -5898,6 +5898,29 @@ body.maintenance-locked #app {
   margin-left: auto;
 }
 
+/* The live detection readout, beside the shutter. Green only when a card is
+   actually found — the whole value of it is that "no card in frame" is visible
+   at the moment it is true rather than discovered later in the review list. */
+.scan-detect-status {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.scan-detect-status.scan-detect-found {
+  color: var(--success);
+}
+
+/* The detected outline, as opposed to a guide being aimed at. */
+.scan-quad-found {
+  stroke: var(--success);
+}
+
+.scan-record-status {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
 .scan-count {
   color: var(--text-muted);
   font-size: 0.85rem;

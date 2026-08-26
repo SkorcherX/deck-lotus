@@ -1412,6 +1412,7 @@
                                 <input type="checkbox" id="scan-auto-toggle" checked />
                                 Auto-capture
                             </label>
+                            <span id="scan-detect-status" class="scan-detect-status">Camera off</span>
                             <label class="scan-toggle">
                                 <input type="checkbox" id="scan-sound-toggle" checked />
                                 Beep on match
@@ -1423,6 +1424,13 @@
                             <label class="scan-toggle" title="Slow. Only helps separate reprints that share the same art.">
                                 <input type="checkbox" id="scan-ocr-toggle" />
                                 Also read the text (slow)
+                            </label>
+                            <!-- On by default. Off means the marked quad is used
+                                 as-is, which is only right for a fixed camera
+                                 over a desk. See freshSettings in scan.js. -->
+                            <label class="scan-toggle" title="Find the card in the frame instead of expecting it inside the guide.">
+                                <input type="checkbox" id="scan-detect-toggle" checked />
+                                Find the card
                             </label>
                             <label class="scan-toggle">
                                 <input type="checkbox" id="scan-snap-toggle" />
@@ -1456,6 +1464,26 @@
                         -->
                         <details id="scan-diagnostics" class="scan-diagnostics">
                             <summary>Diagnostics &amp; tuning</summary>
+
+                            <!--
+                                A scan session, recorded to a file you can send
+                                somebody. Two of this scanner's worst faults were
+                                invisible from the outside and obvious the moment
+                                the numbers were in hand; see scanDiagnostics.js.
+                            -->
+                            <div class="scan-controls scan-diagnostics-record">
+                                <label class="scan-toggle">
+                                    <input type="checkbox" id="scan-record-toggle" />
+                                    Record this session
+                                </label>
+                                <button id="scan-record-download" class="btn btn-secondary" disabled>
+                                    <i class="ph ph-download-simple btn-icon"></i>
+                                    <span class="btn-text">Download recording</span>
+                                </button>
+                                <span id="scan-record-status" class="scan-record-status">
+                                    Off &mdash; captures are not being kept.
+                                </span>
+                            </div>
 
                         <p class="scan-hint">
                             Lay the card down, tilt the lid at it, then drag the four
