@@ -49,7 +49,7 @@ import {
   FRAME_HASH_BYTES,
   hexToWords,
   hammingWords,
-} from '../../client/src/utils/cardHash.js';
+} from '../shared/cardHash.js';
 
 const ART_WORDS = ART_HASH_BYTES / 4;
 const FRAME_WORDS = FRAME_HASH_BYTES / 4;

@@ -23,7 +23,7 @@ import {
   warpQuadInto,
   warpRegion,
 } from '../utils/cardCapture.js';
-import { hashRectified } from '../utils/cardHash.js';
+import { hashRectified } from '../../../src/shared/cardHash.js';
 
 /**
  * Camera scan: capture, read, resolve.

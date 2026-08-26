@@ -38,7 +38,7 @@ import Database from 'better-sqlite3';
 import jpeg from 'jpeg-js';
 import { createWriteStream, existsSync, createReadStream } from 'fs';
 import { createInterface } from 'readline';
-import { hashRectified } from '../client/src/utils/cardHash.js';
+import { hashRectified } from '../src/shared/cardHash.js';
 import { readPackedUuids, PACKED_PATH } from '../src/services/cardHashFile.js';
 
 const DEFAULT_DB = process.env.DATABASE_PATH || 'data/deck-lotus.db';

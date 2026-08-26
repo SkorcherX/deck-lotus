@@ -41,6 +41,13 @@ export default defineConfig({
   plugins: [forgeModules()],
   server: {
     port: 5173,
+    fs: {
+      // src/shared/cardHash.js lives outside this root on purpose — see its
+      // header. Vite's default allow-list is the inferred workspace root, which
+      // already covers it, but the dev server 404s the moment that inference
+      // changes, so the parent is named explicitly.
+      allow: ['..'],
+    },
     proxy: {
       '/api': {
         // Overridable so `npm run client:dev` can be pointed at the test

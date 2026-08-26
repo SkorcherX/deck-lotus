@@ -30,7 +30,7 @@ process.env.CARD_HASH_PATH = HASH_PATH;
 const { runMigrations, closeDb } = await import('../../src/db/index.js');
 const { default: db } = await import('../../src/db/connection.js');
 const { packHashes } = await import('../../src/services/cardHashFile.js');
-const { ART_HASH_HEX, FRAME_HASH_HEX } = await import('../../client/src/utils/cardHash.js');
+const { ART_HASH_HEX, FRAME_HASH_HEX } = await import('../../src/shared/cardHash.js');
 const hashIndex = await import('../../src/services/cardHashIndex.js');
 const { resolveScanFused, resolveScan, SCAN_TIERS } = await import('../../src/services/scanService.js');
 

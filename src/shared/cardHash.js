@@ -19,14 +19,29 @@
  *   ceiling on hashing alone.
  *
  * ── The load-bearing constraint ──────────────────────────────────────────────
- * This module is imported by BOTH the browser (hashing a webcam capture) and
- * `scripts/build-card-hashes.mjs` (hashing Scryfall's reference images). It must
- * stay that way. A reference hash and a capture hash are only comparable if the
- * exact same arithmetic produced them, down to the rounding — a second
- * "equivalent" implementation on one side would drift and nothing would match,
- * with no error to point at. So: no DOM, no Node built-ins, no imports at all.
- * Input is the ImageData *shape* (`{ data, width, height }`, RGBA), which a
- * canvas gives for free and which Node can fabricate from a decoded JPEG.
+ * This module is imported by BOTH the browser (hashing a phone capture) and the
+ * server — `cardHashIndex.js` at runtime, `scripts/build-card-hashes.mjs` when
+ * building the reference. It must stay that way. A reference hash and a capture
+ * hash are only comparable if the exact same arithmetic produced them, down to
+ * the rounding; a second "equivalent" implementation on one side would drift and
+ * nothing would match, with no error to point at. So: no DOM, no Node built-ins,
+ * no imports at all. Input is the ImageData *shape* (`{ data, width, height }`,
+ * RGBA), which a canvas gives for free and which Node can fabricate from a
+ * decoded JPEG.
+ *
+ * ── Why it lives in src/shared and not in the client ─────────────────────────
+ * It started in `client/src/utils/`, beside the capture code that was its first
+ * caller, and that broke the container on the first deploy: the runtime image
+ * copies `src`, `scripts` and the *built* `client/dist`, never `client/src`, so
+ * the server's import resolved to nothing and the app would not boot. Local
+ * tests and a dev server could not have caught it — the file is right there on
+ * a developer's disk.
+ *
+ * The direction is the real point, though. The browser resolves this at build
+ * time, when the whole repo is present, so the client may reach into the server
+ * tree; the server resolves it at runtime inside an image that deliberately does
+ * not ship client sources, so it must never reach the other way. Shared code
+ * between the two belongs on the server's side of that line.
  *
  * Both sides must also feed in the same thing: a full card rectified to its own
  * borders. The browser gets that from `warpQuad` in cardCapture.js; the script

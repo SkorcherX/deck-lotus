@@ -37,7 +37,7 @@
  * changed must be rejected loudly instead of read as garbage.
  */
 import { readFileSync, openSync, readSync, closeSync, statSync } from 'fs';
-import { ART_HASH_BYTES, FRAME_HASH_BYTES } from '../../client/src/utils/cardHash.js';
+import { ART_HASH_BYTES, FRAME_HASH_BYTES } from '../shared/cardHash.js';
 
 export const PACKED_PATH = process.env.CARD_HASH_PATH || 'data/card-hashes.bin';
 

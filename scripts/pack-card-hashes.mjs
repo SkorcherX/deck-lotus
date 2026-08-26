@@ -23,7 +23,7 @@ import {
   readPackedHashes,
   PACKED_PATH,
 } from '../src/services/cardHashFile.js';
-import { ART_HASH_HEX, FRAME_HASH_HEX } from '../client/src/utils/cardHash.js';
+import { ART_HASH_HEX, FRAME_HASH_HEX } from '../src/shared/cardHash.js';
 
 const DEFAULT_IN = 'data/card-hashes.raw.jsonl';
 

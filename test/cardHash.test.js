@@ -20,7 +20,7 @@ import {
   ART_WINDOW,
   ART_HASH_HEX,
   FRAME_HASH_HEX,
-} from '../client/src/utils/cardHash.js';
+} from '../src/shared/cardHash.js';
 
 /** Deterministic noise, so a failure is reproducible rather than a coin flip. */
 function seededRandom(seed) {
