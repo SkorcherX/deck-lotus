@@ -569,6 +569,7 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   state.captures = state.captures.slice(0, MAX_RECENT_CAPTURES);
   state.autoCapture?.disarm();
 
+  flashShutter();
   renderCapture(entry);
   renderRecent();
 
@@ -672,6 +673,7 @@ async function resolveCapture(entry) {
     setReadStatus(
       best ? `${best.name} — ${best.setCode} ${best.collectorNumber || ''} (art)` : 'No art match'
     );
+    renderLiveMatch(best || null);
     signalMatch(resolved.tier);
 
     window.dispatchEvent(new CustomEvent('scan:resolved', {
@@ -679,10 +681,40 @@ async function resolveCapture(entry) {
     }));
   } catch (error) {
     setReadStatus(`Match failed: ${error.message}`);
+    renderLiveMatch(null);
     window.dispatchEvent(new CustomEvent('scan:read-failed', {
       detail: { id: entry.id, message: error.message },
     }));
   }
+}
+
+/**
+ * One frame of white over the video, on capture.
+ *
+ * The beep says a card was taken; this says *which frame* it came from. Moving
+ * cards quickly, that is the difference between trusting the count and stopping
+ * to check it. Restarting the animation needs the class off, a reflow read, then
+ * on — otherwise a second capture within the animation does nothing visible.
+ */
+function flashShutter() {
+  const flash = el('scan-flash');
+  if (!flash) return;
+  flash.classList.remove('is-firing');
+  void flash.offsetWidth;
+  flash.classList.add('is-firing');
+}
+
+/** The match, over the picture. Cleared when a capture resolves to nothing. */
+function renderLiveMatch(candidate) {
+  const live = el('scan-live');
+  if (!live) return;
+
+  live.classList.toggle('hidden', !candidate);
+  if (!candidate) return;
+
+  el('scan-live-name').textContent = candidate.name;
+  el('scan-live-print').textContent =
+    `${candidate.setCode} ${candidate.collectorNumber || ''}`.trim();
 }
 
 /**
@@ -943,11 +975,12 @@ function swapCanvas(containerId, canvas) {
 }
 
 function renderRecent() {
+  // The count is the session's to write, not this ring buffer's: state.captures
+  // is capped at MAX_RECENT_CAPTURES so the page can hold thumbnails, and once
+  // that number moved into the action bar as the session's headline it would
+  // have stuck at 12 through a hundred-card box. See renderSummary in
+  // scanSession.js, which counts rows.
   const strip = el('scan-recent');
-  const count = el('scan-count');
-  if (count) {
-    count.textContent = `${state.captures.length} capture${state.captures.length === 1 ? '' : 's'} this session`;
-  }
   if (!strip) return;
 
   strip.innerHTML = '';
@@ -1087,6 +1120,11 @@ export function setupScan() {
   // user has navigated away from is alarming, and the stream is not free.
   window.addEventListener('page:leave', (event) => {
     if (event.detail?.page === 'scan') stopCamera();
+  });
+
+  // Reviewing stops the camera. See the dispatch in scanSession.js for why.
+  window.addEventListener('scan:review-opened', () => {
+    if (state.stream) stopCamera();
   });
 
   el('scan-start-btn')?.addEventListener('click', startCamera);

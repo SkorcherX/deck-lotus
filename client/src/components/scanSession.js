@@ -241,6 +241,15 @@ function renderSummary() {
   else if (live.length) parts.push('all agreed');
 
   summary.textContent = parts.join(' · ');
+
+  // The same figure, compressed for the action bar, where it sits beside Review
+  // and is the only running total on screen while scanning.
+  const count = el('scan-count');
+  if (count) {
+    count.textContent = live.length
+      ? `${live.length} card${live.length === 1 ? '' : 's'}${attention ? ` · ${attention} to check` : ''}`
+      : 'No cards yet';
+  }
 }
 
 function candidateOption(candidate, selectedId) {
@@ -431,7 +440,19 @@ function render() {
 
   const reviewing = state.phase === 'review';
   el('scan-review')?.classList.toggle('hidden', !reviewing);
-  el('scan-review-start')?.classList.toggle('hidden', reviewing);
+  // Hidden with nothing to review as well as during review: the button now lives
+  // in the scan action bar rather than at the head of this panel, so it is on
+  // screen from the moment the page opens and must not offer an empty list.
+  el('scan-review-start')?.classList.toggle('hidden', reviewing || state.rows.length === 0);
+
+  // Which of the two the page is doing. The phone layout hangs off these: while
+  // scanning the camera fills the viewport and the controls stick to its foot,
+  // while reviewing the whole capture side is gone and the list has the screen.
+  const page = el('scan-page');
+  if (page) {
+    page.classList.toggle('scan-page-scanning', !reviewing);
+    page.classList.toggle('scan-page-reviewing', reviewing);
+  }
 
   if (reviewing) renderReview();
 
@@ -616,6 +637,12 @@ export function setupScanSession() {
 
   el('scan-review-start')?.addEventListener('click', () => {
     state.phase = 'review';
+    // Stop the camera, rather than leaving it firing into the list being worked
+    // through. Auto-capture does not know a review is happening, so a session
+    // reviewed in front of a live lens grows new rows while you read it — which
+    // is both confusing and unbounded. Sent as an event because the session
+    // deliberately knows nothing about the camera; scan.js owns that.
+    window.dispatchEvent(new CustomEvent('scan:review-opened'));
     render();
   });
 

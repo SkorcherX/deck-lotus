@@ -5873,6 +5873,162 @@ body.maintenance-locked #app {
   }
 }
 
+/* ── Scanning on a phone ──────────────────────────────────────────────────────
+   The scan page was laid out for a desk: two columns, the camera at the top and
+   a workbench of thresholds, crops and reader output beneath it. On a phone that
+   collapses to one column, which pushes everything downward — and the Review
+   button, the one control a scanning session actually ends with, sat under a
+   dozen blocks of diagnostics. You cannot scroll for it while holding a card.
+
+   So on a narrow screen the camera fills the viewport and the controls stick to
+   the bottom of it, within thumb reach. Everything diagnostic is behind a closed
+   disclosure and simply is not in the way. */
+
+.scan-actionbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3, 0.75rem);
+}
+
+.scan-actionbar-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 0.75rem);
+  margin-left: auto;
+}
+
+.scan-count {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.scan-diagnostics {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: var(--space-3, 0.75rem);
+  background: var(--bg-secondary);
+}
+
+.scan-diagnostics > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* The match, over the picture. Anchored bottom-left of the video so it never
+   covers the card the guide is centred on. */
+.scan-live {
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  /* Its own scrim rather than a token surface: this sits on live video, which
+     is arbitrary and mostly dark, and needs to stay readable over all of it. */
+  background: rgb(0 0 0 / 0.72);
+  color: #f1f5f9;
+  pointer-events: none;
+}
+
+.scan-live-name {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.scan-live-print {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+
+/* One frame of white on capture. `opacity` and `transform` only, so it composites
+   on the GPU and cannot stall the capture it is reporting. */
+.scan-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scan-flash.is-firing {
+  animation: scan-flash-fire 180ms ease-out;
+}
+
+@keyframes scan-flash-fire {
+  from { opacity: 0.75; }
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-flash.is-firing { animation-duration: 1ms; }
+}
+
+@media (max-width: 900px) {
+  /* dvh, not vh: mobile browser chrome shows and hides as you scroll, and vh is
+     measured against the largest viewport, so a vh-sized stage sits partly under
+     the address bar exactly when the action bar needs to be visible. */
+  .scan-page-scanning .scan-stage {
+    height: min(62dvh, 70vw * 1.4);
+  }
+
+  .scan-page-scanning .scan-stage video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .scan-page-scanning .scan-actionbar {
+    position: sticky;
+    /* Clear of the iOS home indicator and the app's own bottom nav. */
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+    z-index: 5;
+    padding: var(--space-3, 0.75rem);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    box-shadow: 0 -4px 16px rgb(0 0 0 / 0.35);
+  }
+
+  .scan-actionbar-end {
+    /* Full width on its own line, so Review is a large target rather than a
+       chip wedged beside the shutter. */
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .scan-actionbar-end #scan-review-start {
+    flex: 1;
+  }
+
+  /* Labels are hidden on every button below 769px so toolbars fit. Review is the
+     exception: it is the one action that ends a session, it is the only button
+     down here that is not a recognisable glyph, and an unlabelled icon is
+     something to guess at while holding a stack of cards. */
+  .scan-actionbar-end .btn-text {
+    display: inline;
+  }
+
+  /* Reviewing replaces scanning rather than appending to it — see the camera
+     being stopped in scanSession.js. Anything to do with capturing is gone. */
+  /* Scoped to the scan page: .page-header-actions is shared markup, and this
+     is only about the camera picker and Start/Stop, which mean nothing while a
+     session is being reviewed with the camera already stopped. */
+  #scan-page.scan-page-reviewing .page-header-actions,
+  .scan-page-reviewing .scan-stage,
+  .scan-page-reviewing .scan-actionbar,
+  .scan-page-reviewing .scan-diagnostics,
+  .scan-page-reviewing .scan-column-evidence,
+  .scan-page-reviewing .scan-notice {
+    display: none;
+  }
+}
+
 .scan-column {
   display: flex;
   flex-direction: column;

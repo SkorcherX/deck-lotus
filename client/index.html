@@ -1375,22 +1375,32 @@
                                 <div id="scan-handle-2" class="scan-handle" title="Bottom-right corner"></div>
                                 <div id="scan-handle-3" class="scan-handle" title="Bottom-left corner"></div>
                             </div>
+                            <!-- A single frame of white over the video on capture.
+                                 The beep tells you a card was taken; this tells you
+                                 *which* frame it was taken from, which is the part
+                                 that matters when you are moving cards quickly. -->
+                            <div id="scan-flash" class="scan-flash"></div>
+                            <!-- The answer, over the picture. Scanning a box means
+                                 looking at the cards, so the one thing worth showing
+                                 has to be where the camera already is rather than in
+                                 a panel further down the page. -->
+                            <div id="scan-live" class="scan-live hidden">
+                                <span id="scan-live-name" class="scan-live-name"></span>
+                                <span id="scan-live-print" class="scan-live-print"></span>
+                            </div>
                         </div>
 
-                        <p class="scan-hint">
-                            Lay the card down, tilt the lid at it, then drag the four
-                            corners onto the card once. Captures are straightened back
-                            to a true card shape before anything is read.
-                        </p>
+                        <!--
+                            Everything you need mid-scan, and nothing else.
 
-                        <div class="scan-metrics">
-                            <span id="scan-chip-stable" class="scan-chip">Still &mdash;</span>
-                            <span id="scan-chip-sharp" class="scan-chip">Focus &mdash;</span>
-                            <span id="scan-chip-filled" class="scan-chip">Card &mdash;</span>
-                            <span id="scan-streak" class="scan-streak">Camera off</span>
-                        </div>
-
-                        <div class="scan-controls">
+                            Sticky to the bottom of the viewport on a phone: you are
+                            holding the phone in one hand and cards in the other, and
+                            anything that needs a scroll to reach may as well not be
+                            on the screen. Review lives here rather than at the foot
+                            of the page for the same reason.
+                        -->
+                        <div class="scan-actionbar">
+                            <div class="scan-controls scan-controls-primary">
                             <button id="scan-shutter-btn" class="btn btn-primary">
                                 <i class="ph ph-camera btn-icon"></i>
                                 <span class="btn-text">Capture</span>
@@ -1423,13 +1433,48 @@
                                 <span class="btn-text">Use an image</span>
                                 <input type="file" id="scan-file-input" accept="image/*" hidden />
                             </label>
+                            </div>
+
+                            <div class="scan-actionbar-end">
+                                <span id="scan-count" class="scan-count">0 captures this session</span>
+                                <!-- Moved out of the session panel at the foot of the
+                                     page. render() in scanSession.js still finds it by
+                                     id and hides it until there is something to review. -->
+                                <button type="button" id="scan-review-start" class="btn btn-primary hidden">
+                                    <i class="ph ph-list-checks btn-icon"></i>
+                                    <span class="btn-text">Review</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!--
+                            The workbench. Thresholds, crops, what the reader saw —
+                            all of it built for tuning at a desk, and all of it in the
+                            way on a phone, where it sat between the camera and the
+                            Review button. Closed by default; nothing in here is
+                            needed to scan a box.
+                        -->
+                        <details id="scan-diagnostics" class="scan-diagnostics">
+                            <summary>Diagnostics &amp; tuning</summary>
+
+                        <p class="scan-hint">
+                            Lay the card down, tilt the lid at it, then drag the four
+                            corners onto the card once. Captures are straightened back
+                            to a true card shape before anything is read.
+                        </p>
+
+                        <div class="scan-metrics">
+                            <span id="scan-chip-stable" class="scan-chip">Still &mdash;</span>
+                            <span id="scan-chip-sharp" class="scan-chip">Focus &mdash;</span>
+                            <span id="scan-chip-filled" class="scan-chip">Card &mdash;</span>
+                            <span id="scan-streak" class="scan-streak">Camera off</span>
+                        </div>
+
+                        <div class="scan-controls">
                             <button id="scan-clear-btn" class="btn btn-secondary">
                                 <i class="ph ph-trash btn-icon"></i>
                                 <span class="btn-text">Clear</span>
                             </button>
-                        </div>
-
-                        <div class="scan-controls">
                             <button id="scan-mark-empty" class="btn btn-secondary">
                                 <i class="ph ph-crosshair btn-icon"></i>
                                 <span class="btn-text">Mark empty desk</span>
@@ -1475,14 +1520,16 @@
                             </div>
                             <button id="scan-reset-tuning" class="btn btn-secondary btn-sm">Reset to defaults</button>
                         </details>
+                        </details>
                     </div>
 
-                    <div class="scan-column">
+                    <div class="scan-column scan-column-evidence">
                         <div id="scan-empty" class="scan-empty">
                             <i class="ph ph-scan"></i>
                             <p>
-                                Hold a card in the guide, or pick an image. The two crops
-                                below are exactly what the reader will see.
+                                Hold a card in the guide, or pick an image. Matches
+                                appear over the camera; open Diagnostics to see the
+                                crops behind them.
                             </p>
                         </div>
 
@@ -1525,9 +1572,6 @@
                             </div>
                         </div>
 
-                        <div class="scan-recent-header">
-                            <span id="scan-count">0 captures this session</span>
-                        </div>
                         <div id="scan-recent" class="scan-recent"></div>
                     </div>
                 </div>
@@ -1555,7 +1599,6 @@
                             Don't ask which printing &mdash; take the closest
                         </label>
                         <button type="button" id="scan-session-clear" class="btn-secondary">Discard</button>
-                        <button type="button" id="scan-review-start" class="btn-primary">Review this session</button>
                     </div>
 
                     <div id="scan-review" class="scan-review hidden">
