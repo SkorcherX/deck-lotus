@@ -89,10 +89,16 @@ COPY assets/android-chrome-512x512.png ./client/dist/android-chrome-512x512.png
 # Create data directory
 RUN mkdir -p /app/data
 
+# The packed perceptual hashes. Deliberately NOT under /app/data: that path is
+# the bind-mounted volume on a real deployment, and anything the image puts
+# there is hidden the moment the volume is mounted over it.
+COPY data/card-hashes.bin /app/card-hashes.bin
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATABASE_PATH=/app/data/deck-lotus.db
+ENV CARD_HASH_PATH=/app/card-hashes.bin
 
 # Expose port
 EXPOSE 3000
