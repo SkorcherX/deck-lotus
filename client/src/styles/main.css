@@ -4434,6 +4434,41 @@ button.btn-icon.active {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 0;
+}
+
+/* Two checkboxes and a wide label need more than one grid track. */
+.shopping-filters-grid .filter-group-wide {
+  grid-column: span 2;
+}
+
+.shopping-filters-grid .filter-group-actions {
+  flex-direction: row;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.price-range-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.price-range-row .filter-input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.filter-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  min-height: 38px;
+}
+
+.filter-checkboxes .checkbox-label {
+  white-space: nowrap;
 }
 
 .filter-group label {
@@ -4486,6 +4521,14 @@ button.btn-icon.active {
 
   .shopping-filters-grid {
     grid-template-columns: 1fr;
+  }
+
+  .shopping-filters-grid .filter-group-wide {
+    grid-column: span 1;
+  }
+
+  .filter-checkboxes .checkbox-label {
+    white-space: normal;
   }
 }
 

@@ -543,7 +543,7 @@ function renderFilters() {
       <!-- Price Filters -->
       <div class="filter-group">
         <label>Price Range</label>
-        <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <div class="price-range-row">
           <input
             type="number"
             id="price-min"
@@ -552,7 +552,6 @@ function renderFilters() {
             step="0.01"
             value="${filters.priceMin || ''}"
             class="filter-input"
-            style="width: 80px;"
           />
           <span>to</span>
           <input
@@ -563,16 +562,7 @@ function renderFilters() {
             step="0.01"
             value="${filters.priceMax || ''}"
             class="filter-input"
-            style="width: 80px;"
           />
-          <label class="checkbox-label">
-            <input type="checkbox" id="budget-mode" ${filters.budgetMode ? 'checked' : ''} />
-            Budget Mode
-          </label>
-          <label class="checkbox-label" title="Cards you already own, but which a deck you have not selected is holding. They cost nothing to buy, so they are listed without a quantity and left out of the totals, the export and the cart.">
-            <input type="checkbox" id="include-contested" ${filters.includeContested ? 'checked' : ''} />
-            Show held in other decks
-          </label>
         </div>
       </div>
 
@@ -625,12 +615,27 @@ function renderFilters() {
         />
       </div>
 
+      <!-- Options -->
+      <div class="filter-group filter-group-wide">
+        <label>Options</label>
+        <div class="filter-checkboxes">
+          <label class="checkbox-label">
+            <input type="checkbox" id="budget-mode" ${filters.budgetMode ? 'checked' : ''} />
+            Budget Mode
+          </label>
+          <label class="checkbox-label" title="Cards you already own, but which a deck you have not selected is holding. They cost nothing to buy, so they are listed without a quantity and left out of the totals, the export and the cart.">
+            <input type="checkbox" id="include-contested" ${filters.includeContested ? 'checked' : ''} />
+            Show held in other decks
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="compact-view" ${filters.compactView ? 'checked' : ''} />
+            Compact View
+          </label>
+        </div>
+      </div>
+
       <!-- Action Buttons -->
-      <div class="filter-group" style="display: flex; gap: 0.5rem; align-items: flex-end;">
-        <label class="checkbox-label">
-          <input type="checkbox" id="compact-view" ${filters.compactView ? 'checked' : ''} />
-          Compact View
-        </label>
+      <div class="filter-group filter-group-actions">
         <button id="clear-filters-btn" class="btn btn-secondary btn-sm">Clear Filters</button>
         <button id="export-list-btn" class="btn btn-primary btn-sm">
           <i class="ph ph-export"></i> Export
