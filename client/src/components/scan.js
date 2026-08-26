@@ -24,7 +24,7 @@ import {
   warpQuadInto,
   warpRegion,
 } from '../utils/cardCapture.js';
-import { hashRectified } from '../../../src/shared/cardHash.js';
+import { hashRectified, fromHex, hammingDistance } from '../../../src/shared/cardHash.js';
 import * as diagnostics from '../utils/scanDiagnostics.js';
 import { detectCardContour, isReady as detectorReady, load as loadDetector } from '../utils/cardContour.js';
 
@@ -96,6 +96,24 @@ const EXPANSION_PROBES = [1, 1.04, 1.08, 1.12];
  */
 const ABSENCE_FRAMES_TO_REARM = 3;
 
+/**
+ * How different the card in frame must look before it counts as a new one, in
+ * bits of the 256-bit art hash taken from the analysis buffer.
+ *
+ * Absence is not the only way a card is replaced. A funnel or chute — a Card
+ * Slinger and the like — drops each card onto the last, so the scanning zone is
+ * never empty and a shutter waiting for it to empty fires once and then never
+ * again. What changes there is not presence but content.
+ *
+ * Measured on three real captures reduced to analysis size: the same card
+ * jittered by a pixel of detection wobble moved 20-34 bits, and two genuinely
+ * different cards sat 112-130 apart. 80 has better than twice the margin either
+ * way, and two consecutive frames must agree before it counts — a single frame
+ * over the line is far more likely to be a hand passing through than a card.
+ */
+const NEW_CARD_BITS = 80;
+const NEW_CARD_FRAMES = 2;
+
 const MAX_RECENT_CAPTURES = 12;
 
 const state = {
@@ -140,6 +158,10 @@ const state = {
   // copies of this card in the stack", which look identical otherwise.
   lastCardId: null,
   sawAbsence: true,
+  // What the last captured card looked like, and how many frames running have
+  // looked unlike it. See NEW_CARD_BITS.
+  capturedSignature: null,
+  changedFrames: 0,
 };
 
 /**
@@ -527,16 +549,37 @@ function startLoop() {
 
     state.absentFrames = 0;
 
-    // A card is in frame, but it is the one already captured — nothing has left
-    // since. The stability and focus tests below would happily fire on it again.
+    // A card is in frame, and one has already been captured. Two things can
+    // mean it is a different card: the frame emptied in between (handled
+    // above), or what is in frame stopped looking like what was captured —
+    // which is what happens when a chute drops the next card onto the last and
+    // the frame never empties at all.
     if (state.awaitingNewCard) {
-      state.autoCapture.reset();
-      return;
+      if (looksLikeANewCard(state.buffers.scratch)) {
+        state.changedFrames++;
+
+        if (state.changedFrames >= NEW_CARD_FRAMES) {
+          state.awaitingNewCard = false;
+          state.changedFrames = 0;
+          // Deliberately NOT sawAbsence. Absence is proof of a fresh
+          // presentation; a change in appearance is only evidence, so the
+          // identity check in resolveCapture stays armed to catch the case
+          // where this fired on the same card after all.
+        }
+      } else {
+        state.changedFrames = 0;
+      }
+
+      if (state.awaitingNewCard) {
+        state.autoCapture.reset();
+        return;
+      }
     }
 
     if (verdict.shouldCapture) {
       if (state.autoEnabled) {
         state.awaitingNewCard = true;
+        rememberCapturedFrame();
         captureFromVideo(video, 'auto');
       } else {
         // evaluate() disarms itself whenever it fires, so re-arm immediately —
@@ -652,6 +695,39 @@ function captureFromVideo(video, trigger) {
  * Each crop is warped from the original frame rather than cut out of the
  * rectified card, so the small print is resampled once instead of twice.
  */
+/**
+ * Does the analysis buffer look unlike the card that was last captured?
+ *
+ * Hashes the small rectified buffer the loop already produces — about a third
+ * of a millisecond — rather than anything at capture resolution. It is only
+ * being asked to tell one card from another, which is a far coarser question
+ * than telling which printing a card is.
+ */
+function looksLikeANewCard(analysisFrame) {
+  if (!analysisFrame || !state.capturedSignature) return false;
+
+  try {
+    const now = fromHex(hashRectified(analysisFrame).artHash);
+    return hammingDistance(now, state.capturedSignature) > NEW_CARD_BITS;
+  } catch {
+    // A buffer that will not hash tells us nothing either way, and claiming a
+    // new card on it would capture the same one twice.
+    return false;
+  }
+}
+
+/** Remember what was in frame at the moment of a capture. See looksLikeANewCard. */
+function rememberCapturedFrame() {
+  try {
+    state.capturedSignature = state.buffers.scratch
+      ? fromHex(hashRectified(state.buffers.scratch).artHash)
+      : null;
+  } catch {
+    state.capturedSignature = null;
+  }
+  state.changedFrames = 0;
+}
+
 /** A quad scaled about its own centre. */
 function expandQuad(quad, scale) {
   const cx = quad.reduce((total, p) => total + p.x, 0) / 4;
@@ -1422,6 +1498,12 @@ export function setupScan() {
       showToast('Start the camera first', 'error');
       return;
     }
+    // A deliberate capture holds the automatic shutter just as an automatic one
+    // does, and resets what "the card already captured" looks like. Otherwise
+    // the auto shutter fires on the same card a moment later and the tap that
+    // asked for one more copy quietly produces two.
+    state.awaitingNewCard = true;
+    rememberCapturedFrame();
     captureFromVideo(video, 'manual');
   }
 
