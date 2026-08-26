@@ -9,6 +9,19 @@ on:
   pull_request:
     branches:
       - main
+  # Run a build by hand from the Actions tab.
+  #
+  # Added because a push to main once landed without triggering anything at
+  # all: the commit was on the branch, Actions was enabled, and no run existed
+  # for that sha. Without this the only way to get an image out of a commit
+  # already on main was an empty commit on top of it, which puts a meaningless
+  # entry in the history to work around a transient service problem.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag or commit sha to build'
+        required: false
+        default: 'main'
 
 env:
   REGISTRY: ghcr.io
@@ -48,6 +61,10 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Empty on push and pull_request, where checkout's own default is the
+          # triggering ref and is what we want. Only a manual run supplies this.
+          ref: ${{ inputs.ref || '' }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
