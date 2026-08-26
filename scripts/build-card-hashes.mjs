@@ -73,10 +73,28 @@ const USER_AGENT = 'deck-lotus-hash-builder/1.0 (+https://github.com/SkorcherX/d
  * rebuild at `normal` is the fix if captures land near the threshold rather
  * than well inside it.
  */
-const IMAGE_SIZE = 'small';
+const IMAGE_SIZE = 'normal';
+
+/** Sizes Scryfall serves that are worth asking for. See the note above. */
+const IMAGE_SIZES = new Set(['small', 'normal', 'large']);
+
+/**
+ * The size the *shipped* data/card-hashes.bin was built from.
+ *
+ * --resume seeds from that file so someone with only the repo can top up a new
+ * set without re-fetching 112k images. That seeding is only valid when the run
+ * is using the same size, because hashes from two sizes are not comparable —
+ * seeding a `normal` rebuild from a `small` file would skip every row and
+ * produce a binary that was never rebuilt at all, silently.
+ *
+ * Move this whenever the shipped file is rebuilt at a different size.
+ */
+const PACKED_IMAGE_SIZE = 'small';
 
 function parseArgs(argv) {
-  const options = { sets: [], limit: null, resume: false, out: DEFAULT_OUT, db: DEFAULT_DB };
+  const options = {
+    sets: [], limit: null, resume: false, out: DEFAULT_OUT, db: DEFAULT_DB, size: IMAGE_SIZE,
+  };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -91,6 +109,12 @@ function parseArgs(argv) {
     else if (arg === '--resume') options.resume = true;
     else if (arg === '--out') options.out = next();
     else if (arg === '--db') options.db = next();
+    else if (arg === '--size') {
+      options.size = next();
+      if (!IMAGE_SIZES.has(options.size)) {
+        throw new Error(`--size must be one of ${[...IMAGE_SIZES].join(', ')}`);
+      }
+    }
     else if (arg === '--help' || arg === '-h') options.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
@@ -108,6 +132,10 @@ Build the perceptual-hash reference database.
                  is both crash recovery and the top-up path after a new set.
   --out PATH     Output file (default ${DEFAULT_OUT}).
   --db PATH      SQLite database to read printings from (default ${DEFAULT_DB}).
+  --size NAME    Scryfall image size: small, normal or large (default ${IMAGE_SIZE}).
+                 Hashes from different sizes are NOT interchangeable — see the
+                 measurements above — so a --resume must use the size the
+                 existing rows were built with.
 `;
 
 /**
@@ -123,7 +151,7 @@ async function alreadyDone(path, packedPath) {
   // The packed file is what ships; the raw jsonl is a build artifact and a
   // fresh clone will not have one. Seeding from the .bin is what lets someone
   // who only has the repo run a top-up without re-fetching all 112k images.
-  if (existsSync(packedPath)) {
+  if (packedPath && existsSync(packedPath)) {
     for (const uuid of readPackedUuids(packedPath)) done.add(uuid);
     console.log(`  (${done.size} already in ${packedPath})`);
   }
@@ -148,8 +176,8 @@ async function alreadyDone(path, packedPath) {
 }
 
 /** The image URL, derived exactly as scripts/import-mtgjson.js derives it. */
-function imageUrl(scryfallId) {
-  return `https://cards.scryfall.io/${IMAGE_SIZE}/front/${scryfallId[0]}/${scryfallId[1]}/${scryfallId}.jpg`;
+function imageUrl(scryfallId, size = IMAGE_SIZE) {
+  return `https://cards.scryfall.io/${size}/front/${scryfallId[0]}/${scryfallId[1]}/${scryfallId}.jpg`;
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -221,7 +249,9 @@ async function main() {
 
   console.log(`${rows.length} printing(s) selected from ${options.db}`);
 
-  const done = options.resume ? await alreadyDone(options.out, PACKED_PATH) : new Set();
+  const done = options.resume
+    ? await alreadyDone(options.out, options.size === PACKED_IMAGE_SIZE ? PACKED_PATH : null)
+    : new Set();
   if (done.size) console.log(`${done.size} already hashed, skipping those`);
 
   let work = rows.filter((row) => !done.has(row.uuid));
@@ -243,7 +273,7 @@ async function main() {
   const started = Date.now();
 
   for (const [index, row] of work.entries()) {
-    const result = await fetchImage(imageUrl(row.scryfall_id));
+    const result = await fetchImage(imageUrl(row.scryfall_id, options.size));
 
     if (result.missing) {
       missing++;
