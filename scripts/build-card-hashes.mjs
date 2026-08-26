@@ -69,9 +69,21 @@ const USER_AGENT = 'deck-lotus-hash-builder/1.0 (+https://github.com/SkorcherX/d
  * four source pixels a cell — so it is quantisation, and it comes out of the
  * same budget a real photograph needs for glare, white balance and angle:
  * ART_STRONG_THRESHOLD is 16%, and up to 10 of those points can be gone before
- * the camera is even involved. `normal` has converged (1.5% to `large`), so a
- * rebuild at `normal` is the fix if captures land near the threshold rather
- * than well inside it.
+ * the camera is even involved.
+ *
+ * The shipped file was rebuilt at `normal` for exactly that reason. Measured
+ * over 40 printings probed at `large` — deliberately neither reference size, so
+ * the index is not being asked to recognise an image it was built from:
+ *
+ *                      truth ranked 1st   mean distance   worst
+ *   references small        32/40          16.0 (6.3%)     24
+ *   references normal       36/40           3.4 (1.3%)      8
+ *
+ * That hands ~13 bits of the 41-bit strong-match budget back to the camera,
+ * which is what a hand-held capture spends on glare, white balance and angle.
+ * The four that still rank second are reprints sharing an illustration, where
+ * the art hash cannot separate them by construction and the frame hash orders
+ * them — not a precision problem, and not one more pixels would fix.
  */
 const IMAGE_SIZE = 'normal';
 
@@ -89,7 +101,7 @@ const IMAGE_SIZES = new Set(['small', 'normal', 'large']);
  *
  * Move this whenever the shipped file is rebuilt at a different size.
  */
-const PACKED_IMAGE_SIZE = 'small';
+const PACKED_IMAGE_SIZE = 'normal';
 
 function parseArgs(argv) {
   const options = {
