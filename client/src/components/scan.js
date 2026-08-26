@@ -10,7 +10,6 @@ import {
   cameraAvailability,
   createAutoCapture,
   defaultQuad,
-  detectCard,
   frameImageData,
   guideRect,
   imageDataOf,
@@ -27,6 +26,7 @@ import {
 } from '../utils/cardCapture.js';
 import { hashRectified } from '../../../src/shared/cardHash.js';
 import * as diagnostics from '../utils/scanDiagnostics.js';
+import { detectCardContour, isReady as detectorReady, load as loadDetector } from '../utils/cardContour.js';
 
 /**
  * Camera scan: capture, read, resolve.
@@ -70,13 +70,15 @@ const ANALYSIS_SOURCE_WIDTH = 480;
 const ANALYSIS_INTERVAL_MS = 100;
 
 /**
- * Consecutive tracked frames before detection is made to sweep again.
+ * Expansions of the detected quad to offer the resolver, as multipliers.
  *
- * 15 at the analysis interval is about a second and a half. See the loop: a
- * track is only ever consistent with the frame before it, so this is the only
- * thing that ends a lock that was wrong to begin with.
+ * 1.0 is what detection found; the rest reach outward past a black border it
+ * may have stopped inside. The measured basin on a real bordered card ran from
+ * 1.04 to 1.12, so this samples it and keeps the unexpanded framing for cards
+ * that have no border to miss.
  */
-const TRACK_BEFORE_RESWEEP = 15;
+const EXPANSION_PROBES = [1, 1.04, 1.08, 1.12];
+
 const MAX_RECENT_CAPTURES = 12;
 
 const state = {
@@ -111,10 +113,6 @@ const state = {
   // null whenever detection loses it. Never a fallback: a stale quad is how a
   // capture comes out legible and matches nothing.
   detected: null,
-  // How many frames in a row have been tracked rather than swept. Tracking
-  // cannot notice that it has been wrong all along — only that something
-  // changed — so it is given a leash and then made to look again.
-  trackedFrames: 0,
 };
 
 /**
@@ -274,6 +272,12 @@ function reflectActiveCamera() {
 }
 
 async function startCamera() {
+  // Start fetching the detector alongside the camera rather than waiting for
+  // it. It is 13MB and the camera takes a moment to come up anyway, so the two
+  // overlap; until it lands, detection reports no card and nothing is captured,
+  // which the status line says out loud.
+  loadDetector().then(() => renderDetection(state.detected));
+
   const availability = cameraAvailability();
   if (!availability.available) {
     showUnsupported(availability.reason);
@@ -450,20 +454,14 @@ function startLoop() {
     // detectCard, which falls back to a full sweep the moment tracking is not
     // clearly on the card.
     if (state.settings.detectEnabled) {
-      // Re-sweep periodically even while tracking is succeeding. A track only
-      // ever compares this frame against the last, so a lock that was wrong from
-      // the first frame is perfectly self-consistent and will be held forever.
-      // Roughly every second and a half, the question is asked again from
-      // scratch — cheap at that rate, and it bounds how long a bad lock lasts.
-      const leashed = state.trackedFrames >= TRACK_BEFORE_RESWEEP;
-      const hint = leashed ? null : state.detected?.quad || null;
-
-      state.detected = detectCard(sourceFrame, { hint });
-      state.trackedFrames = state.detected?.tracked ? state.trackedFrames + 1 : 0;
+      // Contours, not per-edge gradient search. The frame profile of a real
+      // capture put the art window's border and the type line well above the
+      // card's own outline, so searching for the strongest step near an edge
+      // reliably found the wrong one — see cardContour.js.
+      state.detected = detectorReady() ? detectCardContour(sourceFrame) : null;
       renderDetection(state.detected);
     } else {
       state.detected = null;
-      state.trackedFrames = 0;
     }
 
     // Metrics are measured on the rectified card, not on the raw frame, so a
@@ -576,10 +574,10 @@ function snapQuad(source, frameWidth, frameHeight) {
     return {
       quad: state.detected.quad,
       snap: {
-        moved: Math.round(state.detected.moved || 0),
-        strength: Math.round(state.detected.strength),
         detected: true,
-        tracked: !!state.detected.tracked,
+        via: state.detected.via,
+        area: Number(state.detected.area.toFixed(3)),
+        aspectError: Number(state.detected.aspectError.toFixed(3)),
       },
     };
   }
@@ -609,6 +607,16 @@ function captureFromVideo(video, trigger) {
  * Each crop is warped from the original frame rather than cut out of the
  * rectified card, so the small print is resampled once instead of twice.
  */
+/** A quad scaled about its own centre. */
+function expandQuad(quad, scale) {
+  const cx = quad.reduce((total, p) => total + p.x, 0) / 4;
+  const cy = quad.reduce((total, p) => total + p.y, 0) / 4;
+  return quad.map((p) => ({
+    x: cx + (p.x - cx) * scale,
+    y: cy + (p.y - cy) * scale,
+  }));
+}
+
 function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null) {
   const size = rectifiedSize(quad, frameWidth, frameHeight);
   const card = warpQuad(frame, quad, size.width, size.height);
@@ -646,6 +654,23 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   // inaccurate rather than broken. That is why the error is now shown.
   try {
     Object.assign(entry, hashRectified(imageDataOf(card)));
+
+    // And the same card at a few expansions, because where detection stopped is
+    // not knowable from the picture. Contours lock onto whichever border
+    // boundary held the most contrast, which on a bordered card is usually the
+    // printed frame's inner edge — while every reference is a whole card,
+    // black border included. Measured on a real capture, the detected framing
+    // sat 86 bits from its own reference and the same capture expanded 8% sat
+    // at 30, with everything from 4% to 12% matching. Sending the spread costs
+    // a millisecond each here and one index pass each on the server; guessing a
+    // single expansion would be right for bordered cards and wrong for the
+    // borderless and full-art ones.
+    entry.probes = EXPANSION_PROBES.map((scale) => {
+      const grown = expandQuad(quad, scale);
+      const size = rectifiedSize(grown, frameWidth, frameHeight);
+      const probe = hashRectified(imageDataOf(warpQuad(frame, grown, size.width, size.height)));
+      return { scale, ...probe };
+    });
   } catch (error) {
     // A capture that cannot be hashed is still a capture worth reading. The
     // resolver treats a missing hash as "no second signal" and says so.
@@ -709,8 +734,10 @@ function renderDetection(detection) {
   const status = el('scan-detect-status');
   if (status) {
     status.textContent = detection
-      ? `Card found${detection.tracked ? ' (tracking)' : ''}`
-      : 'No card in frame';
+      ? 'Card found'
+      : detectorReady()
+        ? 'No card in frame'
+        : 'Loading card detector…';
     status.classList.toggle('scan-detect-found', !!detection);
   }
 }
@@ -785,9 +812,13 @@ async function resolveCapture(entry) {
   }
 
   try {
-    const resolved = await api.resolveScan({
-      artHash: entry.artHash,
-      frameHash: entry.frameHash,
+    const probes = entry.probes?.length
+      ? entry.probes
+      : [{ artHash: entry.artHash, frameHash: entry.frameHash }];
+
+    const resolved = await api.resolveScanProbes({
+      artHashes: probes.map((p) => p.artHash),
+      frameHashes: probes.map((p) => p.frameHash),
       limit: 25,
     });
 

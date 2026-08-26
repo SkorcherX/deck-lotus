@@ -11,8 +11,10 @@ client/node_modules/
 *.log
 .DS_Store
 
-# OCR assets are staged from node_modules at build time, not committed
+# OCR and card-detection assets are staged from node_modules at build time,
+# not committed — see client/scripts/copy-ocr-assets.mjs
 client/public/tesseract/
+client/public/opencv/
 
 # Card hash build intermediates. The packed data/card-hashes.bin IS committed —
 # it is what ships so the server never has to fetch 112k images — but the raw

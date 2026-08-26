@@ -171,6 +171,21 @@ class ApiClient {
   }
 
   /**
+   * Resolve one capture offered as several framings of itself.
+   *
+   * POST rather than GET because a handful of 64-character hashes does not
+   * belong in a query string. See resolveScanFused on the server for why one
+   * capture has more than one framing.
+   */
+  async resolveScanProbes({ artHashes, frameHashes, limit = 25 }) {
+    const { results } = await this.request('/scan/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ scans: [{ id: 0, artHashes, frameHashes }], limit }),
+    });
+    return results[0];
+  }
+
+  /**
    * Resolve a whole scan session in one request.
    *
    * A session is dozens of cards and a round trip each would be dozens of

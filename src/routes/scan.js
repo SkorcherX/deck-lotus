@@ -85,6 +85,9 @@ router.post('/resolve', authenticate, (req, res, next) => {
         collectorNumber: scan?.collectorNumber || null,
         artHash: scan?.artHash || null,
         frameHash: scan?.frameHash || null,
+        // Several framings of one capture. See resolveScanFused.
+        artHashes: Array.isArray(scan?.artHashes) ? scan.artHashes.slice(0, 8) : null,
+        frameHashes: Array.isArray(scan?.frameHashes) ? scan.frameHashes.slice(0, 8) : null,
         limit: limit || 10,
       }),
     }));

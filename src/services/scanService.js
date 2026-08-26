@@ -556,6 +556,8 @@ export function resolveScanFused({
   collectorNumber = null,
   artHash = null,
   frameHash = null,
+  artHashes = null,
+  frameHashes = null,
   limit = 10,
 } = {}) {
   // Resolved wide and trimmed at the end: a printing that the text ranked 30th
@@ -565,7 +567,42 @@ export function resolveScanFused({
 
   const cap = Math.min(Math.max(parseInt(limit, 10) || 10, 1), ABSOLUTE_MAX_CANDIDATES);
 
-  const hashMatches = artHash && hashesAvailable() ? findByArtHash(artHash, frameHash) : [];
+  // A capture may arrive as several framings of itself rather than one.
+  //
+  // Detection finds the card's printed frame reliably, but whether it stops at
+  // the inner or the outer edge of the black border depends on which boundary
+  // held the most contrast — and the references are whole cards, border
+  // included. Measured on a real capture, the detected framing sat 86 bits from
+  // its own reference and the same capture expanded 8% sat at 30. The right
+  // expansion is not knowable from the picture, so the client sends a few and
+  // the best one wins. Each costs one 1.7ms pass of the index.
+  const probes = Array.isArray(artHashes) && artHashes.length
+    ? artHashes.map((hash, index) => ({
+        artHash: hash,
+        frameHash: Array.isArray(frameHashes) ? frameHashes[index] || null : frameHash,
+      }))
+    : [{ artHash, frameHash }];
+
+  let hashMatches = [];
+  let probe = probes[0];
+
+  if (hashesAvailable()) {
+    for (const candidate of probes) {
+      if (!candidate.artHash) continue;
+
+      const found = findByArtHash(candidate.artHash, candidate.frameHash);
+      // Nearest wins outright. These are framings of one photograph, so this is
+      // not weighing different evidence — it is picking the crop that lines up
+      // with how the references were built.
+      if (found.length && (!hashMatches.length || found[0].artDistance < hashMatches[0].artDistance)) {
+        hashMatches = found;
+        probe = candidate;
+      }
+    }
+  }
+
+  artHash = probe.artHash;
+  frameHash = probe.frameHash;
 
   if (!hashMatches.length) {
     // No hash signal at all — no capture hash, no hash file, or nothing within
@@ -576,7 +613,14 @@ export function resolveScanFused({
     // framed slightly wrong, which is recoverable, from one that is not a card
     // at all — and a review screen full of bare "no match" rows leaves nobody,
     // including whoever has to fix it, any idea which they are looking at.
-    const nearest = artHash && hashesAvailable() ? nearestArtDistance(artHash) : null;
+    let nearest = null;
+    if (hashesAvailable()) {
+      for (const candidate of probes) {
+        if (!candidate.artHash) continue;
+        const found = nearestArtDistance(candidate.artHash);
+        if (found && (!nearest || found.artDistance < nearest.artDistance)) nearest = found;
+      }
+    }
 
     return {
       query: { ...text.query, artHash, frameHash },
