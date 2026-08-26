@@ -54,10 +54,24 @@ const REQUEST_DELAY_MS = 100;
 const USER_AGENT = 'deck-lotus-hash-builder/1.0 (+https://github.com/SkorcherX/deck-lotus)';
 
 /**
- * `small` is 146x204. That is far below the 32x32 grid the hash averages down
- * to, so a larger image would cost bandwidth and decode time to produce the
- * same 64 bits — measured, not assumed: `normal` and `small` agree exactly on
- * spot checks. Over 112k cards the difference is ~2GB against ~20GB.
+ * `small` is 146x204, against `normal` at 488x680. Over 112k cards that is
+ * ~2GB of fetching rather than ~20GB, which is why the first run used it.
+ *
+ * It is not free, though, and the earlier claim here that the two "agree
+ * exactly" was only ever true of the 64-bit frame hash. Measured across 30
+ * random printings, hashing the same card at both sizes:
+ *
+ *   art hash,  small vs normal:  mean 15.9/256 bits (6.2%), max 26 (10.2%)
+ *   art hash,  normal vs large:  mean  3.9/256 bits (1.5%), max  8
+ *   frame hash, small vs normal: mean  1.7/64 bits,         max  6
+ *
+ * The art hash averages a 123x90 window down to a 32x32 grid at `small` — under
+ * four source pixels a cell — so it is quantisation, and it comes out of the
+ * same budget a real photograph needs for glare, white balance and angle:
+ * ART_STRONG_THRESHOLD is 16%, and up to 10 of those points can be gone before
+ * the camera is even involved. `normal` has converged (1.5% to `large`), so a
+ * rebuild at `normal` is the fix if captures land near the threshold rather
+ * than well inside it.
  */
 const IMAGE_SIZE = 'small';
 

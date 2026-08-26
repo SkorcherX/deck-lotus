@@ -169,6 +169,16 @@ test('the same card hashes identically, at the declared widths', () => {
   assert.equal(a.frameHash.length, FRAME_HASH_HEX);
 });
 
+test('a canvas is rejected rather than hashed as nothing', () => {
+  // The shape that shipped broken: warpQuad in the browser returns a canvas,
+  // which carries width and height but no pixel `data`, and the scan page
+  // handed it straight to hashRectified. Every capture threw, the throw was
+  // swallowed into a hashError nothing rendered, and the scanner quietly ran
+  // OCR-only. Rejecting loudly is the contract; the client converts first.
+  const canvasLike = { width: 488, height: 680, getContext: () => null };
+  assert.throws(() => hashRectified(canvasLike), /ImageData-shaped/);
+});
+
 test('word unpacking agrees with the BigInt comparison', () => {
   // The matcher compares in 32-bit words for speed while everything else talks
   // hex; if these two ever disagree the search silently ranks by nonsense.

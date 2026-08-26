@@ -12,6 +12,7 @@ import {
   defaultQuad,
   frameImageData,
   guideRect,
+  imageDataOf,
   loadImageFile,
   quadFromRect,
   rectifiedSize,
@@ -542,8 +543,14 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   // It also has to happen here rather than in the reader: the hash is compared
   // against references built from whole rectified cards, and the reader only
   // ever sees the two small crops.
+  //
+  // Read back through imageDataOf: warpQuad returns a *canvas*, and the shared
+  // hash takes the ImageData shape. Passing the canvas straight in threw on
+  // every single capture, silently — the catch below turned it into a
+  // hashError nothing displayed, so the scanner ran OCR-only and looked merely
+  // inaccurate rather than broken. That is why the error is now shown.
   try {
-    Object.assign(entry, hashRectified(card));
+    Object.assign(entry, hashRectified(imageDataOf(card)));
   } catch (error) {
     // A capture that cannot be hashed is still a capture worth reading. The
     // resolver treats a missing hash as "no second signal" and says so.
@@ -809,7 +816,15 @@ function renderCapture(entry) {
         : entry.trigger === 'upload'
           ? 'From file'
           : 'Manual capture';
-    label.textContent = `${how} at ${entry.at.toLocaleTimeString()} — rectified to ${entry.card.width}x${entry.card.height}`;
+    // The hash state is part of the label because its absence is invisible
+    // otherwise: a capture that failed to hash still reads, still resolves and
+    // still lists candidates — just from one signal instead of two.
+    const hash = entry.hashError
+      ? ` — art hash FAILED: ${entry.hashError}`
+      : entry.artHash
+        ? ` — art hash ${entry.artHash.slice(0, 8)}…`
+        : ' — not hashed';
+    label.textContent = `${how} at ${entry.at.toLocaleTimeString()} — rectified to ${entry.card.width}x${entry.card.height}${hash}`;
   }
 }
 

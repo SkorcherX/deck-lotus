@@ -710,6 +710,20 @@ export function frameImageData(source, width, height) {
 }
 
 /**
+ * Read a rectified canvas back as ImageData.
+ *
+ * warpQuad hands back a canvas, because every other consumer draws it. The
+ * hash is the exception: it is shared with the server and the build script, so
+ * it takes the ImageData *shape* and knows nothing about the DOM. Converting
+ * here rather than teaching the shared module about canvases keeps that
+ * boundary — see the load-bearing constraint in src/shared/cardHash.js.
+ */
+export function imageDataOf(canvas) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+/**
  * Grayscale bytes from an ImageData. Luma weights rather than a plain average —
  * card frames and text are usually low-saturation, and luma keeps the contrast
  * between them that a flat average washes out.
