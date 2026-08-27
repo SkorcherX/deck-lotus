@@ -104,6 +104,15 @@ const ANALYSIS_INTERVAL_MS = 100;
 const FRAMING_PROBES = [0.92, 0.94, 0.96, 0.98, 1];
 
 /**
+ * The one tier that means "nothing left to decide", mirrored from
+ * scanService.js the same way scanSession.js mirrors the full set. Named here
+ * because two decisions turn on it — whether the match chimes, and whether the
+ * reader is asked at all — and a bare string in both is one typo from a session
+ * that silently reads every card.
+ */
+const CONFIDENT_TIER = 'confident';
+
+/**
  * Consecutive frames with no card before the shutter re-arms.
  *
  * The shutter used to re-arm on frame difference, which cannot tell a card
@@ -842,12 +851,11 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   // reader made every card cost a tesseract pass and made auto-capture look
   // broken — the shutter would fire again long before the previous card's
   // answer arrived, so the queue filled with cards nobody had seen resolved.
+  // The reader is a refinement that lands late and never blocks, and it is
+  // started from inside resolveCapture rather than here — see readIfUnresolved.
+  // Queueing it beside the resolve, as this did, read every card whether the
+  // art had already answered or not.
   resolveCapture(entry);
-
-  // The reader is now a refinement that lands late and never blocks. It only
-  // earns its seconds when the art has named a card but not a printing, so
-  // that is the only case it runs in unattended.
-  if (state.ocrEnabled) readCapture(entry);
 }
 
 /**
@@ -935,6 +943,32 @@ async function readCapture(entry) {
 }
 
 /**
+ * Queue a read, but only where the art did not already settle the capture.
+ *
+ * The reader has always been described as earning its seconds only when the art
+ * has named a card but not a printing. It was not actually gated on anything:
+ * every capture was queued, `confident` ones included, so a session paid a full
+ * OCR pass to re-confirm answers that had no alternative.
+ *
+ * That is affordable at one card every few seconds and is not at the pace this
+ * is built for. The scan loop's budget is the art hash — about a millisecond to
+ * compute and under two to search all 112k references — while a read is six
+ * `recognize()` passes over two crops. Queue one of those per card and the
+ * queue grows without bound, and every read in it is behind cards the operator
+ * finished with long ago.
+ *
+ * `confident` is the only tier that means "nothing left to decide", so it is
+ * the only one skipped. `pick-printing` is the case the reader is *for* — the
+ * art knows the card and only the collector block can say which printing — and
+ * `unsure` and `conflict` both still need whatever a second opinion can add.
+ */
+function readIfUnresolved(entry, tier) {
+  if (!state.ocrEnabled) return;
+  if (tier === CONFIDENT_TIER) return;
+  readCapture(entry);
+}
+
+/**
  * Resolve a capture from its art hash alone, immediately.
  *
  * No queue and no worker: this is one fetch, and the server answers it from an
@@ -946,7 +980,8 @@ async function resolveCapture(entry) {
   if (!entry.artHash) {
     // Nothing to go on until the reader speaks. Left resolving rather than
     // failed, because an OCR pass may still be coming.
-    if (!state.ocrEnabled) {
+    if (state.ocrEnabled) readCapture(entry);
+    else {
       window.dispatchEvent(new CustomEvent('scan:read-failed', {
         detail: { id: entry.id, message: entry.hashError || 'the art did not hash' },
       }));
@@ -1024,10 +1059,16 @@ async function resolveCapture(entry) {
         signals: resolved.signals,
       },
     }));
+
+    readIfUnresolved(entry, resolved.tier);
   } catch (error) {
     setReadStatus(`Match failed: ${error.message}`);
     renderLiveMatch(null);
     diagnostics.attachFailure(entry.id, error.message);
+
+    // The art's answer never arrived, so there is nothing for the reader to be
+    // redundant with. This is exactly the case it exists for.
+    if (state.ocrEnabled) readCapture(entry);
     window.dispatchEvent(new CustomEvent('scan:read-failed', {
       detail: { id: entry.id, message: error.message },
     }));
@@ -1100,7 +1141,7 @@ function signalMatch(tier) {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
     oscillator.type = 'sine';
-    oscillator.frequency.value = tier === 'confident' ? 1320 : 440;
+    oscillator.frequency.value = tier === CONFIDENT_TIER ? 1320 : 440;
     gain.gain.setValueAtTime(0.0001, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.15, context.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.12);
