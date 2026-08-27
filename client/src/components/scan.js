@@ -70,14 +70,38 @@ const ANALYSIS_SOURCE_WIDTH = 480;
 const ANALYSIS_INTERVAL_MS = 100;
 
 /**
- * Expansions of the detected quad to offer the resolver, as multipliers.
+ * Framings of the detected quad to offer the resolver, as multipliers.
  *
- * 1.0 is what detection found; the rest reach outward past a black border it
- * may have stopped inside. The measured basin on a real bordered card ran from
- * 1.04 to 1.12, so this samples it and keeps the unexpanded framing for cards
- * that have no border to miss.
+ * 1.0 is what detection found; the rest pull *inward*. That direction is the
+ * opposite of what this list held before, and the change is measured rather
+ * than reasoned: the old ladder reached outward on the theory that contours
+ * stop at a black border's inner edge, and across three recorded sessions no
+ * outward probe ever won a single capture.
+ *
+ * Replayed offline — the recorded frames, warped through this same quad at
+ * every scale from 0.88 to 1.13, hashed, and compared against each card's own
+ * Scryfall reference — every scale above 1.0 was worse than 1.0 for all seven
+ * cards, monotonically, and the basin sat entirely below it:
+ *
+ *      scale   0.92  0.94  0.96  0.98  1.00  1.04  1.08  1.12
+ *      matched  2/7   2/7   4/7   3/7   1/7   0/7   0/7   0/7
+ *
+ * So detection is overshooting the card, not stopping short of it. The ladder
+ * now spans that basin evenly, and 1.0 stays on the end deliberately: the seven
+ * cards behind these numbers are one set, all bordered, and a borderless or
+ * full-art card has no reason to share their optimum. Dropping the framing
+ * detection actually found, on that evidence, would be fitting the sample.
+ *
+ * Five probes rather than four because the cost is trivial next to what it
+ * buys — one warp and hash each on the client, one 1.7ms index pass each on the
+ * server — and the fifth is the one keeping 1.0 without giving up a rung of the
+ * basin. Against this sample the ladder takes 1/7 to 5/7.
+ *
+ * The remaining two need more than a uniform scale: no single multiplier brings
+ * Stalactite Dagger or Safewright Cavalry under threshold, their best being 66
+ * against a budget of 56. That is the anisotropy the detector itself has to fix.
  */
-const EXPANSION_PROBES = [1, 1.04, 1.08, 1.12];
+const FRAMING_PROBES = [0.92, 0.94, 0.96, 0.98, 1];
 
 /**
  * Consecutive frames with no card before the shutter re-arms.
@@ -776,20 +800,18 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   try {
     Object.assign(entry, hashRectified(imageDataOf(card)));
 
-    // And the same card at a few expansions, because where detection stopped is
-    // not knowable from the picture. Contours lock onto whichever border
-    // boundary held the most contrast, which on a bordered card is usually the
-    // printed frame's inner edge — while every reference is a whole card,
-    // black border included. Measured on a real capture, the detected framing
-    // sat 86 bits from its own reference and the same capture expanded 8% sat
-    // at 30, with everything from 4% to 12% matching. Sending the spread costs
-    // a millisecond each here and one index pass each on the server; guessing a
-    // single expansion would be right for bordered cards and wrong for the
-    // borderless and full-art ones.
-    entry.probes = EXPANSION_PROBES.map((scale) => {
-      const grown = expandQuad(quad, scale);
-      const size = rectifiedSize(grown, frameWidth, frameHeight);
-      const probe = hashRectified(imageDataOf(warpQuad(frame, grown, size.width, size.height)));
+    // And the same card at a few framings, because where detection stopped is
+    // not knowable from the picture. Contours lock onto whichever boundary held
+    // the most contrast, and how far that sits from the card's true edge varies
+    // with the light — while every reference is a whole card, cut exactly to
+    // its borders. Sending the spread costs a warp and a hash each here and one
+    // index pass each on the server; guessing a single framing would be right
+    // for one lighting setup and wrong for the next. See FRAMING_PROBES for
+    // which way the ladder points and why it was turned around.
+    entry.probes = FRAMING_PROBES.map((scale) => {
+      const framed = expandQuad(quad, scale);
+      const size = rectifiedSize(framed, frameWidth, frameHeight);
+      const probe = hashRectified(imageDataOf(warpQuad(frame, framed, size.width, size.height)));
       return { scale, ...probe };
     });
   } catch (error) {
