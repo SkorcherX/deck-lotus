@@ -529,6 +529,11 @@ export function createCardReader({ onProgress } = {}) {
   let worker = null;
   let starting = null;
 
+  // Who currently hears tesseract's logger. Normally the constructor's
+  // callback; warmUp borrows it for the duration of the download so the
+  // preflight bar can report the stages, then hands it back.
+  let progressListener = onProgress || null;
+
   async function ensureWorker() {
     if (worker) return worker;
     if (starting) return starting;
@@ -542,7 +547,7 @@ export function createCardReader({ onProgress } = {}) {
       corePath: core,
       langPath: ASSET_BASE,
       gzip: true,
-      logger: (message) => onProgress?.(message),
+      logger: (message) => progressListener?.(message),
     }).then((created) => {
       worker = created;
       starting = null;
@@ -696,6 +701,33 @@ export function createCardReader({ onProgress } = {}) {
           collector: describeVariant(collectorAttempt.preprocess),
         },
       };
+    },
+
+    /**
+     * Download and start the worker without reading anything.
+     *
+     * The engine and language data are ~17MB and were only ever fetched by the
+     * first `read`, which put the whole download inside the timing of one card
+     * and made that card look pathologically slow — the first read of a session
+     * measured 24.6 seconds, against a per-card cost nobody has measured yet
+     * because no second read has ever completed in a recording.
+     *
+     * Pulling it forward does not make the download shorter. It makes it
+     * attributable, and it lets the wait happen somewhere a progress bar can
+     * report it rather than in the middle of a scan.
+     *
+     * `onProgress` is tesseract's own logger for the duration of the warm-up
+     * only; the reader's constructor callback keeps every later message.
+     */
+    async warmUp(onProgress) {
+      if (worker) return;
+      const previous = progressListener;
+      progressListener = onProgress || null;
+      try {
+        await ensureWorker();
+      } finally {
+        progressListener = previous;
+      }
     },
 
     async terminate() {

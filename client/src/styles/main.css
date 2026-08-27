@@ -5969,6 +5969,85 @@ body.maintenance-locked #app {
   color: #cbd5e1;
 }
 
+/* The preflight scrim: the scanner is not ready and no card placed under the
+   lens will be seen yet.
+
+   Covers the whole stage rather than sitting under it, because the thing it has
+   to prevent is someone reading a live camera picture as an invitation to start
+   feeding cards. Same self-contained scrim as .scan-live, and for the same
+   reason: it sits over arbitrary video. */
+.scan-preflight {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1rem;
+  text-align: center;
+  background: rgb(0 0 0 / 0.82);
+  color: #f1f5f9;
+  /* Swallows taps as well as showing the state — the shutter is refused while
+     this is up, and a tap that lands on the video behind it would look like the
+     button is simply broken. */
+  pointer-events: auto;
+}
+
+.scan-preflight-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.scan-preflight-what {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+}
+
+.scan-preflight-track {
+  width: min(15rem, 80%);
+  height: 6px;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.18);
+  overflow: hidden;
+}
+
+.scan-preflight-bar {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent, #60a5fa);
+  transition: width 120ms linear;
+}
+
+/* Where the server did not send a Content-Length there is no honest percentage
+   to show, so the bar sweeps instead of filling. Never both: a bar that fills
+   *and* sweeps reads as two different claims about the same download. */
+.scan-preflight-bar.is-indeterminate {
+  width: 35%;
+  animation: scan-preflight-sweep 1.1s ease-in-out infinite;
+}
+
+@keyframes scan-preflight-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(320%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-preflight-bar.is-indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+.scan-preflight-note {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
 /* One frame of white on capture. `opacity` and `transform` only, so it composites
    on the GPU and cannot stall the capture it is reporting. */
 .scan-flash {
@@ -6227,6 +6306,13 @@ body.maintenance-locked #app {
 .scan-file-label {
   cursor: pointer;
   margin: 0;
+}
+
+/* A label cannot be `:disabled`, so the preflight says so with a class. Matches
+   how the shutter beside it looks while the detector is still downloading. */
+.scan-file-label.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .scan-tuning {
