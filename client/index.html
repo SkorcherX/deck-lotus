@@ -1388,6 +1388,25 @@
                                 <span id="scan-live-name" class="scan-live-name"></span>
                                 <span id="scan-live-print" class="scan-live-print"></span>
                             </div>
+                            <!-- Over the picture until the scanner can actually
+                                 see. The detector is a 13MB download on first
+                                 use, and without this the camera comes up
+                                 looking ready while nothing is captured — so
+                                 cards get placed, and missed, before anything
+                                 is listening. Covers the view rather than
+                                 sitting beside it for exactly that reason. -->
+                            <div id="scan-preflight" class="scan-preflight hidden">
+                                <div class="scan-preflight-title">Preparing the scanner</div>
+                                <div id="scan-preflight-what" class="scan-preflight-what">
+                                    Downloading the card detector…
+                                </div>
+                                <div class="scan-preflight-track">
+                                    <div id="scan-preflight-bar" class="scan-preflight-bar"></div>
+                                </div>
+                                <div class="scan-preflight-note">
+                                    One-off download. Hold off on the cards until this finishes.
+                                </div>
+                            </div>
                         </div>
 
                         <!--
@@ -1436,7 +1455,7 @@
                                 <input type="checkbox" id="scan-snap-toggle" />
                                 Snap to card
                             </label>
-                            <label class="btn btn-secondary scan-file-label">
+                            <label id="scan-file-label" class="btn btn-secondary scan-file-label">
                                 <i class="ph ph-image btn-icon"></i>
                                 <span class="btn-text">Use an image</span>
                                 <input type="file" id="scan-file-input" accept="image/*" hidden />

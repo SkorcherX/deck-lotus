@@ -48,7 +48,72 @@ export function isReady() {
   return cv !== null;
 }
 
-export async function load() {
+/** Where the runtime is staged. See the note in load() about the script tag. */
+const CV_URL = '/opencv/opencv.js';
+
+/**
+ * Fetch the runtime, reporting bytes as they arrive, and hand back a URL a
+ * script tag can run.
+ *
+ * The plain `<script src>` below cannot say how far along it is — there is no
+ * progress event on a script tag — and on a phone 13MB is long enough that a
+ * silent wait reads as a broken page. People put a card under the lens and
+ * wonder why nothing happens. Streaming the response instead gives real byte
+ * counts, and the finished bytes become a blob the script tag runs exactly as
+ * it would have run the URL.
+ *
+ * Safe here specifically because this build is self-contained: it names no
+ * sibling `.wasm` to fetch, so nothing inside it resolves a path relative to
+ * its own URL and a blob: origin changes nothing. A build that did would have
+ * to keep the direct URL and give up the progress.
+ *
+ * Returns null rather than throwing if anything about the streaming path is
+ * unavailable — no `Content-Length`, no readable stream, a failed fetch — and
+ * the caller falls back to loading the URL directly. Progress is a convenience;
+ * it must never be the reason the scanner does not start.
+ */
+async function fetchWithProgress(onProgress) {
+  try {
+    const response = await fetch(CV_URL);
+    if (!response.ok || !response.body) return null;
+
+    // X-Uncompressed-Length first: the response is gzipped, which strips
+    // Content-Length, and `fetch` hands back decompressed bytes anyway — so the
+    // size on disk is both the only number available and the right one to count
+    // against. See setUncompressedLength in src/server.js.
+    const total =
+      Number(response.headers.get('X-Uncompressed-Length')) ||
+      Number(response.headers.get('Content-Length')) ||
+      0;
+    const reader = response.body.getReader();
+    const chunks = [];
+    let loaded = 0;
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      // Indeterminate where the server did not say how big it is, rather than
+      // a fabricated percentage that sticks or runs past 100.
+      onProgress?.({ loaded, total, progress: total ? loaded / total : null });
+    }
+
+    return URL.createObjectURL(new Blob(chunks, { type: 'text/javascript' }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load the detector, optionally reporting download progress.
+ *
+ * `onProgress` is only ever called for the first caller to ask — the load
+ * happens once and later callers join the same promise, by which point the
+ * bytes are already in. Callers wanting to know whether they are early should
+ * check isReady() first.
+ */
+export async function load({ onProgress = null } = {}) {
   if (cv) return cv;
 
   if (!cvPromise) {
@@ -60,14 +125,23 @@ export async function load() {
     // has no business inside the main bundle, and the app is self-hosted and
     // expected to work with no internet — so it is staged into public/ at build
     // time by client/scripts/copy-ocr-assets.mjs, exactly as tesseract is.
-    cvPromise = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = '/opencv/opencv.js';
-      script.async = true;
-      script.onload = () => resolve(window.cv);
-      script.onerror = () => reject(new Error('could not fetch /opencv/opencv.js'));
-      document.head.appendChild(script);
-    })
+    cvPromise = fetchWithProgress(onProgress)
+      .then((objectUrl) => new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = objectUrl || CV_URL;
+        script.async = true;
+        script.onload = () => {
+          // Only after the script has run: revoking earlier can pull the source
+          // out from under a parse still in progress.
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve(window.cv);
+        };
+        script.onerror = () => {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          reject(new Error(`could not fetch ${CV_URL}`));
+        };
+        document.head.appendChild(script);
+      }))
       // The global is a promise of the runtime, not the runtime: emscripten has
       // to instantiate the wasm before a single call is safe.
       .then((instance) => (instance && typeof instance.then === 'function' ? instance : Promise.resolve(instance)))

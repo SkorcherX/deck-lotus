@@ -51,11 +51,35 @@ app.use(compression()); // Gzip compression
 app.use(express.json({ limit: '10mb' })); // JSON body parser with increased limit for backups
 // app.use(limiter); // Rate limiting - REMOVED for self-hosted app
 
+/**
+ * Restate a static file's size in a header compression cannot strip.
+ *
+ * The scanner downloads two assets big enough to need a progress bar — OpenCV
+ * at ~13MB and tesseract's engine and language data at ~17MB — and a progress
+ * bar needs to know the total. `express.static` sets `Content-Length`, and then
+ * `compression` above removes it: a gzipped response is streamed chunked and
+ * its final length is not known when the headers go out. So the client asks and
+ * is told nothing, and every download reads as indeterminate.
+ *
+ * `X-Uncompressed-Length` is the size on disk, set before compression runs and
+ * left alone by it because it is not a header compression knows about. That is
+ * the right number for the client regardless: `fetch` hands back *decompressed*
+ * bytes, so what the reader counts is the size on disk, not the size on the
+ * wire.
+ *
+ * Only for the two scanner payloads. Every other asset is small enough that
+ * nothing waits on it, and a header on all of them would be noise.
+ */
+function setUncompressedLength(res, path, stat) {
+  if (!/[\\/](opencv|tesseract)[\\/]/.test(path)) return;
+  res.setHeader('X-Uncompressed-Length', String(stat.size));
+}
+
 // Serve static files from client build (in production)
 // IMPORTANT: Must come before API routes to serve assets correctly
 if (process.env.NODE_ENV === 'production') {
   const clientBuildPath = join(__dirname, '../client/dist');
-  app.use(express.static(clientBuildPath));
+  app.use(express.static(clientBuildPath, { setHeaders: setUncompressedLength }));
 }
 
 // Serve uploaded avatar images — not gated to production like the client

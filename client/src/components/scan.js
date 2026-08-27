@@ -132,6 +132,9 @@ const state = {
   // something to add when two printings share an illustration. Opt in from the
   // controls when that matters; leave it off to scan a box.
   ocrEnabled: false,
+  // True while the scanner's assets are still downloading. The shutter is
+  // refused and the stage is covered for the duration; see preflight.
+  preflighting: false,
   // A tone per resolved card, so a box can be scanned without watching the
   // screen. See signalMatch.
   sound: true,
@@ -323,9 +326,13 @@ function reflectActiveCamera() {
 async function startCamera() {
   // Start fetching the detector alongside the camera rather than waiting for
   // it. It is 13MB and the camera takes a moment to come up anyway, so the two
-  // overlap; until it lands, detection reports no card and nothing is captured,
-  // which the status line says out loud.
-  loadDetector().then(() => renderDetection(state.detected));
+  // overlap; until it lands, detection reports no card and nothing is captured.
+  //
+  // Narrated over the stage while it runs. The overlap is what makes this worth
+  // saying out loud: the camera comes up first and the picture looks live and
+  // ready long before anything can be found in it, which is an invitation to
+  // start feeding cards that will not be seen. See showPreflight.
+  preflight();
 
   const availability = cameraAvailability();
   if (!availability.available) {
@@ -384,6 +391,11 @@ async function startCamera() {
 function stopCamera() {
   if (state.rafId) cancelAnimationFrame(state.rafId);
   state.rafId = null;
+
+  // The download carries on in the background — it is cached on the module and
+  // the next start will find it done — but the scrim belongs to a running
+  // camera, and leaving it over a stopped one would strand the stage behind it.
+  hidePreflight();
 
   if (state.stream) {
     state.stream.getTracks().forEach((track) => track.stop());
@@ -861,6 +873,135 @@ function renderDetection(detection) {
         : 'Loading card detector…';
     status.classList.toggle('scan-detect-found', !!detection);
   }
+}
+
+/**
+ * Load what the scanner needs, over a scrim, before any of it is usable.
+ *
+ * Two assets, both large, both fetched on first use rather than at page load so
+ * that someone who never opens the scanner never pays for them: the OpenCV
+ * detector at ~13MB, always, and tesseract's engine and language data at ~17MB
+ * only where the reader is switched on.
+ *
+ * The problem this exists for is not the wait, it is what the wait looks like.
+ * The camera comes up in a second or so and the picture is live and convincing
+ * while detection still finds nothing, so cards get placed and passed under a
+ * scanner that is not yet listening — and the failure is silent, because "no
+ * card found" is also what an empty frame looks like. A small status line
+ * saying "Loading card detector…" was already there and was plainly not enough.
+ *
+ * The reader is deliberately *not* preloaded when it is switched off. It is
+ * 17MB that most sessions never need, and pulling it up front to make the
+ * progress bar look thorough would be a real cost for a cosmetic gain.
+ */
+async function preflight() {
+  const needsReader = state.ocrEnabled && !state.reader?.ready;
+
+  // Nothing to wait for — a camera restarted in the same session, with both
+  // assets already in memory. Putting the scrim up to take it down again a
+  // frame later would be a flash of "not ready" on a scanner that is.
+  if (detectorReady() && !needsReader) return;
+
+  if (!detectorReady()) {
+    showPreflight('Downloading the card detector…', null);
+    await loadDetector({
+      onProgress: ({ loaded, total, progress }) => {
+        showPreflight(
+          total
+            ? `Downloading the card detector… ${formatMB(loaded)} of ${formatMB(total)}`
+            : 'Downloading the card detector…',
+          progress
+        );
+      },
+    });
+  }
+
+  // Reported separately rather than folded into one bar. They are different
+  // sizes and only one of them always runs, so a single combined percentage
+  // would mean something different from session to session.
+  if (needsReader) await preflightReader();
+
+  hidePreflight();
+  renderDetection(state.detected);
+}
+
+/**
+ * Bring the reader up while the scrim is still showing.
+ *
+ * Tesseract reports progress as named stages rather than bytes, so the label is
+ * its own wording tidied up. Failure is swallowed: the reader is a refinement,
+ * and a scanner that will not start because the *optional* half of it could not
+ * download would be a worse outcome than one that scans on the art alone.
+ */
+async function preflightReader() {
+  showPreflight('Downloading the card reader…', null);
+  try {
+    await reader().warmUp((message) => {
+      if (!message?.status) return;
+      showPreflight(
+        `Card reader: ${message.status.replace(/_/g, ' ')}`,
+        typeof message.progress === 'number' ? message.progress : null
+      );
+    });
+  } catch (error) {
+    console.error('The card reader could not be loaded', error);
+    showToast('Card reader unavailable — scanning on the art alone', 'error');
+  }
+}
+
+/** Bytes as megabytes, for a download nobody needs to the byte. */
+function formatMB(bytes) {
+  return `${(bytes / 1_000_000).toFixed(1)}MB`;
+}
+
+/**
+ * Put the scrim up, or update it.
+ *
+ * `progress` null means "no honest percentage available" — an asset the server
+ * sent without a Content-Length, or a stage tesseract does not quantify — and
+ * the bar sweeps rather than inventing a number.
+ */
+function showPreflight(what, progress) {
+  state.preflighting = true;
+  el('scan-preflight')?.classList.remove('hidden');
+  setCaptureEnabled(false);
+
+  const label = el('scan-preflight-what');
+  if (label) label.textContent = what;
+
+  const bar = el('scan-preflight-bar');
+  if (!bar) return;
+
+  const known = typeof progress === 'number' && Number.isFinite(progress);
+  bar.classList.toggle('is-indeterminate', !known);
+  bar.style.width = known ? `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` : '';
+}
+
+function hidePreflight() {
+  state.preflighting = false;
+  el('scan-preflight')?.classList.add('hidden');
+  setCaptureEnabled(true);
+}
+
+/**
+ * Grey the two ways to take a capture while the scanner is not ready.
+ *
+ * The scrim covers the picture but not the action bar below it, so without this
+ * the shutter still looks pressable and pressing it only produces a toast. Both
+ * routes are disabled, not just the shutter: a still image goes through the
+ * same detector, and picking one early rectifies it against the marked guide
+ * rather than the card.
+ */
+function setCaptureEnabled(enabled) {
+  const shutter = el('scan-shutter-btn');
+  if (shutter) shutter.disabled = !enabled;
+
+  // A label wrapping a hidden input, so there is no `disabled` to set on the
+  // control you can see. Disabling the input is what actually stops the picker
+  // opening; the class is what says so.
+  const fileInput = el('scan-file-input');
+  if (fileInput) fileInput.disabled = !enabled;
+  el('scan-file-label')?.classList.toggle('is-disabled', !enabled);
 }
 
 /**
@@ -1504,6 +1645,14 @@ export function setupScan() {
       showToast('Start the camera first', 'error');
       return;
     }
+    // Refused rather than queued while the detector is still downloading. A
+    // capture taken now would be cut from the marked guide instead of the card
+    // and would match nothing, which is indistinguishable from a bad scan and
+    // teaches exactly the wrong lesson about the shutter.
+    if (state.preflighting) {
+      showToast('Still preparing the scanner', 'error');
+      return;
+    }
     // A deliberate capture holds the automatic shutter just as an automatic one
     // does, and resets what "the card already captured" looks like. Otherwise
     // the auto shutter fires on the same card a moment later and the tap that
@@ -1563,6 +1712,16 @@ export function setupScan() {
 
   el('scan-ocr-toggle')?.addEventListener('change', (e) => {
     state.ocrEnabled = e.target.checked;
+
+    // Switched on mid-session, the ~17MB it needs has still never been fetched.
+    // Pulled now, behind the same scrim the detector uses, rather than silently
+    // inside whichever card happens to be read first — which is what made the
+    // first read of a session measure 24.6 seconds and look like the card's
+    // fault. Only while the camera is running: flipping the toggle on a stopped
+    // scanner is a preference, not a request to download anything.
+    if (state.ocrEnabled && state.stream && !state.reader?.ready) {
+      preflightReader().finally(hidePreflight);
+    }
   });
 
   el('scan-snap-toggle')?.addEventListener('change', (e) => {
