@@ -70,14 +70,47 @@ const ANALYSIS_SOURCE_WIDTH = 480;
 const ANALYSIS_INTERVAL_MS = 100;
 
 /**
- * Expansions of the detected quad to offer the resolver, as multipliers.
+ * Framings of the detected quad to offer the resolver, as multipliers.
  *
- * 1.0 is what detection found; the rest reach outward past a black border it
- * may have stopped inside. The measured basin on a real bordered card ran from
- * 1.04 to 1.12, so this samples it and keeps the unexpanded framing for cards
- * that have no border to miss.
+ * 1.0 is what detection found; the rest pull *inward*. That direction is the
+ * opposite of what this list held before, and the change is measured rather
+ * than reasoned: the old ladder reached outward on the theory that contours
+ * stop at a black border's inner edge, and across three recorded sessions no
+ * outward probe ever won a single capture.
+ *
+ * Replayed offline — the recorded frames, warped through this same quad at
+ * every scale from 0.88 to 1.13, hashed, and compared against each card's own
+ * Scryfall reference — every scale above 1.0 was worse than 1.0 for all seven
+ * cards, monotonically, and the basin sat entirely below it:
+ *
+ *      scale   0.92  0.94  0.96  0.98  1.00  1.04  1.08  1.12
+ *      matched  2/7   2/7   4/7   3/7   1/7   0/7   0/7   0/7
+ *
+ * So detection is overshooting the card, not stopping short of it. The ladder
+ * now spans that basin evenly, and 1.0 stays on the end deliberately: the seven
+ * cards behind these numbers are one set, all bordered, and a borderless or
+ * full-art card has no reason to share their optimum. Dropping the framing
+ * detection actually found, on that evidence, would be fitting the sample.
+ *
+ * Five probes rather than four because the cost is trivial next to what it
+ * buys — one warp and hash each on the client, one 1.7ms index pass each on the
+ * server — and the fifth is the one keeping 1.0 without giving up a rung of the
+ * basin. Against this sample the ladder takes 1/7 to 5/7.
+ *
+ * The remaining two need more than a uniform scale: no single multiplier brings
+ * Stalactite Dagger or Safewright Cavalry under threshold, their best being 66
+ * against a budget of 56. That is the anisotropy the detector itself has to fix.
  */
-const EXPANSION_PROBES = [1, 1.04, 1.08, 1.12];
+const FRAMING_PROBES = [0.92, 0.94, 0.96, 0.98, 1];
+
+/**
+ * The one tier that means "nothing left to decide", mirrored from
+ * scanService.js the same way scanSession.js mirrors the full set. Named here
+ * because two decisions turn on it — whether the match chimes, and whether the
+ * reader is asked at all — and a bare string in both is one typo from a session
+ * that silently reads every card.
+ */
+const CONFIDENT_TIER = 'confident';
 
 /**
  * Consecutive frames with no card before the shutter re-arms.
@@ -776,20 +809,18 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   try {
     Object.assign(entry, hashRectified(imageDataOf(card)));
 
-    // And the same card at a few expansions, because where detection stopped is
-    // not knowable from the picture. Contours lock onto whichever border
-    // boundary held the most contrast, which on a bordered card is usually the
-    // printed frame's inner edge — while every reference is a whole card,
-    // black border included. Measured on a real capture, the detected framing
-    // sat 86 bits from its own reference and the same capture expanded 8% sat
-    // at 30, with everything from 4% to 12% matching. Sending the spread costs
-    // a millisecond each here and one index pass each on the server; guessing a
-    // single expansion would be right for bordered cards and wrong for the
-    // borderless and full-art ones.
-    entry.probes = EXPANSION_PROBES.map((scale) => {
-      const grown = expandQuad(quad, scale);
-      const size = rectifiedSize(grown, frameWidth, frameHeight);
-      const probe = hashRectified(imageDataOf(warpQuad(frame, grown, size.width, size.height)));
+    // And the same card at a few framings, because where detection stopped is
+    // not knowable from the picture. Contours lock onto whichever boundary held
+    // the most contrast, and how far that sits from the card's true edge varies
+    // with the light — while every reference is a whole card, cut exactly to
+    // its borders. Sending the spread costs a warp and a hash each here and one
+    // index pass each on the server; guessing a single framing would be right
+    // for one lighting setup and wrong for the next. See FRAMING_PROBES for
+    // which way the ladder points and why it was turned around.
+    entry.probes = FRAMING_PROBES.map((scale) => {
+      const framed = expandQuad(quad, scale);
+      const size = rectifiedSize(framed, frameWidth, frameHeight);
+      const probe = hashRectified(imageDataOf(warpQuad(frame, framed, size.width, size.height)));
       return { scale, ...probe };
     });
   } catch (error) {
@@ -820,12 +851,11 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   // reader made every card cost a tesseract pass and made auto-capture look
   // broken — the shutter would fire again long before the previous card's
   // answer arrived, so the queue filled with cards nobody had seen resolved.
+  // The reader is a refinement that lands late and never blocks, and it is
+  // started from inside resolveCapture rather than here — see readIfUnresolved.
+  // Queueing it beside the resolve, as this did, read every card whether the
+  // art had already answered or not.
   resolveCapture(entry);
-
-  // The reader is now a refinement that lands late and never blocks. It only
-  // earns its seconds when the art has named a card but not a printing, so
-  // that is the only case it runs in unattended.
-  if (state.ocrEnabled) readCapture(entry);
 }
 
 /**
@@ -913,6 +943,32 @@ async function readCapture(entry) {
 }
 
 /**
+ * Queue a read, but only where the art did not already settle the capture.
+ *
+ * The reader has always been described as earning its seconds only when the art
+ * has named a card but not a printing. It was not actually gated on anything:
+ * every capture was queued, `confident` ones included, so a session paid a full
+ * OCR pass to re-confirm answers that had no alternative.
+ *
+ * That is affordable at one card every few seconds and is not at the pace this
+ * is built for. The scan loop's budget is the art hash — about a millisecond to
+ * compute and under two to search all 112k references — while a read is six
+ * `recognize()` passes over two crops. Queue one of those per card and the
+ * queue grows without bound, and every read in it is behind cards the operator
+ * finished with long ago.
+ *
+ * `confident` is the only tier that means "nothing left to decide", so it is
+ * the only one skipped. `pick-printing` is the case the reader is *for* — the
+ * art knows the card and only the collector block can say which printing — and
+ * `unsure` and `conflict` both still need whatever a second opinion can add.
+ */
+function readIfUnresolved(entry, tier) {
+  if (!state.ocrEnabled) return;
+  if (tier === CONFIDENT_TIER) return;
+  readCapture(entry);
+}
+
+/**
  * Resolve a capture from its art hash alone, immediately.
  *
  * No queue and no worker: this is one fetch, and the server answers it from an
@@ -924,7 +980,8 @@ async function resolveCapture(entry) {
   if (!entry.artHash) {
     // Nothing to go on until the reader speaks. Left resolving rather than
     // failed, because an OCR pass may still be coming.
-    if (!state.ocrEnabled) {
+    if (state.ocrEnabled) readCapture(entry);
+    else {
       window.dispatchEvent(new CustomEvent('scan:read-failed', {
         detail: { id: entry.id, message: entry.hashError || 'the art did not hash' },
       }));
@@ -1002,10 +1059,16 @@ async function resolveCapture(entry) {
         signals: resolved.signals,
       },
     }));
+
+    readIfUnresolved(entry, resolved.tier);
   } catch (error) {
     setReadStatus(`Match failed: ${error.message}`);
     renderLiveMatch(null);
     diagnostics.attachFailure(entry.id, error.message);
+
+    // The art's answer never arrived, so there is nothing for the reader to be
+    // redundant with. This is exactly the case it exists for.
+    if (state.ocrEnabled) readCapture(entry);
     window.dispatchEvent(new CustomEvent('scan:read-failed', {
       detail: { id: entry.id, message: error.message },
     }));
@@ -1078,7 +1141,7 @@ function signalMatch(tier) {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
     oscillator.type = 'sine';
-    oscillator.frequency.value = tier === 'confident' ? 1320 : 440;
+    oscillator.frequency.value = tier === CONFIDENT_TIER ? 1320 : 440;
     gain.gain.setValueAtTime(0.0001, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.15, context.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.12);
