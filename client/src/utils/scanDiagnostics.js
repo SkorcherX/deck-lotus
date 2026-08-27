@@ -130,20 +130,39 @@ export function recordCapture(entry, context = {}) {
     rectified: encode(entry.card, RECTIFIED_WIDTH),
     frame: encode(context.frame, FRAME_WIDTH),
     resolution: null,
+    // The second answer, where the reader came back with something to add. Kept
+    // beside the first rather than overwriting it: the pair is the measurement.
+    // See attachResolution.
+    refinedResolution: null,
     reading: null,
   });
 
   while (state.records.length > RECORD_LIMIT) state.records.shift();
 }
 
-/** Attach what the server said about a capture already recorded. */
-export function attachResolution(id, resolved) {
+/**
+ * Attach what the server said about a capture already recorded.
+ *
+ * A capture is resolved twice. The art alone answers in milliseconds and that
+ * is what `stage: 'hash'` records; where the reader is on and finds something,
+ * the text and the art are resolved together seconds later and that is
+ * `stage: 'text'`, which lands in `refinedResolution`.
+ *
+ * Both are kept because the *difference* between them is the only evidence of
+ * what the second signal was worth. Only the first was ever recorded before,
+ * which made every capture in every bundle report `signals.text: 0` no matter
+ * what OCR had read — the refined resolve simply never reached the record.
+ * Diagnostics that cannot see the second signal cannot be used to tune it, and
+ * a bundle full of `text: 0` reads as "OCR contributed nothing" when it may
+ * only mean "OCR was never asked about, here".
+ */
+export function attachResolution(id, resolved, { stage = 'hash' } = {}) {
   if (!state.recording) return;
 
   const record = state.records.find((candidate) => candidate.id === id);
   if (!record) return;
 
-  record.resolution = {
+  const shaped = {
     tier: resolved.tier || null,
     // signals carries `nearest` on a miss — the distance to the closest
     // reference in the whole set. On a bundle full of misses that one number is
@@ -162,6 +181,9 @@ export function attachResolution(id, resolved) {
       matchedBy: candidate.matchedBy || null,
     })),
   };
+
+  if (stage === 'text') record.refinedResolution = shaped;
+  else record.resolution = shaped;
 }
 
 /** Attach an OCR reading, where the reader was on. */

@@ -669,9 +669,28 @@ export function resolveScanFused({
         hashConfidence: match.confidence,
         // Agreement beats either signal alone, but the result stays under 1: it
         // is still a scan, and the review step is not a formality.
+        //
+        // Combined as a noisy-or rather than a mean, and that is the whole
+        // point: agreement must never rank a printing *below* what one signal
+        // alone already gave it. A mean does exactly that whenever the two
+        // differ — averaging a strong read against a weak-but-correct one lands
+        // between them, and the fixed bonus is not always enough to climb back.
+        //
+        // Seen on a real capture: OCR read "Springleaf Drum / ECL / 0260" at
+        // 0.84 and the art independently found the same printing, but at 54 of
+        // its 56-bit budget, so hash confidence was 0.041. The mean scored the
+        // agreed printing 0.5*0.84 + 0.5*0.041 + 0.2 = 0.64, while three basic
+        // lands the collector number alone had turned up kept 0.803 and took
+        // the top of the list. Both signals were right, they agreed, and fusing
+        // them buried the answer under Plains.
+        //
+        // Noisy-or is monotone in both inputs and never falls below either, so
+        // a weak second signal can only ever help. It also repairs `agreed`
+        // below, which asks whether the merged winner is the text's winner and
+        // was reading false for the same reason.
         confidence:
           Math.round(
-            Math.min(0.99, existing.confidence * 0.5 + match.confidence * 0.5 + 0.2) * 1000
+            Math.min(0.99, 1 - (1 - existing.confidence) * (1 - match.confidence)) * 1000
           ) / 1000,
         matchedBy: [...existing.matchedBy, 'art-hash'],
       });

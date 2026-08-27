@@ -1149,6 +1149,12 @@ async function runRead(entry) {
     renderCandidates(entry);
     setReadStatus(`Refined by text in ${reading.elapsedMs}ms`);
 
+    // Recorded as its own stage, beside the art-only answer rather than over
+    // it. What the reader was worth is the difference between the two, and
+    // without this the bundle only ever showed the first pass — every capture
+    // reporting no text signal however well the collector block had read.
+    diagnostics.attachResolution(entry.id, resolved, { stage: 'text' });
+
     // The session listens for this. Kept as an event rather than a direct call
     // so the scan page stays the thing that captures and reads, and knows
     // nothing about queues, review tables or destinations.

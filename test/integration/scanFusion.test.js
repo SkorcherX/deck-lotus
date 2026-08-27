@@ -266,6 +266,53 @@ describe('resolveScanFused tiers', () => {
     assert.equal(result.signals.hash, 0);
   });
 
+  test('agreement never scores a printing below either signal alone', () => {
+    // The regression this exists for. Fusing used to average the two
+    // confidences and add a fixed bonus, which reads as generous and is not: a
+    // strong text read paired with a weak-but-correct art match landed between
+    // them, and the bonus did not always cover the drop. On a real capture the
+    // agreed printing fell from 0.84 to 0.64 and three basic lands that the
+    // collector number alone had turned up — text-only, so untouched at 0.803 —
+    // took the top of the list. Both signals were right, they agreed, and
+    // fusing them buried the answer.
+    //
+    // Stated as the invariant rather than as the ranking it produced, because
+    // the ranking is a consequence: a second signal that agrees may only ever
+    // raise a printing.
+    const query = { name: 'Test Bolt', setCode: 'AAA', collectorNumber: '11' };
+
+    // Just inside the match threshold, so the art is correct but barely — the
+    // exact shape that made the mean bite.
+    const marginalArt = hashAtDistance(MATCH_BITS - 2, ART_HASH_HEX);
+
+    const textOnly = resolveScan(query);
+    const hashOnly = resolveScanFused({ artHash: marginalArt, frameHash: zeros(FRAME_HASH_HEX) });
+    const fused = resolveScanFused({ ...query, artHash: marginalArt, frameHash: zeros(FRAME_HASH_HEX) });
+
+    const find = (result) =>
+      result.candidates.find((candidate) => candidate.printingId === printings[1].id);
+
+    const text = find(textOnly);
+    const hash = find(hashOnly);
+    const both = find(fused);
+
+    assert.ok(text && hash && both, 'all three routes must reach the printing at all');
+    assert.ok(
+      both.confidence >= text.confidence,
+      `agreeing art dropped the printing from ${text.confidence} to ${both.confidence}`
+    );
+    assert.ok(
+      both.confidence >= hash.confidence,
+      `agreeing text dropped the printing from ${hash.confidence} to ${both.confidence}`
+    );
+
+    // And the consequence: the printing both signals found stays at the top,
+    // and `agreed` — which asks whether the merged winner is the text's winner —
+    // reads true rather than being falsified by the ranking.
+    assert.equal(fused.candidates[0].printingId, printings[1].id);
+    assert.equal(fused.signals.agreed, true);
+  });
+
   test('a garbage reading produces no confident tier from either side', () => {
     const result = resolveScanFused({
       name: 'Zzzzqqq Not A Card',
