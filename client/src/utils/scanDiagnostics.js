@@ -135,6 +135,12 @@ export function recordCapture(entry, context = {}) {
     // See attachResolution.
     refinedResolution: null,
     reading: null,
+    // Whether this capture was ever handed to the reader. Without it a null
+    // `reading` has three different meanings — the reader was off, the art
+    // answered so the read was skipped, or the read was still running when the
+    // bundle was downloaded — and two recorded sessions were spent guessing
+    // between them from timestamps. See readQueued.
+    readQueued: false,
   });
 
   while (state.records.length > RECORD_LIMIT) state.records.shift();
@@ -210,6 +216,36 @@ export function attachReading(id, reading) {
   };
 }
 
+/**
+ * Note that a capture has been handed to the reader.
+ *
+ * Recorded when the read is *queued*, not when it finishes, which is the whole
+ * point: a capture with `readQueued: true` and `reading: null` was still in the
+ * queue when the bundle was written, and one with `readQueued: false` was never
+ * asked about. Those look identical otherwise, and telling them apart is the
+ * difference between "OCR is slow" and "OCR did not run".
+ */
+export function noteReadQueued(id) {
+  if (!state.recording) return;
+
+  const record = state.records.find((candidate) => candidate.id === id);
+  if (record) record.readQueued = true;
+}
+
+/**
+ * How many recorded captures are waiting on a read that has not landed.
+ *
+ * A read that failed is not waiting — it is finished, badly — so a capture
+ * carrying an error is excluded. Counting it would leave the status line and
+ * the download warning nagging for the rest of the session about a read that is
+ * never coming.
+ */
+export function pendingReads() {
+  return state.records.filter(
+    (record) => record.readQueued && !record.reading && !record.error
+  ).length;
+}
+
 /** Note a capture that never resolved, and why. */
 export function attachFailure(id, message) {
   if (!state.recording) return;
@@ -226,7 +262,7 @@ export function attachFailure(id, message) {
  * never could, and a bundle that does not say which settings produced it can
  * only be guessed at.
  */
-function environment(settings) {
+function environment(settings, reader) {
   return {
     recordedAt: state.startedAt,
     downloadedAt: new Date().toISOString(),
@@ -237,6 +273,15 @@ function environment(settings) {
       dpr: window.devicePixelRatio ?? null,
     },
     settings: settings || null,
+    // Whether the reader was switched on at all, and how much of its work was
+    // still outstanding when this was written. `enabled: false` explains every
+    // null reading in the bundle at a glance; `pending` explains the rest, and
+    // says the bundle was taken early rather than that the reads failed.
+    reader: {
+      enabled: reader?.enabled ?? null,
+      warm: reader?.warm ?? null,
+      pending: pendingReads(),
+    },
   };
 }
 
@@ -247,11 +292,11 @@ function environment(settings) {
  * runs once when a person presses a button, and a blob URL would have to be
  * revoked afterwards to avoid holding every bundle of the session in memory.
  */
-export function download(settings) {
+export function download(settings, reader = null) {
   const bundle = {
     format: 'deck-lotus-scan-diagnostics',
     version: 1,
-    environment: environment(settings),
+    environment: environment(settings, reader),
     captures: state.records,
   };
 
