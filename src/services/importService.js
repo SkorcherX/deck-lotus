@@ -1,5 +1,8 @@
 import db from '../db/connection.js';
 import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
+// One parser for both paste boxes — see the note in cardLines.js about the two
+// having drifted apart while a comment claimed they agreed.
+import { parseCardLine } from '../shared/cardLines.js';
 
 /**
  * Parse deck list from various formats
@@ -41,83 +44,6 @@ export function parseDeckList(text) {
   return cards;
 }
 
-/**
- * Parse a single card line
- * Supports formats:
- * - "1 Card Name" / "1x Card Name" (plain text)
- * - "Card Name" (quantity defaults to 1)
- * - "1 Card Name (SET) 123" (Moxfield)
- * - "1 Card Name (SET) 123 *F*" (Moxfield with foil)
- * - "1 Card Name [SET]" (TCGplayer)
- * - "1 FDN 1" (set code + collector number, no card name)
- *
- * The set-code-and-collector-number form is the one the inventory bulk add
- * accepts, and people paste the same text into both boxes. A deck list that
- * names no cards at all is a legitimate paste, not a malformed one.
- */
-function parseCardLine(line) {
-  // Remove leading/trailing whitespace
-  line = line.trim();
-
-  // Comment lines from exported lists
-  if (!line || /^(\/\/|#)/.test(line)) return null;
-
-  // Check for foil marker, anywhere on the line
-  const isFoil = /\*F\*/i.test(line) || /\(F\)/i.test(line);
-  line = line.replace(/\*F\*/ig, '').replace(/\(F\)/ig, '').trim();
-
-  // Match optional quantity at start; a line with no count means one copy
-  const quantityMatch = line.match(/^(\d+)\s*x?\s+(.+)$/i);
-  const quantity = quantityMatch ? parseInt(quantityMatch[1], 10) : 1;
-  const remainder = (quantityMatch ? quantityMatch[2] : line).trim();
-
-  if (!remainder) return null;
-
-  // Set code + collector number, with no card name. The second token must
-  // contain a digit so real two-word card names ("Sol Ring") don't match, and
-  // the set code is short enough that a leading word of a card name
-  // ("Borrowing 100,000 Arrows") won't be mistaken for one.
-  const setNumberMatch = remainder.match(/^([A-Za-z0-9]{2,6})[\s-]+([A-Za-z0-9★†\-]*\d[A-Za-z0-9★†\-]*)$/);
-  if (setNumberMatch) {
-    return {
-      quantity,
-      name: null,
-      setCode: setNumberMatch[1].toUpperCase(),
-      collectorNumber: setNumberMatch[2],
-      isFoil
-    };
-  }
-
-  // Extract set code and collector number (Moxfield format)
-  let setCode = null;
-  let collectorNumber = null;
-  let cardName = remainder;
-
-  // Moxfield format: "Card Name (SET) 123" or "Card Name (SET) ABC-123"
-  const moxfieldMatch = remainder.match(/^(.+?)\s*\(([A-Z0-9]+)\)\s*([A-Z0-9\-]+)?$/i);
-  if (moxfieldMatch) {
-    cardName = moxfieldMatch[1].trim();
-    setCode = moxfieldMatch[2].toUpperCase();
-    collectorNumber = moxfieldMatch[3] || null;
-  } else {
-    // TCGplayer format: "Card Name [SET]"
-    const tcgMatch = remainder.match(/^(.+?)\s*\[([A-Z0-9]+)\]$/i);
-    if (tcgMatch) {
-      cardName = tcgMatch[1].trim();
-      setCode = tcgMatch[2].toUpperCase();
-    }
-  }
-
-  if (!cardName) return null;
-
-  return {
-    quantity,
-    name: cardName,
-    setCode,
-    collectorNumber,
-    isFoil
-  };
-}
 
 /**
  * Normalize card name for database lookup
