@@ -981,15 +981,23 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
   state.captures = state.captures.slice(0, MAX_RECENT_CAPTURES);
   state.autoCapture?.disarm();
 
+  // The flash goes first, before anything that takes real time.
+  //
+  // Its whole job is to say *which frame* was taken, and it can only do that if
+  // it lands with the shutter. It used to fire after diagnostics.recordCapture,
+  // which JPEG-encodes the rectified card and the whole frame on the main
+  // thread — two encodes standing between the shutter and its own confirmation.
+  // Over a long recorded run the delay was noticeable enough to read as the
+  // scanner slowing down, when what was slowing was the acknowledgement.
+  flashShutter();
+  renderCapture(entry);
+  renderRecent();
+
   // Recorded before anything is resolved, so a capture that never comes back
   // still leaves a trace. The frame goes in beside the rectified card because a
   // framing fault is only visible in the two together.
   diagnostics.recordCapture(entry, { frame });
   renderRecordingStatus();
-
-  flashShutter();
-  renderCapture(entry);
-  renderRecent();
 
   window.dispatchEvent(new CustomEvent('scan:capture', { detail: entry }));
 
@@ -1016,13 +1024,34 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
  * session of captures that matched nothing.
  */
 function renderDetection(detection) {
+  const points = (pts) => pts.map((p) => `${p.x * 100},${p.y * 100}`).join(' ');
+
   const outline = el('scan-quad-card');
   if (outline) {
-    outline.setAttribute(
-      'points',
-      detection ? detection.quad.map((p) => `${p.x * 100},${p.y * 100}`).join(' ') : ''
-    );
+    outline.setAttribute('points', detection ? points(detection.quad) : '');
     outline.classList.toggle('scan-quad-found', !!detection);
+  }
+
+  // The crop boxes move with the card too.
+  //
+  // They used to be drawn once, against the *marked guide*, and never redrawn —
+  // so they sat still while the outline tracked the card. On a chute that feeds
+  // cards onto a rising stack the card drifts steadily away from the guide, and
+  // the boxes were last seen visibly off the print by the end of a 90-card run.
+  //
+  // Only ever a lie in the overlay: the crops themselves are cut in
+  // emitCapture with `warpRegion(frame, quad, ...)` against the quad the
+  // capture was actually framed from, so the reader always had the right
+  // pixels. But an overlay that reports where the reader is looking is worth
+  // nothing if it reports somewhere else, and it is the only thing anyone has
+  // to judge the crop regions by.
+  for (const key of ['title', 'collector']) {
+    const poly = el(`scan-quad-${key}`);
+    if (!poly) continue;
+    poly.setAttribute(
+      'points',
+      detection ? points(regionQuad(detection.quad, state.settings.regions[key])) : ''
+    );
   }
 
   // The handles mark a quad by hand; with detection on there is nothing to drag.
@@ -1375,12 +1404,18 @@ function renderRecordingStatus() {
   const pending = diagnostics.pendingReads();
   const waiting = pending ? ` ${pending} still being read.` : '';
 
+  // Whether the recording is holding anything worth looking at. A long clean
+  // run is a file nobody needs; the one card that missed is the whole point,
+  // and the buffer now keeps it — see makeRoom in scanDiagnostics.
+  const failures = diagnostics.heldFailures();
+  const kept = failures ? ` ${failures} unmatched.` : '';
+
   status.textContent = diagnostics.isRecording()
     ? held
-      ? `Recording — ${held} capture${held === 1 ? '' : 's'} held.${waiting}`
+      ? `Recording — ${held} capture${held === 1 ? '' : 's'} held.${kept}${waiting}`
       : 'Recording — scan a card.'
     : held
-      ? `Stopped — ${held} capture${held === 1 ? '' : 's'} still held.${waiting}`
+      ? `Stopped — ${held} capture${held === 1 ? '' : 's'} still held.${kept}${waiting}`
       : 'Off — captures are not being kept.';
 }
 
