@@ -1112,6 +1112,14 @@ function reader() {
  * and a second recognize() on the same worker while one is in flight throws.
  */
 async function readCapture(entry) {
+  // Marked as the read is queued rather than as it completes. A recorded
+  // capture that says it was queued and carries no reading is one the bundle
+  // was taken ahead of; one that says it was never queued was never asked.
+  diagnostics.noteReadQueued(entry.id);
+  // Redrawn here as well as when a read lands, or the count only ever ticks
+  // downward and never appears in the first place — the capture is recorded and
+  // the status drawn before the resolve that decides whether to read at all.
+  renderRecordingStatus();
   state.readQueue = state.readQueue.then(() => runRead(entry)).catch(() => {});
   return state.readQueue;
 }
@@ -1258,12 +1266,18 @@ function renderRecordingStatus() {
   if (button) button.disabled = held === 0;
   if (!status) return;
 
+  // Reads outstanding, so the moment a bundle is worth taking is visible rather
+  // than guessed at. A read is tens of seconds and the captures are a few
+  // seconds apart, so the queue routinely outlives the scanning.
+  const pending = diagnostics.pendingReads();
+  const waiting = pending ? ` ${pending} still being read.` : '';
+
   status.textContent = diagnostics.isRecording()
     ? held
-      ? `Recording — ${held} capture${held === 1 ? '' : 's'} held.`
+      ? `Recording — ${held} capture${held === 1 ? '' : 's'} held.${waiting}`
       : 'Recording — scan a card.'
     : held
-      ? `Stopped — ${held} capture${held === 1 ? '' : 's'} still held.`
+      ? `Stopped — ${held} capture${held === 1 ? '' : 's'} still held.${waiting}`
       : 'Off — captures are not being kept.';
 }
 
@@ -1335,6 +1349,12 @@ async function runRead(entry) {
     reading = await reader().read(entry);
   } catch (error) {
     setReadStatus(`Read failed: ${error.message}`);
+    // The only path out of here that never reaches attachReading, so it is also
+    // the only one that would leave the capture counted as still being read for
+    // the rest of the session — and the download warning nagging about a read
+    // that is never coming.
+    diagnostics.attachFailure(entry.id, `read failed: ${error.message}`);
+    renderRecordingStatus();
     window.dispatchEvent(new CustomEvent('scan:read-failed', {
       detail: { id: entry.id, message: error.message },
     }));
@@ -1343,6 +1363,9 @@ async function runRead(entry) {
 
   entry.reading = reading;
   diagnostics.attachReading(entry.id, reading);
+  // One fewer read outstanding, which the status line counts down so the point
+  // at which a bundle is complete is visible rather than timed by hand.
+  renderRecordingStatus();
   renderReading(entry);
 
   // An unreadable card is not a dead end any more. A pre-2015 card has no
@@ -1794,11 +1817,32 @@ export function setupScan() {
   });
 
   el('scan-record-download')?.addEventListener('click', () => {
+    // A bundle taken while reads are still running is missing exactly the part
+    // someone turned the reader on to see, and it looks complete — two recorded
+    // sessions were downloaded ten seconds after the last capture and spent
+    // arguing about whether OCR had run at all. Asked rather than blocked: a
+    // bundle wanted for a framing fault does not care about the reader.
+    const pending = diagnostics.pendingReads();
+    if (pending) {
+      const ok = window.confirm(
+        pending === 1
+          ? '1 card is still being read, and its text will be missing from the bundle.'
+            + '\n\nWait for it to finish, or download now anyway?'
+          : `${pending} cards are still being read, and their text will be missing from the bundle.`
+            + '\n\nWait for them to finish, or download now anyway?'
+      );
+      if (!ok) return;
+    }
+
     // The settings go in with it: thresholds and crop regions are the
     // difference between a capture that was going to work and one that never
     // could, and a bundle that does not say which produced it can only be
-    // guessed at.
-    const { captures, bytes } = diagnostics.download(state.settings);
+    // guessed at. The reader's state goes in for the same reason — see the
+    // note on environment().
+    const { captures, bytes } = diagnostics.download(state.settings, {
+      enabled: state.ocrEnabled,
+      warm: !!state.reader?.ready,
+    });
     showToast(`Saved ${captures} capture${captures === 1 ? '' : 's'} (${Math.round(bytes / 1024)}KB)`, 'success');
   });
 
