@@ -838,14 +838,51 @@ export function borderEdgeEnergy(gray, width, height, bandFraction = 0.12) {
  *
  * `previousGray` comes from the caller so the analysis canvas can stay a single
  * reused buffer; returns the current buffer for the next call.
+ *
+ * ── Why motion is measured somewhere else ───────────────────────────────────
+ * `motionCtx` is a *second* buffer, cut from a framing that does not move
+ * between frames, and it exists because measuring stillness on the rectified
+ * card does not measure stillness.
+ *
+ * Sharpness and fill are rightly measured on the card as found: a tilted view
+ * should be judged on the same terms as a flat one, which is what rectifying
+ * first buys. Difference is not like them. It compares one frame against the
+ * last, so it needs the same region sampled twice — and the detected quad is
+ * re-found every frame and lands a little differently each time. Rectifying
+ * through it shifts the whole buffer, and the difference reads that shift as
+ * the card moving.
+ *
+ * Measured by replaying recorded frames through this warp at analysis size,
+ * with the card physically motionless on a desk:
+ *
+ *     corner jitter   0.5%   1.0%   1.9%   3.0%
+ *     difference       3.5    6.5   11-13  15-18
+ *
+ * against a default stability bar of 2.0, and 9.0 for a hand-held camera. The
+ * jitter actually present measured 1.9% of card width, so a still card scored
+ * 11-13 and neither bar could ever be met — auto-capture simply never fired
+ * with detection on, and the only way to get it to fire was to raise the
+ * threshold past the detector's own noise floor, which also raises it past any
+ * real motion worth waiting out.
+ *
+ * A fixed framing has no such floor. It does not need to be *on* the card, only
+ * to be the same region every frame, so the marked guide serves.
  */
-export function analyzeFrame(analysisCtx, previousGray, referenceGray = null) {
+export function analyzeFrame(analysisCtx, previousGray, referenceGray = null, motionCtx = null) {
   const { width, height } = analysisCtx.canvas;
   const gray = toGrayscale(analysisCtx.getImageData(0, 0, width, height));
 
+  // Falls back to the rectified buffer when no fixed one is offered, so a
+  // caller that does not detect at all — the marked-guide path, where the
+  // framing is already fixed — behaves exactly as before.
+  const motionGray = motionCtx
+    ? toGrayscale(motionCtx.getImageData(0, 0, motionCtx.canvas.width, motionCtx.canvas.height))
+    : gray;
+
   return {
     gray,
-    difference: meanAbsoluteDifference(previousGray, gray),
+    motionGray,
+    difference: meanAbsoluteDifference(previousGray, motionGray),
     sharpness: laplacianVariance(gray, width, height),
     fill: borderEdgeEnergy(gray, width, height),
     // Infinity, not zero, when there is no reference: with nothing to compare
