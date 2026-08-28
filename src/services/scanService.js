@@ -728,7 +728,33 @@ export function resolveScanFused({
     merged.push({ ...candidate, artDistance: null, frameDistance: null, hashConfidence: null });
   }
 
-  merged.sort((a, b) => b.confidence - a.confidence);
+  // Printings the art actually found rank above printings only the text
+  // proposed, and confidence orders within each group rather than across them.
+  //
+  // Without this a bad read does not merely fail to help, it actively buries
+  // the right answer — because a text candidate's confidence says how
+  // unambiguous the *database lookup* was, not how good the *read* was. Two
+  // real captures, both with the art already correct:
+  //
+  //   OCR "A 7C POLSON 07 / CON" -> Darklit Gargoyle [CON 7] at 0.825,
+  //      over Scarblade's Malice, which the art had at 42 bits and 0.392.
+  //   OCR "M4 10 F / 195 ECL EN" -> Clachan Festival [ECL 10] at 0.788,
+  //      over Safewright Cavalry, which the art had at 58 bits and 0.161.
+  //
+  // Both reads were noise. Both resolved to exactly one printing, which is what
+  // made them look certain, and a wrong card went to the top of the list.
+  //
+  // This is only reached when the art matched something — the no-match case
+  // returns above — so it never reorders a text-only result, and it cannot
+  // disturb the case the fusion exists for: reprints sharing one illustration
+  // are all art-backed, so the text still orders freely among them. What it
+  // gives up is the case where the art matches a wrong card within threshold
+  // *and* the text alone finds the right one. That is the rarer failure by a
+  // wide margin — a different card lands within threshold about 1.7% of the
+  // time, nearly always genuine art sharing — and the row still goes to review
+  // with both offered.
+  const artBacked = (candidate) => candidate.artDistance !== null && candidate.artDistance !== undefined;
+  merged.sort((a, b) => (artBacked(b) ? 1 : 0) - (artBacked(a) ? 1 : 0) || b.confidence - a.confidence);
 
   const best = merged[0] || null;
   const bestHash = hashMatches[0];
