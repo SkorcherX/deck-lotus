@@ -1,3 +1,4 @@
+import { parseCardLine } from '../../../src/shared/cardLines.js';
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog, debounce } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
@@ -1088,63 +1089,27 @@ function setupBulkAddModal() {
   }
 }
 
+/**
+ * Turn a pasted list into bulk-add items.
+ *
+ * The line formats come from the shared parser, so this box and the deck
+ * importer cannot drift apart again — they did, and a Moxfield line that
+ * imported into a deck came back "Card not found" here. All this does is
+ * rename `name` to the `cardName` the inventory API expects and drop lines
+ * that carry no card.
+ */
 function parseBulkAddText(text) {
-  const lines = text.split('\n').filter(line => line.trim());
-  const items = [];
-
-  for (const rawLine of lines) {
-    // Parse formats like:
-    // 4 Lightning Bolt
-    // 4x Lightning Bolt
-    // 4 Lightning Bolt [M21]
-    // Lightning Bolt
-    // 4 DSK 123          (set code + collector number, no name)
-    // dsk 123 *F*        (same, foil, quantity defaults to 1)
-    let line = rawLine.trim();
-
-    // Foil marker, anywhere on the line
-    const isFoil = /\*F\*/i.test(line) || /\(F\)/i.test(line);
-    line = line.replace(/\*F\*/ig, '').replace(/\(F\)/ig, '').trim();
-
-    const quantityMatch = line.match(/^(\d+)\s*x?\s+(.+)$/i);
-    const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
-    const remainder = (quantityMatch ? quantityMatch[2] : line).trim();
-
-    if (!remainder) continue;
-
-    // Set code + collector number, with no card name. The second token must
-    // contain a digit so real two-word card names ("Sol Ring") don't match,
-    // and the set code is short enough that a leading word of a card name
-    // ("Borrowing 100,000 Arrows") won't be mistaken for one.
-    const setNumberMatch = remainder.match(/^([A-Za-z0-9]{2,6})[\s-]+([A-Za-z0-9★†\-]*\d[A-Za-z0-9★†\-]*)$/);
-
-    if (setNumberMatch) {
-      items.push({
-        setCode: setNumberMatch[1].toUpperCase(),
-        collectorNumber: setNumberMatch[2],
-        quantity,
-        isFoil
-      });
-      continue;
-    }
-
-    // Card name, optionally with a bracketed set code
-    const nameMatch = remainder.match(/^(.+?)(?:\s*\[(\w+)\])?$/);
-    if (!nameMatch) continue;
-
-    const cardName = nameMatch[1].trim();
-    if (!cardName) continue;
-
-    items.push({
-      cardName,
-      setCode: nameMatch[2] ? nameMatch[2].toUpperCase() : null,
-      collectorNumber: null,
+  return text
+    .split(/\r?\n/)
+    .map((line) => parseCardLine(line))
+    .filter((parsed) => parsed && (parsed.name || (parsed.setCode && parsed.collectorNumber)))
+    .map(({ name, setCode, collectorNumber, quantity, isFoil }) => ({
+      cardName: name,
+      setCode,
+      collectorNumber,
       quantity,
-      isFoil
-    });
-  }
-
-  return items;
+      isFoil,
+    }));
 }
 
 function renderBulkAddPreview(items) {
