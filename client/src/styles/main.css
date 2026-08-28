@@ -6239,12 +6239,27 @@ body.maintenance-locked #app {
   height: 100%;
 }
 
+/* Outline widths are in SCREEN pixels, not viewBox units.
+   `vector-effect: non-scaling-stroke` takes the stroke out of the viewBox
+   transform, so a width of 0.35 in a 0-100 viewBox is not 0.35% of the video —
+   it is a third of one physical pixel, which on a phone is nothing at all.
+   Every outline here was set as though the numbers were viewBox units and was
+   effectively invisible; they are sized in real pixels now. */
 .scan-quad-card {
   fill: rgb(var(--scrim-rgb) / 0.18);
   stroke: rgb(var(--gloss-rgb) / 0.65);
-  stroke-width: 0.35;
+  stroke-width: 2;
   vector-effect: non-scaling-stroke;
-  transition: stroke 0.12s ease;
+  transition: stroke 0.12s ease, stroke-width 0.12s ease;
+  /* A dark halo, because this is drawn over a white box under a torch as often
+     as over a dark card, and a single stroke colour cannot hold up on both. */
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.85));
+}
+
+/* The card is found: thicker again, so "it has locked on" is legible from
+   across a desk without reading the status line. */
+.scan-quad-card.scan-quad-found {
+  stroke-width: 3;
 }
 
 .scan-overlay-ready .scan-quad-card {
@@ -6267,7 +6282,7 @@ body.maintenance-locked #app {
 .scan-overlay.scan-price-green .scan-quad-card,
 .scan-overlay.scan-price-blue .scan-quad-card,
 .scan-overlay.scan-price-purple .scan-quad-card {
-  stroke-width: 0.9;
+  stroke-width: 4;
 }
 
 .scan-overlay.scan-price-yellow .scan-quad-card { stroke: #fbbf24; }
@@ -6278,8 +6293,8 @@ body.maintenance-locked #app {
 .scan-quad-region {
   fill: rgb(var(--primary-rgb) / 0.18);
   stroke: var(--primary-light);
-  stroke-width: 1;
-  stroke-dasharray: 3 2;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
   vector-effect: non-scaling-stroke;
 }
 
@@ -6625,12 +6640,19 @@ body.maintenance-locked #app {
 /* The quad a capture was actually read from, when snapping moved it away from
    the marked one. Drawn in warning colour because a large divergence is the
    thing worth noticing. */
+/* Where the capture was actually cut from — the snap's own answer, and the one
+   outline on the page that is evidence rather than decoration. It was a third
+   of a pixel of amber and nobody could see the feature working; it is now the
+   heaviest line in the overlay, with a dash long enough to survive at width and
+   read as distinct from the live outline underneath it. */
 .scan-quad-used {
   fill: none;
   stroke: var(--warning);
-  stroke-width: 0.4;
-  stroke-dasharray: 2 1.5;
+  stroke-width: 3;
+  stroke-dasharray: 9 6;
+  stroke-linecap: round;
   vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.85));
 }
 
 /* ---- Build from inventory panel ---- */

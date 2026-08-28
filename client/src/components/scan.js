@@ -1045,12 +1045,16 @@ function renderDetection(detection) {
   // pixels. But an overlay that reports where the reader is looking is worth
   // nothing if it reports somewhere else, and it is the only thing anyone has
   // to judge the crop regions by.
+  // Drawn only while the reader is on. They mark where the reader looks, so
+  // with nothing reading they are two dashed boxes over the card saying nothing
+  // — and they sit right on top of the outline that does have something to say.
+  const showRegions = detection && state.ocrEnabled;
   for (const key of ['title', 'collector']) {
     const poly = el(`scan-quad-${key}`);
     if (!poly) continue;
     poly.setAttribute(
       'points',
-      detection ? points(regionQuad(detection.quad, state.settings.regions[key])) : ''
+      showRegions ? points(regionQuad(detection.quad, state.settings.regions[key])) : ''
     );
   }
 
@@ -1729,14 +1733,36 @@ function renderCapture(entry) {
   el('scan-result')?.classList.remove('hidden');
 
   swapCanvas('scan-preview-card', entry.card);
+
+  // The two reader crops are only shown when something is going to read them.
+  // With the reader off they are two pictures of print nobody is looking at,
+  // sitting above the card that was actually identified — and they invite the
+  // reasonable but wrong conclusion that the scanner is reading the text.
+  //
+  // Still cut either way: they cost a warp each, they are what the reader wants
+  // the moment the toggle goes on, and the recording carries them.
   swapCanvas('scan-preview-title', entry.title);
   swapCanvas('scan-preview-collector', entry.collector);
+  el('scan-crop-title')?.classList.toggle('hidden', !state.ocrEnabled);
+  el('scan-crop-collector')?.classList.toggle('hidden', !state.ocrEnabled);
 
   const snapLabel = el('scan-snap-status');
   if (snapLabel) {
-    if (!state.settings.snapEnabled) snapLabel.textContent = 'read from the guide as marked';
-    else if (entry.snap) snapLabel.textContent = `snapped ${entry.snap.moved}px from the marked guide`;
-    else snapLabel.textContent = 'card edges not found — used the marked guide';
+    // Two different things can have framed this capture and they report
+    // different fields. Detection returns which thresholding found the card and
+    // how many frames were averaged; the older edge-snap returns how far it
+    // moved the marked guide. Reading `moved` off a detection put the word
+    // "undefined" in the one line that says whether the framing can be trusted.
+    if (entry.snap?.detected) {
+      const averaged = entry.snap.averaged > 1 ? `, ${entry.snap.averaged} frames averaged` : '';
+      snapLabel.textContent = `card found by ${entry.snap.via}${averaged}`;
+    } else if (entry.snap && Number.isFinite(entry.snap.moved)) {
+      snapLabel.textContent = `snapped ${entry.snap.moved}px from the marked guide`;
+    } else if (!state.settings.snapEnabled && !state.settings.detectEnabled) {
+      snapLabel.textContent = 'read from the guide as marked';
+    } else {
+      snapLabel.textContent = 'card edges not found — used the marked guide';
+    }
   }
 
   // Draw where the crops were actually taken from. Without this the overlay
@@ -2040,6 +2066,11 @@ export function setupScan() {
 
   el('scan-ocr-toggle')?.addEventListener('change', (e) => {
     state.ocrEnabled = e.target.checked;
+
+    // The reader's crops appear and disappear with it, rather than at the next
+    // capture — a toggle that does nothing until you scan again reads as broken.
+    el('scan-crop-title')?.classList.toggle('hidden', !state.ocrEnabled);
+    el('scan-crop-collector')?.classList.toggle('hidden', !state.ocrEnabled);
 
     // Switched on mid-session, the ~17MB it needs has still never been fetched.
     // Pulled now, behind the same scrim the detector uses, rather than silently
