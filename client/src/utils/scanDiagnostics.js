@@ -212,6 +212,16 @@ export function attachReading(id, reading) {
     wasWarm: reading.wasWarm ?? null,
     engineMs: reading.engineMs ?? null,
     recognizeMs: reading.recognizeMs ?? null,
+    // What tesseract thought of its own read, per field.
+    //
+    // Recorded rather than acted on. A misread can no longer outrank the art —
+    // the ordering in resolveScanFused sees to that — but it would be better
+    // still if a bad read did not *look* confident either, and that needs this
+    // number to be worth something first. Two recorded reads were pure noise;
+    // whether these scores were low for them, or tesseract was cheerfully
+    // certain about nonsense, decides whether it can damp a text candidate at
+    // all. It is not in the bundle yet, so nobody knows.
+    confidence: reading.confidence ?? null,
     raw: reading.raw,
   };
 }

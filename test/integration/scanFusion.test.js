@@ -302,6 +302,52 @@ describe('resolveScanFused tiers', () => {
       'a match this far out must land in review, whatever the match threshold is widened to');
   });
 
+  test('a misread never outranks the printing the art actually found', () => {
+    // Taken from a recorded session, where this cost two correct answers.
+    //
+    // OCR read a collector block as "M4 10 F / 195 ECL EN" and the parser took
+    // set ECL, number 10 — noise, but noise that resolves to exactly one real
+    // printing, which is what made it score 0.788. The art had the right card
+    // at 58 bits and 0.161, and the wrong card went to the top of the list.
+    //
+    // A text candidate's confidence says how unambiguous the *lookup* was, not
+    // how good the *read* was, so it cannot be compared against a hash distance
+    // directly. The ordering rule is what protects against that: the art
+    // searched every reference and found this printing; text alone only
+    // proposed one.
+    const misread = resolveScanFused({
+      // A real printing, and not the one the art matched.
+      name: 'Test Ogre',
+      setCode: 'AAA',
+      collectorNumber: '33',
+      artHash: hashAtDistance(MATCH_BITS - 8, ART_HASH_HEX),
+      frameHash: zeros(FRAME_HASH_HEX),
+    });
+
+    const top = misread.candidates[0];
+    assert.ok(top.artDistance !== null && top.artDistance !== undefined,
+      `the art's own find must lead, got "${top.name}" with no art distance`);
+
+    // The misread is demoted, not hidden. It is still a candidate a reviewer
+    // can pick, which is the whole point of the row going to review.
+    assert.ok(
+      misread.candidates.some((candidate) => candidate.printingId === printings[3].id),
+      'the text match must still be offered below'
+    );
+
+    // And a *good* read is not penalised by the same rule: when the text names
+    // a printing the art also found, it is art-backed too and leads on merit.
+    const agreeing = resolveScanFused({
+      name: 'Test Bolt',
+      setCode: 'AAA',
+      collectorNumber: '11',
+      artHash: zeros(ART_HASH_HEX),
+      frameHash: zeros(FRAME_HASH_HEX),
+    });
+    assert.equal(agreeing.candidates[0].printingId, printings[1].id);
+    assert.equal(agreeing.signals.agreed, true);
+  });
+
   test('agreement never scores a printing below either signal alone', () => {
     // The regression this exists for. Fusing used to average the two
     // confidences and add a fixed bonus, which reads as generous and is not: a
