@@ -198,6 +198,14 @@ export function attachReading(id, reading) {
     setCode: reading.setCode,
     collectorNumber: reading.collectorNumber,
     elapsedMs: reading.elapsedMs,
+    // Split, because `elapsedMs` alone is two different measurements wearing
+    // one name: a read that had to start the engine carries a ~17MB download
+    // inside it. `recognizeMs` on a `wasWarm` read is the per-card cost, and it
+    // is the only one of the three that says anything about how fast scanning
+    // can go.
+    wasWarm: reading.wasWarm ?? null,
+    engineMs: reading.engineMs ?? null,
+    recognizeMs: reading.recognizeMs ?? null,
     raw: reading.raw,
   };
 }

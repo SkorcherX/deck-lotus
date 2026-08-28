@@ -633,6 +633,16 @@ export function createCardReader({ onProgress } = {}) {
     async read(capture) {
       const started = performance.now();
 
+      // Whether the engine was already up when this read began, and how long it
+      // took if it was not. Without it `elapsedMs` is two different numbers
+      // wearing one name — a cold read carries a ~17MB download inside it — and
+      // a recording cannot tell which it is looking at. That ambiguity is what
+      // left the per-card cost unmeasured through four sessions.
+      const wasWarm = !!worker;
+      const engineStarted = performance.now();
+      await ensureWorker();
+      const engineMs = wasWarm ? 0 : Math.round(performance.now() - engineStarted);
+
       // The collector block is read first: it is the higher-signal field, and on
       // a modern card it alone resolves the printing.
       const collectorAttempt = await readBest(capture.collector, {
@@ -694,6 +704,11 @@ export function createCardReader({ onProgress } = {}) {
           collector: collectorResult.preprocessed,
         },
         elapsedMs: Math.round(performance.now() - started),
+        // See wasWarm above. `recognizeMs` is the part that repeats per card,
+        // and it is the only one of the three worth tuning against.
+        wasWarm,
+        engineMs,
+        recognizeMs: Math.round(performance.now() - started) - engineMs,
         // Which preprocessing actually won, so the tuning panel can show whether
         // a card needed the low-contrast path.
         strategy: {
