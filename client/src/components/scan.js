@@ -151,6 +151,40 @@ const ABSENCE_FRAMES_TO_REARM = 3;
 const NEW_CARD_BITS = 80;
 const NEW_CARD_FRAMES = 2;
 
+/**
+ * How many recent detections a capture is framed from.
+ *
+ * Detection runs fresh on every frame and lands a little differently each time
+ * — re-detecting one motionless photograph twelve times with fresh sensor noise
+ * moved corners by 0.41-0.71% of card width. A capture used the single frame the
+ * shutter happened to fire on, so it inherited that whole spread.
+ *
+ * The mean of several detections does not: independent noise averages down by
+ * the square root of the count, so four frames roughly halves it. Four because
+ * that is what the shutter already waits for — `streak` frames of stillness —
+ * so at the moment of capture there are four recent quads in hand and this uses
+ * the ones the gates already accepted rather than asking for new ones.
+ *
+ * Deliberately a *variance* reduction and nothing else. An earlier attempt to
+ * improve corner accuracy by fitting the card's edges was measured and dropped:
+ * it cut jitter three- to eightfold and moved the sum of art distances by
+ * nothing, because it also introduced a bias — extrapolating a straight fit
+ * into a corner over an edge that turned out to be bowed. Averaging changes no
+ * model and can introduce no such bias; it can only ever reduce spread.
+ */
+const FRAMES_AVERAGED = 4;
+
+/**
+ * How far apart two detections may sit and still be averaged, as a fraction of
+ * card width.
+ *
+ * The mean of two framings of the same still card is a better answer than
+ * either. The mean of a framing before a card moved and one after is a quad
+ * over neither. This is the line between them: 4% is far outside the 0.4-0.7%
+ * that noise produces and far inside the movement of a card being swapped.
+ */
+const AVERAGE_AGREEMENT = 0.04;
+
 const MAX_RECENT_CAPTURES = 12;
 
 const state = {
@@ -188,6 +222,10 @@ const state = {
   // null whenever detection loses it. Never a fallback: a stale quad is how a
   // capture comes out legible and matches nothing.
   detected: null,
+  // The last few detections, newest last, cleared the moment the card is lost.
+  // A capture is framed from their mean rather than from the single frame the
+  // shutter fired on — see FRAMES_AVERAGED.
+  recentQuads: [],
   // The shutter fires once per card. It is held after a capture until the card
   // leaves the frame, which is what makes flipping through a stack produce one
   // row each rather than a pile of the card that happened to sit still longest.
@@ -572,9 +610,11 @@ function startLoop() {
       // card's own outline, so searching for the strongest step near an edge
       // reliably found the wrong one — see cardContour.js.
       state.detected = detectorReady() ? detectCardContour(sourceFrame) : null;
+      rememberDetection(state.detected);
       renderDetection(state.detected);
     } else {
       state.detected = null;
+      state.recentQuads = [];
     }
 
     // Metrics are measured on the rectified card, not on the raw frame, so a
@@ -731,19 +771,82 @@ const SNAP_SOURCE_WIDTH = 960;
  * Returns the marked quad unchanged when the card cannot be found — a bad snap
  * would crop the table, which is worse than a slightly loose crop.
  */
+/**
+ * Keep the detection, or forget the run if the card is gone.
+ *
+ * Cleared rather than aged out when detection comes up empty: a run of quads
+ * spanning a gap describes two different presentations of the card, and their
+ * mean describes neither.
+ */
+function rememberDetection(detection) {
+  if (!detection) {
+    state.recentQuads = [];
+    return;
+  }
+
+  state.recentQuads.push(detection.quad);
+  if (state.recentQuads.length > FRAMES_AVERAGED) state.recentQuads.shift();
+}
+
+/** Mean card width across a run of quads, for judging agreement in card terms. */
+function meanCardWidth(quads) {
+  const widths = quads.map((q) =>
+    (Math.hypot(q[1].x - q[0].x, q[1].y - q[0].y) + Math.hypot(q[2].x - q[3].x, q[2].y - q[3].y)) / 2
+  );
+  return widths.reduce((a, b) => a + b, 0) / widths.length;
+}
+
+/**
+ * The mean of the recent detections, where they agree closely enough to have a
+ * meaningful mean.
+ *
+ * Returns null rather than a blend when any corner in the run sits further than
+ * AVERAGE_AGREEMENT from the mean — the card moved mid-run, and the newest
+ * detection alone is then the honest answer. Falling back to the latest, not to
+ * the oldest or to a partial average, because the newest is the one the overlay
+ * was showing when the shutter fired.
+ */
+function averagedQuad() {
+  const quads = state.recentQuads;
+  if (quads.length < 2) return null;
+
+  const mean = [0, 1, 2, 3].map((corner) => ({
+    x: quads.reduce((total, q) => total + q[corner].x, 0) / quads.length,
+    y: quads.reduce((total, q) => total + q[corner].y, 0) / quads.length,
+  }));
+
+  const limit = meanCardWidth(quads) * AVERAGE_AGREEMENT;
+  for (const q of quads) {
+    for (let corner = 0; corner < 4; corner++) {
+      if (Math.hypot(q[corner].x - mean[corner].x, q[corner].y - mean[corner].y) > limit) return null;
+    }
+  }
+
+  return mean;
+}
+
 function snapQuad(source, frameWidth, frameHeight) {
   // Automatic detection, where it has found something. The live loop has
   // already run it on this frame and left the answer in state.detected; using
   // that rather than detecting again keeps the capture framed exactly as the
   // overlay showed it, which is the framing the user agreed to by holding still.
   if (state.settings.detectEnabled && state.detected) {
+    // Framed from the mean of the recent detections rather than from this one
+    // frame, which is what takes the detector's own noise out of the framing.
+    // See FRAMES_AVERAGED. Null when the run does not agree — the card moved
+    // mid-run — and the latest detection stands.
+    const averaged = averagedQuad();
     return {
-      quad: state.detected.quad,
+      quad: averaged || state.detected.quad,
       snap: {
         detected: true,
         via: state.detected.via,
         area: Number(state.detected.area.toFixed(3)),
         aspectError: Number(state.detected.aspectError.toFixed(3)),
+        // How many detections went into the framing. One means the run
+        // disagreed and this is a single frame after all, which is worth being
+        // able to see in a recording rather than inferring.
+        averaged: averaged ? state.recentQuads.length : 1,
       },
     };
   }
