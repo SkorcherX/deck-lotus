@@ -5964,6 +5964,16 @@ body.maintenance-locked #app {
   line-height: 1.2;
 }
 
+/* When a card entered the collection. Only rendered while sorting by it, so it
+   is styled as a quiet footnote rather than competing with the price. */
+.inventory-card-added {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 .scan-live-meta {
   display: flex;
   align-items: baseline;
