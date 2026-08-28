@@ -496,6 +496,60 @@ function showUnsupported(reason) {
 /* ----------------------------------------------------------------- overlay */
 
 /**
+ * Turn frame fractions into overlay percentages, through however the video is
+ * actually being displayed.
+ *
+ * Every quad in this file is in *frame* coordinates — fractions of the camera's
+ * own pixels — and the overlay SVG spans the stage with a 0-100 viewBox. Those
+ * are the same thing only while the video fills the stage exactly, which is
+ * true on a desktop, where `.scan-stage video` is `height: auto` and the stage
+ * takes the video's shape.
+ *
+ * On a phone it is not. The scanning layout gives the stage a fixed height so
+ * the action bar stays reachable, and the video is `object-fit: cover` inside
+ * it — scaled up and cropped. Drawing a frame fraction straight onto the stage
+ * then puts it wherever the crop happens to have moved that part of the
+ * picture: a card filling most of the frame was outlined across its own art
+ * box, which reads as the detector having locked onto the artwork.
+ *
+ * Nothing but the drawing was ever wrong. Detection, the capture warp and the
+ * crops all work from `video.videoWidth/videoHeight`, so they never saw the
+ * displayed box at all.
+ *
+ * Reproduces `cover`: scale by whichever axis needs more, centre the overflow,
+ * then express the result as a percentage of the stage.
+ */
+function overlayPoints(quad) {
+  const video = el('scan-video');
+  const svg = el('scan-quad-card')?.ownerSVGElement;
+
+  const boxWidth = svg?.clientWidth || 0;
+  const boxHeight = svg?.clientHeight || 0;
+  const videoWidth = video?.videoWidth || 0;
+  const videoHeight = video?.videoHeight || 0;
+
+  // Before the first frame, or on a layout where the video fills the stage,
+  // the fractions are already the percentages.
+  if (!boxWidth || !boxHeight || !videoWidth || !videoHeight) {
+    return quad.map((p) => `${p.x * 100},${p.y * 100}`).join(' ');
+  }
+
+  const scale = Math.max(boxWidth / videoWidth, boxHeight / videoHeight);
+  const shownWidth = videoWidth * scale;
+  const shownHeight = videoHeight * scale;
+  const offsetX = (boxWidth - shownWidth) / 2;
+  const offsetY = (boxHeight - shownHeight) / 2;
+
+  return quad
+    .map((p) => {
+      const x = ((offsetX + p.x * shownWidth) / boxWidth) * 100;
+      const y = ((offsetY + p.y * shownHeight) / boxHeight) * 100;
+      return `${x},${y}`;
+    })
+    .join(' ');
+}
+
+/**
  * Draw the quad, the crop regions and the drag handles over the video.
  *
  * The polygons live in an SVG with a 0-100 viewBox and no aspect preservation,
@@ -505,21 +559,25 @@ function showUnsupported(reason) {
  */
 function drawOverlay() {
   const quad = state.settings.quad;
-  const points = (pts) => pts.map((p) => `${p.x * 100},${p.y * 100}`).join(' ');
 
   const cardPoly = el('scan-quad-card');
-  if (cardPoly) cardPoly.setAttribute('points', points(quad));
+  if (cardPoly) cardPoly.setAttribute('points', overlayPoints(quad));
 
   for (const key of ['title', 'collector']) {
     const poly = el(`scan-quad-${key}`);
-    if (poly) poly.setAttribute('points', points(regionQuad(quad, state.settings.regions[key])));
+    if (poly) {
+      poly.setAttribute('points', overlayPoints(regionQuad(quad, state.settings.regions[key])));
+    }
   }
 
+  // The handles are positioned elements rather than SVG, so they take the same
+  // mapping one point at a time.
   quad.forEach((corner, index) => {
     const handle = el(`scan-handle-${index}`);
     if (!handle) return;
-    handle.style.left = `${corner.x * 100}%`;
-    handle.style.top = `${corner.y * 100}%`;
+    const [x, y] = overlayPoints([corner]).split(',');
+    handle.style.left = `${x}%`;
+    handle.style.top = `${y}%`;
   });
 }
 
@@ -1024,11 +1082,9 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
  * session of captures that matched nothing.
  */
 function renderDetection(detection) {
-  const points = (pts) => pts.map((p) => `${p.x * 100},${p.y * 100}`).join(' ');
-
   const outline = el('scan-quad-card');
   if (outline) {
-    outline.setAttribute('points', detection ? points(detection.quad) : '');
+    outline.setAttribute('points', detection ? overlayPoints(detection.quad) : '');
     outline.classList.toggle('scan-quad-found', !!detection);
   }
 
@@ -1054,7 +1110,7 @@ function renderDetection(detection) {
     if (!poly) continue;
     poly.setAttribute(
       'points',
-      showRegions ? points(regionQuad(detection.quad, state.settings.regions[key])) : ''
+      showRegions ? overlayPoints(regionQuad(detection.quad, state.settings.regions[key])) : ''
     );
   }
 
@@ -1218,7 +1274,7 @@ function drawUsedQuad(quad, moved) {
     return;
   }
 
-  outline.setAttribute('points', quad.map((p) => `${p.x * 100},${p.y * 100}`).join(' '));
+  outline.setAttribute('points', overlayPoints(quad));
 }
 
 /* --------------------------------------------------------------- read/resolve */
