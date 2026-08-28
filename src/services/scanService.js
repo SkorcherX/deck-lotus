@@ -158,7 +158,22 @@ const PRINTING_COLUMNS = `
   p.rarity,
   p.image_url,
   p.is_promo,
-  p.released_at
+  p.released_at,
+  -- What the card is worth, so a scan can say so without a second round trip.
+  --
+  -- tcgplayer/normal is the figure the rest of the app quotes, so the scanner
+  -- quotes the same one rather than inventing a second answer for the same
+  -- card. Falling back to foil only when there is no normal price at all: a
+  -- scan cannot see whether the card in front of the lens is foil, so guessing
+  -- the foil price for an ordinary copy would overstate most of a box — but a
+  -- foil-only printing has no normal price to quote and would otherwise show
+  -- as worthless.
+  COALESCE(
+    (SELECT price FROM prices
+      WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1),
+    (SELECT price FROM prices
+      WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'foil' LIMIT 1)
+  ) AS price
 `;
 
 function queryPrintings(where, params, limit = MAX_CANDIDATES) {
@@ -402,6 +417,7 @@ export function resolveScan({ name = null, setCode = null, collectorNumber = nul
         imageUrl: row.image_url,
         isPromo: !!row.is_promo,
         releasedAt: row.released_at,
+        price: row.price ?? null,
         confidence: Math.round(confidence * 1000) / 1000,
         nameSimilarity: similarity === null ? null : Math.round(similarity * 1000) / 1000,
         matchedBy: [strategy],
@@ -713,6 +729,7 @@ export function resolveScanFused({
       imageUrl: row.image_url,
       isPromo: !!row.is_promo,
       releasedAt: row.released_at,
+      price: row.price ?? null,
       artDistance: match.artDistance,
       frameDistance: match.frameDistance,
       hashConfidence: match.confidence,

@@ -5964,10 +5964,35 @@ body.maintenance-locked #app {
   line-height: 1.2;
 }
 
+.scan-live-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .scan-live-print {
   font-size: 0.8rem;
   color: #cbd5e1;
 }
+
+/* The price, and the same five bands the outline uses.
+   Fixed colours rather than theme tokens: this sits on live video and is read
+   at a glance while looking at the cards, so the bands have to mean the same
+   thing under every theme. Chosen light enough to hold up against the black
+   scrim. */
+.scan-live-price {
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+.scan-live-price-yellow { color: #fbbf24; }
+.scan-live-price-green  { color: #4ade80; }
+.scan-live-price-blue   { color: #60a5fa; }
+.scan-live-price-purple { color: #c084fc; }
 
 /* The preflight scrim: the scanner is not ready and no card placed under the
    lens will be seen yet.
@@ -6219,6 +6244,26 @@ body.maintenance-locked #app {
 .scan-overlay-disarmed .scan-quad-card {
   stroke: var(--warning);
 }
+
+/* Price bands, painted round the card itself.
+   Last in the cascade so they win over the ready and disarmed strokes above:
+   once a card has been named and priced, what it is worth is the more useful
+   thing for the outline to be saying. A card under the lowest band gets no
+   class at all and keeps the ordinary outline — see PRICE_BANDS.
+
+   Thicker as well as coloured, because on a white box under a torch a thin
+   stroke of any colour reads as grey. */
+.scan-overlay.scan-price-yellow .scan-quad-card,
+.scan-overlay.scan-price-green .scan-quad-card,
+.scan-overlay.scan-price-blue .scan-quad-card,
+.scan-overlay.scan-price-purple .scan-quad-card {
+  stroke-width: 0.9;
+}
+
+.scan-overlay.scan-price-yellow .scan-quad-card { stroke: #fbbf24; }
+.scan-overlay.scan-price-green  .scan-quad-card { stroke: #4ade80; }
+.scan-overlay.scan-price-blue   .scan-quad-card { stroke: #60a5fa; }
+.scan-overlay.scan-price-purple .scan-quad-card { stroke: #c084fc; }
 
 .scan-quad-region {
   fill: rgb(var(--primary-rgb) / 0.18);
