@@ -26,8 +26,14 @@
  * interesting capture is nearly always the one that just went wrong.
  */
 
-/** How many captures to keep. Oldest fall off; see the note above. */
+/** How many captures to keep. See makeRoom for which one falls off. */
 const RECORD_LIMIT = 24;
+
+/**
+ * Tiers that mean the scanner was satisfied, and the capture is therefore the
+ * least interesting thing in a recording. Mirrored from scanService.js.
+ */
+const SETTLED_TIERS = new Set(['confident']);
 
 /** Long edge of the images stored in the bundle, in pixels. */
 const RECTIFIED_WIDTH = 488;
@@ -143,7 +149,37 @@ export function recordCapture(entry, context = {}) {
     readQueued: false,
   });
 
-  while (state.records.length > RECORD_LIMIT) state.records.shift();
+  makeRoom();
+}
+
+/**
+ * Drop back to the limit, giving up a settled capture before an unsettled one.
+ *
+ * The buffer used to be a plain ring: oldest out, newest in. That is the wrong
+ * order for what a recording is for. A 90-card run held only the last 24, and
+ * the one card that missed had happened early — so the file arrived with
+ * twenty-four cards that had worked perfectly and no trace of the failure,
+ * which is the only capture anybody wanted to look at.
+ *
+ * So the oldest *settled* capture is given up first, and a capture that missed
+ * or came back unsure is only dropped once nothing settled is left to drop.
+ * A long clean run now keeps a rolling sample of successes plus every failure
+ * it saw, which is the shape a recording should have.
+ *
+ * Tier is only known once the server answers, so a capture still resolving
+ * counts as unsettled and is kept. It will usually be settled by the time the
+ * next few arrive and become droppable then.
+ */
+function makeRoom() {
+  while (state.records.length > RECORD_LIMIT) {
+    const settled = state.records.findIndex(
+      (record) => SETTLED_TIERS.has(record.resolution?.tier)
+    );
+    // Nothing settled to give up — every capture held is a failure, and the
+    // oldest goes rather than refusing the newest. A recording that stops
+    // recording is worse than one that loses its oldest problem.
+    state.records.splice(settled === -1 ? 0 : settled, 1);
+  }
 }
 
 /**
@@ -240,6 +276,19 @@ export function noteReadQueued(id) {
 
   const record = state.records.find((candidate) => candidate.id === id);
   if (record) record.readQueued = true;
+}
+
+/**
+ * How many held captures did not settle — the ones worth having.
+ *
+ * Shown beside the count so a long run says whether the recording is holding
+ * anything interesting, rather than leaving that to be discovered after the
+ * file has been sent. See makeRoom for why these are the ones that survive.
+ */
+export function heldFailures() {
+  return state.records.filter(
+    (record) => record.resolution && !SETTLED_TIERS.has(record.resolution.tier)
+  ).length;
 }
 
 /**
