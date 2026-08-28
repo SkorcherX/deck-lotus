@@ -113,7 +113,23 @@ export function getInventory(userIds, filters = {}) {
         FROM owned_printings op
         JOIN printings p ON op.printing_id = p.id
         WHERE op.user_id ${scope.clause} AND p.card_id = c.id
-      ) as max_price
+      ) as max_price,
+      -- When this card most recently entered the collection.
+      --
+      -- MAX rather than MIN because the question being asked is "what did I
+      -- just add": a card already owned in one printing and picked up again in
+      -- another belongs with today's cards, not with the year-old ones.
+      --
+      -- created_at, not updated_at, so it means *acquired* rather than
+      -- *touched*. Bumping the quantity of a card already owned moves
+      -- updated_at, and a sort that reordered on that would fill the top of the
+      -- list with cards nobody had actually added.
+      (
+        SELECT MAX(op.created_at)
+        FROM owned_printings op
+        JOIN printings p ON op.printing_id = p.id
+        WHERE op.user_id ${scope.clause} AND p.card_id = c.id
+      ) as added_at
     FROM cards c
     WHERE c.id IN (
       SELECT DISTINCT p.card_id
@@ -124,8 +140,10 @@ export function getInventory(userIds, filters = {}) {
   `;
 
   // Params for the subqueries — order matches the SELECT above:
-  // total_owned, total_in_decks, max_price, then the WHERE ... IN
-  params.push(...scope.params, ...scope.params, ...scope.params, ...scope.params);
+  // total_owned, total_in_decks, max_price, added_at, then the WHERE ... IN
+  params.push(
+    ...scope.params, ...scope.params, ...scope.params, ...scope.params, ...scope.params
+  );
 
   // Count query
   let countSql = `
@@ -247,6 +265,17 @@ export function getInventory(userIds, filters = {}) {
       break;
     case 'price_asc':
       sql += ` ORDER BY max_price IS NULL, max_price ASC, c.name ASC`;
+      break;
+    // Newest first is the one people actually want — "what did I just put in"
+    // is a question about a mistake that was probably made minutes ago. Rows
+    // added in the same bulk paste share a timestamp to the second, so name
+    // breaks the tie and one import reads as an alphabetical block rather than
+    // in whatever order the rows happened to be written.
+    case 'added_desc':
+      sql += ` ORDER BY added_at IS NULL, added_at DESC, c.name ASC`;
+      break;
+    case 'added_asc':
+      sql += ` ORDER BY added_at IS NULL, added_at ASC, c.name ASC`;
       break;
     default:
       sql += ` ORDER BY c.name ASC`;

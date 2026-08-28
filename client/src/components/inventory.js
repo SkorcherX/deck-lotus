@@ -1424,8 +1424,41 @@ function renderInventory({ cards = null, append = false } = {}) {
   }
 }
 
+/**
+ * When a card entered the collection, short enough to sit on a grid tile.
+ *
+ * Only ever shown while sorting by it. The date answers one question — where
+ * does the batch I just entered stop — and on every other sort it would be a
+ * column of noise on a page that is already dense.
+ */
+function formatAdded(value) {
+  if (!value) return 'unknown';
+
+  // SQLite writes "YYYY-MM-DD HH:MM:SS" in UTC with no zone marker, which
+  // Safari refuses outright and Chrome reads as local time. Naming the zone is
+  // what makes the two agree, and it is what stops an evening's import showing
+  // as tomorrow.
+  const date = new Date(`${String(value).replace(' ', 'T')}Z`);
+  if (Number.isNaN(date.getTime())) return 'unknown';
+
+  const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/** The same moment in full, for the tooltip — "3d ago" is not a receipt. */
+function formatAddedFull(value) {
+  if (!value) return 'unknown';
+  const date = new Date(`${String(value).replace(' ', 'T')}Z`);
+  return Number.isNaN(date.getTime()) ? 'unknown' : date.toLocaleString();
+}
+
 function renderGridView(container, cards, append = false) {
   container.className = 'inventory-grid';
+
+  const sortedByDate = filters.sort === 'added_desc' || filters.sort === 'added_asc';
 
   const html = cards.map(card => {
     const isSelected = selectedCards.has(card.card_id);
@@ -1470,6 +1503,11 @@ function renderGridView(container, cards, append = false) {
           ${showPrices ? `
             <div class="inventory-card-price ${price ? '' : 'no-price'}" title="${price ? price.tooltip.replace(/"/g, '&quot;') : 'No synced price available'}">
               ${price ? `$${price.unit.toFixed(2)}` : '—'}
+            </div>
+          ` : ''}
+          ${sortedByDate ? `
+            <div class="inventory-card-added" title="Added ${escapeHtml(formatAddedFull(card.added_at))}">
+              <i class="ph ph-clock-counter-clockwise"></i> ${escapeHtml(formatAdded(card.added_at))}
             </div>
           ` : ''}
         </div>
