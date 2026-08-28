@@ -1623,11 +1623,16 @@
                         <div id="scan-result" class="scan-result hidden">
                             <div id="scan-capture-label" class="scan-capture-label"></div>
                             <div id="scan-snap-status" class="scan-snap-status"></div>
-                            <div class="scan-crop">
+                            <!-- The two crops the reader would work from. Hidden
+                                 while the reader is off: with nothing reading
+                                 them they are two pictures of print nobody is
+                                 looking at, above the card that was actually
+                                 identified. See renderCapture. -->
+                            <div id="scan-crop-title" class="scan-crop">
                                 <h4>Title band</h4>
                                 <div id="scan-preview-title" class="scan-crop-box"></div>
                             </div>
-                            <div class="scan-crop">
+                            <div id="scan-crop-collector" class="scan-crop">
                                 <h4>Collector block</h4>
                                 <div id="scan-preview-collector" class="scan-crop-box"></div>
                             </div>
