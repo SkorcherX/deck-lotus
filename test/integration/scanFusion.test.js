@@ -53,6 +53,17 @@ function hashAtDistance(bits, hexWidth) {
 /** A hash that shares no bits with the reference — far outside any threshold. */
 const opposite = (hexWidth) => 'f'.repeat(hexWidth);
 
+/**
+ * A hash exactly `bits` away from an arbitrary reference, rather than from
+ * zeros. Needed to sit a capture at a chosen distance from a *specific*
+ * printing's art, where hashAtDistance can only measure from the all-zero one.
+ */
+function hashNear(hex, bits) {
+  let value = BigInt(`0x${hex}`);
+  for (let i = 0; i < bits; i++) value ^= 1n << BigInt(i);
+  return value.toString(16).padStart(hex.length, '0').slice(-hex.length);
+}
+
 const ART_BITS = ART_HASH_HEX * 4;
 
 // Thresholds restated from cardHashIndex, so a change there fails here loudly
@@ -264,6 +275,31 @@ describe('resolveScanFused tiers', () => {
 
     assert.equal(result.tier, SCAN_TIERS.UNSURE);
     assert.equal(result.signals.hash, 0);
+  });
+
+  test('a match at the edge of the threshold is offered, never waved through', () => {
+    // What makes the match threshold cheap to widen. It was raised from 22% to
+    // 27% to recover cards that were the right answer missed by eight bits, and
+    // that is only safe while the far edge of the band still lands in review:
+    // ART_STRONG_THRESHOLD, not this one, is what lets a row skip a human.
+    //
+    // Pinned as the relationship rather than as numbers, so retuning either
+    // threshold has to keep the property or fail here.
+    // Measured against the pre-2015 card, which is the only fixture printing
+    // with art of its own. The Bolt pair share an illustration, so a capture
+    // near them lands in `pick-printing` whatever the thresholds say — which
+    // would make this pass without testing anything.
+    const edge = resolveScanFused({
+      artHash: hashNear('a'.repeat(ART_HASH_HEX), MATCH_BITS - 1),
+      frameHash: zeros(FRAME_HASH_HEX),
+    });
+
+    assert.ok(
+      edge.candidates.some((candidate) => candidate.printingId === printings[4].id),
+      'a capture just inside the threshold must still be offered'
+    );
+    assert.notEqual(edge.tier, SCAN_TIERS.CONFIDENT,
+      'a match this far out must land in review, whatever the match threshold is widened to');
   });
 
   test('agreement never scores a printing below either signal alone', () => {

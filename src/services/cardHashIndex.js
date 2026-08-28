@@ -63,15 +63,42 @@ const ART_BITS = ART_HASH_BYTES * 8;
  *
  * Measured against real Scryfall art (see cardHash.js): a same-illustration
  * pair sat at 12.5% and the closest pair of genuinely distinct cards at 39.2%.
- * 22% is placed between those, nearer the tolerant end — the measurement
+ * 22% was placed between those, nearer the tolerant end — the measurement
  * compared two clean scans, while a real capture also carries glare, white
  * balance and a hand-held angle, and the cost of the two errors is not
  * symmetric. A miss puts one card in the review pile, where the user was going
  * to look anyway; a false match that agrees with a bad OCR read is how a wrong
  * card gets marked confident. The fusion in scanService is what keeps that
  * second case from being decided here alone.
+ *
+ * ── Why 27% and not 22% ─────────────────────────────────────────────────────
+ * Two cards in a recorded session sat at 64 bits against a budget of 56, with
+ * the nearest *wrong* card at 90 and 92. Both were the right answer, missed by
+ * eight bits, with nearly thirty bits of clear air above them — and across four
+ * sessions the hash has never once ranked a wrong card first.
+ *
+ * The move is safe because there is almost nothing in the band to let in.
+ * Measured over the reference set itself: for 1505 sampled cards, the distance
+ * to the nearest reference that is a *different* card.
+ *
+ *     0- 27 : 19 cards        ← genuine art sharing under two names
+ *    28- 79 : 15 cards        ← nearly empty
+ *    80-105 : 1471 cards      ← where distinct cards actually live
+ *
+ * Raising the bar from 56 to 69 admits three more of 1505, 1.5% to 1.7%. The
+ * bulk does not begin until 80, so 69 sits inside the empty band with room on
+ * both sides rather than on the edge of the population.
+ *
+ * The 19 close pairs are not hash failures. They are one illustration printed
+ * under two names — Alchemy rebalances against their originals, the two faces
+ * of a transforming card, the un-set sticker goblins — and offering both is
+ * right, not a false positive.
+ *
+ * ART_STRONG_THRESHOLD is deliberately unchanged, so nothing newly reaches
+ * `confident`: a match admitted by this widening still lands in review, which
+ * is the whole reason widening it is cheap.
  */
-export const ART_MATCH_THRESHOLD = 0.22;
+export const ART_MATCH_THRESHOLD = 0.27;
 
 /**
  * Distance below which the top match is treated as unambiguous. Well inside the
