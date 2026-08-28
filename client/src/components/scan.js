@@ -55,7 +55,11 @@ const STORAGE_KEY = 'scan.captureSettings';
 // 10: the card is found in the frame rather than expected in a marked quad, so
 // the thresholds are now measured against the card wherever it is rather than
 // against whatever was sitting inside the guide.
-const SETTINGS_VERSION = 10;
+// 11: stillness is measured on a fixed framing again, so it no longer reads the
+// detector's own jitter as motion. Anyone who met that jitter the only way it
+// could be met — by raising stability past it, which is how it was found — is
+// carrying a threshold around 15 that would now wave through real movement.
+const SETTINGS_VERSION = 11;
 
 // The analysis buffer is deliberately tiny: every metric is a per-pixel pass
 // over it on every frame, and none of them need detail.
@@ -524,7 +528,22 @@ function startLoop() {
   analysis.width = ANALYSIS_WIDTH;
   analysis.height = ANALYSIS_HEIGHT;
   const analysisCtx = analysis.getContext('2d', { willReadFrequently: true });
-  state.buffers = { source: sourceCtx, analysis: analysisCtx, scratch: null };
+
+  // A second buffer of the same size, cut from the *marked* guide rather than
+  // from whatever detection found this frame. Stillness is measured here; see
+  // the note on analyzeFrame for why it cannot be measured on the other one.
+  const motion = document.createElement('canvas');
+  motion.width = ANALYSIS_WIDTH;
+  motion.height = ANALYSIS_HEIGHT;
+  const motionCtx = motion.getContext('2d', { willReadFrequently: true });
+
+  state.buffers = {
+    source: sourceCtx,
+    analysis: analysisCtx,
+    motion: motionCtx,
+    scratch: null,
+    motionScratch: null,
+  };
 
   const tick = (timestamp) => {
     state.rafId = requestAnimationFrame(tick);
@@ -570,8 +589,22 @@ function startLoop() {
       state.buffers.scratch
     );
 
-    const metrics = analyzeFrame(analysisCtx, state.previousGray, state.referenceGray);
-    state.previousGray = metrics.gray;
+    // The same frame through the marked guide, which does not move. Only the
+    // stillness check reads this; everything else stays on the card as found.
+    state.buffers.motionScratch = warpQuadInto(
+      motionCtx,
+      sourceFrame,
+      state.settings.quad,
+      state.buffers.motionScratch
+    );
+
+    const metrics = analyzeFrame(
+      analysisCtx,
+      state.previousGray,
+      state.referenceGray,
+      motionCtx
+    );
+    state.previousGray = metrics.motionGray;
 
     const verdict = state.autoCapture.evaluate(metrics);
     renderMetrics(metrics, verdict);
