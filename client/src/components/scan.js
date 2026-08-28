@@ -1401,16 +1401,66 @@ function flashShutter() {
 }
 
 /** The match, over the picture. Cleared when a capture resolves to nothing. */
+/**
+ * Price bands, and the outline colour each one paints the card.
+ *
+ * The point is to spot the card worth stopping for while looking at the cards
+ * rather than at the screen — so the bands are coarse and the cheapest one is
+ * deliberately unmarked. Colouring everything would mean colour carried no
+ * information: most of a bulk box is under a pound, and an outline on all of it
+ * is just the outline.
+ *
+ * Ordered high to low and matched on the first threshold met, so a new band only
+ * ever has to be inserted in the right place.
+ */
+const PRICE_BANDS = [
+  { min: 20, band: 'purple' },
+  { min: 10, band: 'blue' },
+  { min: 5, band: 'green' },
+  { min: 1, band: 'yellow' },
+];
+
+/** Which band a price falls in, or null for "not worth marking". */
+function priceBand(price) {
+  if (typeof price !== 'number' || !Number.isFinite(price)) return null;
+  return PRICE_BANDS.find((entry) => price >= entry.min)?.band || null;
+}
+
+/** A price as it goes on screen. Null prices say so rather than showing $0.00. */
+function formatPrice(price) {
+  if (typeof price !== 'number' || !Number.isFinite(price)) return 'no price';
+  return `$${price.toFixed(2)}`;
+}
+
 function renderLiveMatch(candidate) {
   const live = el('scan-live');
   if (!live) return;
 
   live.classList.toggle('hidden', !candidate);
+
+  // The outline is painted whether or not the panel is showing, and cleared
+  // when the match goes away — an outline still coloured from the last card is
+  // worse than no colour at all, because it is a claim about this one.
+  const overlay = el('scan-overlay');
+  const band = candidate ? priceBand(candidate.price) : null;
+  if (overlay) {
+    for (const entry of PRICE_BANDS) {
+      overlay.classList.toggle(`scan-price-${entry.band}`, band === entry.band);
+    }
+  }
+
   if (!candidate) return;
 
   el('scan-live-name').textContent = candidate.name;
+
   el('scan-live-print').textContent =
     `${candidate.setCode} ${candidate.collectorNumber || ''}`.trim();
+
+  const price = el('scan-live-price');
+  if (price) {
+    price.textContent = formatPrice(candidate.price);
+    price.className = `scan-live-price${band ? ` scan-live-price-${band}` : ''}`;
+  }
 }
 
 /**
