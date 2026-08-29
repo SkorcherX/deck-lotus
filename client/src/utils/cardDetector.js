@@ -29,6 +29,9 @@
  */
 import { detectCardContour, isReady as inlineReady, load as loadInline } from './cardContour.js';
 
+/** How many round trips the rolling latency figures are taken over. */
+const TIMING_WINDOW = 32;
+
 const state = {
   worker: null,
   /** null until we have tried, then true (worker) or false (inline). */
@@ -39,6 +42,16 @@ const state = {
   nextId: 1,
   latest: null,
   onProgress: null,
+  // When the in-flight request was posted, and the last few round trips.
+  //
+  // This exists because a recorded session showed every capture framed from a
+  // detection more than 300ms old — on a loop asking twenty times a second,
+  // against 3.84ms for the same detection measured inline on a desktop. A quad
+  // that old describes where the card was, not where it is, and nothing else in
+  // a bundle would have said so. Guessing at the cause is what this is here to
+  // stop.
+  sentAt: 0,
+  timings: [],
 };
 
 function startWorker() {
@@ -114,6 +127,10 @@ export function load({ onProgress = null } = {}) {
 
       if (message.type === 'detected') {
         state.pending--;
+        if (state.sentAt) {
+          state.timings.push(performance.now() - state.sentAt);
+          if (state.timings.length > TIMING_WINDOW) state.timings.shift();
+        }
         // Only the newest request may set the answer. A late reply from a
         // request that was already superseded describes an older frame.
         if (message.id === state.nextId - 1) state.latest = message.result;
@@ -153,12 +170,35 @@ export function detect(frame, hint = null) {
   if (state.pending > 0) return;
 
   state.pending++;
+  state.sentAt = performance.now();
   state.worker.postMessage({
     type: 'detect',
     id: state.nextId++,
     frame: { data: frame.data, width: frame.width, height: frame.height },
     hint,
   });
+}
+
+/**
+ * What detection is costing, in the shape a bundle can carry.
+ *
+ * `mean` and `max` are round trips in milliseconds; `rate` is how often an
+ * answer actually arrives, which is the number that decides how stale a
+ * capture's framing can be — requests are dropped while one is in flight, so
+ * the rate is one over the round trip rather than the loop's tick rate.
+ */
+export function timings() {
+  if (!state.timings.length) return { samples: 0, mean: null, max: null, rate: null, worker: state.usingWorker };
+
+  const total = state.timings.reduce((sum, ms) => sum + ms, 0);
+  const mean = total / state.timings.length;
+  return {
+    samples: state.timings.length,
+    mean: Math.round(mean * 10) / 10,
+    max: Math.round(Math.max(...state.timings) * 10) / 10,
+    rate: Math.round((1000 / mean) * 10) / 10,
+    worker: state.usingWorker,
+  };
 }
 
 /** Stop the worker. The next load() starts a fresh one. */
