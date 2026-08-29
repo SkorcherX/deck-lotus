@@ -45,6 +45,8 @@ captures[]
   rectifiedSize       the size it was hashed at — fixed, see HASH_HEIGHT
   nativeRectifiedSize what it rectified to at the camera's own resolution
   artHash, frameHash  the unexpanded framing's hashes
+  singleArtHash       the same framing from the first frame alone, uncomposited
+  burst               how many frames were composited into the capture
   probeScales         the ladder offered, e.g. [0.92, 0.94, 0.96, 0.98, 1]
   rectified           the rectified card, JPEG data URL, 488px wide
   frame               the whole frame it was cut from, JPEG data URL, 720px wide
@@ -67,6 +69,7 @@ argument that could not be settled without it:
 | `wasWarm` / `recognizeMs` | `elapsedMs` alone is two numbers in one: a cold read carries a ~17MB download inside it. |
 | `snap.averaged` | how many detections were averaged into the framing. 1 means the run disagreed and a single frame was used. |
 | `snap.runLength` | how many detections were *available* to average. Detection answers asynchronously since it moved into a worker, so a short run and a disagreeing run are different faults and `averaged` alone cannot tell them apart. |
+| `singleArtHash` / `burst` | a capture is the median of a short burst of frames. This is what the first frame alone would have hashed to, so the two distances against the winning candidate say whether the burst paid for its shutter lag. |
 | `nativeRectifiedSize` | what the card rectified to at the camera's own resolution. `rectifiedSize` is fixed at the hash size now, so this is the only field left that says whether a session was shot close or far. |
 
 A bundle carries no account data — no user, no token, no collection. A scan is a
@@ -218,6 +221,19 @@ the resolve response is `{ results: [ ... ] }`, not a bare candidate list.
 only exist there — see the pitfalls below.
 
 ---
+
+### Is compositing earning its lag?
+
+Every capture carries `artHash` (the composite) and `singleArtHash` (the first
+frame alone). Hash both against the winning candidate's reference and compare —
+the composite should sit at or below the single frame, and the size of the gap
+is what says whether `CAPTURE_BURST` should be 3, 5, or 1.
+
+Do it over a whole session rather than a capture or two: the burst is fighting
+noise, and a single capture's difference is itself noise. If the gap is
+consistently zero, the shutter lag is being spent for nothing and the constant
+should go back to 1 — it is written so that a burst of one behaves exactly like
+an ordinary capture.
 
 ### Measuring the detector without a session
 

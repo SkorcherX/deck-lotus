@@ -143,11 +143,24 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
       person tilting the card 5° beats any software correction, but only if told
       *now* rather than after a failed match. Also worth noting that the torch
       usually makes sleeve glare worse.
-- [ ] **8. Multi-frame min-composite at capture.** The shutter already waits for
+- [x] **8. Multi-frame composite at capture.** The shutter already waits for
       3–4 still frames and `recentQuads` holds their framings. Rectify the last
       N and take a per-pixel minimum (or median) before hashing: highlights are
       strictly brighter than the print beneath, and hand tremor guarantees the
       patch moves. *Verify:* replay against the sleeved bundle.
+      *Done, with two changes to the shape of it.* **Median, not minimum:** the
+      sleeved sessions recorded glare at 0.00-0.09% with the torch off, so the
+      loss is not specular, and against noise a minimum is a bias rather than an
+      average. A median still rejects a highlight present in a minority of
+      frames. **Composited in the source plane, before any warp:** one pass
+      serves all five probes and both OCR crops, where compositing each
+      rectified probe would repeat the work five times and leave the reader's
+      crops untouched. The burst is taken forward from the shutter rather than
+      out of `recentQuads`, which never held frames — only framings.
+      *Not yet verified on real cards:* existing bundles hold one frame per
+      capture, so there is nothing to replay this against. Every capture now
+      records `singleArtHash` beside `artHash` so the next session measures the
+      gap directly.
 - [ ] **9. Glare-aware hashing.** In `downsampleToGrid`, exclude near-saturated
       pixels from each cell's average, falling back to the full average when a
       cell is entirely blown. This is shared-module arithmetic — reference

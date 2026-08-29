@@ -15,6 +15,7 @@ import {
   hashSize,
   imageDataOf,
   loadImageFile,
+  medianComposite,
   quadFromRect,
   rectifiedSize,
   regionOutputSize,
@@ -269,6 +270,10 @@ const state = {
   // schedule, so this is what separates "a new answer arrived" from "the same
   // answer read twice" — see the tick.
   rememberedDetection: null,
+  // True while a capture's burst of frames is being gathered. See
+  // captureFromVideo: the disarm that stops a second shutter lives in
+  // emitCapture, which is now a couple of frames after the trigger.
+  capturing: false,
   // The last few detections, newest last, cleared the moment the card is lost.
   // A capture is framed from their mean rather than from the single frame the
   // shutter fired on — see FRAMES_AVERAGED.
@@ -1016,10 +1021,59 @@ function snapQuad(source, frameWidth, frameHeight) {
     : { quad: state.settings.quad, snap: null };
 }
 
-function captureFromVideo(video, trigger) {
-  const { quad, snap } = snapQuad(video, video.videoWidth, video.videoHeight);
-  const frame = frameImageData(video, video.videoWidth, video.videoHeight);
-  emitCapture(frame, quad, video.videoWidth, video.videoHeight, trigger, snap);
+/**
+ * How many frames a capture is composited from. See medianComposite.
+ *
+ * Odd, and small. Three frames at 30fps is about 66ms of extra shutter lag on a
+ * card that has already been still for four analysis frames — short enough that
+ * the framing measured before the burst still describes the card at the end of
+ * it, which is the assumption the whole thing rests on. Five would halve the
+ * noise again and double that assumption's exposure.
+ *
+ * Set to 1 to turn compositing off entirely; everything downstream is written
+ * to treat a burst of one as an ordinary capture, and the diagnostics record
+ * both hashes either way.
+ */
+const CAPTURE_BURST = 3;
+
+/** The next frame the camera paints, or a rendered frame where that is all we get. */
+function nextVideoFrame(video) {
+  return new Promise((resolve) => {
+    // requestVideoFrameCallback fires on a *new* frame from the camera; rAF
+    // fires on a repaint, which may hand back the same frame twice. Compositing
+    // duplicates would be honest but pointless work, so the real thing is used
+    // wherever it exists.
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      video.requestVideoFrameCallback(() => resolve());
+    } else {
+      requestAnimationFrame(() => resolve());
+    }
+  });
+}
+
+async function captureFromVideo(video, trigger) {
+  // Held across the burst. The analysis loop keeps running while this awaits,
+  // and without this a second shutter could fire into the middle of it — the
+  // disarm that normally prevents that lives in emitCapture, which is now two
+  // frames away.
+  if (state.capturing) return;
+  state.capturing = true;
+
+  try {
+    const { quad, snap } = snapQuad(video, video.videoWidth, video.videoHeight);
+    const frames = [frameImageData(video, video.videoWidth, video.videoHeight)];
+
+    for (let i = 1; i < CAPTURE_BURST; i++) {
+      await nextVideoFrame(video);
+      // The camera can stop mid-burst. Whatever arrived is still a capture.
+      if (!video.videoWidth || !state.stream) break;
+      frames.push(frameImageData(video, video.videoWidth, video.videoHeight));
+    }
+
+    emitCapture(frames, quad, video.videoWidth, video.videoHeight, trigger, snap);
+  } finally {
+    state.capturing = false;
+  }
 }
 
 /**
@@ -1072,7 +1126,13 @@ function expandQuad(quad, scale) {
   }));
 }
 
-function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null) {
+function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null) {
+  // One photograph, made of however many the shutter managed to take. Every
+  // warp below — the card, the five framing probes, both OCR crops — is cut
+  // from this rather than from any single frame, which is the cheap way round:
+  // one pass over the source instead of one per crop.
+  const burst = Array.isArray(frames) ? frames : [frames];
+  const frame = medianComposite(burst);
   // Two sizes, and the difference between them is most of what a capture costs.
   //
   // `size` is the card at the resolution the camera actually gave it, and the
@@ -1108,6 +1168,9 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
     // were actually on the card is this. A session that matches badly at arm's
     // length and well up close is invisible without it.
     nativeSize: size,
+    // How many frames the shutter actually managed to composite. Fewer than
+    // CAPTURE_BURST means the camera stopped mid-burst.
+    burst: burst.length,
     at: new Date(),
   };
 
@@ -1141,6 +1204,16 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
       );
       return { scale, ...probe };
     });
+    // The same card cut from the first frame alone, hashed and kept but never
+    // sent. It is the control for compositing: without it a bundle says how
+    // well the composite did and nothing about whether the burst was worth
+    // taking, and the honest way to find that out is to carry both numbers on
+    // every capture rather than to reason about it.
+    if (burst.length > 1) {
+      entry.singleArtHash = hashRectified(
+        imageDataOf(warpQuad(burst[0], quad, hashed.width, hashed.height))
+      ).artHash;
+    }
   } catch (error) {
     // A capture that cannot be hashed is still a capture worth reading. The
     // resolver treats a missing hash as "no second signal" and says so.
@@ -2016,7 +2089,7 @@ async function captureFromFile(file) {
     state.settings.quad = previous;
 
     const frame = frameImageData(image, image.width, image.height);
-    emitCapture(frame, quad, image.width, image.height, 'upload', snap);
+    emitCapture([frame], quad, image.width, image.height, 'upload', snap);
   } catch (error) {
     showToast(error.message, 'error');
   }
