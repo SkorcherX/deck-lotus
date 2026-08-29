@@ -566,6 +566,100 @@ export const SCAN_TIERS = {
  * @param {number} [scan.limit]
  * @returns {{query: object, tier: string, candidates: Array, signals: object}}
  */
+/**
+ * How close two printings of one card have to sit before the art is treated as
+ * having no opinion about which is which, in bits of the 256-bit art hash.
+ *
+ * Reprints share an illustration, so what separates their references is not the
+ * picture — it is the difference between two scans of one picture. A recorded
+ * session put four printings of Seaside Citadel at exactly 50, three of Ingot
+ * Chewer within 4, and reordered all of them when the same photograph was
+ * hashed at another rung of the framing ladder.
+ *
+ * 12 bits, and the anchor is elsewhere in this pipeline: hashing *the same
+ * pixels* at the camera's resolution rather than the reference's moved the art
+ * hash 10-12 bits, flat, at every size (see HASH_HEIGHT). A gap that a change
+ * of scale can manufacture on identical input is not evidence about which
+ * printing is in someone's hand.
+ *
+ * Measured against three recorded ECC sessions — how many of nine cards came
+ * back as the ECC printing that was actually on the table:
+ *
+ *      tie bits    6     12    20    30
+ *      session A   7/9   8/9   8/9   9/9
+ *      session B   3/9   8/9   8/9   8/9
+ *      session C   6/9   6/9   6/9   6/9
+ *
+ * Most of it arrives by 12 and the rest is bought by overriding differences
+ * large enough to be real — a borderless or showcase printing genuinely differs
+ * from a normal one, and 30 is most of the way to the 41 bits that separate a
+ * confident match from an unsure one. So: 12.
+ */
+const PRINTING_TIE_BITS = 12;
+
+/**
+ * Order tied printings by the sets a session has already been sure about.
+ *
+ * The art can name the card and has nothing to say about which printing is in
+ * the hand. The information that would settle it is not in the photograph — it
+ * is in the stack: cards come from a precon, a booster box, a binder, and one
+ * session is usually one place. So a caller may pass a tally of the sets it has
+ * already resolved unambiguously, and ties are broken toward it.
+ *
+ * Three rules, and the whole value of this depends on keeping them:
+ *
+ * 1. **Only printings of the card that already won.** This never changes which
+ *    *card* is first. A tally about sets is not evidence about identity.
+ * 2. **Only where the art is genuinely tied**, within PRINTING_TIE_BITS. A
+ *    distance the art actually separated is evidence; overriding it with a
+ *    tally would be preferring a guess about the stack to a measurement of the
+ *    picture.
+ * 3. **Never promotes anything.** Tiers are decided before this runs, so a
+ *    biased order cannot turn a printing choice into a `confident` one. A tally
+ *    is a hint about a pile of cards, not proof about the one in hand.
+ *
+ * Mutates `merged` in place, because it is the list about to be returned and
+ * copying it to reorder a handful of neighbours would be ceremony.
+ */
+function applySetBias(merged, setBias) {
+  if (!setBias || !merged.length) return;
+
+  const tally = new Map(
+    Object.entries(setBias)
+      .filter(([code, count]) => code && Number.isFinite(count) && count > 0)
+      .map(([code, count]) => [String(code).toUpperCase(), count])
+  );
+  if (!tally.size) return;
+
+  const best = merged[0];
+  if (best.artDistance === null || best.artDistance === undefined) return;
+
+  // The run of leading candidates that are the same card and tied with it. A
+  // contiguous run from the front, because anything below a candidate the art
+  // separated is not tied with the winner however close it looks.
+  let end = 0;
+  while (
+    end < merged.length &&
+    merged[end].cardId === best.cardId &&
+    Number.isFinite(merged[end].artDistance) &&
+    merged[end].artDistance - best.artDistance <= PRINTING_TIE_BITS
+  ) {
+    end++;
+  }
+
+  if (end < 2) return;
+
+  const tied = merged.slice(0, end);
+  tied.sort((a, b) => {
+    const score = (candidate) => tally.get(String(candidate.setCode || '').toUpperCase()) || 0;
+    // Stable within equal scores: the art's own order is the fallback, not an
+    // alphabetical or arbitrary one.
+    return score(b) - score(a);
+  });
+
+  merged.splice(0, end, ...tied);
+}
+
 export function resolveScanFused({
   name = null,
   setCode = null,
@@ -574,6 +668,7 @@ export function resolveScanFused({
   frameHash = null,
   artHashes = null,
   frameHashes = null,
+  setBias = null,
   limit = 10,
 } = {}) {
   // Resolved wide and trimmed at the end: a printing that the text ranked 30th
@@ -810,6 +905,8 @@ export function resolveScanFused({
     ? merged.filter((candidate) => artBacked(candidate) && candidate.cardId === best.cardId).length
     : 0;
 
+  applySetBias(merged, setBias);
+
   let tier;
   if (agreed && isStrongMatch(bestHash)) {
     tier = SCAN_TIERS.CONFIDENT;
@@ -847,6 +944,10 @@ export function resolveScanFused({
       // Printings of the winning card the art matched. Above one means the
       // printing was chosen by hand, not by the scanner.
       printingsOfBest: bestCardPrintings,
+      // Whether a session's set tally was used to order tied printings, so a
+      // recording says when the order shown was the art's and when it was the
+      // stack's. See applySetBias.
+      setBiased: !!setBias && bestCardPrintings > 1,
       agreed,
       bestArtDistance: bestHash ? bestHash.artDistance : null,
       // Which of the offered framings won. On its own it is trivia; across a

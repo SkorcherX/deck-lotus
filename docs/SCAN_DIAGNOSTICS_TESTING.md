@@ -124,6 +124,18 @@ distance per capture, which is how you tell "the framing is slightly off" from
 node scripts/scan-replay.mjs bundle.json --sweep 0.84:1.04
 ```
 
+**Order ties by the stack.** `--bias` accumulates a set tally exactly as the
+client does — only captures whose art matched a single printing contribute —
+and passes it back in, so a replay shows what set biasing would have done to a
+recorded session:
+
+```bash
+node scripts/scan-replay.mjs bundle.json --bias
+```
+
+On three ECC precon sessions that took the right printing from 3, 3 and 1 of
+nine to 8, 8 and 6.
+
 **Look at the pictures.** `--extract DIR` writes every `rectified` and `frame`
 out as JPEGs. Reading the frames is how cards get identified for ground truth,
 and how the sleeve run was diagnosed.
@@ -387,6 +399,13 @@ So the next session does not re-derive it:
   `[0.84, 0.88, 0.92, 0.96, 1]` took those sessions from 4/9 and 4/9 to 8/9 and
   7/9 at identical cost. The earlier unexplained 3/11 sleeved run is very likely
   the same thing.
+- **Set biasing recovers most of the printings the art cannot choose.** A tally
+  of the sets a session has already been *sure* about — captures where the art
+  matched exactly one printing — orders the ties. Replayed over three ECC precon
+  sessions it took the correct printing from 3, 3 and 1 of nine to 8, 8 and 6.
+  It only ever reorders printings of the card that already won, only within
+  `PRINTING_TIE_BITS`, and never changes a tier. `signals.setBiased` says when
+  it was applied.
 - **The art names the card, not the printing, and that is not a ranking bug.**
   Nine cards from one ECC precon, unsleeved: Seaside Citadel came back tied at
   50 across MKC, BLC, ECC and PLST; Ingot Chewer at 64 across CM2, ECC and JVC;

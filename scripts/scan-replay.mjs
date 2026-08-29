@@ -16,6 +16,7 @@
  *   node scripts/scan-replay.mjs <bundle.json> --ladder 0.88,0.92,0.96,1
  *   node scripts/scan-replay.mjs <bundle.json> --sweep 0.84:1.04
  *   node scripts/scan-replay.mjs <bundle.json> --extract out/dir
+ *   node scripts/scan-replay.mjs <bundle.json> --bias
  *
  * Needs DATABASE_PATH pointing at a database with `printings` populated, since
  * the hash index joins the packed file to it:
@@ -132,10 +133,11 @@ function extract(bundle, dir) {
 }
 
 function parseArgs(argv) {
-  const options = { bundle: null, ladder: null, sweep: null, extract: null };
+  const options = { bundle: null, ladder: null, sweep: null, extract: null, bias: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--ladder') options.ladder = argv[++i].split(',').map(Number);
+    if (arg === '--bias') options.bias = true;
+    else if (arg === '--ladder') options.ladder = argv[++i].split(',').map(Number);
     else if (arg === '--sweep') options.sweep = argv[++i].split(':').map(Number);
     else if (arg === '--extract') options.extract = argv[++i];
     else if (!options.bundle) options.bundle = arg;
@@ -146,7 +148,7 @@ function parseArgs(argv) {
 const options = parseArgs(process.argv.slice(2));
 
 if (!options.bundle) {
-  console.error('usage: node scripts/scan-replay.mjs <bundle.json> [--ladder a,b,c] [--sweep lo:hi] [--extract dir]');
+  console.error('usage: node scripts/scan-replay.mjs <bundle.json> [--ladder a,b,c] [--sweep lo:hi] [--extract dir] [--bias]');
   process.exit(1);
 }
 
@@ -212,7 +214,10 @@ if (options.sweep) {
   process.exit(0);
 }
 
-console.log(`replaying with ladder [${ladder.join(', ')}]`);
+/** The sets this replayed session has been sure about, in capture order. */
+const tally = new Map();
+
+console.log(`replaying with ladder [${ladder.join(', ')}]${options.bias ? ', set bias on' : ''}`);
 console.log(`(the session recorded [${recordedLadder.join(', ')}])\n`);
 
 let matched = 0;
@@ -235,8 +240,17 @@ for (const [i, capture] of bundle.captures.entries()) {
   const result = resolveScanFused({
     artHashes: probes.map((p) => p.artHash),
     frameHashes: probes.map((p) => p.frameHash),
+    // Built exactly the way the client builds it, capture by capture in order:
+    // only a resolution that matched a single printing of its card contributes,
+    // so the tally is measurements rather than the session's own guesses.
+    setBias: options.bias && tally.size ? Object.fromEntries(tally) : null,
     limit: 3,
   });
+
+  if (options.bias && result.signals?.printingsOfBest === 1 && result.candidates[0]?.setCode) {
+    const set = result.candidates[0].setCode;
+    tally.set(set, (tally.get(set) || 0) + 1);
+  }
 
   const top = result.candidates[0];
   if (top) matched++;

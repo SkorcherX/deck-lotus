@@ -119,7 +119,7 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
 
 ## Printings
 
-- [ ] **14. Bias candidates toward the sets a session has already resolved.**
+- [x] **14. Bias candidates toward the sets a session has already resolved.**
       The art hash names the card and cannot name the printing: a recorded
       session of nine ECC precon cards came back tied across MKC, BLC, ECC and
       PLST at identical distances, and which sibling led changed with the
@@ -135,9 +135,13 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       is a hint about a pile of cards, not evidence about the one in hand.
       Worth offering the same thing explicitly too ("I'm scanning ECC"), which
       is the same mechanism with the tally supplied by hand.
-      *Verify:* replay the ECC bundle; every tie should come back ECC-first
-      after the first two captures resolve, and `scanFusion.test.js` should gain
-      a case where a tally must **not** override a distance the art separated.
+      *Done.* The tally is fed only by captures whose art matched a single
+      printing, so it is seeded by the cards unique to the set rather than by
+      the session's own guesses. `scan-replay.mjs --bias` replays it: three ECC
+      sessions went from 3, 3 and 1 correct printings of nine to 8, 8 and 6.
+      Four tests cover the rules, including the two that matter — a tally must
+      not override a distance the art separated, and must not reach past the
+      card the art chose.
 
 ## Sleeve glare
 

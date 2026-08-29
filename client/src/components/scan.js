@@ -338,6 +338,9 @@ const state = {
   // The detection the run last took, by identity. Detection answers on its own
   // schedule, so this is what separates "a new answer arrived" from "the same
   // answer read twice" — see the tick.
+  // Sets this session has resolved unambiguously, counted. Ties between
+  // printings of one card are ordered by it — see rememberSet.
+  setTally: new Map(),
   rememberedDetection: null,
   // True while a capture's burst of frames is being gathered. See
   // captureFromVideo: the disarm that stops a second shutter lives in
@@ -1223,6 +1226,34 @@ function looksLikeANewCard(analysisFrame) {
   }
 }
 
+/**
+ * The sets this session has already been sure about, and how often.
+ *
+ * Only unambiguous resolutions count — a capture where the art matched exactly
+ * one printing of its card, so the set is a measurement rather than a guess.
+ * Cards unique to one printing are what seed it, and in a precon there are
+ * always a few: two of the nine cards in the recorded ECC session were
+ * ECC-only, which is enough to order every reprint behind them.
+ *
+ * Deliberately not fed by ambiguous resolutions. Tallying whichever printing
+ * happened to lead would make the first arbitrary answer the second one's
+ * evidence, and a session could talk itself into a set it never saw.
+ */
+function rememberSet(resolved) {
+  if (!resolved || resolved.signals?.printingsOfBest !== 1) return;
+
+  const set = resolved.candidates?.[0]?.setCode;
+  if (!set) return;
+
+  state.setTally.set(set, (state.setTally.get(set) || 0) + 1);
+}
+
+/** The tally in the shape the resolver takes, or null before anything is sure. */
+function setTally() {
+  if (!state.setTally.size) return null;
+  return Object.fromEntries(state.setTally);
+}
+
 /** Remember what was in frame at the moment of a capture. See looksLikeANewCard. */
 function rememberCapturedFrame() {
   try {
@@ -1675,8 +1706,11 @@ async function resolveCapture(entry) {
     const resolved = await api.resolveScanProbes({
       artHashes: probes.map((p) => p.artHash),
       frameHashes: probes.map((p) => p.frameHash),
+      setBias: setTally(),
       limit: 25,
     });
+
+    rememberSet(resolved);
 
     entry.candidates = resolved.candidates;
     entry.tier = resolved.tier || null;
