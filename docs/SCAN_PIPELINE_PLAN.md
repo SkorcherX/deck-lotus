@@ -160,6 +160,18 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       Angle matters more than any of this in the meantime: the same two cards
       matched at 44 and 76 in earlier sessions, because sheen depends on where
       the light is.
+      *Measured, not yet shipped.* `scripts/hash-variants.mjs` now exists for
+      exactly this and has run over 72 captures from ten sessions. A high-pass
+      of radius 2 matches 56/72 against the baseline's 51/72, strong-matches 8
+      against 5, regresses no card, and leaves the nearest wrong card 37 bits
+      clear of the threshold. But it is *not* a foil rescue — foils stay the
+      worst cards either way — and shipping it invalidates all 112,815
+      references, which are only cached as hashes: a rebuild re-downloads every
+      Scryfall image, about three hours, plus a hash version bump. Worth doing
+      deliberately; not worth slipping in. Numbers are in the testing doc.
+      The cheap mitigation for foils meanwhile is the reader: OCR is exactly the
+      second signal for a card whose art cannot be matched, and `readIfUnresolved`
+      already asks for it on anything short of `confident`.
 
 ## Sleeve glare
 

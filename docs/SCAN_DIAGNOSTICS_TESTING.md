@@ -240,6 +240,56 @@ only exist there — see the pitfalls below.
 
 ---
 
+### Weighing a change to the hash itself
+
+`scripts/hash-variants.mjs` measures a proposed change to `cardHash.js` before
+anyone makes one. It composes the *real* steps — `downsampleToGrid`, `dct2d`,
+`signBlock` are exported for it — with one filter inserted between the grid and
+the DCT, so a variant is the pipeline with one thing changed rather than a copy
+that can drift.
+
+```bash
+node scripts/scan-replay.mjs bundle.json --extract out/shots_session1   # per session
+node scripts/hash-variants.mjs out out/refs --per-card
+```
+
+`refs` holds one Scryfall image per card named `0_Card_Name.jpg`, numbered in
+capture order — the deck's order, not alphabetical. Pairing them by name instead
+reports a flat 0 matched, which is at least a loud way to be wrong.
+
+It answers three questions together, and a variant has to pass all three: does
+it match more captures to the card that was on the table, does it bring
+*different* cards closer, and what does it do to the cards it was not aimed at.
+A variant that wins the first and loses the second is a looser threshold wearing
+a disguise.
+
+**What it has measured so far**, over 72 captures from ten recorded sessions:
+
+     variant          matched  strong    mean   nearest wrong card
+     baseline           51/72       5    64.9                  116
+     high-pass r1       51/72       8    65.0                  112
+     high-pass r2       56/72       8    64.1                  114
+     high-pass r4       53/72       9    64.2                  116
+     local-norm r2      51/72       6    68.3                  114
+     local-norm r4      53/72       7    66.3                  114
+
+A high-pass of radius 2 — the grid minus a blurred copy of itself — matches five
+more captures, strong-matches three more, and leaves discrimination untouched
+(the nearest wrong card moves 2 bits of 256, and stays 37 bits clear of the
+threshold). Per card, it gains Cultivate 3/8 to 5/8, Abundant Growth and Ingot
+Chewer one each, one of the two foils one, and **regresses nothing**.
+
+It is not, however, the foil rescue it was proposed as. Foils remain the worst
+cards in the sample either way.
+
+**The cost is the reason it has not shipped.** Changing this arithmetic
+invalidates all 112,815 references at once, and only the *hashes* are cached —
+`data/card-hashes.raw.jsonl` holds no images. So a rebuild re-downloads every
+Scryfall image at the 50-100ms spacing they ask for: three hours or so of
+network, and a hash version bump so a new capture can never be compared against
+an old reference. That is a deliberate operation, not something to slip into a
+session. The measurement is here so the decision can be made on numbers.
+
 ### Where the framing ladder sits now
 
 Capture-time framing moved the basin up: winning probes went from 0.84-0.90 in
@@ -460,6 +510,13 @@ So the next session does not re-derive it:
   anything inferred. `environment.setBias` records what was in force, because a
   bundle showing the bias firing could not otherwise distinguish "they typed it"
   from "it seeded itself wrongly".
+- **A foil's frame hash looks close and means nothing.** The two foil commanders
+  sat 22 and 26 bits from their references on the frame hash while the art hash
+  was 84, which reads like a usable fallback. It is not: ranked by frame hash
+  alone the correct card came 20,516th and 5,919th of 112,815, with 22,901 and
+  8,276 cards at or nearer. The frame hash is 64 bits of whole-card layout and
+  thousands of cards share it. Absolute distance says nothing without the
+  crowding beside it.
 - **The art names the card, not the printing, and that is not a ranking bug.**
   Nine cards from one ECC precon, unsleeved: Seaside Citadel came back tied at
   50 across MKC, BLC, ECC and PLST; Ingot Chewer at 64 across CM2, ECC and JVC;
