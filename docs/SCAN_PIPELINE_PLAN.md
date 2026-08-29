@@ -5,22 +5,30 @@ Working plan from a review of the scan pipeline (`client/src/components/scan.js`
 `cardOcr.js`, `src/shared/cardHash.js`). Tasks are ordered so each one can be
 picked up on its own in a later session. Tick them off here as they land.
 
-## Prerequisite — a replay harness (do this first)
+## Before starting — the harness already exists
 
-The review assumed one exists. It does not: `client/src/utils/scanDiagnostics.js`
-records captures and `download()` writes a bundle, but nothing reads a bundle
-back. Every accuracy task below ("verify offline against a recorded bundle")
-is unverifiable until this exists, and hash-arithmetic changes must not be
-trusted without it — see the comparability warning in `src/shared/cardHash.js`.
+`scripts/scan-replay.mjs` re-runs the real pipeline (same warp, same
+`hashRectified`, same index, same `resolveScanFused`) over a recorded
+diagnostics bundle, with `--ladder` to A/B a probe ladder, `--sweep lo:hi` to
+find the basin, and `--extract DIR` for the images. Read
+[SCAN_DIAGNOSTICS_TESTING.md](SCAN_DIAGNOSTICS_TESTING.md) first — it documents
+the bundle format, ground truth via Scryfall, the browser-side camera stub, and
+the pitfalls. Every "verify offline" below means that script.
 
-- [ ] **0. Bundle replay tool.** A script (`scripts/replay-scan-bundle.mjs`)
-      that takes an exported diagnostics bundle and re-runs hashing + server
-      search over the stored frames, printing per-capture: matched name, hash
-      distance, and which framing probe won. Baseline the current bundles
-      before changing anything, so every later task has a before/after.
-- [ ] **0b. Record reference bundles.** At minimum: bare cards, sleeved cards
-      under a lamp (glare), foils, and one 4K-camera session. These are the
-      fixtures for tasks 1–5 and 6–10.
+```bash
+DATABASE_PATH=data/deck-lotus-test.db node scripts/scan-replay.mjs <bundle.json>
+```
+
+Two limits that shape the tasks:
+
+- **Replay cannot judge capture resolution.** A bundle's `frame` is stored at
+  720px wide; the phone captured ~11MP. Replayed distances are for comparing
+  changes against each other, not absolutes — so task 1 needs its own check
+  (below), not a replay A/B.
+- **One variable at a time.** The one sleeved run scored 3/11 but also changed
+  card set, so nothing can be concluded from it. The glare work (tasks 7-10)
+  needs the test the doc already names: the same cards, sleeved and unsleeved,
+  in the same box and the same light.
 
 ## Speed
 
@@ -35,7 +43,9 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       a 4K rectification buys nothing. Rectify hash inputs to ~512px tall
       regardless of camera resolution; keep native only for the OCR crops and
       the diagnostics frame. Smallest change with the biggest per-capture win.
-      *Verify:* replay must produce identical matches at a fraction of the time.
+      *Verify:* not by replay (bundles hold 720px frames). In the browser with
+      the camera stub, hash the same source rectified at native and at 512px and
+      require identical hashes, then measure the per-capture stall.
 - [ ] **2. Raise the analysis rate to 20fps.** The gates are frame counts, so
       halving `ANALYSIS_INTERVAL_MS` roughly halves per-card latency with no
       retuning — but only if per-tick work fits in 50ms, which depends on 3/4.
@@ -56,10 +66,16 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       never erodes (`cardContour.js:344`), inflating the external contour ~2px
       per side. Try a morphological close (dilate then erode) and replay. If the
       basin re-centres on 1.0, cut probes from five to three — fewer client
-      warps *and* fewer server index passes per capture.
-- [ ] **6. Say in the UI that 2/s is the art-hash path.** OCR is seconds per
-      card and correctly deferred; optionally cap `readBest` at two variants
-      when the queue is deep.
+      warps *and* fewer server index passes per capture. *Verify:* `--sweep
+      0.84:1.04` before and after; the ladder A/B is `--ladder`. Note this is a
+      scale error, not corner jitter — the fitted-edge corner spike was already
+      built, measured (jitter down 3-8x, art distance unchanged: 396 either way)
+      and deleted, so do not reach for corner precision again here.
+- [ ] **6. Say in the UI that 2/s is the art-hash path.** OCR is off by default
+      and does not currently earn its cost (warm reads 7-28s on the phone,
+      noise on both cards they touched, against a hash at 7/7 unaided), so the
+      throughput figure users see should be the art-hash one. Capping `readBest`
+      at two variants when the queue is deep is optional and low value.
 
 ## Sleeve glare
 
@@ -82,8 +98,10 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
       pixels from each cell's average, falling back to the full average when a
       cell is entirely blown. This is shared-module arithmetic — reference
       hashes are built by `scripts/build-card-hashes.mjs` from clean scans, so
-      it must be validated with the replay harness across *all* bundles before
-      it is trusted, and it may require a hash-version bump.
+      it must be replayed across *all* bundles before it is trusted, and it may
+      require a hash-version bump. Check it against the crowding measurement in
+      the testing doc too: ~1.5% of cards already sit within 27 bits of a
+      different card, and this change moves every distance at once.
 - [ ] **10. Add the adaptive-threshold attempt the header promises.**
       `cardContour.js:34` says "a foil under a lamp needs the adaptive one", but
       the attempts are Otsu, inverted Otsu and Canny — there is no
@@ -92,7 +110,8 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
       replace one Otsu polarity to keep the per-frame budget flat.
 - [ ] **11. Highlight-clipping OCR variant.** Clamp above the 95th percentile
       before Sauvola so a bright band does not drag the local mean up and erase
-      the strokes beside it. Low priority — OCR is off the hot path.
+      the strokes beside it. Lowest priority of all — OCR is off by default and
+      has yet to earn its cost; do not spend a session here before task 6.
 - [ ] **12. Docs: hardware footnote.** For a fixed rig, linear polarizing film
       over the lens plus a cross-polarized light kills sleeve glare outright.
 
@@ -104,8 +123,14 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
 
 ## Suggested order
 
-0 → 0b → 7 (glare chip) → 1 (probe resolution) → 5 (+13) → 4 → 3 → 2 → 8 → 9 →
-10 → 11 → 6 → 12.
+Record the controlled sleeved/unsleeved pair first (it is the only open question
+the existing bundles cannot answer), then:
+
+7 (glare chip) → 1 (probe resolution) → 5 (+13) → 4 → 3 → 2 → 8 → 9 → 10 →
+6 → 12 → 11.
 
 Tasks 7 and 1 are small and self-contained and are the natural first sessions;
-everything after 3 assumes the worker exists.
+everything after 3 assumes the worker exists. Anything that changes a measured
+number should update section 8 of
+[SCAN_DIAGNOSTICS_TESTING.md](SCAN_DIAGNOSTICS_TESTING.md) so the next session
+does not re-derive it.
