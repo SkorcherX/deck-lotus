@@ -230,10 +230,14 @@ the composite should sit at or below the single frame, and the size of the gap
 is what says whether `CAPTURE_BURST` should be 3, 5, or 1.
 
 Do it over a whole session rather than a capture or two: the burst is fighting
-noise, and a single capture's difference is itself noise. If the gap is
-consistently zero, the shutter lag is being spent for nothing and the constant
-should go back to 1 — it is written so that a burst of one behaves exactly like
-an ordinary capture.
+noise, and a single capture's difference is itself noise.
+
+This has been done once and the answer was no. Composite against single, over
+nine captures: 54/52, 76/74, 82/82, 88/86, 84/86, 98/102, 84/82, 108/108,
+106/104 — worse or equal on seven. Tremor moves the card and not only the
+glare, so a 66ms burst composites misaligned frames; and the median cost 402ms
+per capture at 12MP. `CAPTURE_BURST` is 1. Worth redoing only for a fixed
+camera, where the frames would actually align.
 
 ### Measuring the detector without a session
 
