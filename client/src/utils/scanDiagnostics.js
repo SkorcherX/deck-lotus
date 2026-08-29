@@ -152,6 +152,12 @@ export function recordCapture(entry, context = {}) {
     // This is the field that says whether a session was shot close or far.
     nativeRectifiedSize: entry.nativeSize || null,
     artHash: entry.artHash || null,
+    // What the capture would have hashed to without compositing, and how many
+    // frames went into it. Distance from each to the winning candidate is the
+    // measurement that says whether the burst pays for itself — see
+    // docs/SCAN_DIAGNOSTICS_TESTING.md.
+    singleArtHash: entry.singleArtHash || null,
+    burst: entry.burst || 1,
     frameHash: entry.frameHash || null,
     hashError: entry.hashError || null,
     // How much of the captured card was a blown-out highlight, as a percentage.

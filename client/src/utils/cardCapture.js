@@ -869,6 +869,71 @@ export function blownHighlightFraction(gray, width, height, level = 250) {
   return count ? (blown / count) * 100 : 0;
 }
 
+/**
+ * Per-pixel median of several frames of the same scene.
+ *
+ * A capture is one photograph of a card that was, by the time the shutter
+ * fired, demonstrably still — the streak is what proves it. So the frames
+ * either side of it are the same picture with different noise, and the median
+ * of three keeps what they agree on and drops what they do not.
+ *
+ * Median rather than the minimum the sleeve work first proposed. A minimum is
+ * the right tool against specular glare, where the highlight is strictly
+ * brighter than the print beneath it — but the recorded sleeved sessions put
+ * glare at 0.00-0.09% with the torch off, so the loss there is not specular. It
+ * is the sleeve's haze and the sensor noise underneath it, and against noise a
+ * minimum is actively wrong: it picks the darkest sample every time, which is a
+ * bias, not an average. A median still rejects a highlight that appears in a
+ * minority of frames, and unlike a mean it does not smear one bad frame across
+ * the result.
+ *
+ * Composited before any warp, not after. One pass over the source frame serves
+ * every framing probe *and* both OCR crops, where compositing each rectified
+ * probe would repeat the work five times over and leave the reader's crops
+ * untouched.
+ *
+ * Frames must share dimensions; anything else returns the first, since a burst
+ * that changed size mid-flight is a camera reconfiguring and not a scene.
+ */
+export function medianComposite(frames) {
+  if (!frames || frames.length === 0) return null;
+  if (frames.length === 1) return frames[0];
+
+  const [first] = frames;
+  const usable = frames.filter(
+    (frame) => frame.width === first.width && frame.height === first.height
+  );
+  if (usable.length < 3) return first;
+
+  // Odd count only: an even median needs a mean of the middle pair, which is
+  // the smearing this is avoiding.
+  const count = usable.length % 2 === 0 ? usable.length - 1 : usable.length;
+  const middle = (count - 1) / 2;
+  const out = new Uint8ClampedArray(first.data.length);
+  const sample = new Array(count);
+
+  for (let i = 0; i < first.data.length; i += 4) {
+    for (let channel = 0; channel < 3; channel++) {
+      for (let f = 0; f < count; f++) sample[f] = usable[f].data[i + channel];
+      // Insertion sort: `count` is 3 in practice and never large enough for
+      // anything cleverer to pay for its own setup.
+      for (let a = 1; a < count; a++) {
+        const value = sample[a];
+        let b = a - 1;
+        while (b >= 0 && sample[b] > value) {
+          sample[b + 1] = sample[b];
+          b--;
+        }
+        sample[b + 1] = value;
+      }
+      out[i + channel] = sample[middle];
+    }
+    out[i + 3] = 255;
+  }
+
+  return { data: out, width: first.width, height: first.height };
+}
+
 export function analyzeFrame(analysisCtx, previousGray, referenceGray = null, motionCtx = null) {
   const { width, height } = analysisCtx.canvas;
   const gray = toGrayscale(analysisCtx.getImageData(0, 0, width, height));
