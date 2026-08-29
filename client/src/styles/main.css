@@ -6336,6 +6336,12 @@ body.maintenance-locked #app {
   align-items: center;
 }
 
+.scan-tuning-hint {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+}
+
 .scan-chip {
   font-size: 0.75rem;
   padding: 0.25rem 0.55rem;
