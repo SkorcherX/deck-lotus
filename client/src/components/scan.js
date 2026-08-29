@@ -36,6 +36,7 @@ import {
   latest as latestDetection,
   load as loadDetector,
   reset as resetDetection,
+  timings as detectorTimings,
 } from '../utils/cardDetector.js';
 
 /**
@@ -1096,6 +1097,12 @@ function snapQuad(source, frameWidth, frameHeight) {
         // How many of them were recent enough to use. Below runLength means
         // detection is answering slower than the shutter settles.
         freshLength: fresh.length,
+        // How old the framing this capture was actually cut with is, in
+        // milliseconds. The one number that says whether a capture describes
+        // where the card is or where it was.
+        quadAgeMs: state.recentQuads.length
+          ? Math.round(performance.now() - state.recentQuads[state.recentQuads.length - 1].at)
+          : null,
       },
     };
   }

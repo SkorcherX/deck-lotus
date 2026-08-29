@@ -27,6 +27,7 @@
  */
 
 import { blownHighlightFraction, imageDataOf, toGrayscale } from './cardCapture.js';
+import { timings as detectorTimings } from './cardDetector.js';
 
 /** How many captures to keep. See makeRoom for which one falls off. */
 const RECORD_LIMIT = 24;
@@ -381,6 +382,11 @@ function environment(settings, reader) {
       warm: reader?.warm ?? null,
       pending: pendingReads(),
     },
+    // What detection cost on this device. `rate` is answers per second, and it
+    // is the ceiling on how fresh any capture's framing can be — requests are
+    // dropped while one is in flight, so a slow round trip means every quad in
+    // the session is old, however fast the loop ticks.
+    detector: detectorTimings(),
   };
 }
 
