@@ -335,11 +335,29 @@ So the next session does not re-derive it:
   `[0.84, 0.88, 0.92, 0.96, 1]` took those sessions from 4/9 and 4/9 to 8/9 and
   7/9 at identical cost. The earlier unexplained 3/11 sleeved run is very likely
   the same thing.
+- **The art names the card, not the printing, and that is not a ranking bug.**
+  Nine cards from one ECC precon, unsleeved: Seaside Citadel came back tied at
+  50 across MKC, BLC, ECC and PLST; Ingot Chewer at 64 across CM2, ECC and JVC;
+  Abundant Growth resolved `confident` to DMC while ECC — the card on the table
+  — sat outside the top four, and re-hashing the same photograph at another rung
+  of the framing ladder reordered them again. Reprints share an illustration, so
+  the few bits between them are resampling noise. `resolveScanFused` now counts
+  printings of the winning card (`signals.printingsOfBest`) and refuses
+  `confident` where there is more than one; the same session goes from calling
+  one of them certain to offering the choice. Anything further — biasing toward
+  the sets a session has already resolved, or letting someone name the set they
+  are scanning — is unbuilt.
+- **Sleeves cost about 20 bits, and the unsleeved control proved it.**
+  Same nine cards, same kitchen light: sleeved gave 0 confident with a best art
+  distance of 46, unsleeved gave 2 confident at 26 and 36 and 7/9 matched
+  against 4/9. The sleeve is a real, large cost — not framing, and not glare
+  (the recorded `glare` was 0.00 on every capture in both runs, flash off).
 - **Still unresolved: sleeves cost confidence.** Nothing in either session
   reached `confident` — the best art distance was 46 against a 41-bit strong
   threshold — so a sleeved card is confirmed by hand even when it matches. That
-  is the sleeve itself rather than the framing. The test that would size it is
-  the same cards unsleeved, in the same box and light.
+  is the sleeve itself rather than the framing. Now sized, above: about 20 bits.
+  What would recover them is unbuilt — glare suppression at capture (a per-pixel
+  minimum over the frames the shutter already waits for) is the leading idea.
 - **Better light lowers distances but does not change what matches.** Across the
   desk/kitchen pair the matched distances fell (60, 56, 60, 60 to 54, 50, 56,
   46) while both sessions matched 4 of 9 on the old ladder. Light buys bits, not

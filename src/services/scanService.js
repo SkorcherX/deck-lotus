@@ -789,19 +789,47 @@ export function resolveScanFused({
   // carries every text-only candidate below it.
   const strongEnough = hashMatches.filter(isStrongMatch);
 
+  // How many printings of the *same card* the art found. A reprint shares its
+  // illustration with every other printing of it, so wherever this is above one
+  // the art has named the card and has nothing whatever to say about which
+  // printing is in the hand — the differences between them are the framing's
+  // noise, not evidence.
+  //
+  // A recorded session settled this. Nine cards from one ECC precon, unsleeved,
+  // came back naming half a dozen different sets: Seaside Citadel tied at 50
+  // across MKC, BLC, ECC and PLST, Ingot Chewer at 64 across CM2, ECC and JVC,
+  // and Abundant Growth was called `confident` for DMC at 36 while ECC — the
+  // card actually on the table — sat outside the top four. Re-hashed at a
+  // different rung of the probe ladder the order changed again. Which of a set
+  // of reprints wins is decided by a few bits of resampling.
+  //
+  // That matters more here than a ranking usually would: this app stores and
+  // prices *printings*, so collapsing a reprint out of review at `confident`
+  // files the wrong set into someone's collection at the wrong price, silently.
+  const bestCardPrintings = best
+    ? merged.filter((candidate) => artBacked(candidate) && candidate.cardId === best.cardId).length
+    : 0;
+
   let tier;
   if (agreed && isStrongMatch(bestHash)) {
     tier = SCAN_TIERS.CONFIDENT;
-  } else if (!bestText && strongEnough.length === 1) {
+  } else if (!bestText && strongEnough.length === 1 && bestCardPrintings === 1) {
     // The art is certain and it matched exactly one printing in the whole
-    // reference set. There is genuinely nothing left to decide, and requiring a
-    // text read here would have meant a tesseract pass to confirm an answer that
-    // had no alternative — which is what made every card need review when the
-    // reader is off.
+    // reference set — one printing of one card, so there is genuinely nothing
+    // left to decide. Requiring a text read here would have meant a tesseract
+    // pass to confirm an answer that had no alternative, which is what made
+    // every card need review when the reader is off.
+    //
+    // The second half of that test is the one bought with a recorded session:
+    // "only one printing scored strongly" is not the same claim as "only one
+    // printing of this card matched at all". A reprint whose siblings sit just
+    // the wrong side of the strong threshold used to collapse out of review on
+    // the strength of a gap that is framing noise.
     tier = SCAN_TIERS.CONFIDENT;
   } else if (!bestText && isStrongMatch(bestHash)) {
-    // The art is certain and there is no text to place it: a pre-2015 card, or a
-    // collector block lost to glare. The card is known, the printing is not.
+    // The art is certain and there is nothing to place it with: a pre-2015 card,
+    // a collector block lost to glare, or — much the commonest — a card printed
+    // more than once. The card is known, the printing is not.
     tier = SCAN_TIERS.PICK_PRINTING;
   } else if (bestText && isStrongMatch(bestHash) && !agreed) {
     tier = SCAN_TIERS.CONFLICT;
@@ -816,6 +844,9 @@ export function resolveScanFused({
     signals: {
       text: text.candidates.length,
       hash: hashMatches.length,
+      // Printings of the winning card the art matched. Above one means the
+      // printing was chosen by hand, not by the scanner.
+      printingsOfBest: bestCardPrintings,
       agreed,
       bestArtDistance: bestHash ? bestHash.artDistance : null,
       // Which of the offered framings won. On its own it is trivia; across a
