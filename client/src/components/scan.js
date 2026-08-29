@@ -1033,8 +1033,29 @@ function snapQuad(source, frameWidth, frameHeight) {
  * Set to 1 to turn compositing off entirely; everything downstream is written
  * to treat a burst of one as an ordinary capture, and the diagnostics record
  * both hashes either way.
+ *
+ * ── And it is 1, because a session said so ──────────────────────────────────
+ * Nine cards, every capture carrying both hashes. Distance to the winning
+ * candidate's reference, composite against the first frame alone:
+ *
+ *      54/52  76/74  82/82  88/86  84/86  98/102  84/82  108/108  106/104
+ *
+ * Worse or equal in seven of the nine. The premise was that hand tremor
+ * guarantees a highlight moves between frames — and it does, but it moves the
+ * *card* with it. Over the 66ms of a burst a hand-held card shifts by more than
+ * the framing tolerance, so the median composites misaligned frames and softens
+ * exactly the detail the hash reads. Compositing pays when the camera is fixed,
+ * which is precisely the case where tremor is not there to move the glare.
+ *
+ * It was also dear: the median alone measured 402ms over a 12MP frame, before
+ * the three full-resolution reads that feed it. That is most of a card's budget
+ * spent making the answer slightly worse.
+ *
+ * Kept rather than deleted because the machinery is cheap to hold and the case
+ * it was built for is real — a fixed rig under a lamp, where the frames align
+ * and the glare does not. medianComposite is tested; this is one number.
  */
-const CAPTURE_BURST = 3;
+const CAPTURE_BURST = 1;
 
 /** The next frame the camera paints, or a rendered frame where that is all we get. */
 function nextVideoFrame(video) {

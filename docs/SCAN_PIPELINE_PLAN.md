@@ -157,10 +157,13 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
       rectified probe would repeat the work five times and leave the reader's
       crops untouched. The burst is taken forward from the shutter rather than
       out of `recentQuads`, which never held frames — only framings.
-      *Not yet verified on real cards:* existing bundles hold one frame per
-      capture, so there is nothing to replay this against. Every capture now
-      records `singleArtHash` beside `artHash` so the next session measures the
-      gap directly.
+      *Measured, and switched off.* The next session carried both hashes and the
+      composite was worse or equal on seven of nine captures. Tremor moves the
+      card, not just the glare: over a 66ms burst a hand-held card shifts more
+      than the framing tolerance, so the median softens the detail the hash
+      reads. It also cost 402ms per capture in the median alone at 12MP.
+      `CAPTURE_BURST = 1`; the code and its tests stay for the fixed-rig case,
+      where the frames would align and the glare would not.
 - [ ] **9. Glare-aware hashing.** In `downsampleToGrid`, exclude near-saturated
       pixels from each cell's average, falling back to the full average when a
       cell is entirely blown. This is shared-module arithmetic — reference
