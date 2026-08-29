@@ -52,6 +52,10 @@ const state = {
   // stop.
   sentAt: 0,
   timings: [],
+  // Requests someone is explicitly waiting on, by id. The live loop's requests
+  // are not in here — it never waits — so a capture's answer is delivered to
+  // its caller and does not disturb `latest`.
+  awaiting: new Map(),
 };
 
 function startWorker() {
@@ -126,6 +130,12 @@ export function load({ onProgress = null } = {}) {
       }
 
       if (message.type === 'detected') {
+        const waiting = state.awaiting.get(message.id);
+        if (waiting) {
+          waiting(message.result);
+          return;
+        }
+
         state.pending--;
         if (state.sentAt) {
           state.timings.push(performance.now() - state.sentAt);
@@ -176,6 +186,50 @@ export function detect(frame, hint = null) {
     id: state.nextId++,
     frame: { data: frame.data, width: frame.width, height: frame.height },
     hint,
+  });
+}
+
+/**
+ * Detect on one frame and wait for the answer.
+ *
+ * The live loop deliberately never waits — it drops frames and reads the last
+ * result, because a preview that blocks on detection is a preview that stutters.
+ * A capture is the opposite case. It happens once per card, the card has just
+ * been held still long enough to fire the shutter, and the framing is about to
+ * decide how many bits the hash spends. Waiting a round trip there is the
+ * cheapest accuracy in the pipeline: a measured 281ms mean against a framing
+ * that was otherwise up to 460ms out of date.
+ *
+ * Resolves null rather than rejecting on a timeout, and the caller keeps the
+ * live quad. A capture framed from a slightly old detection is worth having; a
+ * capture that never happens because detection stalled is not.
+ */
+export function detectNow(frame, hint = null, timeoutMs = 1200) {
+  if (state.usingWorker === false) {
+    return Promise.resolve(inlineReady() ? detectCardContour(frame, { hint }) : null);
+  }
+
+  if (!state.worker || !state.ready) return Promise.resolve(null);
+
+  const id = state.nextId++;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      state.awaiting.delete(id);
+      resolve(result);
+    };
+
+    state.awaiting.set(id, finish);
+    setTimeout(() => finish(null), timeoutMs);
+
+    state.worker.postMessage({
+      type: 'detect',
+      id,
+      frame: { data: frame.data, width: frame.width, height: frame.height },
+      hint,
+    });
   });
 }
 

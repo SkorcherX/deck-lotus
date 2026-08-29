@@ -1538,6 +1538,21 @@
                             <span id="scan-streak" class="scan-streak">Camera off</span>
                         </div>
 
+                        <!-- The art hash names the card and cannot name the
+                             printing: reprints share an illustration, so a
+                             session's ties are ordered by the sets it has
+                             already been sure about. That tally is seeded by
+                             cards unique to one set, and a box whose unique
+                             cards happen to miss gets no seed at all. Saying
+                             which set is being scanned supplies it directly. -->
+                        <label class="scan-set-hint">
+                            <span>Scanning set</span>
+                            <input id="scan-set-hint" type="text" maxlength="6"
+                                   placeholder="e.g. ECC" autocomplete="off"
+                                   spellcheck="false" />
+                            <small>Optional. Breaks ties between reprints; never overrides the art.</small>
+                        </label>
+
                         <div class="scan-controls">
                             <button id="scan-clear-btn" class="btn btn-secondary">
                                 <i class="ph ph-trash btn-icon"></i>

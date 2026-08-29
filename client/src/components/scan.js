@@ -35,6 +35,7 @@ import {
   isReady as detectorReady,
   latest as latestDetection,
   load as loadDetector,
+  detectNow,
   reset as resetDetection,
   timings as detectorTimings,
 } from '../utils/cardDetector.js';
@@ -1106,6 +1107,9 @@ function snapQuad(source, frameWidth, frameHeight) {
         quadAgeMs: state.recentQuads.length
           ? Math.round(performance.now() - state.recentQuads[state.recentQuads.length - 1].at)
           : null,
+        // Whether the framing came from the captured frame or from the live
+        // loop's last answer. 'live' means detection could not answer in time.
+        quadSource: 'live',
       },
     };
   }
@@ -1182,8 +1186,8 @@ async function captureFromVideo(video, trigger) {
   state.capturing = true;
 
   try {
-    const { quad, snap } = snapQuad(video, video.videoWidth, video.videoHeight);
     const frames = [frameImageData(video, video.videoWidth, video.videoHeight)];
+    const { quad, snap } = await captureQuad(frames[0], video);
 
     for (let i = 1; i < CAPTURE_BURST; i++) {
       await nextVideoFrame(video);
@@ -1196,6 +1200,55 @@ async function captureFromVideo(video, trigger) {
   } finally {
     state.capturing = false;
   }
+}
+
+/**
+ * The framing to cut a capture with: detected on the captured frame itself.
+ *
+ * The live loop's quad is the wrong tool here, and a recorded session put a
+ * number on how wrong. Detection answers about 3.6 times a second on a phone
+ * — 281ms mean, 865ms worst — so by the time the shutter fires the newest quad
+ * is 180 to 460ms old. The shutter fires *because* the card has been still for
+ * four frames, which means the stale quad can predate the very stillness that
+ * triggered the capture: it describes the card as it was being put down.
+ *
+ * Detecting on the capture's own frame costs one round trip, once per card, and
+ * removes that error entirely. Everything downstream — five framing probes,
+ * both OCR crops — is cut with a quad that describes this photograph and no
+ * other.
+ *
+ * Falls back to the live framing when detection cannot answer: the whole point
+ * of the fallback is that a capture framed a little late still beats no capture.
+ */
+async function captureQuad(frame, video) {
+  const live = snapQuad(video, video.videoWidth, video.videoHeight);
+  if (!state.settings.detectEnabled) return live;
+
+  // Downscaled to the size detection works at, and hinted with where the card
+  // just was — so this is a tracked refinement of a known position rather than
+  // a full sweep, which is the difference between one round trip and three.
+  const analysisFrame = frameImageData(video, ANALYSIS_SOURCE_WIDTH, Math.round(
+    (ANALYSIS_SOURCE_WIDTH * video.videoHeight) / video.videoWidth
+  ));
+
+  const detected = await detectNow(analysisFrame, state.detected?.quad || null);
+  if (!detected) return live;
+
+  return {
+    quad: detected.quad,
+    snap: {
+      ...live.snap,
+      detected: true,
+      via: detected.via,
+      area: Number(detected.area.toFixed(3)),
+      aspectError: Number(detected.aspectError.toFixed(3)),
+      // Detected on the captured frame, so there is nothing to average and
+      // nothing stale to report. The live-loop fields stay in the record for
+      // comparison — see quadAgeMs, which should now read 0.
+      quadSource: 'capture',
+      quadAgeMs: 0,
+    },
+  };
 }
 
 /**
@@ -1227,6 +1280,15 @@ function looksLikeANewCard(analysisFrame) {
 }
 
 /**
+ * How much a set named by hand counts for, against sets the session inferred.
+ *
+ * Above any plausible tally, because it is better evidence — but a number
+ * rather than an override, so it stays the same kind of thing as the rest and
+ * cannot reach past the rules in applySetBias.
+ */
+const SET_HINT_WEIGHT = 100;
+
+/**
  * The sets this session has already been sure about, and how often.
  *
  * Only unambiguous resolutions count — a capture where the art matched exactly
@@ -1248,10 +1310,25 @@ function rememberSet(resolved) {
   state.setTally.set(set, (state.setTally.get(set) || 0) + 1);
 }
 
-/** The tally in the shape the resolver takes, or null before anything is sure. */
+/**
+ * The tally in the shape the resolver takes, or null before anything is sure.
+ *
+ * A set named by hand goes in weighted above anything the session worked out
+ * for itself. It is better evidence than the tally: somebody looking at the box
+ * knows what is in it, where the tally is inferring from the two or three cards
+ * that happened to be unique to one printing — and a recorded session showed
+ * exactly how fragile that inference is, when both of a precon's unique cards
+ * missed and the bias never fired at all.
+ *
+ * It still only orders ties. Naming a set does not make the art agree with it.
+ */
 function setTally() {
-  if (!state.setTally.size) return null;
-  return Object.fromEntries(state.setTally);
+  const named = el('scan-set-hint')?.value?.trim().toUpperCase();
+  if (!named && !state.setTally.size) return null;
+
+  const tally = Object.fromEntries(state.setTally);
+  if (named) tally[named] = (tally[named] || 0) + SET_HINT_WEIGHT;
+  return tally;
 }
 
 /** Remember what was in frame at the moment of a capture. See looksLikeANewCard. */

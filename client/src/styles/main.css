@@ -6471,6 +6471,32 @@ body.maintenance-locked #app {
   margin-left: auto;
 }
 
+.scan-set-hint {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.scan-set-hint input {
+  width: 6rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-deep);
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.scan-set-hint small {
+  flex-basis: 100%;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
 .scan-controls {
   display: flex;
   flex-wrap: wrap;

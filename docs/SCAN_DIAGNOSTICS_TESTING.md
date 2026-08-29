@@ -70,6 +70,7 @@ argument that could not be settled without it:
 | `wasWarm` / `recognizeMs` | `elapsedMs` alone is two numbers in one: a cold read carries a ~17MB download inside it. |
 | `snap.averaged` | how many detections were averaged into the framing. 1 means the run disagreed and a single frame was used. |
 | `detector.rate` | detections per second actually delivered. Detection runs in a worker and requests are dropped while one is in flight, so this is one over the round trip, not the loop's tick rate — and it is the ceiling on how fresh a capture's framing can be. |
+| `snap.quadSource` | `capture` when the framing was detected on the captured frame itself, `live` when detection could not answer in time and the loop's last quad was used. |
 | `snap.quadAgeMs` | how old the framing a capture was cut with was, in milliseconds. Two sessions were recorded before this existed in which every capture was framed from a detection over 300ms old, and nothing in the bundle said so. |
 | `snap.freshLength` | how many of the held detections were recent enough (`QUAD_AGE_MS`) to average. Below `runLength` means detection is answering slower than the shutter settles, which is what let a capture be framed from quads taken while the card was still being put down. |
 | `snap.runLength` | how many detections were *available* to average. Detection answers asynchronously since it moved into a worker, so a short run and a disagreeing run are different faults and `averaged` alone cannot tell them apart. |
@@ -409,6 +410,14 @@ So the next session does not re-derive it:
   `[0.84, 0.88, 0.92, 0.96, 1]` took those sessions from 4/9 and 4/9 to 8/9 and
   7/9 at identical cost. The earlier unexplained 3/11 sleeved run is very likely
   the same thing.
+- **Detection answers about 3.6 times a second on a phone.** Measured:
+  `detector: { mean: 281.5, max: 865.2, rate: 3.6, worker: true }`. The loop asks
+  twenty times a second and drops what it cannot keep up with, so the live quad
+  is 180-460ms old — and the shutter fires *because* the card has been still for
+  four frames, which means a stale quad can predate the stillness that triggered
+  the capture. Captures are therefore framed by detecting on the captured frame
+  itself and waiting for it, once per card; `snap.quadSource` says whether that
+  worked. Whether the 281ms is transport or OpenCV on the device is still open.
 - **Set biasing recovers most of the printings the art cannot choose.** A tally
   of the sets a session has already been *sure* about — captures where the art
   matched exactly one printing — orders the ties. Replayed over three ECC precon
@@ -416,6 +425,13 @@ So the next session does not re-derive it:
   It only ever reorders printings of the card that already won, only within
   `PRINTING_TIE_BITS`, and never changes a tier. `signals.setBiased` says when
   it was applied.
+
+  The tally's weak point is its seed. It counts only captures whose art matched
+  a single printing, and a session where those particular cards miss gets no
+  tally at all — which is exactly what happened on the first run after it
+  shipped: both of the precon's set-unique cards missed and the bias never fired
+  once. Hence the **Scanning set** field, which supplies the seed by hand at a
+  weight above anything inferred. It still only orders ties.
 - **The art names the card, not the printing, and that is not a ranking bug.**
   Nine cards from one ECC precon, unsleeved: Seaside Citadel came back tied at
   50 across MKC, BLC, ECC and PLST; Ingot Chewer at 64 across CM2, ECC and JVC;
