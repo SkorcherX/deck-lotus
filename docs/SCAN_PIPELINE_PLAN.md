@@ -63,7 +63,7 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       `state.detected` exists, detect on a padded crop around the last quad and
       skip the Canny attempt, falling back to the full sweep when the card is
       lost — or fix the comment. Implementing is the large steady-state win.
-- [~] **5. Fix the detector's overshoot rather than probing around it.**
+- [x] **5. Fix the detector's overshoot rather than probing around it.**
       `FRAMING_PROBES = [0.92, 0.94, 0.96, 0.98, 1]` exists because detection
       overshoots. Likely cause: the Canny attempt dilates with a 5×5 kernel and
       never erodes (`cardContour.js:344`), inflating the external contour ~2px
@@ -78,7 +78,12 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       the `edges` attempt at +1.19% before and -0.40% after. The ladder is
       untouched: 1.19% does not account for a basin centred near 0.95, so
       something else still pulls outward on real cards. Cutting probes from five
-      to three waits on a recorded session and `--sweep`.
+      to three waits on a recorded session and `--sweep`. *Then two sleeved
+      sessions arrived:* the sweep put the basin far lower and wider than the
+      bare-card sample did, so the ladder was respread to
+      `[0.84, 0.88, 0.92, 0.96, 1]` — five rungs still, 4/9 and 4/9 up to 8/9
+      and 7/9. Cutting to three probes is off the table: the basin is wider than
+      it looked, not narrower.
 - [ ] **6. Say in the UI that 2/s is the art-hash path.** OCR is off by default
       and does not currently earn its cost (warm reads 7-28s on the phone,
       noise on both cards they touched, against a hash at 7/7 unaided), so the

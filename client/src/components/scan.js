@@ -100,13 +100,48 @@ const ANALYSIS_INTERVAL_MS = 100;
  * Five probes rather than four because the cost is trivial next to what it
  * buys — one warp and hash each on the client, one 1.7ms index pass each on the
  * server — and the fifth is the one keeping 1.0 without giving up a rung of the
- * basin. Against this sample the ladder takes 1/7 to 5/7.
+ * basin. Against that sample the ladder took 1/7 to 5/7.
  *
- * The remaining two need more than a uniform scale: no single multiplier brings
- * Stalactite Dagger or Safewright Cavalry under threshold, their best being 66
- * against a budget of 56. That is the anisotropy the detector itself has to fix.
+ * ── Then sleeves widened it ─────────────────────────────────────────────────
+ * Two later sessions — the same nine sleeved cards in the same order, one at a
+ * desk and one in better kitchen light — put the basin much lower and much
+ * further apart than seven bare cards had. Sweeping 0.84 to 1.08 across all
+ * eighteen captures, the per-capture optimum ranged from 0.84 to 1.00, with a
+ * cluster of cards wanting 0.86-0.90 that the old ladder could not reach at
+ * all. Above 1.00 nothing matched in either session, which is the one thing
+ * both samples agree on completely.
+ *
+ * That is what a sleeve does: detection finds the sleeve's outline, not the
+ * card's, so the framing it reports is larger by the sleeve's margin and the
+ * correction needed is bigger than a bare card's. It is also, most likely, the
+ * answer to the 3/11 sleeved run recorded earlier and never explained.
+ *
+ * Same five rungs, spread wider, measured by replay against both sessions:
+ *
+ *      ladder                        desk   kitchen
+ *      0.92 0.94 0.96 0.98 1.00      4/9      4/9      (the old one)
+ *      0.86 0.90 0.94 0.98           6/9      7/9
+ *      0.86 0.89 0.92 0.95 0.98      7/9      7/9
+ *      0.84 0.87 0.90 0.93 0.96      7/9      7/9
+ *      0.84 0.88 0.92 0.96 1.00      8/9      7/9
+ *      0.84 0.88 0.92 0.96 0.98 1.00 8/9      7/9      (a sixth rung buys nothing)
+ *
+ * So: same cost, nearly double the matches. 1.0 still holds the end for the
+ * reason it always did, and the spacing is deliberately even rather than fitted
+ * to where these eighteen captures happened to land — two samples of one card
+ * pool each is not enough to earn a bespoke ladder.
+ *
+ * What it does not fix: nothing in either session reached `confident`. The best
+ * art distance was 46 of a 41-bit strong threshold, so a sleeved card is still
+ * every-card-confirmed even when it matches. That cost is the sleeve itself,
+ * not the framing, and it is still open.
+ *
+ * The two bare cards that needed more than a uniform scale still do: no single
+ * multiplier brings Stalactite Dagger or Safewright Cavalry under threshold,
+ * their best being 66 against a budget of 56. That is the anisotropy the
+ * detector itself has to fix.
  */
-const FRAMING_PROBES = [0.92, 0.94, 0.96, 0.98, 1];
+const FRAMING_PROBES = [0.84, 0.88, 0.92, 0.96, 1];
 
 /**
  * The one tier that means "nothing left to decide", mirrored from

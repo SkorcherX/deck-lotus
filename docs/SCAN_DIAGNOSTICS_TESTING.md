@@ -316,7 +316,21 @@ So the next session does not re-derive it:
   the phone and produced noise on both cards they touched, while the hash was at
   7/7 unaided. It can no longer do damage — a misread cannot outrank a printing
   the art found — but it is off by default for a reason.
-- **Unresolved: sleeves.** One sleeved run scored 3/11. Framing, speckle,
-  missing references and uneven sheen were each measured and ruled out. The run
-  also changed card set, so nothing can be concluded from it. The test that
-  would settle it is the same cards, unsleeved, in the same box and light.
+- **Sleeves move the basin, and that was most of the sleeve problem.** Two
+  sessions of the same nine sleeved cards in the same order — one at a desk, one
+  in better kitchen light — put the per-capture framing optimum between 0.84 and
+  1.00, with a cluster wanting 0.86-0.90 that the old ladder could not reach.
+  Detection finds the *sleeve's* outline, so the correction a sleeved card needs
+  is larger than a bare one's. Respreading the same five probes to
+  `[0.84, 0.88, 0.92, 0.96, 1]` took those sessions from 4/9 and 4/9 to 8/9 and
+  7/9 at identical cost. The earlier unexplained 3/11 sleeved run is very likely
+  the same thing.
+- **Still unresolved: sleeves cost confidence.** Nothing in either session
+  reached `confident` — the best art distance was 46 against a 41-bit strong
+  threshold — so a sleeved card is confirmed by hand even when it matches. That
+  is the sleeve itself rather than the framing. The test that would size it is
+  the same cards unsleeved, in the same box and light.
+- **Better light lowers distances but does not change what matches.** Across the
+  desk/kitchen pair the matched distances fell (60, 56, 60, 60 to 54, 50, 56,
+  46) while both sessions matched 4 of 9 on the old ladder. Light buys bits, not
+  hits; the ladder bought hits.
