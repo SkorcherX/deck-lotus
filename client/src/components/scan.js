@@ -789,6 +789,17 @@ function renderMetrics(metrics, verdict) {
       : `Edges ${metrics.fill.toFixed(1)}/${thresholds.fill}`
   );
 
+  // Fourth chip, and the only one that is bad when high. The wording says what
+  // to do about it rather than naming the metric, because the fix is physical:
+  // a five-degree tilt clears sleeve glare that nothing downstream can.
+  setChip(
+    'scan-chip-glare',
+    verdict.checks.clear !== false,
+    verdict.checks.clear === false
+      ? `Glare ${metrics.glare.toFixed(1)}% — tilt the card`
+      : `Glare ${metrics.glare.toFixed(1)}/${thresholds.glare}%`
+  );
+
   const streak = el('scan-streak');
   if (streak) {
     streak.textContent = verdict.armed
@@ -1950,6 +1961,7 @@ const TUNING_FIELDS = [
   ['scan-threshold-sharpness', 'thresholds', 'sharpness'],
   ['scan-threshold-presence', 'thresholds', 'presence'],
   ['scan-threshold-fill', 'thresholds', 'fill'],
+  ['scan-threshold-glare', 'thresholds', 'glare'],
   ['scan-threshold-streak', 'thresholds', 'streak'],
   ['scan-title-x', 'regions.title', 'x'],
   ['scan-title-y', 'regions.title', 'y'],

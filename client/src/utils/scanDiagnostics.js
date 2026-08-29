@@ -26,6 +26,8 @@
  * interesting capture is nearly always the one that just went wrong.
  */
 
+import { blownHighlightFraction, toGrayscale } from './cardCapture.js';
+
 /** How many captures to keep. See makeRoom for which one falls off. */
 const RECORD_LIMIT = 24;
 
@@ -106,6 +108,19 @@ function encode(source, targetWidth) {
   }
 }
 
+/** Blown-highlight percentage of a rectified capture, or null if there isn't one. */
+function glareOf(card) {
+  if (!card) return null;
+  try {
+    return Number(
+      blownHighlightFraction(toGrayscale(card), card.width, card.height).toFixed(2)
+    );
+  } catch {
+    // Same rule as encode: a record missing one field beats no record.
+    return null;
+  }
+}
+
 /**
  * Record a capture, at the moment it is taken.
  *
@@ -127,6 +142,13 @@ export function recordCapture(entry, context = {}) {
     artHash: entry.artHash || null,
     frameHash: entry.frameHash || null,
     hashError: entry.hashError || null,
+    // How much of the captured card was a blown-out highlight, as a percentage.
+    // Measured here rather than taken from the live metrics because this is the
+    // rectified card that was actually hashed, at full size. The shutter's own
+    // glare threshold is provisional until a sleeved session's numbers are in
+    // hand, and this field is how they get there — see
+    // docs/SCAN_DIAGNOSTICS_TESTING.md.
+    glare: glareOf(entry.card),
     // The framings offered, by their expansion. Paired with signals.probeIndex
     // from the resolver, this says which one actually won — and across a
     // session, whether the spread is centred where detection really stops.

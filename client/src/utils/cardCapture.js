@@ -65,6 +65,20 @@ export const DEFAULT_THRESHOLDS = {
   // 73.9 with a card. Kept nearer the noise floor than the card value so a dark
   // card on a dark desk, which differs far less, still registers.
   presence: 12,
+  // Percentage of the rectified card that is blown-out white. Above this a
+  // specular highlight — sleeve glare, a lamp reflected off a foil — is sitting
+  // on the art, and the capture is worth refusing: the same patch that hides
+  // the print flips whole cells of the perceptual hash and blanks the collector
+  // block for the reader. Tilting the card five degrees kills it outright,
+  // which is the whole reason this is surfaced as a chip rather than silently
+  // corrected.
+  //
+  // PROVISIONAL. Every other number here was measured; this one has yet to be,
+  // because no recorded session carries the metric. It is deliberately lenient
+  // so a bright card is not refused before the number is calibrated — see
+  // blownHighlightFraction for why a white border does not count toward it, and
+  // docs/SCAN_DIAGNOSTICS_TESTING.md for how to settle it against a bundle.
+  glare: 6,
   // Consecutive good frames required before firing — 3 at the analysis interval
   // is roughly 300ms of settle, which caught one capture per card across a
   // swap-three-cards run with nothing fired mid-placement.
@@ -811,6 +825,44 @@ export function borderEdgeEnergy(gray, width, height, bandFraction = 0.12) {
  * A fixed framing has no such floor. It does not need to be *on* the card, only
  * to be the same region every frame, so the marked guide serves.
  */
+/**
+ * Fraction of the card that is a blown-out specular highlight, as a percentage.
+ *
+ * Not simply "pixels above 250". A card's own print reaches white — a white
+ * border, a Plains, the text box — and counting that would refuse the brightest
+ * cards in the game for a fault they do not have. What separates glare from
+ * white ink is that glare is *clipped*: the sensor has run out of headroom, so
+ * the patch is a plateau with no texture in it, while white ink still carries
+ * the grain, edges and lettering printed on it.
+ *
+ * So a pixel counts only when its four neighbours are saturated too. That one
+ * test drops white borders, glyph edges and speckle — anything with structure
+ * still in it — and keeps the interior of a real highlight, which is exactly
+ * the region that destroys hash cells and OCR strokes.
+ */
+export function blownHighlightFraction(gray, width, height, level = 250) {
+  let blown = 0;
+  let count = 0;
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const i = y * width + x;
+      count++;
+      if (
+        gray[i] >= level &&
+        gray[i - 1] >= level &&
+        gray[i + 1] >= level &&
+        gray[i - width] >= level &&
+        gray[i + width] >= level
+      ) {
+        blown++;
+      }
+    }
+  }
+
+  return count ? (blown / count) * 100 : 0;
+}
+
 export function analyzeFrame(analysisCtx, previousGray, referenceGray = null, motionCtx = null) {
   const { width, height } = analysisCtx.canvas;
   const gray = toGrayscale(analysisCtx.getImageData(0, 0, width, height));
@@ -828,6 +880,9 @@ export function analyzeFrame(analysisCtx, previousGray, referenceGray = null, mo
     difference: meanAbsoluteDifference(previousGray, motionGray),
     sharpness: laplacianVariance(gray, width, height),
     fill: borderEdgeEnergy(gray, width, height),
+    // Measured on the rectified card, so it is glare *on the card* rather than
+    // a bright desk beside it.
+    glare: blownHighlightFraction(gray, width, height),
     // Infinity, not zero, when there is no reference: with nothing to compare
     // against, presence must not be the thing that blocks a capture.
     presence: referenceGray ? meanAbsoluteDifference(referenceGray, gray) : Infinity,
@@ -875,7 +930,8 @@ export function createAutoCapture(thresholds = {}) {
 
     /**
      * @returns {{shouldCapture: boolean, armed: boolean, streak: number,
-     *            checks: {stable: boolean, sharp: boolean, filled: boolean}}}
+     *            checks: {stable: boolean, sharp: boolean, filled: boolean,
+     *                     clear: boolean}}}
      */
     evaluate(metrics) {
       const stable = metrics.difference <= config.stability;
@@ -885,15 +941,25 @@ export function createAutoCapture(thresholds = {}) {
       const filled = Number.isFinite(metrics.presence)
         ? metrics.presence >= config.presence
         : metrics.fill >= config.fill;
+      // A frame with a highlight burnt into the art is refused rather than
+      // captured and matched against nothing. Undefined on a caller that does
+      // not measure it reads as clear: this gate is newer than the metric, and
+      // nothing should start failing for not having been updated.
+      const clear = !Number.isFinite(metrics.glare) || metrics.glare <= config.glare;
 
       if (!armed) {
         // Re-arm once the view changes enough to be a different card, or the
         // guide is cleared entirely.
         if (metrics.difference > config.stability * 3 || !filled) armed = true;
-        return { shouldCapture: false, armed, streak: 0, checks: { stable, sharp, filled } };
+        return {
+          shouldCapture: false,
+          armed,
+          streak: 0,
+          checks: { stable, sharp, filled, clear },
+        };
       }
 
-      if (stable && sharp && filled) {
+      if (stable && sharp && filled && clear) {
         streak++;
       } else {
         streak = 0;
@@ -905,7 +971,7 @@ export function createAutoCapture(thresholds = {}) {
         streak = 0;
       }
 
-      return { shouldCapture, armed, streak, checks: { stable, sharp, filled } };
+      return { shouldCapture, armed, streak, checks: { stable, sharp, filled, clear } };
     },
   };
 }
