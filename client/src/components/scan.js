@@ -16,10 +16,12 @@ import {
   imageDataOf,
   loadImageFile,
   medianComposite,
+  motionFrameFor,
   quadFromRect,
   rectifiedSize,
   regionOutputSize,
   snapQuadToCard,
+  trimMotionHistory,
   referenceFrom,
   regionQuad,
   warpQuad,
@@ -67,7 +69,11 @@ const STORAGE_KEY = 'scan.captureSettings';
 // detector's own jitter as motion. Anyone who met that jitter the only way it
 // could be met — by raising stability past it, which is how it was found — is
 // carrying a threshold around 15 that would now wave through real movement.
-const SETTINGS_VERSION = 11;
+// 12: analysis runs at 20fps rather than 10. Stillness is unaffected — it is
+// measured over a fixed 100ms window either way — but `streak` is a frame
+// count, so a stored 4 now means 200ms of settle where it used to mean 400.
+// Anyone who raised it to hold a wobbly hand would find it doing half the job.
+const SETTINGS_VERSION = 12;
 
 // The analysis buffer is deliberately tiny: every metric is a per-pixel pass
 // over it on every frame, and none of them need detail.
@@ -79,7 +85,38 @@ const ANALYSIS_WIDTH = Math.round(ANALYSIS_HEIGHT * CARD_ASPECT);
 // precise for deciding whether a card is sitting still.
 const ANALYSIS_SOURCE_WIDTH = 480;
 
-const ANALYSIS_INTERVAL_MS = 100;
+/**
+ * How often the loop analyses a frame.
+ *
+ * 50ms rather than the 100 it ran at for most of this page's life. Every gate
+ * downstream is counted in frames, so halving the interval halves the wall
+ * time a card has to be held — which is most of what stood between the scanner
+ * and the two cards a second it advertises.
+ *
+ * What made that affordable was moving detection into a worker: a tick used to
+ * carry a 4-8ms contour sweep and now carries a 0.04ms request. What made it
+ * *safe* is STABILITY_WINDOW_MS below — the one metric that would otherwise
+ * have changed meaning silently.
+ */
+const ANALYSIS_INTERVAL_MS = 50;
+
+/**
+ * The span of time stillness is judged over, regardless of how often frames are
+ * analysed.
+ *
+ * `difference` is the mean absolute change between two frames, and it carries
+ * two things at once: the card's movement, which grows with the gap between
+ * them, and the sensor's noise, which does not. Comparing consecutive frames at
+ * 50ms apart would therefore have halved the movement while leaving the noise
+ * where it was, and a stability bar of 9.0 — measured at 100ms — would have
+ * quietly started admitting twice the motion it was set for.
+ *
+ * Neither raw nor rescaled numbers fix that, because the two components scale
+ * differently. Comparing against the frame from a fixed time ago does: both
+ * halves keep exactly the meaning they were measured with, and the thresholds
+ * carry over untouched from the sessions that set them.
+ */
+const STABILITY_WINDOW_MS = 100;
 
 /**
  * Framings of the detected quad to offer the resolver, as multipliers.
@@ -171,10 +208,17 @@ const CONFIDENT_TIER = 'confident';
  * Debounced rather than instant because detection blinks. A hand crossing the
  * frame, or a moment of blur mid-adjustment, loses the card for a frame or two
  * while it is still sitting there; re-arming on that would put the same card in
- * the list twice. Three frames is about 300ms, comfortably longer than a blink
- * and far shorter than swapping a card.
+ * the list twice. About 300ms, comfortably longer than a blink and far shorter
+ * than swapping a card.
+ *
+ * Counted from a duration rather than written as a frame count, because 300ms
+ * is the thing that was measured and the analysis rate has changed once
+ * already. The same reasoning applies to NEW_CARD_FRAMES; it does not apply to
+ * the capture streak, which is deliberately allowed to shorten — see
+ * DEFAULT_THRESHOLDS.streak.
  */
-const ABSENCE_FRAMES_TO_REARM = 3;
+const ABSENCE_MS_TO_REARM = 300;
+const ABSENCE_FRAMES_TO_REARM = Math.max(2, Math.round(ABSENCE_MS_TO_REARM / ANALYSIS_INTERVAL_MS));
 
 /**
  * How different the card in frame must look before it counts as a new one, in
@@ -192,7 +236,8 @@ const ABSENCE_FRAMES_TO_REARM = 3;
  * over the line is far more likely to be a hand passing through than a card.
  */
 const NEW_CARD_BITS = 80;
-const NEW_CARD_FRAMES = 2;
+const NEW_CARD_MS = 200;
+const NEW_CARD_FRAMES = Math.max(2, Math.round(NEW_CARD_MS / ANALYSIS_INTERVAL_MS));
 
 /**
  * How many recent detections a capture is framed from.
@@ -234,7 +279,10 @@ const state = {
   stream: null,
   rafId: null,
   lastAnalysisAt: 0,
-  previousGray: null,
+  // Recent motion buffers with the time each was taken, newest last. Stillness
+  // compares against the one closest to STABILITY_WINDOW_MS old rather than the
+  // frame before, so the number means the same thing at any analysis rate.
+  motionHistory: [],
   referenceGray: null,
   autoCapture: null,
   autoEnabled: true,
@@ -508,7 +556,7 @@ async function startCamera() {
   el('scan-stop-btn').classList.remove('hidden');
 
   state.autoCapture = createAutoCapture(state.settings.thresholds);
-  state.previousGray = null;
+  state.motionHistory = [];
   state.referenceGray = null;
   updateReferenceLabel();
   drawOverlay();
@@ -543,7 +591,7 @@ function stopCamera() {
 
   el('scan-start-btn')?.classList.remove('hidden');
   el('scan-stop-btn')?.classList.add('hidden');
-  state.previousGray = null;
+  state.motionHistory = [];
 }
 
 function showUnsupported(reason) {
@@ -780,11 +828,11 @@ function startLoop() {
 
     const metrics = analyzeFrame(
       analysisCtx,
-      state.previousGray,
+      motionFrameFor(state.motionHistory, timestamp, STABILITY_WINDOW_MS),
       state.referenceGray,
       motionCtx
     );
-    state.previousGray = metrics.motionGray;
+    rememberMotion(metrics.motionGray, timestamp);
 
     const verdict = state.autoCapture.evaluate(metrics);
     renderMetrics(metrics, verdict);
@@ -929,6 +977,12 @@ const SNAP_SOURCE_WIDTH = 960;
  * spanning a gap describes two different presentations of the card, and their
  * mean describes neither.
  */
+/** Keep the motion buffers the stillness window still needs. See cardCapture. */
+function rememberMotion(gray, at) {
+  state.motionHistory.push({ gray, at });
+  trimMotionHistory(state.motionHistory, at, STABILITY_WINDOW_MS);
+}
+
 function rememberDetection(detection) {
   if (!detection) {
     state.recentQuads = [];

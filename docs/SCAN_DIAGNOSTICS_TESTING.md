@@ -330,6 +330,14 @@ Constants worth knowing before changing anything:
 - `FRAMING_PROBES = [0.92, 0.94, 0.96, 0.98, 1]` — the framings offered per
   capture. Inward, and measured that way.
 - `RECORD_LIMIT = 24` — captures held, failures preferred.
+- `ANALYSIS_INTERVAL_MS = 50` — the loop analyses 20 frames a second, and every
+  frame-counted gate is that much shorter in wall time.
+- `STABILITY_WINDOW_MS = 100` — but stillness is compared over this fixed span
+  whatever the analysis rate, because `difference` carries movement (which
+  grows with the gap) and noise (which does not). Change the rate and the
+  thresholds still mean what they were measured to mean; change this and none
+  of them do.
+- `CAPTURE_BURST = 3` — frames median-composited into one capture.
 - `HASH_HEIGHT = 680` — the rectified height a capture is hashed at, matching
   the `normal` Scryfall image every reference was built from. Captures used to
   be hashed at whatever the camera gave, which cost 10-12 bits of grid
