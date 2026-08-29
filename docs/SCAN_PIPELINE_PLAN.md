@@ -52,7 +52,16 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
 - [ ] **2. Raise the analysis rate to 20fps.** The gates are frame counts, so
       halving `ANALYSIS_INTERVAL_MS` roughly halves per-card latency with no
       retuning — but only if per-tick work fits in 50ms, which depends on 3/4.
-      Do after them.
+      Do after them. *Unblocked by 3 and 4, and now wanted for a second reason:*
+      detection answers asynchronously, so the rate at which framings arrive to
+      be averaged is bound by the worker round trip, and a recorded session came
+      back with runs of one where it used to hold four.
+      **Not free, though.** `difference` is measured between consecutive frames,
+      so at 50ms apart a moving card scores about half what it scores at 100ms
+      and the stability bar would admit twice the motion it was set for. Either
+      scale the thresholds with the interval or normalise the metric to a fixed
+      window — the metric changing meaning silently is exactly the class of
+      thing `SETTINGS_VERSION` exists to stop.
 - [x] **3. Move detection and analysis hashing into a Web Worker.** Transfer the
       downscaled `ImageData` to a worker running OpenCV; the main thread only
       draws the overlay from the last result. Decouples preview from detection
