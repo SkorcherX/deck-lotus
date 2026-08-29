@@ -1,0 +1,180 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Contour lab — detector overshoot</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; background: #14121a; color: #e8e4f0; }
+  h1 { font-size: 18px; }
+  p { max-width: 62ch; color: #bdb6cc; }
+  button { font: inherit; padding: 6px 14px; margin-right: 8px; }
+  table { border-collapse: collapse; margin-top: 16px; }
+  th, td { border: 1px solid #3a3448; padding: 4px 10px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  canvas { margin-top: 16px; border: 1px solid #3a3448; max-width: 100%; }
+  #log { white-space: pre-wrap; margin-top: 12px; color: #9d95ad; }
+</style>
+
+<h1>Contour lab</h1>
+<p>
+  Measures how far <code>detectCardContour</code>'s quad sits from a card whose
+  true corners are known, because they were drawn. One number per attempt
+  (<code>otsu</code>, <code>otsu-inverted</code>, <code>edges</code>): the mean
+  outward offset of the four corners, in pixels and as a fraction of card width.
+  Positive is overshoot — the quad is larger than the card.
+</p>
+<p>
+  <strong>This measures the detector's pixel arithmetic, not whether detection
+  works.</strong> A synthetic card is exactly the clean test data that flattered
+  the detector this one replaced — see the header of cardContour.js. Use it to
+  ask "does this attempt sit N pixels outside the border it found, and does a
+  change move N", never to tune thresholds or the framing ladder. Those need a
+  recorded session and <code>scripts/scan-replay.mjs</code>.
+</p>
+
+<button id="run">Run</button>
+<button id="run-noisy">Run with noise and blur</button>
+<div id="log">Loading OpenCV…</div>
+<table id="out" hidden>
+  <thead><tr><th>scene</th><th>via</th><th>mean offset px</th><th>% of card width</th><th>aspect err</th></tr></thead>
+  <tbody></tbody>
+</table>
+<canvas id="view" width="640" height="360"></canvas>
+
+<script type="module">
+  import { detectCardContour, load as loadDetector } from '/src/utils/cardContour.js';
+
+  const log = (text) => { document.getElementById('log').textContent = text; };
+
+  const W = 640;
+  const H = 360;
+
+  /** The card's true corners in the drawn frame, clockwise from top-left. */
+  const TRUE_QUAD = [
+    { x: 232, y: 40 },
+    { x: 408, y: 40 },
+    { x: 408, y: 286 },
+    { x: 232, y: 286 },
+  ];
+
+  /**
+   * A frame with a card in it. `contrast` sets how far the card sits from the
+   * desk in brightness — the low-contrast scene is the one the Canny attempt
+   * exists for, since a global threshold has nothing to separate there.
+   */
+  function scene(ctx, { desk, border, noise = 0, blur = 0 }) {
+    ctx.filter = 'none';
+    ctx.fillStyle = desk;
+    ctx.fillRect(0, 0, W, H);
+
+    const [tl, , br] = TRUE_QUAD;
+    const w = br.x - tl.x;
+    const h = br.y - tl.y;
+
+    ctx.fillStyle = border;
+    ctx.fillRect(tl.x, tl.y, w, h);
+
+    // Art box and a text block, so the card has interior contours of its own —
+    // the thing that makes a detector pick the wrong boundary.
+    ctx.fillStyle = '#6f86b8';
+    ctx.fillRect(tl.x + 12, tl.y + 26, w - 24, h * 0.42);
+    ctx.fillStyle = '#cfc6b0';
+    ctx.fillRect(tl.x + 12, tl.y + h * 0.62, w - 24, h * 0.26);
+
+    if (noise) {
+      const img = ctx.getImageData(0, 0, W, H);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * noise;
+        img.data[i] += n;
+        img.data[i + 1] += n;
+        img.data[i + 2] += n;
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+
+    if (blur) {
+      const copy = document.createElement('canvas');
+      copy.width = W;
+      copy.height = H;
+      copy.getContext('2d').drawImage(ctx.canvas, 0, 0);
+      ctx.filter = `blur(${blur}px)`;
+      ctx.drawImage(copy, 0, 0);
+      ctx.filter = 'none';
+    }
+  }
+
+  /**
+   * Mean outward offset of a detected quad from the true one.
+   *
+   * Signed along each corner's diagonal from the card's centre, so a quad that
+   * is uniformly larger reads positive and one that is uniformly smaller reads
+   * negative — which is the whole question. Corner-to-corner distance would
+   * make both look the same.
+   */
+  function overshoot(quad) {
+    const cx = TRUE_QUAD.reduce((s, p) => s + p.x, 0) / 4;
+    const cy = TRUE_QUAD.reduce((s, p) => s + p.y, 0) / 4;
+
+    let sum = 0;
+    for (let i = 0; i < 4; i++) {
+      const truth = TRUE_QUAD[i];
+      const found = { x: quad[i].x * W, y: quad[i].y * H };
+      const rx = truth.x - cx;
+      const ry = truth.y - cy;
+      const len = Math.hypot(rx, ry);
+      // Component of the corner's error along the outward diagonal.
+      sum += ((found.x - truth.x) * rx + (found.y - truth.y) * ry) / len;
+    }
+    return sum / 4;
+  }
+
+  const SCENES = [
+    ['dark card, pale desk', { desk: '#d8d4cc', border: '#1b1a18' }],
+    ['pale card, dark mat', { desk: '#1a1a1e', border: '#e6e2d8' }],
+    // Close in brightness, but not identical: a global threshold cannot split
+    // these two, while the border is still a gradient Canny can find. That is
+    // precisely the case the `edges` attempt exists for.
+    ['card and desk alike', { desk: '#4a4842', border: '#5d5a51' }],
+    ['card barely darker than desk', { desk: '#6b6960', border: '#5f5d55' }],
+  ];
+
+  async function run({ noise = 0, blur = 0, scenes = SCENES } = {}) {
+    const canvas = document.getElementById('view');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const rows = [];
+    const width = TRUE_QUAD[1].x - TRUE_QUAD[0].x;
+
+    for (const [name, look] of scenes) {
+      scene(ctx, { ...look, noise, blur });
+      const found = detectCardContour(ctx.getImageData(0, 0, W, H));
+      if (!found) {
+        rows.push([name, '—', 'not found', '', '']);
+        continue;
+      }
+      const px = overshoot(found.quad);
+      rows.push([
+        name,
+        found.via,
+        px.toFixed(2),
+        ((px / width) * 100).toFixed(2) + '%',
+        found.aspectError.toFixed(3),
+      ]);
+    }
+
+    const body = document.querySelector('#out tbody');
+    body.innerHTML = '';
+    for (const row of rows) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = row.map((cell) => `<td>${cell}</td>`).join('');
+      body.append(tr);
+    }
+    document.getElementById('out').hidden = false;
+    log(`ran ${rows.length} scenes${noise ? ` with noise ${noise} and blur ${blur}px` : ''}`);
+    window.__lab = rows;
+    return rows;
+  }
+
+  await loadDetector();
+  log('OpenCV ready.');
+  document.getElementById('run').addEventListener('click', () => run());
+  document.getElementById('run-noisy').addEventListener('click', () => run({ noise: 26, blur: 1 }));
+  window.__run = run;
+</script>

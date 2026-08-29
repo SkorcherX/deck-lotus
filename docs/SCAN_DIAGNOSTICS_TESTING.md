@@ -211,6 +211,25 @@ only exist there — see the pitfalls below.
 
 ---
 
+### Measuring the detector without a session
+
+`client/lab/contour-lab.html` draws a card at known corners and reports how far
+`detectCardContour`'s quad sits outside them, per attempt. It is served by the
+vite dev server only (`npm run client:dev`, then `/lab/contour-lab.html`) and is
+not copied into `client/dist`.
+
+It answers one narrow question — does an attempt sit N pixels off the border it
+found, and does a change move N — on data far cleaner than reality. That is the
+same synthetic-fixture trap that flattered the detector this one replaced, so
+never tune thresholds or the framing ladder from it. Those need a bundle and
+`--sweep`.
+
+What it has settled so far: the `edges` attempt used to dilate without eroding
+and overshot by a constant +1.19% of card width; a morphological close brings it
+to -0.40%, the same floor the Otsu attempts sit at.
+
+---
+
 ## 6. Pitfalls that have each cost a session
 
 - **The dev server does not reload.** `npm run test:env` is plain `node`, not
