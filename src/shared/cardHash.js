@@ -51,7 +51,14 @@
  */
 
 /** Side of the grid the DCT runs on. */
-const GRID = 32;
+/**
+ * The grid, window and block sizes are exported alongside the steps that use
+ * them so a variant can be composed out of the *same* arithmetic rather than a
+ * copy of it — see scripts/hash-variants.mjs, which inserts a filter between
+ * the grid and the DCT to measure what it would cost. A copy would drift, and
+ * a measurement taken against a drifted copy is worse than none.
+ */
+export const GRID = 32;
 
 /**
  * Side of the retained low-frequency block, per hash. The two are different
@@ -77,7 +84,7 @@ const GRID = 32;
  * ample for ordering a handful of candidates, and widening it would imply a
  * confidence it does not have.
  */
-const ART_BLOCK = 16;
+export const ART_BLOCK = 16;
 const FRAME_BLOCK = 8;
 
 /**
@@ -116,7 +123,7 @@ const COS = (() => {
  * noise. It also makes the result independent of the source resolution, so a
  * 12MP phone capture and a 488px Scryfall thumbnail land on comparable grids.
  */
-function downsampleToGrid(image, window) {
+export function downsampleToGrid(image, window) {
   const { data, width, height } = image;
 
   const x0 = Math.max(0, Math.floor(window.x * width));
@@ -161,7 +168,7 @@ function downsampleToGrid(image, window) {
 
 /** Separable 2-D DCT-II. Rows then columns; only the scale is dropped, as the
  * hash compares coefficients against each other and never against a constant. */
-function dct2d(grid) {
+export function dct2d(grid) {
   const rows = new Float64Array(GRID * GRID);
 
   for (let y = 0; y < GRID; y++) {
@@ -197,7 +204,7 @@ function dct2d(grid) {
  * the hash a light meter. Against the *median* rather than the mean, so a single
  * blown-out highlight cannot drag the threshold past half the other coefficients.
  */
-function signBlock(coefficients, block) {
+export function signBlock(coefficients, block) {
   const values = [];
   for (let v = 0; v < block; v++) {
     for (let u = 0; u < block; u++) {
