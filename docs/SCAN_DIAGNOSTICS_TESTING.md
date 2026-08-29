@@ -341,7 +341,9 @@ Constants worth knowing before changing anything:
   grows with the gap) and noise (which does not). Change the rate and the
   thresholds still mean what they were measured to mean; change this and none
   of them do.
-- `CAPTURE_BURST = 3` — frames median-composited into one capture.
+- `CAPTURE_BURST = 1` — frames median-composited into one capture. Was 3 until a
+  session measured the composite as worse or equal on seven of nine captures, at
+  402ms apiece.
 - `HASH_HEIGHT = 680` — the rectified height a capture is hashed at, matching
   the `normal` Scryfall image every reference was built from. Captures used to
   be hashed at whatever the camera gave, which cost 10-12 bits of grid
