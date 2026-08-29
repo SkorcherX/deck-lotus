@@ -113,6 +113,15 @@ before(async () => {
   const old = insertCard('Test Antiquity', '{2}{W}', 'Artifact');
   insertPrinting(old, 4, 'OLD', '44');
 
+  // A reprint whose two printings were scanned from slightly different images —
+  // the same illustration, a few bits apart, which is what a real reprint pair
+  // looks like once each set's scan has been through the hash builder. It is
+  // the case where "only one printing scored strongly" and "only one printing
+  // of this card matched" stop being the same claim.
+  const reprint = insertCard('Test Reprint', '{1}{G}', 'Enchantment');
+  insertPrinting(reprint, 5, 'CCC', '55');
+  insertPrinting(reprint, 6, 'DDD', '66');
+
   fs.writeFileSync(HASH_PATH, packHashes([
     // Both Bolt printings share the art hash; only the frame hash differs.
     { uuid: printings[1].uuid, artHash: zeros(ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) },
@@ -122,6 +131,15 @@ before(async () => {
     // The old card, its own distinct art. Uses a middle pattern so it is far
     // from both the zero and the all-ones references.
     { uuid: printings[4].uuid, artHash: 'a'.repeat(ART_HASH_HEX), frameHash: 'a'.repeat(FRAME_HASH_HEX) },
+    // The reprint pair: one reference, and its sibling 30 bits away from it.
+    // An alternating pattern, chosen to sit far from every other reference here
+    // (128 bits from the zero and all-ones ones, 256 from the antiquity's), so
+    // the pair cannot disturb the tests that ask what matches nothing.
+    { uuid: printings[5].uuid, artHash: '5'.repeat(ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) },
+    // 55 bits apart: past the strong threshold, well inside the match one. That
+    // is the gap the guard is about — near enough to be the same illustration,
+    // far enough that only one of the two scores strongly.
+    { uuid: printings[6].uuid, artHash: hashNear('5'.repeat(ART_HASH_HEX), 55), frameHash: zeros(FRAME_HASH_HEX) },
   ]));
 
   hashIndex.load({ quiet: true });
@@ -135,7 +153,7 @@ after(() => {
 
 describe('the hash index', () => {
   test('loads the packed file and joins every row to a printing', () => {
-    assert.deepEqual(hashIndex.stats(), { count: 4, joined: 4 });
+    assert.deepEqual(hashIndex.stats(), { count: 6, joined: 6 });
     assert.equal(hashIndex.isAvailable(), true);
   });
 
@@ -250,6 +268,44 @@ describe('resolveScanFused tiers', () => {
       [printings[1].id, printings[2].id].sort(),
       'both printings of the shared art must be offered for the reviewer to choose'
     );
+  });
+
+  test('pick-printing: one printing scoring strongly is not one printing matching', () => {
+    // A capture sitting close to one printing of a reprint and further from its
+    // sibling — close enough that only the first is a strong match, but both are
+    // matches. This used to be `confident`, and it filed the wrong set into the
+    // collection at the wrong price: which sibling wins a gap like this is
+    // decided by a few bits of resampling, and re-hashing the same photograph at
+    // another rung of the framing ladder reorders them.
+    //
+    // Measured on a real session, nine cards from one ECC precon: Seaside
+    // Citadel tied at 50 across four sets, and Abundant Growth came back
+    // `confident` for a set the card was not from.
+    const result = resolveScanFused({
+      artHash: '5'.repeat(ART_HASH_HEX),
+      frameHash: zeros(FRAME_HASH_HEX),
+    });
+
+    // Exactly one strong match, two printings of the one card. The first number
+    // is what the old rule read; the second is what actually decides it.
+    assert.equal(result.signals.printingsOfBest, 2);
+    assert.equal(result.tier, SCAN_TIERS.PICK_PRINTING);
+
+    const ids = result.candidates.map((candidate) => candidate.printingId);
+    assert.ok(ids.includes(printings[5].id), 'the near printing must be offered');
+    assert.ok(ids.includes(printings[6].id), 'and so must the one it could be confused with');
+  });
+
+  test('confident still holds where the card really has one printing', () => {
+    // The guard above must not swallow the case it was carved out of: art that
+    // matched exactly one printing of exactly one card still needs no review.
+    const result = resolveScanFused({
+      artHash: 'a'.repeat(ART_HASH_HEX),
+      frameHash: 'a'.repeat(FRAME_HASH_HEX),
+    });
+
+    assert.equal(result.tier, SCAN_TIERS.CONFIDENT);
+    assert.equal(result.signals.printingsOfBest, 1);
   });
 
   test('unsure: no hash at all falls back to the text-only result', () => {
