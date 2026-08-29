@@ -258,7 +258,8 @@ camera, where the frames would actually align.
 ### The pulse, without a camera
 
 `client/lab/pulse-lab.html` fires the same `pulseOverlay` call the scanner makes
-when an answer lands, one button per band, against a static outline. Dev server
+when an answer lands, one button per band, against a static outline and a
+stand-in name panel — both halves pulse, and both are worth checking. Dev server
 only, like the contour lab. Use it for the colours and the restart behaviour;
 what it cannot show is the thing that matters most — whether the cue reads from
 the corner of the eye while somebody is looking at the cards rather than the

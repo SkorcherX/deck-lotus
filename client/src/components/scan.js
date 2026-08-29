@@ -1929,15 +1929,25 @@ function renderLiveMatch(candidate) {
  * before re-adding it is what makes an animation replay.
  */
 function pulseOverlay(band) {
-  const overlay = el('scan-overlay');
-  if (!overlay) return;
+  // Both halves of the viewfinder: the outline round the card, and the panel
+  // that names it. They are read at different moments — the outline in the
+  // corner of the eye while the cards are being watched, the panel when the eye
+  // comes up — so firing only one of them is a cue that can be missed by
+  // looking at the wrong half of your own screen.
+  pulseElement(el('scan-overlay'), 'scan-overlay-pulse', band);
+  pulseElement(el('scan-live'), 'scan-live-pulse', band);
+}
 
-  overlay.classList.remove('scan-overlay-pulse');
+/** Restart one element's pulse. See pulseOverlay. */
+function pulseElement(node, className, band) {
+  if (!node) return;
+
+  node.classList.remove(className);
   // Reading a layout property flushes the removal, so the animation restarts
   // rather than being coalesced away as no change at all.
-  void overlay.offsetWidth;
-  overlay.dataset.pulse = band || 'miss';
-  overlay.classList.add('scan-overlay-pulse');
+  void node.offsetWidth;
+  node.dataset.pulse = band || 'miss';
+  node.classList.add(className);
 }
 
 /**
