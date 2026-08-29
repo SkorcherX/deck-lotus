@@ -53,10 +53,16 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       halving `ANALYSIS_INTERVAL_MS` roughly halves per-card latency with no
       retuning — but only if per-tick work fits in 50ms, which depends on 3/4.
       Do after them.
-- [ ] **3. Move detection and analysis hashing into a Web Worker.** Transfer the
+- [x] **3. Move detection and analysis hashing into a Web Worker.** Transfer the
       downscaled `ImageData` to a worker running OpenCV; the main thread only
       draws the overlay from the last result. Decouples preview from detection
       cost and stops GC pauses reading as "motion" in the stillness metric.
+      *Done for detection; analysis hashing stayed put.* The per-frame metrics
+      run on a 176px buffer and are not what costs. Asking for a detection is
+      0.04ms on the main thread against 3.84ms inline, the worker returns quads
+      identical to the inline path (0px corner difference), and requests are
+      dropped rather than queued so a slow device detects less often instead of
+      answering about where the card used to be. Task 2 is now unblocked.
 - [x] **4. ROI tracking that `scan.js:221` already claims exists.** The comment
       says the last quad is "fed back in as the next frame's hint";
       `detectCardContour` takes no hint. Either implement it — when
@@ -93,6 +99,28 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       noise on both cards they touched, against a hash at 7/7 unaided), so the
       throughput figure users see should be the art-hash one. Capping `readBest`
       at two variants when the queue is deep is optional and low value.
+
+## Printings
+
+- [ ] **14. Bias candidates toward the sets a session has already resolved.**
+      The art hash names the card and cannot name the printing: a recorded
+      session of nine ECC precon cards came back tied across MKC, BLC, ECC and
+      PLST at identical distances, and which sibling led changed with the
+      framing probe. `resolveScanFused` now declines to call those `confident`
+      (`signals.printingsOfBest`), which is honest but leaves the reviewer
+      picking from four identical-looking rows.
+      The information that would settle it is not in the photograph — it is in
+      the stack. Cards come from one place: a precon, a booster box, a trade
+      binder. So carry a per-session tally of the sets already resolved and use
+      it to order printings the art considers tied, and only those. Two rules
+      it has to keep: never let the bias reorder candidates the art actually
+      separated, and never let it promote a printing to `confident` — a tally
+      is a hint about a pile of cards, not evidence about the one in hand.
+      Worth offering the same thing explicitly too ("I'm scanning ECC"), which
+      is the same mechanism with the tally supplied by hand.
+      *Verify:* replay the ECC bundle; every tie should come back ECC-first
+      after the first two captures resolve, and `scanFusion.test.js` should gain
+      a case where a tally must **not** override a distance the art separated.
 
 ## Sleeve glare
 
@@ -134,9 +162,9 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
 
 ## Tidy-ups
 
-- [ ] **13.** The `via: 'edges'` path clones `closed` and deletes the original in
+- [x] **13.** The `via: 'edges'` path clones `closed` and deletes the original in
       its `finally` (`cardContour.js:340–349`) — an extra full-frame copy every
-      tick. Return `closed` and delete only `edges`. Fold into task 4 or 5.
+      tick. Return `closed` and delete only `edges`. *Done with task 5.*
 
 ## Suggested order
 

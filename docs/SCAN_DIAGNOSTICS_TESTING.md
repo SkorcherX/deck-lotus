@@ -242,6 +242,12 @@ after any change to the attempts or the contour filters.
 
 ## 6. Pitfalls that have each cost a session
 
+- **The Browser pane blocks camera access.** Stubbing `getUserMedia` does not
+  get around it — the app has been handed a real device or a rejection before a
+  stub can land, and the rAF loop stalls while the pane is hidden. The live loop
+  is verified on a real device; everything under it — detection, hashing,
+  resolution — is verified in the lab page and by replay, which is part of why
+  those exist.
 - **The dev server does not reload.** `npm run test:env` is plain `node`, not
   nodemon. After editing anything under `src/`, stop and restart the preview or
   you are testing the old server. A server-side change that "did not work" is
@@ -283,6 +289,7 @@ after any change to the attempts or the contour filters.
 | the capture warp and crops (re-exports the geometry) | `client/src/utils/cardCapture.js` |
 | card detection | `client/src/utils/cardContour.js` |
 | the scan page, probe ladder, capture loop | `client/src/components/scan.js` |
+| detection's worker, and the client the page talks to | `client/src/workers/cardDetect.worker.js`, `client/src/utils/cardDetector.js` |
 | the recorder | `client/src/utils/scanDiagnostics.js` |
 | offline replay | `scripts/scan-replay.mjs` |
 | tier and fusion tests | `test/integration/scanFusion.test.js` |

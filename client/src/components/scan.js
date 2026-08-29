@@ -27,7 +27,13 @@ import {
 } from '../utils/cardCapture.js';
 import { hashRectified, fromHex, hammingDistance } from '../../../src/shared/cardHash.js';
 import * as diagnostics from '../utils/scanDiagnostics.js';
-import { detectCardContour, isReady as detectorReady, load as loadDetector } from '../utils/cardContour.js';
+import {
+  detect as requestDetection,
+  isReady as detectorReady,
+  latest as latestDetection,
+  load as loadDetector,
+  reset as resetDetection,
+} from '../utils/cardDetector.js';
 
 /**
  * Camera scan: capture, read, resolve.
@@ -504,6 +510,14 @@ function stopCamera() {
   if (state.rafId) cancelAnimationFrame(state.rafId);
   state.rafId = null;
 
+  // The detector keeps its last answer across a stop, and a session that opened
+  // with it would start out believing a card was already under the lens. The
+  // worker itself stays up: it holds 13MB of instantiated wasm that the next
+  // start would otherwise download again.
+  resetDetection();
+  state.detected = null;
+  state.recentQuads = [];
+
   // The download carries on in the background — it is cached on the module and
   // the next start will find it done — but the scrim belongs to a running
   // camera, and leaving it over a stopped one would strand the stage behind it.
@@ -705,9 +719,13 @@ function startLoop() {
       // capture put the art window's border and the type line well above the
       // card's own outline, so searching for the strongest step near an edge
       // reliably found the wrong one — see cardContour.js.
-      state.detected = detectorReady()
-        ? detectCardContour(sourceFrame, { hint: state.detected?.quad })
-        : null;
+      //
+      // Asked for, not waited on: the answer lands a tick later and the loop
+      // reads whatever the last one was. See cardDetector.js for why that is no
+      // staler than the arrangement it replaced, and why a device that cannot
+      // keep up detects less often rather than falling further behind.
+      requestDetection(sourceFrame, state.detected?.quad || null);
+      state.detected = detectorReady() ? latestDetection() : null;
       rememberDetection(state.detected);
       renderDetection(state.detected);
     } else {

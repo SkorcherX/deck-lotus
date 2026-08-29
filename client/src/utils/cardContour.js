@@ -117,6 +117,31 @@ export async function load({ onProgress = null } = {}) {
   if (cv) return cv;
 
   if (!cvPromise) {
+    // In a worker there is no document to hang a script tag on. The runtime is
+    // imported instead — and it survives that, which is not obvious: it is a
+    // UMD file, and its last branch assigns `globalThis.cv` for shells with
+    // neither `window` nor `importScripts`, which is exactly a module worker.
+    // Module scope would swallow a plain `var cv`; an explicit assignment to
+    // globalThis comes through.
+    //
+    // The blob keeps the progress reporting: 13MB is long enough that a silent
+    // wait reads as a broken scanner, in a worker no less than on the page.
+    // @vite-ignore keeps the bundler from trying to follow a runtime URL into
+    // an emscripten build it cannot resolve — the same reason the page loads it
+    // through a tag rather than importing it.
+    if (typeof document === 'undefined') {
+      cvPromise = fetchWithProgress(onProgress)
+        .then(async (objectUrl) => {
+          await import(/* @vite-ignore */ objectUrl || CV_URL);
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          return globalThis.cv;
+        })
+        .then(instantiate)
+        .catch(reportLoadFailure);
+
+      return cvPromise;
+    }
+
     // Loaded with a script tag from our own origin rather than imported.
     //
     // It is an emscripten build that reaches for `fs` and `crypto` on its Node
@@ -142,23 +167,32 @@ export async function load({ onProgress = null } = {}) {
         };
         document.head.appendChild(script);
       }))
-      // The global is a promise of the runtime, not the runtime: emscripten has
-      // to instantiate the wasm before a single call is safe.
-      .then((instance) => (instance && typeof instance.then === 'function' ? instance : Promise.resolve(instance)))
-      .then((instance) => {
-        cv = instance;
-        return instance;
-      })
-      .catch((error) => {
-        // cvPromise is left set so this is not retried every frame. The scanner
-        // reports no card, which is the honest state and already means "do not
-        // capture" everywhere downstream.
-        console.error('OpenCV failed to load — card detection is unavailable', error);
-        return null;
-      });
+      .then(instantiate)
+      .catch(reportLoadFailure);
   }
 
   return cvPromise;
+}
+
+/**
+ * The global is a promise of the runtime, not the runtime: emscripten has to
+ * instantiate the wasm before a single call is safe.
+ */
+function instantiate(instance) {
+  return Promise.resolve(instance).then((ready) => {
+    cv = ready;
+    return ready;
+  });
+}
+
+/**
+ * cvPromise is left set by the caller so a failure is not retried every frame.
+ * The scanner reports no card, which is the honest state and already means "do
+ * not capture" everywhere downstream.
+ */
+function reportLoadFailure(error) {
+  console.error('OpenCV failed to load — card detection is unavailable', error);
+  return null;
 }
 
 /** Magic card proportions, 63mm x 88mm. Kept local so this module stands alone. */
