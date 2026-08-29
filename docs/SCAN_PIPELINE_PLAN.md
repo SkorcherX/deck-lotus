@@ -63,7 +63,7 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       `state.detected` exists, detect on a padded crop around the last quad and
       skip the Canny attempt, falling back to the full sweep when the card is
       lost — or fix the comment. Implementing is the large steady-state win.
-- [ ] **5. Fix the detector's overshoot rather than probing around it.**
+- [~] **5. Fix the detector's overshoot rather than probing around it.**
       `FRAMING_PROBES = [0.92, 0.94, 0.96, 0.98, 1]` exists because detection
       overshoots. Likely cause: the Canny attempt dilates with a 5×5 kernel and
       never erodes (`cardContour.js:344`), inflating the external contour ~2px
@@ -74,6 +74,11 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       scale error, not corner jitter — the fitted-edge corner spike was already
       built, measured (jitter down 3-8x, art distance unchanged: 396 either way)
       and deleted, so do not reach for corner precision again here.
+      *Half done:* the close is in, and `client/lab/contour-lab.html` measures
+      the `edges` attempt at +1.19% before and -0.40% after. The ladder is
+      untouched: 1.19% does not account for a basin centred near 0.95, so
+      something else still pulls outward on real cards. Cutting probes from five
+      to three waits on a recorded session and `--sweep`.
 - [ ] **6. Say in the UI that 2/s is the art-hash path.** OCR is off by default
       and does not currently earn its cost (warm reads 7-28s on the phone,
       noise on both cards they touched, against a hash at 7/7 unaided), so the

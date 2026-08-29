@@ -333,20 +333,48 @@ export function detectCardContour(frame, options = {}) {
       }],
       // Canny, closed. Where the card and the desk are of similar brightness a
       // global threshold has nothing to separate, but the border is still a
-      // gradient; dilating closes the gaps a faint edge leaves so the region
-      // encloses and can be traced.
+      // gradient; bridging the gaps a faint edge leaves is what lets the region
+      // enclose and be traced.
+      //
+      // Closed, not merely dilated. A bare dilate bridges the gaps and then
+      // leaves the edge line two pixels fatter in every direction, and the
+      // contour traced around it is the *outside* of that fattened line — so
+      // every quad this attempt produced sat a couple of pixels outside the
+      // card it found. That is a uniform outward bias, and the framing ladder
+      // has been carrying it: FRAMING_PROBES exists because captures match
+      // best when pulled *inward*, its basin sitting at 0.92-0.98 rather than
+      // on the framing detection actually reported. Eroding back by the same
+      // kernel keeps the bridges — a gap filled by dilation is narrower than
+      // the kernel and does not reopen — and puts the boundary back where the
+      // gradient was.
+      //
+      // Measured in client/lab/contour-lab.html, which draws a card at known
+      // corners and asks how far the detected quad sits outside them. Dilate
+      // alone: +2.09px, +1.19% of card width, identical across three contrasts
+      // and unmoved by noise or blur — a constant, exactly as a fixed kernel
+      // predicts. Closed: -0.70px, -0.40%, which is the same figure the Otsu
+      // attempts give and therefore the detector's own floor rather than
+      // anything this path adds.
+      //
+      // A 2% framing error puts a capture 92 bits of 256 from its reference, so
+      // 1.19% is a real share of the budget. It is not the whole of the ladder's
+      // basin, though: FRAMING_PROBES is centred nearer 0.95 than 0.99, so
+      // something else is still pulling outward on real cards. Do not narrow
+      // the ladder on the strength of this — it wants a recorded session and
+      // `scripts/scan-replay.mjs --sweep`.
       ['edges', () => {
         const edges = new cv.Mat();
-        const closed = new cv.Mat();
         try {
           cv.Canny(blurred, edges, 40, 120);
+          const closed = new cv.Mat();
           const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
-          cv.dilate(edges, closed, kernel);
+          cv.morphologyEx(edges, closed, cv.MORPH_CLOSE, kernel);
           kernel.delete();
-          return closed.clone();
+          // Returned directly rather than cloned: the clone was a whole extra
+          // frame-sized copy per tick, and the caller deletes what it is given.
+          return closed;
         } finally {
           edges.delete();
-          closed.delete();
         }
       }],
     ];
