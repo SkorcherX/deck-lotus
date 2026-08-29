@@ -225,9 +225,24 @@ function aspectError(quad) {
   );
 }
 
-/** Every four-cornered, convex, card-shaped contour in a binary image. */
+/** Whether any corner sits on the boundary of a width x height image. */
+function touchesEdge(quad, width, height, slack = 1) {
+  return quad.some(
+    (p) => p.x <= slack || p.y <= slack || p.x >= width - 1 - slack || p.y >= height - 1 - slack
+  );
+}
+
+/**
+ * Every four-cornered, convex, card-shaped contour in a binary image.
+ *
+ * `frameArea` is always the *whole* frame's area, even when the binary is a
+ * tracked crop of it: the area bounds say how much of the picture a card may
+ * occupy, and rescaling them to the crop would reject the card for filling the
+ * window drawn around it.
+ */
 function quadsFromBinary(binary, frameArea, options) {
-  const { minAreaFraction, maxAreaFraction, maxAspectError, epsilonFraction } = options;
+  const { minAreaFraction, maxAreaFraction, maxAspectError, epsilonFraction, cropped = false } =
+    options;
 
   const contours = new cv.MatVector();
   const hierarchy = new cv.Mat();
@@ -264,6 +279,14 @@ function quadsFromBinary(binary, frameArea, options) {
         }
 
         const quad = orderCorners(points);
+
+        // A contour running along the edge of a tracked crop is not a card, it
+        // is the crop: the card carried on past the window, and what closed the
+        // region was the boundary of the search. Taking it would hand back a
+        // quad shaped by the padding rather than by the card, and tracking
+        // would then walk the framing further off with every frame.
+        if (cropped && touchesEdge(quad, binary.cols, binary.rows)) continue;
+
         const error = aspectError(quad);
         if (error > maxAspectError) continue;
 
@@ -282,11 +305,60 @@ function quadsFromBinary(binary, frameArea, options) {
 }
 
 /**
+ * The window to search when the last frame found a card, in pixels.
+ *
+ * Padded by a share of the card's own size rather than a fixed number of
+ * pixels, so it means the same thing for a card filling the frame and one held
+ * further away. It has to be generous: a card whose true border falls outside
+ * this window has its contour closed by the window instead, which is the one
+ * way tracking can quietly change the answer. quadsFromBinary throws those out
+ * — see the `cropped` check — and this padding is what stops that happening in
+ * the first place.
+ */
+function trackedBounds(hint, frame, padding) {
+  const xs = hint.map((p) => p.x * frame.width);
+  const ys = hint.map((p) => p.y * frame.height);
+  const x0 = Math.min(...xs);
+  const x1 = Math.max(...xs);
+  const y0 = Math.min(...ys);
+  const y1 = Math.max(...ys);
+
+  const padX = (x1 - x0) * padding;
+  const padY = (y1 - y0) * padding;
+
+  const left = Math.max(0, Math.floor(x0 - padX));
+  const top = Math.max(0, Math.floor(y0 - padY));
+  const right = Math.min(frame.width, Math.ceil(x1 + padX));
+  const bottom = Math.min(frame.height, Math.ceil(y1 + padY));
+
+  if (right - left < 16 || bottom - top < 16) return null;
+  return new cv.Rect(left, top, right - left, bottom - top);
+}
+
+/**
  * Find the card in a frame.
  *
  * @param {{data: Uint8ClampedArray, width: number, height: number}} frame  RGBA
+ * @param {{hint?: Array<{x,y}>}} options
+ *   `hint` is the quad the previous frame found, in frame fractions. Given one,
+ *   the search runs inside a padded window around it and skips the Canny
+ *   attempt — a card that was there 100ms ago is still there, and its region
+ *   separates by brightness inside a window that is mostly card. The full sweep
+ *   runs anyway the moment the tracked one finds nothing, so a hint can only
+ *   cost a frame, never lose the card.
+ *
+ *   The thing to be afraid of here is not speed but drift: a hint that moves
+ *   the answer even slightly would walk the framing further off every frame,
+ *   and a capture taken on the tenth would be cut somewhere the card never was.
+ *   Measured in client/lab/contour-lab.html, feeding each answer back in as the
+ *   next frame's hint for sixty frames, the quad moved at most 1px in total and
+ *   was never lost. A single tracked frame agrees with a cold sweep to within
+ *   1px, at 1.3-2.3ms against 3.7-8.1ms. A hint aimed at the wrong corner, and
+ *   one whose window cuts through the card, both come back identical to the
+ *   cold answer — the first because tracking finds nothing and sweeps, the
+ *   second because a contour closed by the window is thrown out.
  * @returns {{quad: Array<{x,y}>, area: number, aspectError: number,
- *            via: string} | null}
+ *            via: string, tracked: boolean} | null}
  *   Corners as fractions of the frame, ordered top-left clockwise. Null when no
  *   card is found — which the caller must treat as "do not capture", never as
  *   "use the last one".
@@ -300,18 +372,30 @@ export function detectCardContour(frame, options = {}) {
     maxAspectError = 0.16,
     epsilonFraction = 0.02,
     blur = 5,
+    hint = null,
+    hintPadding = 0.16,
   } = options;
 
   const source = cv.matFromImageData(frame);
+  const window = hint && hint.length === 4 ? trackedBounds(hint, frame, hintPadding) : null;
+  // A view, not a copy: every pass below then runs over the window's pixels
+  // instead of the frame's, which is where the saving is.
+  const searched = window ? source.roi(window) : source;
   const gray = new cv.Mat();
   const blurred = new cv.Mat();
   const frameArea = frame.width * frame.height;
-  const shared = { minAreaFraction, maxAreaFraction, maxAspectError, epsilonFraction };
+  const shared = {
+    minAreaFraction,
+    maxAreaFraction,
+    maxAspectError,
+    epsilonFraction,
+    cropped: !!window,
+  };
 
   let best = null;
 
   try {
-    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
+    cv.cvtColor(searched, gray, cv.COLOR_RGBA2GRAY);
     // Blur before thresholding: card art is detailed, and without this the
     // illustration fragments into hundreds of little contours that cost time
     // and can only ever be rejected.
@@ -380,6 +464,14 @@ export function detectCardContour(frame, options = {}) {
     ];
 
     for (const [via, build] of attempts) {
+      // Tracking skips the Canny attempt. It is the dearest of the three — a
+      // gradient pass and a morphological close over every pixel — and it is
+      // there for the case a global threshold cannot split the card from the
+      // desk. Inside a window that is mostly card, that case has gone: the
+      // histogram is bimodal by construction. If both Otsu polarities come up
+      // empty the full sweep runs below anyway, Canny included.
+      if (window && via === 'edges') continue;
+
       const binary = build();
 
       try {
@@ -396,17 +488,31 @@ export function detectCardContour(frame, options = {}) {
       }
     }
   } finally {
+    // The roi() view borrows the source's pixels and still owns a header.
+    if (searched !== source) searched.delete();
     source.delete();
     gray.delete();
     blurred.delete();
   }
 
+  // Tracking found nothing, so the card has moved, left, or was never where the
+  // hint said. Sweep the whole frame before giving up — one wasted pass on the
+  // frame a card arrives or departs on, against a tracked pass on all the rest.
+  if (!best && window) {
+    return detectCardContour(frame, { ...options, hint: null });
+  }
+
   if (!best) return null;
 
   return {
-    quad: best.quad.map((p) => ({ x: p.x / frame.width, y: p.y / frame.height })),
+    // Back into frame coordinates: the quad was found in the window's pixels.
+    quad: best.quad.map((p) => ({
+      x: (p.x + (window ? window.x : 0)) / frame.width,
+      y: (p.y + (window ? window.y : 0)) / frame.height,
+    })),
     area: best.area / frameArea,
     aspectError: best.aspectError,
     via: best.via,
+    tracked: !!window,
   };
 }

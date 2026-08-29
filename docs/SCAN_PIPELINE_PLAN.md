@@ -57,12 +57,16 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       downscaled `ImageData` to a worker running OpenCV; the main thread only
       draws the overlay from the last result. Decouples preview from detection
       cost and stops GC pauses reading as "motion" in the stillness metric.
-- [ ] **4. ROI tracking that `scan.js:221` already claims exists.** The comment
+- [x] **4. ROI tracking that `scan.js:221` already claims exists.** The comment
       says the last quad is "fed back in as the next frame's hint";
       `detectCardContour` takes no hint. Either implement it — when
       `state.detected` exists, detect on a padded crop around the last quad and
       skip the Canny attempt, falling back to the full sweep when the card is
       lost — or fix the comment. Implementing is the large steady-state win.
+      *Done:* `hint` narrows the search to a padded window and skips the Canny
+      attempt; a contour closed by the window's own edge is rejected, and an
+      empty tracked pass falls through to the full sweep. 1.3-2.3ms against
+      3.7-8.1ms cold, with no drift over sixty fed-back frames.
 - [x] **5. Fix the detector's overshoot rather than probing around it.**
       `FRAMING_PROBES = [0.92, 0.94, 0.96, 0.98, 1]` exists because detection
       overshoots. Likely cause: the Canny attempt dilates with a 5×5 kernel and

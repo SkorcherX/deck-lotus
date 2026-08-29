@@ -32,9 +32,10 @@
 
 <button id="run">Run</button>
 <button id="run-noisy">Run with noise and blur</button>
+<button id="run-tracked">Cold vs tracked</button>
 <div id="log">Loading OpenCV…</div>
 <table id="out" hidden>
-  <thead><tr><th>scene</th><th>via</th><th>mean offset px</th><th>% of card width</th><th>aspect err</th></tr></thead>
+  <thead><tr><th>scene</th><th>via</th><th>mean offset px</th><th>% of card width</th><th>aspect err</th><th>ms</th></tr></thead>
   <tbody></tbody>
 </table>
 <canvas id="view" width="640" height="360"></canvas>
@@ -136,7 +137,7 @@
     ['card barely darker than desk', { desk: '#6b6960', border: '#5f5d55' }],
   ];
 
-  async function run({ noise = 0, blur = 0, scenes = SCENES } = {}) {
+  async function run({ noise = 0, blur = 0, scenes = SCENES, hint = null, repeat = 1 } = {}) {
     const canvas = document.getElementById('view');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const rows = [];
@@ -144,18 +145,24 @@
 
     for (const [name, look] of scenes) {
       scene(ctx, { ...look, noise, blur });
-      const found = detectCardContour(ctx.getImageData(0, 0, W, H));
+      // Warm the JIT and the OpenCV allocator before timing anything.
+      for (let i = 1; i < repeat; i++) detectCardContour(ctx.getImageData(0, 0, W, H), hint ? { hint } : {});
+      const image = ctx.getImageData(0, 0, W, H);
+      const started = performance.now();
+      const found = detectCardContour(image, hint ? { hint } : {});
+      const ms = performance.now() - started;
       if (!found) {
-        rows.push([name, '—', 'not found', '', '']);
+        rows.push([name, '—', 'not found', '', '', ms.toFixed(1)]);
         continue;
       }
       const px = overshoot(found.quad);
       rows.push([
         name,
-        found.via,
+        found.via + (found.tracked ? ' (tracked)' : ''),
         px.toFixed(2),
         ((px / width) * 100).toFixed(2) + '%',
         found.aspectError.toFixed(3),
+        ms.toFixed(1),
       ]);
     }
 
@@ -176,5 +183,55 @@
   log('OpenCV ready.');
   document.getElementById('run').addEventListener('click', () => run());
   document.getElementById('run-noisy').addEventListener('click', () => run({ noise: 26, blur: 1 }));
+
+  /**
+   * The tracking question: does searching a window around the last quad give
+   * the same answer as sweeping the whole frame, and what does it save?
+   *
+   * A hint that moves the answer is worse than no hint at all — the framing
+   * would then drift a little further every frame, and a capture taken on the
+   * tenth would be cut somewhere the card never was.
+   */
+  async function tracked() {
+    const cold = await run({ repeat: 3 });
+    // Feed each scene its own cold answer back as the hint.
+    const rows = [];
+    const canvas = document.getElementById('view');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    for (let i = 0; i < SCENES.length; i++) {
+      const [name, look] = SCENES[i];
+      scene(ctx, { ...look });
+      const first = detectCardContour(ctx.getImageData(0, 0, W, H));
+      if (!first) { rows.push([name, 'cold found nothing']); continue; }
+      for (let w = 0; w < 3; w++) detectCardContour(ctx.getImageData(0, 0, W, H), { hint: first.quad });
+      const started = performance.now();
+      const warm = detectCardContour(ctx.getImageData(0, 0, W, H), { hint: first.quad });
+      const ms = performance.now() - started;
+      const width = TRUE_QUAD[1].x - TRUE_QUAD[0].x;
+      rows.push([
+        name,
+        warm ? warm.via + (warm.tracked ? ' (tracked)' : ' (swept)') : 'not found',
+        warm ? overshoot(warm.quad).toFixed(2) : '',
+        warm ? ((overshoot(warm.quad) / width) * 100).toFixed(2) + '%' : '',
+        warm ? Math.max(...warm.quad.map((p, j) => Math.hypot(
+          (p.x - first.quad[j].x) * W, (p.y - first.quad[j].y) * H
+        ))).toFixed(2) + 'px from cold' : '',
+        ms.toFixed(1),
+      ]);
+    }
+    const body = document.querySelector('#out tbody');
+    body.innerHTML = '';
+    for (const row of [...cold, ...rows]) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = row.map((cell) => `<td>${cell ?? ''}</td>`).join('');
+      body.append(tr);
+    }
+    log('top half cold, bottom half tracked');
+    window.__lab = { cold, tracked: rows };
+    return { cold, tracked: rows };
+  }
+
+  document.getElementById('run-tracked').addEventListener('click', tracked);
+  window.__tracked = tracked;
   window.__run = run;
 </script>

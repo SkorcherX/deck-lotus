@@ -224,9 +224,19 @@ same synthetic-fixture trap that flattered the detector this one replaced, so
 never tune thresholds or the framing ladder from it. Those need a bundle and
 `--sweep`.
 
-What it has settled so far: the `edges` attempt used to dilate without eroding
-and overshot by a constant +1.19% of card width; a morphological close brings it
-to -0.40%, the same floor the Otsu attempts sit at.
+What it has settled so far:
+
+- The `edges` attempt used to dilate without eroding and overshot by a constant
+  +1.19% of card width; a morphological close brings it to -0.40%, the same
+  floor the Otsu attempts sit at.
+- ROI tracking does not move the answer. Sixty frames of feeding each quad back
+  in as the next frame's hint moved it at most 1px in total and never lost the
+  card; one tracked frame agrees with a cold sweep to within 1px, at 1.3-2.3ms
+  against 3.7-8.1ms. A hint aimed at the wrong corner, or one whose window cuts
+  the card, both return the cold answer exactly.
+
+The **Cold vs tracked** button measures that last point, and is worth re-running
+after any change to the attempts or the contour filters.
 
 ---
 
