@@ -256,7 +256,8 @@ const state = {
   buffers: { source: null, analysis: null, scratch: null },
   // Where the card was last seen, fed back in as the next frame's hint, and
   // null whenever detection loses it. Never a fallback: a stale quad is how a
-  // capture comes out legible and matches nothing.
+  // capture comes out legible and matches nothing. The hint only ever narrows
+  // where detection looks — it is not blended into the answer.
   detected: null,
   // The last few detections, newest last, cleared the moment the card is lost.
   // A capture is framed from their mean rather than from the single frame the
@@ -694,16 +695,19 @@ function startLoop() {
 
     // Find the card, every frame. The marked quad describes a desk; a hand-held
     // card is wherever the hand is, and the hash tolerates about 1% of framing
-    // error before the art window walks off the illustration. Tracking from the
-    // last frame keeps this to one refinement in the steady state — see
-    // detectCard, which falls back to a full sweep the moment tracking is not
-    // clearly on the card.
+    // error before the art window walks off the illustration. The last quad
+    // goes back in as this frame's hint, which keeps the steady state to two
+    // threshold passes over a window instead of three over the whole frame —
+    // see detectCardContour, which sweeps the frame anyway the moment tracking
+    // comes up empty.
     if (state.settings.detectEnabled) {
       // Contours, not per-edge gradient search. The frame profile of a real
       // capture put the art window's border and the type line well above the
       // card's own outline, so searching for the strongest step near an edge
       // reliably found the wrong one — see cardContour.js.
-      state.detected = detectorReady() ? detectCardContour(sourceFrame) : null;
+      state.detected = detectorReady()
+        ? detectCardContour(sourceFrame, { hint: state.detected?.quad })
+        : null;
       rememberDetection(state.detected);
       renderDetection(state.detected);
     } else {
