@@ -121,6 +121,11 @@ before(async () => {
   const reprint = insertCard('Test Reprint', '{1}{G}', 'Enchantment');
   insertPrinting(reprint, 5, 'CCC', '55');
   insertPrinting(reprint, 6, 'DDD', '66');
+  // A third printing whose scan came out all but identical to the first. This
+  // is what a real reprint pair usually looks like — the gap between them is
+  // the difference between two scans of one picture, not evidence about which
+  // is in the hand.
+  insertPrinting(reprint, 7, 'EEE', '77');
 
   fs.writeFileSync(HASH_PATH, packHashes([
     // Both Bolt printings share the art hash; only the frame hash differs.
@@ -140,6 +145,7 @@ before(async () => {
     // is the gap the guard is about — near enough to be the same illustration,
     // far enough that only one of the two scores strongly.
     { uuid: printings[6].uuid, artHash: hashNear('5'.repeat(ART_HASH_HEX), 55), frameHash: zeros(FRAME_HASH_HEX) },
+    { uuid: printings[7].uuid, artHash: hashNear('5'.repeat(ART_HASH_HEX), 3), frameHash: zeros(FRAME_HASH_HEX) },
   ]));
 
   hashIndex.load({ quiet: true });
@@ -153,7 +159,7 @@ after(() => {
 
 describe('the hash index', () => {
   test('loads the packed file and joins every row to a printing', () => {
-    assert.deepEqual(hashIndex.stats(), { count: 6, joined: 6 });
+    assert.deepEqual(hashIndex.stats(), { count: 7, joined: 7 });
     assert.equal(hashIndex.isAvailable(), true);
   });
 
@@ -286,9 +292,9 @@ describe('resolveScanFused tiers', () => {
       frameHash: zeros(FRAME_HASH_HEX),
     });
 
-    // Exactly one strong match, two printings of the one card. The first number
-    // is what the old rule read; the second is what actually decides it.
-    assert.equal(result.signals.printingsOfBest, 2);
+    // Exactly one strong match, three printings of the one card. The first
+    // number is what the old rule read; the second is what actually decides it.
+    assert.equal(result.signals.printingsOfBest, 3);
     assert.equal(result.tier, SCAN_TIERS.PICK_PRINTING);
 
     const ids = result.candidates.map((candidate) => candidate.printingId);
@@ -306,6 +312,70 @@ describe('resolveScanFused tiers', () => {
 
     assert.equal(result.tier, SCAN_TIERS.CONFIDENT);
     assert.equal(result.signals.printingsOfBest, 1);
+  });
+
+  test('a set tally orders printings the art could not separate', () => {
+    // Two printings of one card, 55 bits apart, so both match and only the
+    // nearer scores strongly. Without a tally the art's order stands.
+    const query = {
+      artHash: '5'.repeat(ART_HASH_HEX),
+      frameHash: zeros(FRAME_HASH_HEX),
+    };
+
+    const unbiased = resolveScanFused(query);
+    assert.equal(unbiased.candidates[0].printingId, printings[5].id);
+
+    // Now with a session that has already been sure about DDD twice. The card
+    // is unchanged; which printing of it leads is not.
+    const biased = resolveScanFused({ ...query, setBias: { EEE: 2 } });
+    assert.equal(biased.candidates[0].printingId, printings[7].id);
+    assert.equal(biased.candidates[0].setCode, 'EEE');
+    assert.equal(biased.signals.setBiased, true);
+  });
+
+  test('a set tally never overrides a distance the art separated', () => {
+    // The same two printings, but the capture sits *on* one of them and 55 bits
+    // from the other — outside PRINTING_TIE_BITS. The art has an opinion here
+    // and a tally about the stack must not overrule a measurement of the
+    // picture, however lopsided the tally.
+    const result = resolveScanFused({
+      artHash: '5'.repeat(ART_HASH_HEX),
+      frameHash: zeros(FRAME_HASH_HEX),
+      setBias: { DDD: 99 },
+    });
+
+    // DDD is 55 bits away. However often this session has seen DDD, the art
+    // separated these two and the measurement wins.
+    assert.notEqual(result.candidates[0].printingId, printings[6].id);
+    assert.equal(result.candidates[0].setCode, 'CCC');
+  });
+
+  test('a set tally never reaches past the card the art chose', () => {
+    // A tally naming the set of an entirely different card must not lift that
+    // card up the list. The bias is about printings of the winner, never about
+    // which card won.
+    const result = resolveScanFused({
+      artHash: 'a'.repeat(ART_HASH_HEX),
+      frameHash: 'a'.repeat(FRAME_HASH_HEX),
+      setBias: { AAA: 50 },
+    });
+
+    assert.equal(result.candidates[0].name, 'Test Antiquity');
+    assert.equal(result.candidates[0].setCode, 'OLD');
+  });
+
+  test('a set tally cannot promote a printing to confident', () => {
+    const query = {
+      artHash: '5'.repeat(ART_HASH_HEX),
+      frameHash: zeros(FRAME_HASH_HEX),
+    };
+
+    assert.equal(resolveScanFused(query).tier, SCAN_TIERS.PICK_PRINTING);
+    assert.equal(
+      resolveScanFused({ ...query, setBias: { EEE: 99 } }).tier,
+      SCAN_TIERS.PICK_PRINTING,
+      'ordering a tie is not the same as knowing which one it is'
+    );
   });
 
   test('unsure: no hash at all falls back to the text-only result', () => {

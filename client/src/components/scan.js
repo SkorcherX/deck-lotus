@@ -338,6 +338,9 @@ const state = {
   // The detection the run last took, by identity. Detection answers on its own
   // schedule, so this is what separates "a new answer arrived" from "the same
   // answer read twice" — see the tick.
+  // Sets this session has resolved unambiguously, counted. Ties between
+  // printings of one card are ordered by it — see rememberSet.
+  setTally: new Map(),
   rememberedDetection: null,
   // True while a capture's burst of frames is being gathered. See
   // captureFromVideo: the disarm that stops a second shutter lives in
@@ -1223,6 +1226,34 @@ function looksLikeANewCard(analysisFrame) {
   }
 }
 
+/**
+ * The sets this session has already been sure about, and how often.
+ *
+ * Only unambiguous resolutions count — a capture where the art matched exactly
+ * one printing of its card, so the set is a measurement rather than a guess.
+ * Cards unique to one printing are what seed it, and in a precon there are
+ * always a few: two of the nine cards in the recorded ECC session were
+ * ECC-only, which is enough to order every reprint behind them.
+ *
+ * Deliberately not fed by ambiguous resolutions. Tallying whichever printing
+ * happened to lead would make the first arbitrary answer the second one's
+ * evidence, and a session could talk itself into a set it never saw.
+ */
+function rememberSet(resolved) {
+  if (!resolved || resolved.signals?.printingsOfBest !== 1) return;
+
+  const set = resolved.candidates?.[0]?.setCode;
+  if (!set) return;
+
+  state.setTally.set(set, (state.setTally.get(set) || 0) + 1);
+}
+
+/** The tally in the shape the resolver takes, or null before anything is sure. */
+function setTally() {
+  if (!state.setTally.size) return null;
+  return Object.fromEntries(state.setTally);
+}
+
 /** Remember what was in frame at the moment of a capture. See looksLikeANewCard. */
 function rememberCapturedFrame() {
   try {
@@ -1675,8 +1706,11 @@ async function resolveCapture(entry) {
     const resolved = await api.resolveScanProbes({
       artHashes: probes.map((p) => p.artHash),
       frameHashes: probes.map((p) => p.frameHash),
+      setBias: setTally(),
       limit: 25,
     });
+
+    rememberSet(resolved);
 
     entry.candidates = resolved.candidates;
     entry.tier = resolved.tier || null;
@@ -1725,6 +1759,10 @@ async function resolveCapture(entry) {
           : 'No art match'
     );
     renderLiveMatch(best || null);
+    // A miss gets a pulse of its own: renderLiveMatch(null) clears the panel and
+    // would otherwise leave nothing at all to see, which reads as the scanner
+    // still thinking.
+    if (!best) pulseOverlay('miss');
     diagnostics.attachResolution(entry.id, resolved);
     signalMatch(resolved.tier);
 
@@ -1742,6 +1780,7 @@ async function resolveCapture(entry) {
   } catch (error) {
     setReadStatus(`Match failed: ${error.message}`);
     renderLiveMatch(null);
+    pulseOverlay('miss');
     diagnostics.attachFailure(entry.id, error.message);
 
     // The art's answer never arrived, so there is nothing for the reader to be
@@ -1817,12 +1856,19 @@ const PRICE_BANDS = [
   { min: 10, band: 'blue' },
   { min: 5, band: 'green' },
   { min: 1, band: 'yellow' },
+  // Everything else, including a card with no price at all. It used to be the
+  // absence of a band, which made the commonest outcome in a precon box —
+  // a card worth pennies — look exactly like a card that had not resolved yet.
+  // The colour says what it is worth; that there is a colour at all says the
+  // scanner is done with it, and that is the half somebody feeding cards
+  // actually needs.
+  { min: -Infinity, band: 'grey' },
 ];
 
-/** Which band a price falls in, or null for "not worth marking". */
+/** Which band a price falls in. Never null: see the last entry in PRICE_BANDS. */
 function priceBand(price) {
-  if (typeof price !== 'number' || !Number.isFinite(price)) return null;
-  return PRICE_BANDS.find((entry) => price >= entry.min)?.band || null;
+  const value = typeof price === 'number' && Number.isFinite(price) ? price : 0;
+  return PRICE_BANDS.find((entry) => value >= entry.min)?.band || 'grey';
 }
 
 /** A price as it goes on screen. Null prices say so rather than showing $0.00. */
@@ -1848,6 +1894,8 @@ function renderLiveMatch(candidate) {
     }
   }
 
+  if (candidate) pulseOverlay(band);
+
   if (!candidate) return;
 
   el('scan-live-name').textContent = candidate.name;
@@ -1860,6 +1908,46 @@ function renderLiveMatch(candidate) {
     price.textContent = formatPrice(candidate.price);
     price.className = `scan-live-price${band ? ` scan-live-price-${band}` : ''}`;
   }
+}
+
+/**
+ * Flash the outline round the card once, in the colour of the answer.
+ *
+ * The scanner is faster than the person feeding it, and the person is watching
+ * the cards rather than the screen — so the thing that decides throughput is
+ * how quickly they can tell the last card is done. Text changing in a panel is
+ * not it: it arrives after the shutter flash, which is white and draws the eye
+ * away, and it has to be read.
+ *
+ * A pulse of colour round the window they are already looking at says two
+ * things at once and neither has to be read: it is finished, and this is
+ * roughly what it is worth. A miss pulses too, in red — knowing a card needs
+ * feeding again is worth as much as knowing it landed.
+ *
+ * Restarted rather than queued: two cards in quick succession should give two
+ * pulses, and the second one wins. Removing the class and forcing a reflow
+ * before re-adding it is what makes an animation replay.
+ */
+function pulseOverlay(band) {
+  // Both halves of the viewfinder: the outline round the card, and the panel
+  // that names it. They are read at different moments — the outline in the
+  // corner of the eye while the cards are being watched, the panel when the eye
+  // comes up — so firing only one of them is a cue that can be missed by
+  // looking at the wrong half of your own screen.
+  pulseElement(el('scan-overlay'), 'scan-overlay-pulse', band);
+  pulseElement(el('scan-live'), 'scan-live-pulse', band);
+}
+
+/** Restart one element's pulse. See pulseOverlay. */
+function pulseElement(node, className, band) {
+  if (!node) return;
+
+  node.classList.remove(className);
+  // Reading a layout property flushes the removal, so the animation restarts
+  // rather than being coalesced away as no change at all.
+  void node.offsetWidth;
+  node.dataset.pulse = band || 'miss';
+  node.classList.add(className);
 }
 
 /**

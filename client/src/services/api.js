@@ -177,10 +177,10 @@ class ApiClient {
    * belong in a query string. See resolveScanFused on the server for why one
    * capture has more than one framing.
    */
-  async resolveScanProbes({ artHashes, frameHashes, limit = 25 }) {
+  async resolveScanProbes({ artHashes, frameHashes, setBias = null, limit = 25 }) {
     const { results } = await this.request('/scan/resolve', {
       method: 'POST',
-      body: JSON.stringify({ scans: [{ id: 0, artHashes, frameHashes }], limit }),
+      body: JSON.stringify({ scans: [{ id: 0, artHashes, frameHashes }], setBias, limit }),
     });
     return results[0];
   }

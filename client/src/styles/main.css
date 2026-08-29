@@ -5999,6 +5999,56 @@ body.maintenance-locked #app {
   white-space: nowrap;
 }
 
+/* The same pulse as the outline, on the panel that carries the answer.
+   Two places rather than one because they are read differently: the outline is
+   caught in the corner of the eye while the cards are being watched, and the
+   panel is what the eye lands on when it does come up. A cue that fires in only
+   one of them is a cue somebody can miss by looking at the wrong half of their
+   own screen.
+
+   A border rather than a background wash: the panel's scrim is what keeps the
+   name legible over live video, and tinting it would trade the reading for the
+   flash. */
+.scan-live {
+  border: 2px solid transparent;
+}
+
+.scan-live-pulse {
+  animation: scan-live-pulse 620ms ease-out 1;
+}
+
+.scan-live-pulse[data-pulse='grey']   { --scan-pulse: #cbd5e1; }
+.scan-live-pulse[data-pulse='yellow'] { --scan-pulse: #fbbf24; }
+.scan-live-pulse[data-pulse='green']  { --scan-pulse: #4ade80; }
+.scan-live-pulse[data-pulse='blue']   { --scan-pulse: #60a5fa; }
+.scan-live-pulse[data-pulse='purple'] { --scan-pulse: #c084fc; }
+.scan-live-pulse[data-pulse='miss']   { --scan-pulse: #f87171; }
+
+@keyframes scan-live-pulse {
+  0% {
+    border-color: var(--scan-pulse, #cbd5e1);
+    box-shadow: 0 0 0 0 rgb(255 255 255 / 0);
+  }
+  35% {
+    border-color: var(--scan-pulse, #cbd5e1);
+    box-shadow: 0 0 18px 4px var(--scan-pulse, #cbd5e1);
+  }
+  100% {
+    border-color: transparent;
+    box-shadow: 0 0 0 0 rgb(255 255 255 / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-live-pulse {
+    animation: scan-live-pulse-still 620ms steps(1, end) 1;
+  }
+
+  @keyframes scan-live-pulse-still {
+    0%, 99% { border-color: var(--scan-pulse, #cbd5e1); }
+  }
+}
+
 .scan-live-price-yellow { color: #fbbf24; }
 .scan-live-price-green  { color: #4ade80; }
 .scan-live-price-blue   { color: #60a5fa; }
@@ -6285,10 +6335,67 @@ body.maintenance-locked #app {
   stroke-width: 4;
 }
 
+.scan-overlay.scan-price-grey .scan-quad-card {
+  stroke-width: 4;
+}
+
+.scan-overlay.scan-price-grey   .scan-quad-card { stroke: #cbd5e1; }
 .scan-overlay.scan-price-yellow .scan-quad-card { stroke: #fbbf24; }
 .scan-overlay.scan-price-green  .scan-quad-card { stroke: #4ade80; }
 .scan-overlay.scan-price-blue   .scan-quad-card { stroke: #60a5fa; }
 .scan-overlay.scan-price-purple .scan-quad-card { stroke: #c084fc; }
+
+/* One pulse per answer, in the colour of the answer.
+   The person feeding cards is looking at the cards, not at the screen, so the
+   cue has to land in the corner of the eye and mean "done" without being read.
+   It runs on the outline they are already watching rather than adding a badge
+   somewhere else on the page.
+
+   Colour comes through a custom property so the keyframes are written once;
+   the fallback is the grey band, since an unpriced card still needs saying. */
+.scan-overlay-pulse .scan-quad-card {
+  animation: scan-pulse 620ms ease-out 1;
+}
+
+.scan-overlay-pulse[data-pulse='grey']   { --scan-pulse: #cbd5e1; }
+.scan-overlay-pulse[data-pulse='yellow'] { --scan-pulse: #fbbf24; }
+.scan-overlay-pulse[data-pulse='green']  { --scan-pulse: #4ade80; }
+.scan-overlay-pulse[data-pulse='blue']   { --scan-pulse: #60a5fa; }
+.scan-overlay-pulse[data-pulse='purple'] { --scan-pulse: #c084fc; }
+.scan-overlay-pulse[data-pulse='miss']   { --scan-pulse: #f87171; }
+
+@keyframes scan-pulse {
+  0% {
+    stroke: var(--scan-pulse, #cbd5e1);
+    stroke-width: 4;
+    opacity: 1;
+  }
+  35% {
+    stroke: var(--scan-pulse, #cbd5e1);
+    stroke-width: 14;
+    opacity: 0.85;
+  }
+  100% {
+    stroke: var(--scan-pulse, #cbd5e1);
+    stroke-width: 4;
+    opacity: 1;
+  }
+}
+
+/* Someone who has asked for less motion still needs to know the card is done,
+   so the pulse becomes a hold rather than disappearing. */
+@media (prefers-reduced-motion: reduce) {
+  .scan-overlay-pulse .scan-quad-card {
+    animation: scan-pulse-still 620ms steps(1, end) 1;
+  }
+
+  @keyframes scan-pulse-still {
+    0%, 99% {
+      stroke: var(--scan-pulse, #cbd5e1);
+      stroke-width: 8;
+    }
+  }
+}
 
 .scan-quad-region {
   fill: rgb(var(--primary-rgb) / 0.18);

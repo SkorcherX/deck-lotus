@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Pulse lab</title>
+<link rel="stylesheet" href="/src/styles/main.css" />
+<style>
+  body { background: #14121a; margin: 24px; font: 14px system-ui, sans-serif; color: #e8e4f0; }
+  .stage { position: relative; width: 320px; height: 440px; background: #222; }
+  button { font: inherit; margin: 4px 6px 4px 0; padding: 6px 12px; }
+</style>
+<p>Each button fires the same call the scanner makes when an answer lands.</p>
+<div>
+  <button data-band="grey">grey (under $1)</button>
+  <button data-band="yellow">yellow</button>
+  <button data-band="green">green</button>
+  <button data-band="blue">blue</button>
+  <button data-band="purple">purple</button>
+  <button data-band="miss">miss</button>
+</div>
+<div class="stage">
+  <div id="scan-overlay" class="scan-overlay">
+    <svg class="scan-overlay-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <polygon class="scan-quad-card" points="18,10 82,10 82,90 18,90" fill="none" />
+    </svg>
+  </div>
+  <div id="scan-live" class="scan-live">
+    <span class="scan-live-name">Seaside Citadel</span>
+    <span class="scan-live-meta">
+      <span class="scan-live-print">ECC 166</span>
+      <span id="scan-live-price" class="scan-live-price">$0.31</span>
+    </span>
+  </div>
+</div>
+<script type="module">
+  // Mirrors pulseOverlay/pulseElement in scan.js.
+  function pulseElement(node, className, band) {
+    if (!node) return;
+    node.classList.remove(className);
+    void node.offsetWidth;
+    node.dataset.pulse = band || 'miss';
+    node.classList.add(className);
+  }
+
+  function pulseOverlay(band) {
+    pulseElement(document.getElementById('scan-overlay'), 'scan-overlay-pulse', band);
+    pulseElement(document.getElementById('scan-live'), 'scan-live-pulse', band);
+  }
+  document.querySelectorAll('button').forEach((b) =>
+    b.addEventListener('click', () => pulseOverlay(b.dataset.band))
+  );
+  window.__pulse = pulseOverlay;
+</script>

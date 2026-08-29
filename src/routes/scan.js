@@ -57,11 +57,16 @@ router.get('/resolve', authenticate, (req, res, next) => {
  * Batch form of the above — a scan session produces a queue of readings, and
  * resolving them in one request avoids a round trip per card.
  *
- * Body: { scans: [{ id, name, setCode, collectorNumber, artHash, frameHash }], limit }
+ * Body: { scans: [{ id, name, setCode, collectorNumber, artHash, frameHash }], limit,
+ *          setBias }
+ *
+ * `setBias` is { SETCODE: count } for the sets this session has already
+ * resolved unambiguously. It only ever reorders printings the art could not
+ * separate — see applySetBias.
  */
 router.post('/resolve', authenticate, (req, res, next) => {
   try {
-    const { scans, limit } = req.body || {};
+    const { scans, limit, setBias } = req.body || {};
 
     if (!Array.isArray(scans) || scans.length === 0) {
       return res.status(400).json({ error: 'scans must be a non-empty array' });
@@ -88,6 +93,12 @@ router.post('/resolve', authenticate, (req, res, next) => {
         // Several framings of one capture. See resolveScanFused.
         artHashes: Array.isArray(scan?.artHashes) ? scan.artHashes.slice(0, 8) : null,
         frameHashes: Array.isArray(scan?.frameHashes) ? scan.frameHashes.slice(0, 8) : null,
+        // A tally of the sets this scanning session has already been sure
+        // about, used only to order printings the art could not separate. Taken
+        // per request rather than held server-side: it describes one person's
+        // stack for the few minutes they are scanning it, and nothing about it
+        // is worth a session table.
+        setBias: setBias && typeof setBias === 'object' ? setBias : null,
         limit: limit || 10,
       }),
     }));
