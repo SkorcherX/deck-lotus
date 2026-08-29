@@ -265,6 +265,10 @@ const state = {
   // capture comes out legible and matches nothing. The hint only ever narrows
   // where detection looks — it is not blended into the answer.
   detected: null,
+  // The detection the run last took, by identity. Detection answers on its own
+  // schedule, so this is what separates "a new answer arrived" from "the same
+  // answer read twice" — see the tick.
+  rememberedDetection: null,
   // The last few detections, newest last, cleared the moment the card is lost.
   // A capture is framed from their mean rather than from the single frame the
   // shutter fired on — see FRAMES_AVERAGED.
@@ -516,6 +520,7 @@ function stopCamera() {
   // start would otherwise download again.
   resetDetection();
   state.detected = null;
+  state.rememberedDetection = null;
   state.recentQuads = [];
 
   // The download carries on in the background — it is cached on the module and
@@ -726,7 +731,21 @@ function startLoop() {
       // keep up detects less often rather than falling further behind.
       requestDetection(sourceFrame, state.detected?.quad || null);
       state.detected = detectorReady() ? latestDetection() : null;
-      rememberDetection(state.detected);
+
+      // Only *new* detections join the run. Detection is asynchronous now, so a
+      // tick that arrives before the next answer reads the same one again, and
+      // pushing it would fill the run with copies of a single measurement.
+      //
+      // That would quietly undo what the averaging is for. Four independent
+      // detections of a still card cut the corner spread 1.87x — the noise is
+      // what averages out. Four copies of one detection average to that
+      // detection, with the spread of a single frame and the appearance of a
+      // run, which is worse than not averaging because `snap.averaged` would
+      // report 4 and a recording would show nothing wrong.
+      if (state.detected !== state.rememberedDetection) {
+        state.rememberedDetection = state.detected;
+        rememberDetection(state.detected);
+      }
       renderDetection(state.detected);
     } else {
       state.detected = null;
@@ -973,7 +992,14 @@ function snapQuad(source, frameWidth, frameHeight) {
         // How many detections went into the framing. One means the run
         // disagreed and this is a single frame after all, which is worth being
         // able to see in a recording rather than inferring.
+        //
+        // `runLength` is beside it because those are two different failures
+        // wearing one number: a run of four that disagreed says the card moved,
+        // while a run of two says detection did not answer often enough to
+        // build one — which is a thing that can happen now that it answers
+        // asynchronously, and which nothing else in a bundle would show.
         averaged: averaged ? state.recentQuads.length : 1,
+        runLength: state.recentQuads.length,
       },
     };
   }
