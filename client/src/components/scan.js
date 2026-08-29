@@ -12,6 +12,7 @@ import {
   defaultQuad,
   frameImageData,
   guideRect,
+  hashSize,
   imageDataOf,
   loadImageFile,
   quadFromRect,
@@ -989,8 +990,19 @@ function expandQuad(quad, scale) {
 }
 
 function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null) {
+  // Two sizes, and the difference between them is most of what a capture costs.
+  //
+  // `size` is the card at the resolution the camera actually gave it, and the
+  // OCR crops are cut at that scale because small text needs every pixel.
+  // `hashed` is a fixed 680 tall, the size every reference was hashed at, and
+  // it is what the card and all five framing probes are warped to. A 4K frame
+  // rectifies to a card of some two thousand pixels tall, six warps of it per
+  // capture on the main thread, all so that hashRectified can average the
+  // result down to a 32x32 grid — see HASH_HEIGHT for the measurements saying
+  // the extra pixels do not change the answer.
   const size = rectifiedSize(quad, frameWidth, frameHeight);
-  const card = warpQuad(frame, quad, size.width, size.height);
+  const hashed = hashSize();
+  const card = warpQuad(frame, quad, hashed.width, hashed.height);
 
   const cropOf = (region) => {
     const out = regionOutputSize(size, region);
@@ -1008,6 +1020,11 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
     collector,
     quad,
     snap,
+    // What the camera gave, kept because `card` no longer says it: the rectified
+    // card is a fixed size now, so the only remaining record of how many pixels
+    // were actually on the card is this. A session that matches badly at arm's
+    // length and well up close is invisible without it.
+    nativeSize: size,
     at: new Date(),
   };
 
@@ -1036,8 +1053,9 @@ function emitCapture(frame, quad, frameWidth, frameHeight, trigger, snap = null)
     // which way the ladder points and why it was turned around.
     entry.probes = FRAMING_PROBES.map((scale) => {
       const framed = expandQuad(quad, scale);
-      const size = rectifiedSize(framed, frameWidth, frameHeight);
-      const probe = hashRectified(imageDataOf(warpQuad(frame, framed, size.width, size.height)));
+      const probe = hashRectified(
+        imageDataOf(warpQuad(frame, framed, hashed.width, hashed.height))
+      );
       return { scale, ...probe };
     });
   } catch (error) {

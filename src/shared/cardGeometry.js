@@ -79,6 +79,42 @@ export function projectiveMap(quad) {
  * camera actually resolved along the card's longest edge, so the warp neither
  * throws detail away nor invents it.
  */
+/**
+ * Height, in pixels, that a card is rectified to *for hashing*.
+ *
+ * 680 is not a round number chosen for tidiness — it is the height every
+ * reference in `data/card-hashes.bin` was hashed at. `build-card-hashes.mjs`
+ * pulls Scryfall's `normal` image, 488x680, and the whole index is that size.
+ * Hashing a capture at the same height compares like with like.
+ *
+ * It also costs nothing to give up the rest. The art hash averages its window
+ * down to a 32x32 grid, so beyond a few pixels per cell more resolution changes
+ * the answer by almost nothing and the warp by a great deal: the builder
+ * measured `normal` against `large` at a mean of 3.9 bits of 256, against a
+ * match threshold of 69 — while a phone frame is tens of megabytes and every
+ * probe warps it again. Going *below* the reference size is the direction that
+ * hurts: `small` (146x204) leaves the art window at 123x90, under four pixels
+ * per grid cell, and costs 15.9 bits.
+ *
+ * And the size is not merely sufficient, it is the right one. Measured on the
+ * same pixels hashed at several sizes, the art hash sits 10-12 bits of 256 away
+ * from its 680px self at *every* resolution above it — flat, not sloped, which
+ * makes it downsampleToGrid's cell boundaries landing on different source
+ * pixels rather than detail being lost. Hashing a capture at whatever the
+ * camera gave therefore spent ten-odd bits of a 69-bit budget on nothing at
+ * all. See test/hashResolution.test.js.
+ *
+ * The OCR crops are deliberately not cut from this. They are warped out of the
+ * source frame at their own scale, where the collector line's dozen pixels are
+ * worth every one they can get — see warpRegion.
+ */
+export const HASH_HEIGHT = 680;
+
+/** The rectified size a capture is hashed at. See HASH_HEIGHT. */
+export function hashSize() {
+  return { width: Math.round(HASH_HEIGHT * CARD_ASPECT), height: HASH_HEIGHT };
+}
+
 export function rectifiedSize(quad, frameWidth, frameHeight, minHeight = 560) {
   const edge = (a, b) =>
     Math.hypot((a.x - b.x) * frameWidth, (a.y - b.y) * frameHeight);

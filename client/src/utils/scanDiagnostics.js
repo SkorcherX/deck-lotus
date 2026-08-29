@@ -139,6 +139,10 @@ export function recordCapture(entry, context = {}) {
     quad: entry.quad,
     snap: entry.snap,
     rectifiedSize: entry.card ? { width: entry.card.width, height: entry.card.height } : null,
+    // What the card rectified to at the camera's own resolution, which is no
+    // longer what it was hashed at — captures are warped to a fixed size now.
+    // This is the field that says whether a session was shot close or far.
+    nativeRectifiedSize: entry.nativeSize || null,
     artHash: entry.artHash || null,
     frameHash: entry.frameHash || null,
     hashError: entry.hashError || null,

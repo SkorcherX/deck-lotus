@@ -28,7 +28,7 @@
 import fs from 'fs';
 import path from 'path';
 import jpeg from 'jpeg-js';
-import { projectiveMap, rectifiedSize } from '../src/shared/cardGeometry.js';
+import { projectiveMap, hashSize } from '../src/shared/cardGeometry.js';
 import { hashRectified } from '../src/shared/cardHash.js';
 import * as index from '../src/services/cardHashIndex.js';
 import { resolveScanFused } from '../src/services/scanService.js';
@@ -37,7 +37,7 @@ import { resolveScanFused } from '../src/services/scanService.js';
  * The capture warp, ported from `warpInto` in cardCapture.js.
  *
  * Duplicated rather than imported because that module reaches for `document` at
- * the top level. `projectiveMap` and `rectifiedSize` are DOM-free and are
+ * the top level. `projectiveMap` and `hashSize` are DOM-free and are
  * imported, so the geometry — the part that would actually change an answer if
  * it drifted — stays shared. Keep this sampling identical to the original: it
  * is bilinear, from pixel centres, and anything outside the frame is black
@@ -100,10 +100,19 @@ function frameOf(capture) {
   return jpeg.decode(Buffer.from(capture.frame.split(',')[1], 'base64'), { useTArray: true });
 }
 
-/** Hash one capture at one framing, exactly as the client would. */
+/**
+ * Hash one capture at one framing, exactly as the client would.
+ *
+ * At the fixed hash size, not at whatever the framing works out to in the
+ * recorded frame — that is what the client does now, and replay is only worth
+ * anything while the two agree. It also removes a wrinkle: a bundle's frame is
+ * 720px wide, so sizing from it used to hash at a different scale from the
+ * session being replayed. Both ends now sit at the size the references were
+ * built at. See HASH_HEIGHT.
+ */
 function probeAt(frame, quad, scale) {
   const framed = scaleQuad(quad, scale);
-  const size = rectifiedSize(framed, frame.width, frame.height);
+  const size = hashSize();
   return hashRectified(warp(frame, framed, size.width, size.height));
 }
 
