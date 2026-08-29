@@ -1759,6 +1759,10 @@ async function resolveCapture(entry) {
           : 'No art match'
     );
     renderLiveMatch(best || null);
+    // A miss gets a pulse of its own: renderLiveMatch(null) clears the panel and
+    // would otherwise leave nothing at all to see, which reads as the scanner
+    // still thinking.
+    if (!best) pulseOverlay('miss');
     diagnostics.attachResolution(entry.id, resolved);
     signalMatch(resolved.tier);
 
@@ -1776,6 +1780,7 @@ async function resolveCapture(entry) {
   } catch (error) {
     setReadStatus(`Match failed: ${error.message}`);
     renderLiveMatch(null);
+    pulseOverlay('miss');
     diagnostics.attachFailure(entry.id, error.message);
 
     // The art's answer never arrived, so there is nothing for the reader to be
@@ -1851,12 +1856,19 @@ const PRICE_BANDS = [
   { min: 10, band: 'blue' },
   { min: 5, band: 'green' },
   { min: 1, band: 'yellow' },
+  // Everything else, including a card with no price at all. It used to be the
+  // absence of a band, which made the commonest outcome in a precon box —
+  // a card worth pennies — look exactly like a card that had not resolved yet.
+  // The colour says what it is worth; that there is a colour at all says the
+  // scanner is done with it, and that is the half somebody feeding cards
+  // actually needs.
+  { min: -Infinity, band: 'grey' },
 ];
 
-/** Which band a price falls in, or null for "not worth marking". */
+/** Which band a price falls in. Never null: see the last entry in PRICE_BANDS. */
 function priceBand(price) {
-  if (typeof price !== 'number' || !Number.isFinite(price)) return null;
-  return PRICE_BANDS.find((entry) => price >= entry.min)?.band || null;
+  const value = typeof price === 'number' && Number.isFinite(price) ? price : 0;
+  return PRICE_BANDS.find((entry) => value >= entry.min)?.band || 'grey';
 }
 
 /** A price as it goes on screen. Null prices say so rather than showing $0.00. */
@@ -1882,6 +1894,8 @@ function renderLiveMatch(candidate) {
     }
   }
 
+  if (candidate) pulseOverlay(band);
+
   if (!candidate) return;
 
   el('scan-live-name').textContent = candidate.name;
@@ -1894,6 +1908,36 @@ function renderLiveMatch(candidate) {
     price.textContent = formatPrice(candidate.price);
     price.className = `scan-live-price${band ? ` scan-live-price-${band}` : ''}`;
   }
+}
+
+/**
+ * Flash the outline round the card once, in the colour of the answer.
+ *
+ * The scanner is faster than the person feeding it, and the person is watching
+ * the cards rather than the screen — so the thing that decides throughput is
+ * how quickly they can tell the last card is done. Text changing in a panel is
+ * not it: it arrives after the shutter flash, which is white and draws the eye
+ * away, and it has to be read.
+ *
+ * A pulse of colour round the window they are already looking at says two
+ * things at once and neither has to be read: it is finished, and this is
+ * roughly what it is worth. A miss pulses too, in red — knowing a card needs
+ * feeding again is worth as much as knowing it landed.
+ *
+ * Restarted rather than queued: two cards in quick succession should give two
+ * pulses, and the second one wins. Removing the class and forcing a reflow
+ * before re-adding it is what makes an animation replay.
+ */
+function pulseOverlay(band) {
+  const overlay = el('scan-overlay');
+  if (!overlay) return;
+
+  overlay.classList.remove('scan-overlay-pulse');
+  // Reading a layout property flushes the removal, so the animation restarts
+  // rather than being coalesced away as no change at all.
+  void overlay.offsetWidth;
+  overlay.dataset.pulse = band || 'miss';
+  overlay.classList.add('scan-overlay-pulse');
 }
 
 /**
