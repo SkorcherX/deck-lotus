@@ -49,7 +49,7 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       *Verify:* not by replay (bundles hold 720px frames). In the browser with
       the camera stub, hash the same source rectified at native and at 512px and
       require identical hashes, then measure the per-capture stall.
-- [ ] **2. Raise the analysis rate to 20fps.** The gates are frame counts, so
+- [x] **2. Raise the analysis rate to 20fps.** The gates are frame counts, so
       halving `ANALYSIS_INTERVAL_MS` roughly halves per-card latency with no
       retuning — but only if per-tick work fits in 50ms, which depends on 3/4.
       Do after them. *Unblocked by 3 and 4, and now wanted for a second reason:*
@@ -62,6 +62,14 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       scale the thresholds with the interval or normalise the metric to a fixed
       window — the metric changing meaning silently is exactly the class of
       thing `SETTINGS_VERSION` exists to stop.
+      *Done.* Stillness is now measured against the frame from a fixed 100ms
+      ago rather than against the frame before, so both halves of `difference`
+      keep the meaning they were measured with and the thresholds carry over
+      untouched. The absence and new-card gates were converted from frame counts
+      to durations, since being early there means a card captured twice; the
+      capture streak was deliberately left as a frame count, since shortening it
+      is the point. `SETTINGS_VERSION` went to 12 because a stored `streak`
+      would otherwise mean half the settle it used to.
 - [x] **3. Move detection and analysis hashing into a Web Worker.** Transfer the
       downscaled `ImageData` to a worker running OpenCV; the main thread only
       draws the overlay from the last result. Decouples preview from detection

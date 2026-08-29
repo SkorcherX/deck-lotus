@@ -88,6 +88,14 @@ export const DEFAULT_THRESHOLDS = {
   // Consecutive good frames required before firing — 3 at the analysis interval
   // is roughly 300ms of settle, which caught one capture per card across a
   // swap-three-cards run with nothing fired mid-placement.
+  //
+  // Left as a frame count while the absence and new-card gates were converted
+  // to durations, and the difference is deliberate. Those two exist to stop a
+  // card being captured twice, where being early is a wrong row in someone's
+  // collection; this one exists to wait out a hand, and shortening it is the
+  // point of running the analysis faster. Each frame's stillness verdict now
+  // spans a fixed 100ms window of its own, so a streak of 3 at 20fps still
+  // rests on 250ms of evidence rather than on 150.
   streak: 3,
 };
 
@@ -932,6 +940,45 @@ export function medianComposite(frames) {
   }
 
   return { data: out, width: first.width, height: first.height };
+}
+
+/**
+ * Choose which past frame stillness should be measured against.
+ *
+ * `difference` carries movement and sensor noise together, and only one of them
+ * grows with the gap between the two frames compared. So the gap has to be held
+ * fixed: raise the analysis rate while still comparing consecutive frames and a
+ * moving card scores less against a bar that never moved, which is a shutter
+ * quietly firing on motion it was calibrated to reject.
+ *
+ * Returns the newest entry at least `windowMs` old, and null when there is not
+ * one yet — analyzeFrame reports Infinity against a null, which reads as moving
+ * and holds the shutter. That is the right answer for the first few frames
+ * after a camera starts: nothing about a card is known yet.
+ *
+ * @param {Array<{gray: Uint8ClampedArray, at: number}>} history  oldest first
+ */
+export function motionFrameFor(history, now, windowMs) {
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (now - history[i].at >= windowMs) return history[i].gray;
+  }
+  return null;
+}
+
+/**
+ * Drop motion buffers that are older than the one the window will pick.
+ *
+ * Keeps the newest entry that is already past the window, since it is the one
+ * motionFrameFor will return until something older arrives, and everything
+ * newer than it. At a 50ms tick and a 100ms window that is three or four
+ * analysis-sized buffers.
+ *
+ * Mutates, because the caller holds one long-lived array and the alternative is
+ * a fresh array ten or twenty times a second for no gain.
+ */
+export function trimMotionHistory(history, now, windowMs) {
+  while (history.length > 2 && now - history[1].at >= windowMs) history.shift();
+  return history;
 }
 
 export function analyzeFrame(analysisCtx, previousGray, referenceGray = null, motionCtx = null) {
