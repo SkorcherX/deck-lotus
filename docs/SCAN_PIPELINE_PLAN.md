@@ -37,12 +37,15 @@ Today's ceiling is roughly 1.3 cards/s and it is structural: analysis runs at
 re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
 (`NEW_CARD_FRAMES`) — ~500–700ms per card before any real work.
 
-- [ ] **1. Hash probes at a fixed modest resolution.** `captureFromVideo` reads
+- [x] **1. Hash probes at a fixed modest resolution.** `captureFromVideo` reads
       the full native frame and rectifies the card plus five framing probes at
       native size, but `hashRectified` averages down to a 32×32 grid — hashing
       a 4K rectification buys nothing. Rectify hash inputs to ~512px tall
       regardless of camera resolution; keep native only for the OCR crops and
       the diagnostics frame. Smallest change with the biggest per-capture win.
+      *Done:* `HASH_HEIGHT = 680`, the size the references themselves were built
+      at. It turned out to be an accuracy fix as well — hashing at the camera's
+      size cost 10-12 bits of grid quantisation against every reference.
       *Verify:* not by replay (bundles hold 720px frames). In the browser with
       the camera stub, hash the same source rectified at native and at 512px and
       require identical hashes, then measure the per-capture stall.
@@ -82,7 +85,7 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
 Glare is a specular highlight: saturated pixels that break contour detection,
 flip hash bits across whole grid cells, and blank the collector block for OCR.
 
-- [ ] **7. Glare chip + shutter gate (do first).** Add a cheap glare metric to
+- [x] **7. Glare chip + shutter gate (do first).** Add a cheap glare metric to
       the per-frame metrics in `cardCapture.js` — fraction of pixels above ~250
       luma inside the detected quad — surface it as a fourth chip beside
       Still/Focus/Card, and refuse auto-capture while it is over threshold. A

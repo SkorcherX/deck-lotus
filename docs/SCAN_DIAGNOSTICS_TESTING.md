@@ -42,7 +42,8 @@ captures[]
   at, trigger         'auto' | 'manual'
   quad                the four corners the capture was cut with, as frame fractions
   snap                { detected, via, area, aspectError, averaged }
-  rectifiedSize
+  rectifiedSize       the size it was hashed at — fixed, see HASH_HEIGHT
+  nativeRectifiedSize what it rectified to at the camera's own resolution
   artHash, frameHash  the unexpanded framing's hashes
   probeScales         the ladder offered, e.g. [0.92, 0.94, 0.96, 0.98, 1]
   rectified           the rectified card, JPEG data URL, 488px wide
@@ -65,6 +66,7 @@ argument that could not be settled without it:
 | `readQueued` | separates "the reader was never asked" from "the bundle was downloaded before the read finished". |
 | `wasWarm` / `recognizeMs` | `elapsedMs` alone is two numbers in one: a cold read carries a ~17MB download inside it. |
 | `snap.averaged` | how many detections were averaged into the framing. 1 means the run disagreed and a single frame was used. |
+| `nativeRectifiedSize` | what the card rectified to at the camera's own resolution. `rectifiedSize` is fixed at the hash size now, so this is the only field left that says whether a session was shot close or far. |
 
 A bundle carries no account data — no user, no token, no collection. A scan is a
 photograph of a card on a table and that is all this should ever be able to leak.
@@ -125,6 +127,10 @@ So replayed distances differ from the recorded ones by a few bits — close enou
 to compare *changes* against each other, not to quote as absolute truth. When a
 recorded and a replayed number disagree slightly, the recorded one is the real
 measurement.
+
+Both ends now hash at `HASH_HEIGHT`, so the gap is smaller than it was, but it
+does mean numbers from a bundle recorded before that change do not line up with
+numbers replayed after it. Compare within one run, not across the change.
 
 ---
 
@@ -261,6 +267,10 @@ Constants worth knowing before changing anything:
 - `FRAMING_PROBES = [0.92, 0.94, 0.96, 0.98, 1]` — the framings offered per
   capture. Inward, and measured that way.
 - `RECORD_LIMIT = 24` — captures held, failures preferred.
+- `HASH_HEIGHT = 680` — the rectified height a capture is hashed at, matching
+  the `normal` Scryfall image every reference was built from. Captures used to
+  be hashed at whatever the camera gave, which cost 10-12 bits of grid
+  quantisation for nothing. OCR crops are still cut at the camera's resolution.
 
 ---
 

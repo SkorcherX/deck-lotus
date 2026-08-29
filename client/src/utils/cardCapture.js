@@ -14,7 +14,13 @@
 // not, and the replay harness needs the very same geometry the capture uses —
 // the same direction rule that puts cardHash.js in src/shared. See
 // test/serverImports.test.js.
-export { CARD_ASPECT, projectiveMap, rectifiedSize } from '../../../src/shared/cardGeometry.js';
+export {
+  CARD_ASPECT,
+  projectiveMap,
+  rectifiedSize,
+  hashSize,
+  HASH_HEIGHT,
+} from '../../../src/shared/cardGeometry.js';
 import { CARD_ASPECT, projectiveMap, rectifiedSize } from '../../../src/shared/cardGeometry.js';
 
 /**
