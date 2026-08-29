@@ -1302,7 +1302,19 @@ const SET_HINT_WEIGHT = 100;
  * evidence, and a session could talk itself into a set it never saw.
  */
 function rememberSet(resolved) {
-  if (!resolved || resolved.signals?.printingsOfBest !== 1) return;
+  // `confident` is the bar, not merely "one printing matched". The two are
+  // different claims and the difference matters here: a capture can match
+  // exactly one printing at 54 bits of a 77-bit budget, which is a lone answer
+  // rather than a good one, and a session that seeds itself from one of those
+  // spends the rest of its captures ordering ties toward a set it never saw.
+  //
+  // That is not hypothetical. The first recorded session with biasing seeded
+  // itself from a single 54-bit match on INR — a set nowhere near the table —
+  // and then biased seven more cards toward it. `confident` requires a strong
+  // art match *and* a single printing, which is exactly the evidence a seed
+  // should be made of.
+  if (!resolved || resolved.tier !== CONFIDENT_TIER) return;
+  if (resolved.signals?.printingsOfBest !== 1) return;
 
   const set = resolved.candidates?.[0]?.setCode;
   if (!set) return;
@@ -1323,7 +1335,7 @@ function rememberSet(resolved) {
  * It still only orders ties. Naming a set does not make the art agree with it.
  */
 function setTally() {
-  const named = el('scan-set-hint')?.value?.trim().toUpperCase();
+  const named = el('scan-set-hint')?.value?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!named && !state.setTally.size) return null;
 
   const tally = Object.fromEntries(state.setTally);
@@ -2579,10 +2591,14 @@ export function setupScan() {
     // could, and a bundle that does not say which produced it can only be
     // guessed at. The reader's state goes in for the same reason — see the
     // note on environment().
-    const { captures, bytes } = diagnostics.download(state.settings, {
-      enabled: state.ocrEnabled,
-      warm: !!state.reader?.ready,
-    });
+    const { captures, bytes } = diagnostics.download(
+      state.settings,
+      {
+        enabled: state.ocrEnabled,
+        warm: !!state.reader?.ready,
+      },
+      setTally()
+    );
     showToast(`Saved ${captures} capture${captures === 1 ? '' : 's'} (${Math.round(bytes / 1024)}KB)`, 'success');
   });
 

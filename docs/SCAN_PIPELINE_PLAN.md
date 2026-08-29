@@ -143,6 +143,24 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       not override a distance the art separated, and must not reach past the
       card the art chose.
 
+- [ ] **15. Illumination-invariant art hashing, for foils.** A precon's foil
+      commanders miss outright: two borderless foil cards measured 84 bits of
+      256 from their own references, while their *frame* hashes sat at 22-26.
+      That split is the diagnosis — the whole-card layout matches and only the
+      art window is destroyed, which is what a large smooth sheen does to the
+      low-frequency DCT signs the art hash is built from. The references are
+      correct (Scryfall's image hashes to the packed row at 0 bits) and the
+      printing is right, so nothing about the index can fix it.
+      The standard remedy is a high-pass before the DCT: subtract a blurred copy
+      of the 32x32 grid so smooth illumination gradients drop out and structure
+      survives. It is `src/shared/cardHash.js` arithmetic, so it needs all 112k
+      references rebuilt and a hash version bump — and it must be measured
+      offline across every recorded bundle first, foils *and* non-foils, since a
+      change that rescues foils by loosening everything else is not a rescue.
+      Angle matters more than any of this in the meantime: the same two cards
+      matched at 44 and 76 in earlier sessions, because sheen depends on where
+      the light is.
+
 ## Sleeve glare
 
 Glare is a specular highlight: saturated pixels that break contour detection,
