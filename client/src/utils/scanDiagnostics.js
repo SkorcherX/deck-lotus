@@ -26,7 +26,7 @@
  * interesting capture is nearly always the one that just went wrong.
  */
 
-import { blownHighlightFraction, toGrayscale } from './cardCapture.js';
+import { blownHighlightFraction, imageDataOf, toGrayscale } from './cardCapture.js';
 
 /** How many captures to keep. See makeRoom for which one falls off. */
 const RECORD_LIMIT = 24;
@@ -108,12 +108,20 @@ function encode(source, targetWidth) {
   }
 }
 
-/** Blown-highlight percentage of a rectified capture, or null if there isn't one. */
+/**
+ * Blown-highlight percentage of a rectified capture, or null if there isn't one.
+ *
+ * Through imageDataOf, because `entry.card` is a *canvas* — the same shape trap
+ * that made hashRectified throw on every capture for weeks. Here it was quieter
+ * still: the throw was caught, the field went out as null, and two recorded
+ * sessions came back with the column empty.
+ */
 function glareOf(card) {
   if (!card) return null;
   try {
+    const image = imageDataOf(card);
     return Number(
-      blownHighlightFraction(toGrayscale(card), card.width, card.height).toFixed(2)
+      blownHighlightFraction(toGrayscale(image), image.width, image.height).toFixed(2)
     );
   } catch {
     // Same rule as encode: a record missing one field beats no record.
