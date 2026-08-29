@@ -397,11 +397,17 @@ function environment(settings, reader) {
  * runs once when a person presses a button, and a blob URL would have to be
  * revoked afterwards to avoid holding every bundle of the session in memory.
  */
-export function download(settings, reader = null) {
+/**
+ * @param setBias  the set tally in force when the bundle was taken. Recorded
+ *   because a session came back with the bias plainly firing and no way to tell
+ *   whether the sets came from the field somebody typed or from a seed the
+ *   session had inferred wrongly — two very different faults.
+ */
+export function download(settings, reader = null, setBias = null) {
   const bundle = {
     format: 'deck-lotus-scan-diagnostics',
     version: 1,
-    environment: environment(settings, reader),
+    environment: { ...environment(settings, reader), setBias },
     captures: state.records,
   };
 

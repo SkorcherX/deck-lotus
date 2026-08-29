@@ -39,6 +39,7 @@ environment
   settings            thresholds, crop regions, marked quad, snap/detect flags
   reader              { enabled, warm, pending }
   detector            { samples, mean, max, rate, worker } — round trips in ms
+  setBias             the set tally in force, typed or inferred, or null
 captures[]
   at, trigger         'auto' | 'manual'
   quad                the four corners the capture was cut with, as frame fractions
@@ -239,6 +240,26 @@ only exist there — see the pitfalls below.
 
 ---
 
+### Where the framing ladder sits now
+
+Capture-time framing moved the basin up: winning probes went from 0.84-0.90 in
+the stale-framing sessions to 0.92-1.00 after it, and the two lowest rungs stop
+winning at all. That looks like an argument for re-centring `FRAMING_PROBES`,
+and it was measured rather than acted on:
+
+     ladder                     matches (5 bundles)   mean art distance
+     0.84 0.88 0.92 0.96 1.00       39/45              48.3 / 55.4
+     0.90 0.93 0.96 0.98 1.00       39/45              47.7 / 53.7
+     0.90 0.94 0.96 0.98 1.00       39/45              48.0 / 53.1
+     0.92 0.95 0.97 0.99 1.00       39/45              48.6 / 52.6
+
+Identical match counts, distances differing by one to three bits with no
+consistent winner between the two post-fix bundles. So the ladder was left
+alone: there is nothing here to fit except noise. Worth re-checking once a few
+more sessions have been recorded on capture-time framing, and the thing to look
+for is whether the 0.84 and 0.88 rungs ever win again — if they never do, three
+rungs would buy back two warps and two index passes per capture.
+
 ### Is compositing earning its lag?
 
 Every capture carries `artHash` (the composite) and `singleArtHash` (the first
@@ -426,12 +447,19 @@ So the next session does not re-derive it:
   `PRINTING_TIE_BITS`, and never changes a tier. `signals.setBiased` says when
   it was applied.
 
-  The tally's weak point is its seed. It counts only captures whose art matched
-  a single printing, and a session where those particular cards miss gets no
-  tally at all — which is exactly what happened on the first run after it
-  shipped: both of the precon's set-unique cards missed and the bias never fired
-  once. Hence the **Scanning set** field, which supplies the seed by hand at a
-  weight above anything inferred. It still only orders ties.
+  The tally's weak point is its seed, and both ways it can fail have now been
+  seen in one session each. It gets no seed at all when the cards unique to the
+  set miss — a precon's unique cards are usually its foil commanders, which are
+  the hardest cards in the box to match. And it seeds itself *wrongly* if the
+  bar is only "one printing matched": one capture matching a single printing at
+  54 bits of a 77-bit budget put INR into the tally, and seven later cards were
+  ordered toward a set that was never on the table.
+
+  So the bar is `confident` — a strong art match *and* a single printing — and
+  the **Scanning set** field supplies the seed by hand at a weight above
+  anything inferred. `environment.setBias` records what was in force, because a
+  bundle showing the bias firing could not otherwise distinguish "they typed it"
+  from "it seeded itself wrongly".
 - **The art names the card, not the printing, and that is not a ranking bug.**
   Nine cards from one ECC precon, unsleeved: Seaside Citadel came back tied at
   50 across MKC, BLC, ECC and PLST; Ingot Chewer at 64 across CM2, ECC and JVC;
