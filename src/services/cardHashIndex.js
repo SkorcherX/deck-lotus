@@ -97,8 +97,41 @@ const ART_BITS = ART_HASH_BYTES * 8;
  * ART_STRONG_THRESHOLD is deliberately unchanged, so nothing newly reaches
  * `confident`: a match admitted by this widening still lands in review, which
  * is the whole reason widening it is cheap.
+ *
+ * ── Why 30% and not 27% ─────────────────────────────────────────────────────
+ * Sleeves. A sleeved card costs roughly twenty bits — measured on the same nine
+ * cards shot sleeved and bare in the same light — and it put a run of true
+ * matches at 70 to 76, just the wrong side of 69. Five captures across five
+ * recorded sessions sat in that strip.
+ *
+ * The crowding measurement was repeated for the step, sampling 401 references
+ * against all 112,815, distance to the nearest reference that is a different
+ * card:
+ *
+ *     0- 39 :  1.2%           ← genuine art sharing, as before
+ *    60- 69 :  0.5%
+ *    70- 79 :  1.0%           ← what this step admits
+ *    80- 89 : 27.7%           ← the population starts here
+ *    90-    : 69.6%
+ *
+ * So 77 bits still sits below the bulk, and 82 would not — which is why the
+ * step stops here despite 0.32 scoring two matches better on these bundles.
+ *
+ * What the five recovered captures actually were is the part worth trusting:
+ * replayed across the sleeved sessions they came back as Fertile Ground, Ingot
+ * Chewer and Jungle Shrine — in each case the same card the *unsleeved* run of
+ * the same stack had identified in that position. Not one of them was a card
+ * that could not have been on the table. Every one landed in `unsure`, since
+ * the strong threshold has not moved.
+ *
+ *     bundle              at 0.27   at 0.30
+ *     sleeved desk          4/9       5/9
+ *     sleeved kitchen       4/9       6/9
+ *     bare kitchen          7/9       7/9
+ *     bare, worker build    8/9       8/9
+ *     sleeved, latest       6/9       8/9
  */
-export const ART_MATCH_THRESHOLD = 0.27;
+export const ART_MATCH_THRESHOLD = 0.3;
 
 /**
  * Distance below which the top match is treated as unambiguous. Well inside the

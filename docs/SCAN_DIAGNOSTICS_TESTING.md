@@ -165,7 +165,14 @@ sample of references, find the distance to the nearest reference that is a
 whole file in a few seconds. The distribution is strongly bimodal: about 1.5% of
 cards sit within 27 bits of a different card (genuine art sharing — Alchemy
 rebalances, the two faces of a transforming card), and the bulk does not start
-until 80. Everything between is nearly empty, which is why 56 to 69 was cheap.
+until 80. Everything between is nearly empty, which is why 56 to 69 was cheap,
+and 69 to 77 after it.
+
+Re-measured for that second step over 401 references against all 112,815: 1.2%
+within 39 bits, 0.5% in 60-69, 1.0% in 70-79, then 27.7% in 80-89 and the rest
+above. Count a different *printing of the same card* as agreement, not as a
+collision — sharing art with yourself is not a false positive, and forgetting
+that makes the near band look four times as crowded as it is.
 
 ---
 
@@ -297,7 +304,10 @@ after any change to the attempts or the contour filters.
 
 Constants worth knowing before changing anything:
 
-- `ART_MATCH_THRESHOLD = 0.27` — 69 of 256 bits. What counts as the same art.
+- `ART_MATCH_THRESHOLD = 0.3` — 77 of 256 bits. What counts as the same art.
+  Widened from 0.27 once sleeves were measured: they cost ~20 bits and put true
+  matches at 70-76. The band 70-79 holds ~1% of references' nearest-different-
+  card distance and the population starts at 80, so 0.32 would not be safe.
 - `ART_STRONG_THRESHOLD = 0.16` — 41 bits. What may reach `confident` and skip
   review. Deliberately *not* widened alongside the match threshold: that is what
   makes widening the match threshold cheap.
@@ -360,6 +370,12 @@ So the next session does not re-derive it:
   distance of 46, unsleeved gave 2 confident at 26 and 36 and 7/9 matched
   against 4/9. The sleeve is a real, large cost — not framing, and not glare
   (the recorded `glare` was 0.00 on every capture in both runs, flash off).
+- **Two of the sleeve's twenty bits were recoverable for free.** Sleeved true
+  matches were landing at 70-76 against a 69-bit threshold. Widening it to 77
+  (`ART_MATCH_THRESHOLD = 0.3`) recovered five captures across the recorded
+  sessions, every one of them the same card the unsleeved run of the same stack
+  had identified in that position, and every one landing in `unsure` rather than
+  `confident`. The rest of the sleeve's cost is still there.
 - **Still unresolved: sleeves cost confidence.** Nothing in either session
   reached `confident` — the best art distance was 46 against a 41-bit strong
   threshold — so a sleeved card is confirmed by hand even when it matches. That
