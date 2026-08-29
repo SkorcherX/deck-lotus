@@ -41,7 +41,7 @@ environment
 captures[]
   at, trigger         'auto' | 'manual'
   quad                the four corners the capture was cut with, as frame fractions
-  snap                { detected, via, area, aspectError, averaged, runLength }
+  snap                { detected, via, area, aspectError, averaged, runLength, freshLength }
   rectifiedSize       the size it was hashed at — fixed, see HASH_HEIGHT
   nativeRectifiedSize what it rectified to at the camera's own resolution
   artHash, frameHash  the unexpanded framing's hashes
@@ -68,6 +68,7 @@ argument that could not be settled without it:
 | `readQueued` | separates "the reader was never asked" from "the bundle was downloaded before the read finished". |
 | `wasWarm` / `recognizeMs` | `elapsedMs` alone is two numbers in one: a cold read carries a ~17MB download inside it. |
 | `snap.averaged` | how many detections were averaged into the framing. 1 means the run disagreed and a single frame was used. |
+| `snap.freshLength` | how many of the held detections were recent enough (`QUAD_AGE_MS`) to average. Below `runLength` means detection is answering slower than the shutter settles, which is what let a capture be framed from quads taken while the card was still being put down. |
 | `snap.runLength` | how many detections were *available* to average. Detection answers asynchronously since it moved into a worker, so a short run and a disagreeing run are different faults and `averaged` alone cannot tell them apart. |
 | `singleArtHash` / `burst` | a capture is the median of a short burst of frames. This is what the first frame alone would have hashed to, so the two distances against the winning candidate say whether the burst paid for its shutter lag. |
 | `nativeRectifiedSize` | what the card rectified to at the camera's own resolution. `rectifiedSize` is fixed at the hash size now, so this is the only field left that says whether a session was shot close or far. |

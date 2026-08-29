@@ -263,6 +263,26 @@ const NEW_CARD_FRAMES = Math.max(2, Math.round(NEW_CARD_MS / ANALYSIS_INTERVAL_M
 const FRAMES_AVERAGED = 4;
 
 /**
+ * How old a detection may be and still be averaged into a capture's framing.
+ *
+ * The run and the shutter used to span the same window by coincidence: four
+ * detections at one per analysis frame was 400ms, and so was a streak of four.
+ * Neither of those is true any more. Detection answers on the worker's own
+ * schedule, and the streak is counted in 50ms ticks, so a run of four can now
+ * reach back twice as far as the settle the shutter waited for — averaging in
+ * framings from while the card was still being put down.
+ *
+ * A recorded session showed it: four captures of nine fell back to a single
+ * frame because the run no longer agreed with itself, against one of nine
+ * before. The quads were not noisier, they were older.
+ *
+ * 300ms is longer than any plausible settle and shorter than a card being
+ * placed, and it is a duration rather than a count for the same reason the
+ * absence gate is.
+ */
+const QUAD_AGE_MS = 300;
+
+/**
  * How far apart two detections may sit and still be averaged, as a fraction of
  * card width.
  *
@@ -797,7 +817,7 @@ function startLoop() {
       // report 4 and a recording would show nothing wrong.
       if (state.detected !== state.rememberedDetection) {
         state.rememberedDetection = state.detected;
-        rememberDetection(state.detected);
+        rememberDetection(state.detected, timestamp);
       }
       renderDetection(state.detected);
     } else {
@@ -983,14 +1003,25 @@ function rememberMotion(gray, at) {
   trimMotionHistory(state.motionHistory, at, STABILITY_WINDOW_MS);
 }
 
-function rememberDetection(detection) {
+function rememberDetection(detection, at = performance.now()) {
   if (!detection) {
     state.recentQuads = [];
     return;
   }
 
-  state.recentQuads.push(detection.quad);
+  state.recentQuads.push({ quad: detection.quad, at });
   if (state.recentQuads.length > FRAMES_AVERAGED) state.recentQuads.shift();
+}
+
+/**
+ * The framings recent enough to describe the card as it is now.
+ *
+ * Applied when a capture is framed rather than when a detection is stored: a
+ * quad that is too old to average is still the best answer the overlay has, and
+ * dropping it early would blank the outline whenever detection ran slow.
+ */
+function freshQuads(now = performance.now()) {
+  return state.recentQuads.filter((entry) => now - entry.at <= QUAD_AGE_MS).map((e) => e.quad);
 }
 
 /** Mean card width across a run of quads, for judging agreement in card terms. */
@@ -1011,8 +1042,7 @@ function meanCardWidth(quads) {
  * the oldest or to a partial average, because the newest is the one the overlay
  * was showing when the shutter fired.
  */
-function averagedQuad() {
-  const quads = state.recentQuads;
+function averagedQuad(quads) {
   if (quads.length < 2) return null;
 
   const mean = [0, 1, 2, 3].map((corner) => ({
@@ -1040,7 +1070,8 @@ function snapQuad(source, frameWidth, frameHeight) {
     // frame, which is what takes the detector's own noise out of the framing.
     // See FRAMES_AVERAGED. Null when the run does not agree — the card moved
     // mid-run — and the latest detection stands.
-    const averaged = averagedQuad();
+    const fresh = freshQuads();
+    const averaged = averagedQuad(fresh);
     return {
       quad: averaged || state.detected.quad,
       snap: {
@@ -1057,8 +1088,14 @@ function snapQuad(source, frameWidth, frameHeight) {
         // while a run of two says detection did not answer often enough to
         // build one — which is a thing that can happen now that it answers
         // asynchronously, and which nothing else in a bundle would show.
-        averaged: averaged ? state.recentQuads.length : 1,
+        averaged: averaged ? fresh.length : 1,
+        // Held detections, before the age filter. A runLength of four against
+        // an `averaged` of one now means the run genuinely disagreed; before
+        // the filter it could also have meant the run was simply too old.
         runLength: state.recentQuads.length,
+        // How many of them were recent enough to use. Below runLength means
+        // detection is answering slower than the shutter settles.
+        freshLength: fresh.length,
       },
     };
   }
