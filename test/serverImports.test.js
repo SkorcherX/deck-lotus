@@ -112,6 +112,42 @@ test('the shared module pulls in nothing at all', () => {
   );
 });
 
+test('every shared module stays portable', () => {
+  // src/shared is the code both ends run, so its imports have to resolve on
+  // both: no database connection, no service, no Node built-in, nothing under
+  // client/. scanFusion.js is why this is a sweep and not another named check —
+  // the ranking moved there so the phone could do its own matching, and a stray
+  // `import db` would put it back on the server without anything failing until
+  // the browser tried to load it.
+  const offenders = [];
+
+  for (const file of jsFilesUnder(join(ROOT, 'src', 'shared'))) {
+    const source = readFileSync(file, 'utf8');
+
+    for (const [, specifier] of source.matchAll(IMPORT_PATTERN)) {
+      const name = relative(ROOT, file).replace(/\\/g, '/');
+
+      if (!specifier.startsWith('.')) {
+        offenders.push(`${name} → ${specifier} (a package or built-in)`);
+        continue;
+      }
+
+      const target = resolve(file, '..', specifier);
+      const fromRoot = relative(ROOT, target).replace(/\\/g, '/');
+
+      if (!fromRoot.startsWith('src/shared/')) {
+        offenders.push(`${name} → ${specifier} (outside src/shared)`);
+      }
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    'Shared modules must import only other shared modules:\n  ' + offenders.join('\n  ')
+  );
+});
+
 /**
  * The mirror rule, and the second half of the same lesson.
  *

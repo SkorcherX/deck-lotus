@@ -50,6 +50,7 @@ import {
   hexToWords,
   hammingWords,
 } from '../shared/cardHash.js';
+import { ART_MATCH_THRESHOLD, matchConfidence } from '../shared/scanFusion.js';
 
 const ART_WORDS = ART_HASH_BYTES / 4;
 const FRAME_WORDS = FRAME_HASH_BYTES / 4;
@@ -57,87 +58,15 @@ const WORDS_PER_ROW = ART_WORDS + FRAME_WORDS;
 
 const ART_BITS = ART_HASH_BYTES * 8;
 
-/**
- * How far a capture's art hash may sit from a reference and still be considered
- * the same illustration, as a fraction of the hash width.
- *
- * Measured against real Scryfall art (see cardHash.js): a same-illustration
- * pair sat at 12.5% and the closest pair of genuinely distinct cards at 39.2%.
- * 22% was placed between those, nearer the tolerant end — the measurement
- * compared two clean scans, while a real capture also carries glare, white
- * balance and a hand-held angle, and the cost of the two errors is not
- * symmetric. A miss puts one card in the review pile, where the user was going
- * to look anyway; a false match that agrees with a bad OCR read is how a wrong
- * card gets marked confident. The fusion in scanService is what keeps that
- * second case from being decided here alone.
- *
- * ── Why 27% and not 22% ─────────────────────────────────────────────────────
- * Two cards in a recorded session sat at 64 bits against a budget of 56, with
- * the nearest *wrong* card at 90 and 92. Both were the right answer, missed by
- * eight bits, with nearly thirty bits of clear air above them — and across four
- * sessions the hash has never once ranked a wrong card first.
- *
- * The move is safe because there is almost nothing in the band to let in.
- * Measured over the reference set itself: for 1505 sampled cards, the distance
- * to the nearest reference that is a *different* card.
- *
- *     0- 27 : 19 cards        ← genuine art sharing under two names
- *    28- 79 : 15 cards        ← nearly empty
- *    80-105 : 1471 cards      ← where distinct cards actually live
- *
- * Raising the bar from 56 to 69 admits three more of 1505, 1.5% to 1.7%. The
- * bulk does not begin until 80, so 69 sits inside the empty band with room on
- * both sides rather than on the edge of the population.
- *
- * The 19 close pairs are not hash failures. They are one illustration printed
- * under two names — Alchemy rebalances against their originals, the two faces
- * of a transforming card, the un-set sticker goblins — and offering both is
- * right, not a false positive.
- *
- * ART_STRONG_THRESHOLD is deliberately unchanged, so nothing newly reaches
- * `confident`: a match admitted by this widening still lands in review, which
- * is the whole reason widening it is cheap.
- *
- * ── Why 30% and not 27% ─────────────────────────────────────────────────────
- * Sleeves. A sleeved card costs roughly twenty bits — measured on the same nine
- * cards shot sleeved and bare in the same light — and it put a run of true
- * matches at 70 to 76, just the wrong side of 69. Five captures across five
- * recorded sessions sat in that strip.
- *
- * The crowding measurement was repeated for the step, sampling 401 references
- * against all 112,815, distance to the nearest reference that is a different
- * card:
- *
- *     0- 39 :  1.2%           ← genuine art sharing, as before
- *    60- 69 :  0.5%
- *    70- 79 :  1.0%           ← what this step admits
- *    80- 89 : 27.7%           ← the population starts here
- *    90-    : 69.6%
- *
- * So 77 bits still sits below the bulk, and 82 would not — which is why the
- * step stops here despite 0.32 scoring two matches better on these bundles.
- *
- * What the five recovered captures actually were is the part worth trusting:
- * replayed across the sleeved sessions they came back as Fertile Ground, Ingot
- * Chewer and Jungle Shrine — in each case the same card the *unsleeved* run of
- * the same stack had identified in that position. Not one of them was a card
- * that could not have been on the table. Every one landed in `unsure`, since
- * the strong threshold has not moved.
- *
- *     bundle              at 0.27   at 0.30
- *     sleeved desk          4/9       5/9
- *     sleeved kitchen       4/9       6/9
- *     bare kitchen          7/9       7/9
- *     bare, worker build    8/9       8/9
- *     sleeved, latest       6/9       8/9
- */
-export const ART_MATCH_THRESHOLD = 0.3;
-
-/**
- * Distance below which the top match is treated as unambiguous. Well inside the
- * same-illustration measurement, so a clean capture short-circuits the rest.
- */
-export const ART_STRONG_THRESHOLD = 0.16;
+// The thresholds and the strong-match test live in src/shared/, with the rest
+// of the pure ranking, because the client searches this same index locally and
+// the two ends have to agree about what counts as a match. Re-exported here so
+// callers that think of them as the index's own keep working.
+export {
+  ART_MATCH_THRESHOLD,
+  ART_STRONG_THRESHOLD,
+  isStrongMatch,
+} from '../shared/scanFusion.js';
 
 let index = null;
 
@@ -300,10 +229,7 @@ export function findByArtHash(artHash, frameHash = null, options = {}) {
   const trimmed = matches.slice(0, limit);
 
   for (const match of trimmed) {
-    // Linear from "exact" to "at the threshold", so the number means the same
-    // thing as the text-side confidences scanService already produces.
-    const ratio = match.artDistance / ART_BITS;
-    match.confidence = Math.max(0, Math.min(1, 1 - ratio / threshold));
+    match.confidence = matchConfidence(match.artDistance, threshold);
   }
 
   return trimmed;
@@ -353,9 +279,4 @@ export function nearestArtDistance(artHash) {
     // look the thresholds up.
     matchWithin: Math.round(ART_MATCH_THRESHOLD * ART_BITS),
   };
-}
-
-/** Whether the best match is close enough to be believed on its own. */
-export function isStrongMatch(match) {
-  return Boolean(match) && match.artDistance / ART_BITS <= ART_STRONG_THRESHOLD;
 }

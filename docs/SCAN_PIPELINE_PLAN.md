@@ -199,9 +199,15 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       *The prototype ran, and settled it:* 12ms mean on the phone for a
       five-probe match over all 112,815 references, against 626-741ms for the
       same work over the network, plus a one-off 1.3s to download the index.
-      Fifty times faster, and it works with no network until commit. What
-      remains is the refactor in step 3 of the note — splitting the pure
-      ranking out of `resolveScanFused` — which is the whole of the work.
+      Fifty times faster, and it works with no network until commit.
+      *Step 3 of the note is now done:* the pure ranking lives in
+      `src/shared/scanFusion.js` — `fuseScanResult`, the tiers, `nameCertain`,
+      set biasing and the match thresholds — with `resolveScanFused` reduced to
+      the text lookup, the index passes and the hydration around them. The
+      fusion tests pass unchanged, which is the only evidence worth having that
+      a move was a move. What is left is the wiring: the client searching its
+      own index, hydrating names from the identity table, and calling
+      `fuseScanResult` itself, with the server path kept as the fallback.
 
 ## Sleeve glare
 

@@ -17,6 +17,10 @@
  * mistake `src/shared/` exists to prevent.
  */
 import { ART_HASH_BYTES, FRAME_HASH_BYTES, hexToWords, hammingWords } from '../../../src/shared/cardHash.js';
+// Taken from the shared module rather than repeated as 0.3: the two ends search
+// the same index, so a threshold that drifts between them is a disagreement
+// about what matched, not a tuning difference.
+import { ART_MATCH_THRESHOLD } from '../../../src/shared/scanFusion.js';
 
 const MAGIC = 0x444c4348; // 'DLCH'
 const HEADER_BYTES = 16;
@@ -124,7 +128,7 @@ function uuidAt(row) {
  * the server — art first, frame breaking ties — so the two can be compared
  * capture for capture. They are compared: that is what the spike measures.
  */
-export function search(artHash, frameHash = null, { threshold = 0.3, limit = 40 } = {}) {
+export function search(artHash, frameHash = null, { threshold = ART_MATCH_THRESHOLD, limit = 40 } = {}) {
   if (!state.count || !artHash) return [];
 
   const probe = hexToWords(artHash);

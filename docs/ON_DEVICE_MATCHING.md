@@ -67,12 +67,21 @@ Roughly in order, and the third item is the one with teeth:
 2. **A browser reader for the packed format.** `cardHashFile.js` is Node-only,
    but the format is a fixed header and fixed-width rows; the reading is a dozen
    lines against a `DataView`.
-3. **Split resolution from hydration.** `resolveScanFused` currently mixes pure
+3. **Split resolution from hydration.** **Done.** `resolveScanFused` mixed pure
    ranking — fusion, tiers, `nameCertain`, `printingsOfBest`, set biasing — with
    database lookups that turn printing ids into names and prices. The pure half
-   belongs in `src/shared/`, beside `cardHash.js` and `cardGeometry.js`, for the
-   same reason those moved: a copy on the client would drift from the server's,
-   and the tests that pin the tiers would be pinning only one of them.
+   is now `src/shared/scanFusion.js`, beside `cardHash.js` and `cardGeometry.js`,
+   for the same reason those moved: a copy on the client would drift from the
+   server's, and the tests that pin the tiers would be pinning only one of them.
+   `resolveScanFused` keeps only the impure work — the text lookup, the probe
+   passes over the index, hydrating the printings the art found and the text did
+   not — and hands the rest to `fuseScanResult`. Nothing about the answers
+   changed; the fusion tests pass untouched, which is the point of moving the
+   code rather than reimplementing it. `localIndex.js` now takes its match
+   threshold from the shared module instead of repeating `0.3`, and a sweep in
+   `test/serverImports.test.js` fails any shared module that imports outside
+   `src/shared/` — that is what stops a stray `import db` quietly putting the
+   ranking back on the server.
 4. **Prices and commit stay on the server.** Prices change daily and are not
    part of identifying a card; the commit is one request at the end of a
    session, which is what the whole exercise is for.
@@ -101,11 +110,13 @@ Built: `GET /api/scan/hash-index` serves the packed file with an etag,
 through it on whatever device is holding the phone.
 
 It searches and returns distances and uuids. It deliberately does *not* resolve
-— no tiers, no fusion, no set biasing, no names or prices. Those are wound
+— no tiers, no fusion, no set biasing, no names or prices. Those were wound
 together with database lookups inside `resolveScanFused`, and reimplementing any
-of them here would produce a second copy of the rules to drift from the first.
-Untangling them is the real work, and the spike exists to decide whether it is
-worth doing.
+of them here would have produced a second copy of the rules to drift from the
+first. Untangling them was the real work, and the spike existed to decide
+whether it was worth doing. It is untangled now (step 3 above): the rules are
+`src/shared/scanFusion.js`, one copy, and what the client still lacks is the
+identity table to hydrate a uuid into a name.
 
 **Agreement with the server, over the shipped index and real captures:** the two
 readers return identical match *sets* and identical distances. On 7 of 9 real

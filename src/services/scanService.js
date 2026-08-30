@@ -2,9 +2,9 @@ import db from '../db/connection.js';
 import {
   findByArtHash,
   isAvailable as hashesAvailable,
-  isStrongMatch,
   nearestArtDistance,
 } from './cardHashIndex.js';
+import { SCAN_TIERS, fuseScanResult } from '../shared/scanFusion.js';
 
 /**
  * Resolution layer for camera-scanned cards.
@@ -514,28 +514,34 @@ function printingsByIds(ids) {
   );
 }
 
+// The tiers, the tie width and the set biasing moved to src/shared/ with the
+// rest of the pure ranking; re-exported because every caller of this module
+// imports SCAN_TIERS from it.
+export { SCAN_TIERS };
+
 /**
- * What the two signals together concluded, and therefore how much of the
- * reviewer's attention this row needs.
- *
- * `confident` is the only tier that lets a row collapse out of the review
- * table, so it is deliberately the narrowest of the four. The rest all mean
- * "look at this" and differ only in what the reviewer is being asked to decide.
+ * A hydrated printing row in the shape the candidate list uses. The art-hash
+ * half of a fused result carries printings the text lookup never produced, so
+ * they arrive as database rows and have to be dressed the same way resolveScan
+ * dresses its own before the two can be ranked against each other.
  */
-export const SCAN_TIERS = {
-  /** Art and text independently reached the same printing. Nothing to decide. */
-  CONFIDENT: 'confident',
-  /**
-   * The art is certain but the printing is not — reprints sharing one
-   * illustration, or a pre-2015 card with no collector block to read. The
-   * reviewer is picking a printing, not a card.
-   */
-  PICK_PRINTING: 'pick-printing',
-  /** Both signals are strong and they disagree. The reviewer picks between them. */
-  CONFLICT: 'conflict',
-  /** Weak, or only one signal spoke. The old text-only behaviour. */
-  UNSURE: 'unsure',
-};
+function printingRowToCandidate(row) {
+  return {
+    cardId: row.card_id,
+    name: row.card_name,
+    manaCost: row.mana_cost,
+    typeLine: row.type_line,
+    printingId: row.printing_id,
+    uuid: row.uuid,
+    setCode: row.set_code,
+    collectorNumber: row.collector_number,
+    rarity: row.rarity,
+    imageUrl: row.image_url,
+    isPromo: !!row.is_promo,
+    releasedAt: row.released_at,
+    price: row.price ?? null,
+  };
+}
 
 /**
  * Resolve a scan using the OCR text and the capture's perceptual hashes together.
@@ -566,100 +572,6 @@ export const SCAN_TIERS = {
  * @param {number} [scan.limit]
  * @returns {{query: object, tier: string, candidates: Array, signals: object}}
  */
-/**
- * How close two printings of one card have to sit before the art is treated as
- * having no opinion about which is which, in bits of the 256-bit art hash.
- *
- * Reprints share an illustration, so what separates their references is not the
- * picture — it is the difference between two scans of one picture. A recorded
- * session put four printings of Seaside Citadel at exactly 50, three of Ingot
- * Chewer within 4, and reordered all of them when the same photograph was
- * hashed at another rung of the framing ladder.
- *
- * 12 bits, and the anchor is elsewhere in this pipeline: hashing *the same
- * pixels* at the camera's resolution rather than the reference's moved the art
- * hash 10-12 bits, flat, at every size (see HASH_HEIGHT). A gap that a change
- * of scale can manufacture on identical input is not evidence about which
- * printing is in someone's hand.
- *
- * Measured against three recorded ECC sessions — how many of nine cards came
- * back as the ECC printing that was actually on the table:
- *
- *      tie bits    6     12    20    30
- *      session A   7/9   8/9   8/9   9/9
- *      session B   3/9   8/9   8/9   8/9
- *      session C   6/9   6/9   6/9   6/9
- *
- * Most of it arrives by 12 and the rest is bought by overriding differences
- * large enough to be real — a borderless or showcase printing genuinely differs
- * from a normal one, and 30 is most of the way to the 41 bits that separate a
- * confident match from an unsure one. So: 12.
- */
-const PRINTING_TIE_BITS = 12;
-
-/**
- * Order tied printings by the sets a session has already been sure about.
- *
- * The art can name the card and has nothing to say about which printing is in
- * the hand. The information that would settle it is not in the photograph — it
- * is in the stack: cards come from a precon, a booster box, a binder, and one
- * session is usually one place. So a caller may pass a tally of the sets it has
- * already resolved unambiguously, and ties are broken toward it.
- *
- * Three rules, and the whole value of this depends on keeping them:
- *
- * 1. **Only printings of the card that already won.** This never changes which
- *    *card* is first. A tally about sets is not evidence about identity.
- * 2. **Only where the art is genuinely tied**, within PRINTING_TIE_BITS. A
- *    distance the art actually separated is evidence; overriding it with a
- *    tally would be preferring a guess about the stack to a measurement of the
- *    picture.
- * 3. **Never promotes anything.** Tiers are decided before this runs, so a
- *    biased order cannot turn a printing choice into a `confident` one. A tally
- *    is a hint about a pile of cards, not proof about the one in hand.
- *
- * Mutates `merged` in place, because it is the list about to be returned and
- * copying it to reorder a handful of neighbours would be ceremony.
- */
-function applySetBias(merged, setBias) {
-  if (!setBias || !merged.length) return;
-
-  const tally = new Map(
-    Object.entries(setBias)
-      .filter(([code, count]) => code && Number.isFinite(count) && count > 0)
-      .map(([code, count]) => [String(code).toUpperCase(), count])
-  );
-  if (!tally.size) return;
-
-  const best = merged[0];
-  if (best.artDistance === null || best.artDistance === undefined) return;
-
-  // The run of leading candidates that are the same card and tied with it. A
-  // contiguous run from the front, because anything below a candidate the art
-  // separated is not tied with the winner however close it looks.
-  let end = 0;
-  while (
-    end < merged.length &&
-    merged[end].cardId === best.cardId &&
-    Number.isFinite(merged[end].artDistance) &&
-    merged[end].artDistance - best.artDistance <= PRINTING_TIE_BITS
-  ) {
-    end++;
-  }
-
-  if (end < 2) return;
-
-  const tied = merged.slice(0, end);
-  tied.sort((a, b) => {
-    const score = (candidate) => tally.get(String(candidate.setCode || '').toUpperCase()) || 0;
-    // Stable within equal scores: the art's own order is the fallback, not an
-    // alphabetical or arbitrary one.
-    return score(b) - score(a);
-  });
-
-  merged.splice(0, end, ...tied);
-}
-
 export function resolveScanFused({
   name = null,
   setCode = null,
@@ -715,269 +627,40 @@ export function resolveScanFused({
     }
   }
 
-  artHash = probe.artHash;
-  frameHash = probe.frameHash;
-
-  if (!hashMatches.length) {
-    // No hash signal at all — no capture hash, no hash file, or nothing within
-    // threshold. Reported honestly as single-signal rather than dressed up.
-    //
-    // When there was a hash and it simply matched nothing, say how close the
-    // nearest reference was. "No match" alone cannot distinguish a capture
-    // framed slightly wrong, which is recoverable, from one that is not a card
-    // at all — and a review screen full of bare "no match" rows leaves nobody,
-    // including whoever has to fix it, any idea which they are looking at.
-    let nearest = null;
-    if (hashesAvailable()) {
-      for (const candidate of probes) {
-        if (!candidate.artHash) continue;
-        const found = nearestArtDistance(candidate.artHash);
-        if (found && (!nearest || found.artDistance < nearest.artDistance)) nearest = found;
-      }
+  // Nothing matched, so ask how wrong it was — see fuseScanResult's no-match
+  // branch for why a bare "no match" is not worth reporting on its own.
+  let nearest = null;
+  if (!hashMatches.length && hashesAvailable()) {
+    for (const candidate of probes) {
+      if (!candidate.artHash) continue;
+      const found = nearestArtDistance(candidate.artHash);
+      if (found && (!nearest || found.artDistance < nearest.artDistance)) nearest = found;
     }
-
-    return {
-      query: { ...text.query, artHash, frameHash },
-      tier: SCAN_TIERS.UNSURE,
-      candidates: text.candidates.slice(0, cap),
-      signals: {
-        text: text.candidates.length,
-        hash: 0,
-        agreed: false,
-        bestArtDistance: null,
-        nearest,
-        probes: probes.length,
-        probeIndex: null,
-        // Stated rather than left undefined: the art matched nothing here, so
-        // whatever the reader proposed is a proposal. A caller reading a
-        // missing field as falsy would get the right answer by luck, and the
-        // one thing this flag must never do is let a misread card be announced
-        // as settled.
-        nameCertain: false,
-      },
-    };
   }
 
-  const textById = new Map(text.candidates.map((candidate) => [candidate.printingId, candidate]));
-  const hashById = new Map(hashMatches.map((match) => [match.printingId, match]));
-
-  // Printings the hash found and the text did not still have to be shown. On a
-  // pre-2015 card the hash is the *only* signal there is, and dropping its finds
-  // for want of a collector block would discard the one thing that worked.
-  const missing = hashMatches
-    .map((match) => match.printingId)
-    .filter((id) => !textById.has(id));
-
+  // The database half: printings the art found and the text did not have to be
+  // turned into names and prices before the fusion can rank them.
   const hydrated = new Map();
-  for (const row of printingsByIds(missing)) {
-    hydrated.set(row.printing_id, row);
-  }
+  if (hashMatches.length) {
+    const fromText = new Set(text.candidates.map((candidate) => candidate.printingId));
+    const missing = hashMatches
+      .map((match) => match.printingId)
+      .filter((id) => !fromText.has(id));
 
-  const merged = [];
-
-  for (const match of hashMatches) {
-    const existing = textById.get(match.printingId);
-
-    if (existing) {
-      merged.push({
-        ...existing,
-        artDistance: match.artDistance,
-        frameDistance: match.frameDistance,
-        hashConfidence: match.confidence,
-        // Agreement beats either signal alone, but the result stays under 1: it
-        // is still a scan, and the review step is not a formality.
-        //
-        // Combined as a noisy-or rather than a mean, and that is the whole
-        // point: agreement must never rank a printing *below* what one signal
-        // alone already gave it. A mean does exactly that whenever the two
-        // differ — averaging a strong read against a weak-but-correct one lands
-        // between them, and the fixed bonus is not always enough to climb back.
-        //
-        // Seen on a real capture: OCR read "Springleaf Drum / ECL / 0260" at
-        // 0.84 and the art independently found the same printing, but at 54 of
-        // its 56-bit budget, so hash confidence was 0.041. The mean scored the
-        // agreed printing 0.5*0.84 + 0.5*0.041 + 0.2 = 0.64, while three basic
-        // lands the collector number alone had turned up kept 0.803 and took
-        // the top of the list. Both signals were right, they agreed, and fusing
-        // them buried the answer under Plains.
-        //
-        // Noisy-or is monotone in both inputs and never falls below either, so
-        // a weak second signal can only ever help. It also repairs `agreed`
-        // below, which asks whether the merged winner is the text's winner and
-        // was reading false for the same reason.
-        confidence:
-          Math.round(
-            Math.min(0.99, 1 - (1 - existing.confidence) * (1 - match.confidence)) * 1000
-          ) / 1000,
-        matchedBy: [...existing.matchedBy, 'art-hash'],
-      });
-      continue;
+    for (const row of printingsByIds(missing)) {
+      hydrated.set(row.printing_id, printingRowToCandidate(row));
     }
-
-    const row = hydrated.get(match.printingId);
-    if (!row) continue;
-
-    merged.push({
-      cardId: row.card_id,
-      name: row.card_name,
-      manaCost: row.mana_cost,
-      typeLine: row.type_line,
-      printingId: row.printing_id,
-      uuid: row.uuid,
-      setCode: row.set_code,
-      collectorNumber: row.collector_number,
-      rarity: row.rarity,
-      imageUrl: row.image_url,
-      isPromo: !!row.is_promo,
-      releasedAt: row.released_at,
-      price: row.price ?? null,
-      artDistance: match.artDistance,
-      frameDistance: match.frameDistance,
-      hashConfidence: match.confidence,
-      confidence: Math.round(match.confidence * 1000) / 1000,
-      nameSimilarity: null,
-      matchedBy: ['art-hash'],
-    });
   }
 
-  // Text-only candidates keep their place, below anything the art agreed with.
-  for (const candidate of text.candidates) {
-    if (hashById.has(candidate.printingId)) continue;
-    merged.push({ ...candidate, artDistance: null, frameDistance: null, hashConfidence: null });
-  }
-
-  // Printings the art actually found rank above printings only the text
-  // proposed, and confidence orders within each group rather than across them.
-  //
-  // Without this a bad read does not merely fail to help, it actively buries
-  // the right answer — because a text candidate's confidence says how
-  // unambiguous the *database lookup* was, not how good the *read* was. Two
-  // real captures, both with the art already correct:
-  //
-  //   OCR "A 7C POLSON 07 / CON" -> Darklit Gargoyle [CON 7] at 0.825,
-  //      over Scarblade's Malice, which the art had at 42 bits and 0.392.
-  //   OCR "M4 10 F / 195 ECL EN" -> Clachan Festival [ECL 10] at 0.788,
-  //      over Safewright Cavalry, which the art had at 58 bits and 0.161.
-  //
-  // Both reads were noise. Both resolved to exactly one printing, which is what
-  // made them look certain, and a wrong card went to the top of the list.
-  //
-  // This is only reached when the art matched something — the no-match case
-  // returns above — so it never reorders a text-only result, and it cannot
-  // disturb the case the fusion exists for: reprints sharing one illustration
-  // are all art-backed, so the text still orders freely among them. What it
-  // gives up is the case where the art matches a wrong card within threshold
-  // *and* the text alone finds the right one. That is the rarer failure by a
-  // wide margin — a different card lands within threshold about 1.7% of the
-  // time, nearly always genuine art sharing — and the row still goes to review
-  // with both offered.
-  const artBacked = (candidate) => candidate.artDistance !== null && candidate.artDistance !== undefined;
-  merged.sort((a, b) => (artBacked(b) ? 1 : 0) - (artBacked(a) ? 1 : 0) || b.confidence - a.confidence);
-
-  const best = merged[0] || null;
-  const bestHash = hashMatches[0];
-  const bestText = text.candidates[0] || null;
-
-  // Do the two signals name the same printing? Deliberately not "is either one
-  // confident": a strong text read and a strong art match pointing at different
-  // printings is exactly the case that must never collapse out of review.
-  const agreed = Boolean(
-    bestText && hashById.has(bestText.printingId) && best && best.printingId === bestText.printingId
-  );
-
-  // Printings whose art the search actually agreed with. "Only one printing
-  // matched" is a claim about the art, not about the merged list, which also
-  // carries every text-only candidate below it.
-  const strongEnough = hashMatches.filter(isStrongMatch);
-
-  // How many printings of the *same card* the art found. A reprint shares its
-  // illustration with every other printing of it, so wherever this is above one
-  // the art has named the card and has nothing whatever to say about which
-  // printing is in the hand — the differences between them are the framing's
-  // noise, not evidence.
-  //
-  // A recorded session settled this. Nine cards from one ECC precon, unsleeved,
-  // came back naming half a dozen different sets: Seaside Citadel tied at 50
-  // across MKC, BLC, ECC and PLST, Ingot Chewer at 64 across CM2, ECC and JVC,
-  // and Abundant Growth was called `confident` for DMC at 36 while ECC — the
-  // card actually on the table — sat outside the top four. Re-hashed at a
-  // different rung of the probe ladder the order changed again. Which of a set
-  // of reprints wins is decided by a few bits of resampling.
-  //
-  // That matters more here than a ranking usually would: this app stores and
-  // prices *printings*, so collapsing a reprint out of review at `confident`
-  // files the wrong set into someone's collection at the wrong price, silently.
-  const bestCardPrintings = best
-    ? merged.filter((candidate) => artBacked(candidate) && candidate.cardId === best.cardId).length
-    : 0;
-
-  applySetBias(merged, setBias);
-
-  // Whether the art agreed on *which card this is*, as distinct from which
-  // printing of it. Every art-backed candidate belonging to one card means
-  // there is nothing left to decide about the name, however many printings are
-  // still on the table.
-  //
-  // Measured over nine recorded sessions: 61 captures resolved to something,
-  // and in all 61 every candidate within the match threshold shared a single
-  // card name. Not one had two names to choose between. So a tier of `unsure`
-  // has been reporting doubt about the name that the evidence never had — it is
-  // a printing-level verdict, and the name deserves its own.
-  const nameCertain = Boolean(
-    best && artBacked(best) && merged.filter(artBacked).every((c) => c.cardId === best.cardId)
-  );
-
-  let tier;
-  if (agreed && isStrongMatch(bestHash)) {
-    tier = SCAN_TIERS.CONFIDENT;
-  } else if (!bestText && strongEnough.length === 1 && bestCardPrintings === 1) {
-    // The art is certain and it matched exactly one printing in the whole
-    // reference set — one printing of one card, so there is genuinely nothing
-    // left to decide. Requiring a text read here would have meant a tesseract
-    // pass to confirm an answer that had no alternative, which is what made
-    // every card need review when the reader is off.
-    //
-    // The second half of that test is the one bought with a recorded session:
-    // "only one printing scored strongly" is not the same claim as "only one
-    // printing of this card matched at all". A reprint whose siblings sit just
-    // the wrong side of the strong threshold used to collapse out of review on
-    // the strength of a gap that is framing noise.
-    tier = SCAN_TIERS.CONFIDENT;
-  } else if (!bestText && isStrongMatch(bestHash)) {
-    // The art is certain and there is nothing to place it with: a pre-2015 card,
-    // a collector block lost to glare, or — much the commonest — a card printed
-    // more than once. The card is known, the printing is not.
-    tier = SCAN_TIERS.PICK_PRINTING;
-  } else if (bestText && isStrongMatch(bestHash) && !agreed) {
-    tier = SCAN_TIERS.CONFLICT;
-  } else {
-    tier = SCAN_TIERS.UNSURE;
-  }
-
-  return {
-    query: { ...text.query, artHash, frameHash },
-    tier,
-    candidates: merged.slice(0, cap),
-    signals: {
-      text: text.candidates.length,
-      hash: hashMatches.length,
-      // Printings of the winning card the art matched. Above one means the
-      // printing was chosen by hand, not by the scanner.
-      printingsOfBest: bestCardPrintings,
-      // Whether a session's set tally was used to order tied printings, so a
-      // recording says when the order shown was the art's and when it was the
-      // stack's. See applySetBias.
-      setBiased: !!setBias && bestCardPrintings > 1,
-      // The name is settled even where the printing is not. See above.
-      nameCertain,
-      agreed,
-      bestArtDistance: bestHash ? bestHash.artDistance : null,
-      // Which of the offered framings won. On its own it is trivia; across a
-      // recorded session it says whether the expansions are centred on where
-      // detection actually stops, which is the only way to tune them on
-      // evidence rather than on a guess about black borders.
-      probes: probes.length,
-      probeIndex,
-    },
-  };
+  return fuseScanResult({
+    text,
+    probes,
+    probe,
+    probeIndex,
+    hashMatches,
+    hydrated,
+    nearest,
+    setBias,
+    cap,
+  });
 }
