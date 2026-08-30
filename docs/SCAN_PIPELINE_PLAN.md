@@ -223,6 +223,12 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       triple the identity payload (1.25MB gzipped to 3.54MB) for the review
       screen's thumbnail — so `POST /api/scan/printings` fetches those once per
       session when the review table opens.
+      *Measured in the field, thirteen captures on the phone, all thirteen
+      answered on the device:* `resolveMs` 32ms mean — 27 on a hit, 50 on a miss
+      where a second index pass buys the nearest-reference message — against
+      626-741ms over the network. Shutter 447, hash 156, **635ms a card against
+      ~1520**. Set biasing named the ECC printing on 10 of 10 hits. The three
+      misses were the sleeved band at 82-88 bits, which this work never touched.
 
 ## Sleeve glare
 

@@ -503,15 +503,39 @@ So the next session does not re-derive it:
   captures five seconds apart — and no amount of server work will touch it.
   Anything aimed at `resolveMs` should be aimed at the connection: keeping it
   warm, or overlapping the request with work the client has to do anyway.
-- **The matcher now runs on the device, so `resolveMs` means two things.** A
-  capture matched locally measured 12ms mean on the phone; one that went over
-  the network measured 626-741ms for the same work. `timings.resolvedBy` in a
-  bundle says which answered — `device` or `server` — and a bundle recorded
-  before that field existed is a server one. The scanner downloads the 6MB
-  index and the 5.6MB identity table in the background after the detector is
-  up, so the first few captures of a cold session are still server-matched;
-  that is expected, and comparing `resolveMs` across a session without reading
-  `resolvedBy` will average the two.
+- **The matcher now runs on the device, so `resolveMs` means two things.**
+  `timings.resolvedBy` says which answered — `device` or `server` — and a bundle
+  recorded before that field existed is a server one. The scanner downloads the
+  6MB index and the 5.6MB identity table in the background after the detector is
+  up, so a cold session's first captures can still be server-matched; comparing
+  `resolveMs` across a session without reading `resolvedBy` averages the two.
+
+  Measured on the first real session after it shipped — thirteen captures, an
+  ECC precon, all thirteen answered on the device:
+
+      shutterMs   447   (was 579)
+      hashMs      156   (was 197)
+      resolveMs    32   (was 626-741)
+      total       635   (was ~1520)
+
+  `resolveMs` splits by outcome: **27ms on the ten hits, 50ms on the three
+  misses.** A miss pays a second full index pass for `nearest`, about 23ms, and
+  that is what buys the difference between "reframe it" and "that was not a
+  card". The 32ms sits above the 12ms the bench measured because the bench timed
+  the search alone on a warm loop; this is the search plus hydration plus fusion.
+  Nothing in that session refined by text, so the server fallback is still
+  unexercised in the field — a session with the reader on is what would cover it.
+- **Set biasing carried every printing in that session.** `setBias: {ECC: 100}`
+  typed in by hand; **10 of 10 matched captures came back as the ECC printing**,
+  eight of them with `setBiased: true` — ties broken across as many as 31
+  printings of the right card. `nameCertain` was true on all ten, so the name
+  was never the open question, only the printing.
+- **The sleeved band is still the whole of the loss.** The three misses sat at
+  82, 86 and 88 bits against the 77-bit threshold, and the winning probe was
+  never rung 0 — index 1 to 4 across the session, so the respread ladder is
+  still earning its rungs. Neither number moved with the on-device work, and
+  neither was expected to: task 9 and task 15 in the pipeline plan are what
+  address them.
 - **Detection answers about 3.6 times a second on a phone.** Measured:
   `detector: { mean: 281.5, max: 865.2, rate: 3.6, worker: true }`. The loop asks
   twenty times a second and drops what it cannot keep up with, so the live quad

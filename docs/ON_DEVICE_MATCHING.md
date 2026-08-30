@@ -101,10 +101,26 @@ Roughly in order, and the third item is the one with teeth:
    and every existing test use, and it is the fallback when the index has not
    downloaded yet.
 
-## What it would be worth
+## What it was worth
 
-Per card: ~1520ms to ~800ms, and the scanner would work with no network at all
-until commit time.
+Estimated at ~1520ms to ~800ms per card. Measured, on the first real session
+after it shipped — thirteen captures of an ECC precon on the phone, every one
+of them answered on the device:
+
+    shutterMs   447   (was 579)
+    hashMs      156   (was 197)
+    resolveMs    32   (was 626-741)
+    ------------------------------------------------------------------
+    total       635   (was ~1520)
+
+`resolveMs` splits: **27ms on the ten captures that matched, 50ms on the three
+that did not**. A miss pays a second full pass of the index for the
+nearest-reference message, and that pass costs about 23ms — which is the price
+of telling "reframe it" apart from "that was not a card", and cheap at it.
+
+Above the bench's 12ms, and legitimately so: the bench timed the search alone on
+a warm loop, and this is the search plus hydrating candidates from the identity
+table plus the fusion.
 
 Worth being honest about the ceiling, though: a person feeding cards through
 this takes about five seconds each, and the last measured session was bottlenecked
