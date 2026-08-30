@@ -27,3 +27,8 @@ data/card-hashes.build.log
 # are measured against. Rebuilt from the bundles whenever a hash change is
 # weighed — see docs/SCAN_DIAGNOSTICS_TESTING.md — and about 19MB of JPEGs.
 out/
+
+# tesseract.js drops its language data beside the process when scripts/ocr-variants.mjs
+# runs in Node. 5MB, re-downloaded on demand, and the browser gets its own copy
+# from client/public/tesseract.
+eng.traineddata

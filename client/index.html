@@ -1474,7 +1474,7 @@
                                  its own in milliseconds, where the reader costs
                                  seconds a card. It is worth turning on only to
                                  separate reprints that share an illustration. -->
-                            <label class="scan-toggle" title="Slow. Only helps separate reprints that share the same art.">
+                            <label class="scan-toggle" title="Seconds a card, against half a second for the art alone. Only helps separate reprints that share the same art.">
                                 <input type="checkbox" id="scan-ocr-toggle" />
                                 Also read the text (slow)
                             </label>
@@ -1561,6 +1561,27 @@
                             One capture per card: the shutter waits for a card to leave
                             the frame before it fires again. Tap the picture to scan the
                             same card once more &mdash; a second copy, say.
+                        </p>
+
+                        <!-- What the scanner is quick at, said plainly, because the
+                             two paths through it differ by a factor of ten and the
+                             fast one is the default. Cards are named by their art in
+                             well under a second; "Also read the text" adds an OCR pass
+                             measured at 7-28 seconds a card on a phone and only helps
+                             separate reprints that share an illustration.
+
+                             Phrased as "the scanner keeps up with you" rather than as
+                             a rate, because the honest bottleneck is the hand: the
+                             machine's share is around 0.6s a card and a person feeding
+                             a box takes about five. Quoting cards-per-second would be
+                             a number nobody can reproduce with a stack in their
+                             hands. -->
+                        <p class="scan-hint">
+                            Cards are named by their <strong>art</strong>, in around half a
+                            second each &mdash; fast enough to keep up with you flipping
+                            through a box. Turning on &ldquo;Also read the text&rdquo; adds
+                            several seconds a card and is only worth it to separate
+                            reprints that share an illustration.
                         </p>
 
                         <p class="scan-hint">

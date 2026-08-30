@@ -436,6 +436,74 @@ after any change to the attempts or the contour filters.
 
 ---
 
+### Weighing a change to the OCR preprocessing
+
+`scripts/ocr-variants.mjs` is the reader's equivalent of `hash-variants.mjs`. It
+cuts a bundle's own crops the way `cardCapture.cropRegion` does, from the
+bundle's recorded `settings.regions`, runs the real `preprocessPixels` from
+`src/shared/`, and reads them with the same tesseract build, page-segmentation
+mode and whitelist the browser uses.
+
+```bash
+node scripts/ocr-variants.mjs bundle.json [more.json ...] [--field collector|title]
+```
+
+Ground truth is the capture's **art-hash** answer, which is the point: it is an
+independent signal from the one being measured, and it is already in the bundle.
+Captures whose art did not resolve are skipped rather than guessed at.
+
+What it cannot reproduce is the browser's upscale filter, and the bundle's
+rectified card is 720px where the phone had ~11MP — so absolute rates here sit
+below the phone's. Compare variants against each other, never a number here
+against a number in a bundle.
+
+**What it has measured**, 21 captures over three sessions, collector block:
+
+     variant                  score   full   none
+     default                  0.119      0     16
+     low-contrast             0.238      4     15
+     grayscale                0.310      5     13
+     clip 0.95                0.214      2     14
+     clip 0.90                0.143      1     16
+     clip 0.95 + low-contrast 0.214      4     16
+
+The highlight clip (task 11) beats the default and loses to both alternatives
+already in the ladder, which is why it was not shipped: `readBest` tries
+variants in order and stops at 0.9, so a fourth that never wins is a pass paid
+for nothing.
+
+The line worth following is the other one — **`grayscale` scores best and is
+tried third**. Reordering costs nothing, and what stops it being done on this
+evidence is that 21 captures of one foil precon, replayed at 720px, is not a
+corpus to reorder a ladder on. It wants a session with the reader on, and the
+bundle recording which variant won per capture, which it does not yet do.
+
+---
+
+### What software cannot do: a polarizer
+
+Worth recording because every other item in the plan is code, and this one is
+not. A specular highlight — the sheen off a sleeve, the sheen off a foil — is
+**polarized** by the reflection. Ordinary diffuse light coming back off the ink
+is not. So a linear polarizing film over the lens, crossed against a polarizer
+over the light, removes the highlight before the sensor ever sees it, while the
+print underneath comes through nearly untouched. Photographers call it
+cross-polarization; it is what the copy-stand setups in card-grading shops use.
+
+It only applies to a fixed rig — a phone held in the hand moves through every
+angle, and the film has to hold one. For a stand with a lamp either side it is
+two sheets of film and no code at all.
+
+Why it is worth more than it looks: the recorded sessions say glare is already
+gated out at capture (`glare` maxes at 1.13% of pixels, because the shutter
+refuses to fire above threshold), and what is left of the loss is **foil sheen**
+— the same optics from the other side. Task 15 is an attempt to subtract that
+sheen arithmetically after the sensor has already been swamped by it, and
+measured at 97/126 against 93. A polarizer stops it arriving. Nothing in the
+hashing can beat not having the problem.
+
+---
+
 ## 6. Pitfalls that have each cost a session
 
 - **The Browser pane blocks camera access.** Stubbing `getUserMedia` does not

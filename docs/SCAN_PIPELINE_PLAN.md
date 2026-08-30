@@ -111,11 +111,21 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       `[0.84, 0.88, 0.92, 0.96, 1]` — five rungs still, 4/9 and 4/9 up to 8/9
       and 7/9. Cutting to three probes is off the table: the basin is wider than
       it looked, not narrower.
-- [ ] **6. Say in the UI that 2/s is the art-hash path.** OCR is off by default
+- [x] **6. Say in the UI that 2/s is the art-hash path.** OCR is off by default
       and does not currently earn its cost (warm reads 7-28s on the phone,
       noise on both cards they touched, against a hash at 7/7 unaided), so the
       throughput figure users see should be the art-hash one. Capping `readBest`
       at two variants when the queue is deep is optional and low value.
+      *Done, and the figure changed while this sat here.* The page never quoted
+      a rate at all, so what went in is the statement rather than a correction:
+      cards are named by their art in around half a second, and the text reader
+      adds several seconds a card. Half a second, not 2/s, because on-device
+      matching took a card from ~1520ms to 635ms — and it is phrased as "fast
+      enough to keep up with you" rather than as a rate, since the bottleneck is
+      the hand at about five seconds a card and cards-per-second is a number
+      nobody can reproduce with a stack in front of them. The reader toggle's
+      tooltip now carries the comparison too. `readBest` capping was left
+      undone: it is optional, low value, and aimed at a path that is off.
 
 ## Naming and cues
 
@@ -308,12 +318,52 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
       A fallback that ran only when the others found nothing would never fire,
       for the reason in task 19: on those scenes they do not fail, they succeed
       at the wrong thing.
-- [ ] **11. Highlight-clipping OCR variant.** Clamp above the 95th percentile
+- [x] **11. Highlight-clipping OCR variant.** Clamp above the 95th percentile
       before Sauvola so a bright band does not drag the local mean up and erase
       the strokes beside it. Lowest priority of all — OCR is off by default and
       has yet to earn its cost; do not spend a session here before task 6.
-- [ ] **12. Docs: hardware footnote.** For a fixed rig, linear polarizing film
+      *Built, measured, not shipped — but it left a harness behind.* Three
+      sessions finally carried OCR readings, so this could be measured rather
+      than reasoned about. The pixel half of the preprocessing moved to
+      `src/shared/ocrPreprocess.js` (the canvas wrapper stays in `cardOcr.js`)
+      and `scripts/ocr-variants.mjs` now runs the real preprocessing and the
+      real engine over a bundle's own crops, scored against what the *art* said
+      the card was — an independent signal from the reader being measured.
+      Over 21 captures from three sessions:
+
+          collector block          score   full   none
+          default                  0.119      0     16
+          low-contrast             0.238      4     15
+          grayscale                0.310      5     13
+          clip 0.95                0.214      2     14
+          clip 0.90                0.143      1     16
+          clip 0.95 + low-contrast 0.214      4     16
+
+      Clipping beats the *default* variant and loses to both alternatives
+      already in the ladder, so as a fourth variant it would add a pass without
+      adding an answer — `readBest` tries them in order and stops at 0.9. Titles
+      say the same: clip 0.95 ties the default at 0.262, and clip+low-contrast
+      ties low-contrast at 0.381.
+      The premise turns out to be weak here too: with a band 4% of the crop tall
+      at +100 luma, glare changes 87 pixels of the thresholded output and
+      clipping recovers 6. Sauvola's window is 0.35 of the crop's height, so the
+      top 5% of the histogram barely moves the mean it computes.
+      The `clip` option stays, off by default and byte-identical when off, for
+      the same reason `glareCut` did in task 9.
+      **The loose thread worth pulling is not this one:** `grayscale` scored
+      best on the collector block and is tried *third*. Reordering the ladder is
+      free. It is not done here because 21 captures of one foil precon, replayed
+      at the bundle's 720px rather than the phone's native resolution, is not
+      enough to reorder a ladder on — it wants a session with the reader on and
+      the winning variant recorded per capture, which the bundle does not yet
+      carry.
+- [x] **12. Docs: hardware footnote.** For a fixed rig, linear polarizing film
       over the lens plus a cross-polarized light kills sleeve glare outright.
+      *Written up in the testing doc, under "What software cannot do".* It grew
+      a second half while being written: the recorded sessions say glare is
+      already gated out at capture and the remaining loss is foil sheen, which
+      is the same optics problem seen from the other side — a polarizer is the
+      only thing in this whole plan that addresses it at the source.
 
 ## Framing
 
