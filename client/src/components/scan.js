@@ -340,6 +340,9 @@ const state = {
   // The detection the run last took, by identity. Detection answers on its own
   // schedule, so this is what separates "a new answer arrived" from "the same
   // answer read twice" — see the tick.
+  // What "Time local matching" measured, if it was pressed. Kept so the
+  // recording carries the answer rather than a phone's status line.
+  localMatching: null,
   // Sets this session has resolved unambiguously, counted. Ties between
   // printings of one card are ordered by it — see rememberSet.
   setTally: new Map(),
@@ -1465,9 +1468,7 @@ function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null
   // hashError nothing displayed, so the scanner ran OCR-only and looked merely
   // inaccurate rather than broken. That is why the error is now shown.
   try {
-    Object.assign(entry, hashRectified(imageDataOf(card)));
-
-    // And the same card at a few framings, because where detection stopped is
+    // The card at each framing, because where detection stopped is
     // not knowable from the picture. Contours lock onto whichever boundary held
     // the most contrast, and how far that sits from the card's true edge varies
     // with the light — while every reference is a whole card, cut exactly to
@@ -1477,13 +1478,23 @@ function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null
     // which way the ladder points and why it was turned around.
     const hashStarted = performance.now();
     entry.probes = FRAMING_PROBES.map((scale) => {
-      const framed = expandQuad(quad, scale);
-      const probe = hashRectified(
-        imageDataOf(warpQuad(frame, framed, hashed.width, hashed.height))
-      );
-      return { scale, ...probe };
+      // Scale 1.0 is the framing detection actually found, and `card` is
+      // already that framing, warped. Re-warping the frame for it hashed the
+      // same picture twice — one 487x680 warp with bilinear reads scattered
+      // across a 48MB source buffer, per capture, for a hash we were holding.
+      const rectified = scale === 1 ? card : warpQuad(frame, expandQuad(quad, scale), hashed.width, hashed.height);
+      return { scale, ...hashRectified(imageDataOf(rectified)) };
     });
     entry.timings.hashMs = Math.round(performance.now() - hashStarted);
+
+    // The unexpanded framing's hashes, which every consumer expects on the
+    // entry itself: the recording, the duplicate-card check, and the reader's
+    // refinement when it has no probes to fall back on.
+    const unexpanded = entry.probes.find((probe) => probe.scale === 1);
+    if (unexpanded) {
+      entry.artHash = unexpanded.artHash;
+      entry.frameHash = unexpanded.frameHash;
+    }
 
     // The same card cut from the first frame alone, hashed and kept but never
     // sent. It is the control for compositing: without it a bundle says how
@@ -1731,6 +1742,23 @@ async function benchLocalMatching() {
 
     say(line);
     console.log('[local matching]', line);
+
+    // Into the recording as well as onto the screen. The first time this ran,
+    // the answer — the whole point of the exercise — existed only in a status
+    // line on a phone, and the bundle that came back could not be asked what it
+    // had said.
+    state.localMatching = {
+      references: count,
+      bytes,
+      loadMs,
+      meanMs: Math.round(mean * 10) / 10,
+      worstMs: Math.round(Math.max(...times) * 10) / 10,
+      captures: captures.length,
+      probes: captures[0].probes.length,
+      agreed,
+      compared,
+      userAgent: navigator.userAgent,
+    };
   } catch (error) {
     say(`Local matching failed: ${error.message}`);
   }
@@ -2739,7 +2767,8 @@ export function setupScan() {
         enabled: state.ocrEnabled,
         warm: !!state.reader?.ready,
       },
-      setTally()
+      setTally(),
+      state.localMatching
     );
     showToast(`Saved ${captures} capture${captures === 1 ? '' : 's'} (${Math.round(bytes / 1024)}KB)`, 'success');
   });

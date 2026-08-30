@@ -39,6 +39,7 @@ environment
   settings            thresholds, crop regions, marked quad, snap/detect flags
   reader              { enabled, warm, pending }
   detector            { samples, mean, max, rate, worker } — round trips in ms
+  localMatching       what "Time local matching" measured, if it was pressed
   setBias             the set tally in force, typed or inferred, or null
 captures[]
   at, trigger         'auto' | 'manual'

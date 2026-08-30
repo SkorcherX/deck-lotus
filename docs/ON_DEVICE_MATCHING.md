@@ -121,6 +121,12 @@ tiebreak on uuid so the two never disagree at all.
 easy half of the answer. The phone is the half that matters and only the button
 can tell us.
 
+The button now writes its result into the recording as `environment.localMatching`
+— references, bytes, load time, mean and worst match time, and how many answers
+agreed with the server. The first session it ran in, the answer existed only in
+a status line on a phone and the bundle that came back could not be asked what
+it had said.
+
 ## What would settle it
 
 A prototype that loads `card-hashes.bin` in the scan worker and searches it,
