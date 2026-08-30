@@ -317,7 +317,7 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
 
 ## Framing
 
-- [ ] **19. The detector frames the art box on a low-contrast card.** Found by
+- [x] **19. The detector frames the art box on a low-contrast card.** Found by
       the glare scenes added for task 10, and it is the more useful half of that
       session. On a card close to the desk in brightness — with or without a
       glare stripe — `detectCardContour` returns a quad **37.4% smaller than the
@@ -340,6 +340,28 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
       from the lens.
       Measured on synthetic scenes, so confirm it on a recorded session before
       building anything — that is what the lab's own header says it is for.
+      *Checked, and it does not happen in the field.* Across fifteen recorded
+      sessions, 143 captures, 28 of them misses:
+      - **The misses are framed like the hits.** Detected area is 0.261 of frame
+        at the median for a miss against 0.282 for a hit, ranges overlapping
+        completely. An art-box quad is 0.63 of the card's width, so it would
+        come in near 0.11 — nothing does. Per card the two are the same number:
+        Ashling 0.253 missed against 0.249 hit, Mass of Mysteries 0.260 against
+        0.259. Whatever separates a hit from a miss, it is not the framing.
+      - **The extracted misses are whole cards.** Three pulled out and looked at
+        — Ashling, Abundant Growth, Fertile Ground — and every one is the entire
+        card, correctly rectified, borders included.
+      - **The lab's trigger never arises here.** 137 of 143 detections came via
+        `otsu-inverted`, six via `edges`: a dark card on a pale desk, which is
+        the case the global threshold is best at. The art box appears in the lab
+        only where card and desk are close in brightness, and nobody has scanned
+        on a mat like that.
+      So it is a real failure of the detector and an unreached one, left
+      documented rather than fixed: the conditions to watch for are a scanning
+      surface close to the card's own brightness and a `via` of `edges` on
+      captures that miss. What the misses actually are is task 15 — every card
+      in this precon is foil, the framing is right, and what changes between a
+      capture that matches and one that does not is the sheen.
 
 ## Tidy-ups
 

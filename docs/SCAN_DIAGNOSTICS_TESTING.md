@@ -418,8 +418,18 @@ What it has settled so far:
   window's contour, with an aspect error of 0.060, inside the 0.16 tolerance,
   and the tracked path then locks onto it. It is a confident wrong answer rather
   than a miss, and a capture framed at 0.63 is off the bottom of a ladder that
-  spans 0.84-1.0. That is task 19, and the first move on it is to check a
-  recorded session's misses rather than to trust this fixture.
+  spans 0.84-1.0.
+
+  **It does not happen in the recorded sessions, and that check is worth
+  repeating rather than re-deriving.** Over fifteen sessions and 143 captures,
+  the 28 misses are framed exactly like the 115 hits — median detected area
+  0.261 against 0.282, and the same figure per card (Ashling 0.253 missed
+  against 0.249 hit). An art-box quad would come in near 0.11. Three misses
+  extracted and looked at are whole cards. And 137 of the 143 detections came
+  via `otsu-inverted` — a dark card on a pale desk, where the global threshold
+  is at its best — so the lab's trigger, card and desk close in brightness,
+  never arises. The way to catch it if it ever does: a `via` of `edges` on
+  captures that miss, and a detected area around a third of the usual.
 
 The **Cold vs tracked** button measures that last point, and is worth re-running
 after any change to the attempts or the contour filters.
@@ -589,6 +599,14 @@ So the next session does not re-derive it:
   eight of them with `setBiased: true` — ties broken across as many as 31
   printings of the right card. `nameCertain` was true on all ten, so the name
   was never the open question, only the printing.
+- **A miss is not a framing problem.** The obvious suspicion about a card that
+  will not match is that it was cut wrong, and the bundles say otherwise:
+  detected area is the same for hits and misses, per card and in aggregate, and
+  extracted misses are whole cards. Every card in the ECC precon these sessions
+  are shot from is foil, and what changes between a capture that matches and one
+  that does not is where the light is — which is task 15's territory, not the
+  detector's. Rule framing out first with `snap.area`; it is two lines and it
+  saves chasing the wrong half of the pipeline.
 - **The sleeved band is still the whole of the loss.** The three misses sat at
   82, 86 and 88 bits against the 77-bit threshold, and the winning probe was
   never rung 0 — index 1 to 4 across the session, so the respread ladder is
