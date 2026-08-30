@@ -1,4 +1,5 @@
 import express from 'express';
+import { createReadStream, statSync } from 'fs';
 import { resolveScan, resolveScanFused } from '../services/scanService.js';
 import { authenticate } from '../middleware/auth.js';
 import {
@@ -120,6 +121,48 @@ router.post('/resolve', authenticate, (req, res, next) => {
  *
  * Body: { items: [{ printingId, quantity, isFoil }] }
  */
+/**
+ * The packed hash index, for a client that wants to match without asking.
+ *
+ * A capture currently costs a round trip: measured at 741ms on a phone against
+ * 9.5ms of actual work on the server. The index is 6MB and never changes
+ * between MTGJSON syncs, so a device that holds it can answer in tens of
+ * milliseconds and needs the network only to commit. See
+ * docs/ON_DEVICE_MATCHING.md.
+ *
+ * Authenticated like everything else here, though it carries no user data —
+ * it is hashes of Scryfall's own images. The reason is bandwidth rather than
+ * privacy: it is 6MB a request, and an open endpoint on a self-hosted box is a
+ * 6MB amplifier for anyone who finds it.
+ *
+ * Cached hard on the file's own mtime. The weekly sync rebuilds `printings` and
+ * the uuids in here have to be re-joined when it does, so a client is expected
+ * to revalidate; a 304 is the common case and costs nothing.
+ */
+router.get('/hash-index', authenticate, (req, res, next) => {
+  try {
+    const path = process.env.CARD_HASH_PATH || 'data/card-hashes.bin';
+    const stat = statSync(path);
+    const etag = `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`;
+
+    res.set({
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': stat.size,
+      ETag: etag,
+      'Cache-Control': 'private, max-age=0, must-revalidate',
+    });
+
+    if (req.headers['if-none-match'] === etag) return res.status(304).end();
+
+    createReadStream(path).pipe(res);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return res.status(503).json({ error: 'No hash index has been built on this server' });
+    }
+    next(error);
+  }
+});
+
 router.post('/shortfall', authenticate, (req, res, next) => {
   try {
     const { items } = req.body || {};

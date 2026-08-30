@@ -93,6 +93,34 @@ is still moving and one that arrives after — but it does not double throughput
 The cue changes (the pulse, the settled tone) were worth more per line of code
 than this will be, and this is a substantial piece of work.
 
+## The spike, and what it has shown so far
+
+Built: `GET /api/scan/hash-index` serves the packed file with an etag,
+`client/src/utils/localIndex.js` reads and searches it in the browser, and
+**Diagnostics & tuning → Time local matching** runs this session's own captures
+through it on whatever device is holding the phone.
+
+It searches and returns distances and uuids. It deliberately does *not* resolve
+— no tiers, no fusion, no set biasing, no names or prices. Those are wound
+together with database lookups inside `resolveScanFused`, and reimplementing any
+of them here would produce a second copy of the rules to drift from the first.
+Untangling them is the real work, and the spike exists to decide whether it is
+worth doing.
+
+**Agreement with the server, over the shipped index and real captures:** the two
+readers return identical match *sets* and identical distances. On 7 of 9 real
+captures the order is identical too; on the other 2 it differs only among rows
+tied on **both** art and frame distance. The server's last tiebreak is
+`printingId`, which `import-mtgjson.js` reassigns every weekly sync; the device's
+is file order, which is uuid-sorted and stable. Neither ordering is meaningful
+and the set-bias step reorders ties anyway — but if this ships, both ends should
+tiebreak on uuid so the two never disagree at all.
+
+**Speed, on a desktop:** 1.2ms for one search of all 112,815 references, so
+~6ms for a five-probe ladder against a measured 741ms round trip. That is the
+easy half of the answer. The phone is the half that matters and only the button
+can tell us.
+
 ## What would settle it
 
 A prototype that loads `card-hashes.bin` in the scan worker and searches it,

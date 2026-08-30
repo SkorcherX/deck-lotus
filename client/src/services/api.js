@@ -187,6 +187,20 @@ class ApiClient {
    * session had "Lava Axe" replace a correctly identified Jungle Shrine that
    * way. Both signals, or the fusion has nothing to fuse.
    */
+  /**
+   * The packed hash index as raw bytes.
+   *
+   * Its own method rather than `request`, which assumes JSON both ways: this is
+   * 6MB of binary and parsing it as text would cost more than searching it.
+   */
+  async fetchHashIndex() {
+    const response = await fetch(`${this.baseURL}/scan/hash-index`, {
+      headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+    });
+    if (!response.ok) throw new Error(`Hash index unavailable (HTTP ${response.status})`);
+    return response.arrayBuffer();
+  }
+
   async resolveScanProbes({
     artHashes,
     frameHashes,

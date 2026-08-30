@@ -30,6 +30,7 @@ import {
 } from '../utils/cardCapture.js';
 import { hashRectified, fromHex, hammingDistance } from '../../../src/shared/cardHash.js';
 import * as diagnostics from '../utils/scanDiagnostics.js';
+import * as localIndex from '../utils/localIndex.js';
 import {
   detect as requestDetection,
   isReady as detectorReady,
@@ -1671,6 +1672,70 @@ async function preflightReader() {
   }
 }
 
+/**
+ * Time matching this session's captures on the device instead of the server.
+ *
+ * The spike behind docs/ON_DEVICE_MATCHING.md. Two numbers matter and only one
+ * of them can be got from a desktop: how long a *phone* takes to search 112,815
+ * references five times, and whether it lands on the same answer the server
+ * gave — which is checkable here because every capture already carries what the
+ * server said.
+ *
+ * Uses the session's own captures rather than synthetic hashes. A benchmark
+ * over made-up data would measure the loop and not the question.
+ */
+async function benchLocalMatching() {
+  const status = el('scan-bench-status');
+  const say = (text) => {
+    if (status) status.textContent = text;
+  };
+
+  const captures = state.captures.filter((entry) => entry.probes?.length);
+  if (!captures.length) {
+    say('Scan a few cards first — this measures matching them, not a synthetic hash.');
+    return;
+  }
+
+  try {
+    say('Downloading the index…');
+    const count = await localIndex.load(() => api.fetchHashIndex());
+    const { bytes, loadMs } = localIndex.stats();
+
+    // Warm the loop before timing it: the first search of a 4.5MB typed array
+    // pays for cache misses that no later one does, and reporting that as the
+    // cost would overstate it on exactly the device we care about.
+    localIndex.searchProbes(captures[0].probes);
+
+    const times = [];
+    let agreed = 0;
+    let compared = 0;
+
+    for (const entry of captures) {
+      const started = performance.now();
+      const { matches } = localIndex.searchProbes(entry.probes);
+      times.push(performance.now() - started);
+
+      const server = entry.candidates?.[0]?.uuid;
+      if (server) {
+        compared++;
+        if (matches[0]?.uuid === server) agreed++;
+      }
+    }
+
+    const mean = times.reduce((sum, ms) => sum + ms, 0) / times.length;
+    const line =
+      `${(bytes / 1048576).toFixed(1)}MB / ${count} refs in ${loadMs}ms · ` +
+      `match ${mean.toFixed(0)}ms mean, ${Math.max(...times).toFixed(0)}ms worst ` +
+      `(${captures.length} captures × ${captures[0].probes.length} probes) · ` +
+      `agreed with server on ${agreed}/${compared}`;
+
+    say(line);
+    console.log('[local matching]', line);
+  } catch (error) {
+    say(`Local matching failed: ${error.message}`);
+  }
+}
+
 /** Bytes as megabytes, for a download nobody needs to the byte. */
 function formatMB(bytes) {
   return `${(bytes / 1_000_000).toFixed(1)}MB`;
@@ -2678,6 +2743,8 @@ export function setupScan() {
     );
     showToast(`Saved ${captures} capture${captures === 1 ? '' : 's'} (${Math.round(bytes / 1024)}KB)`, 'success');
   });
+
+  el('scan-bench-local')?.addEventListener('click', benchLocalMatching);
 
   el('scan-sound-toggle')?.addEventListener('change', (e) => {
     state.sound = e.target.checked;
