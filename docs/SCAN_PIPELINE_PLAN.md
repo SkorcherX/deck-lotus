@@ -185,6 +185,18 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       second signal for a card whose art cannot be matched, and `readIfUnresolved`
       already asks for it on anything short of `confident`.
 
+- [ ] **18. Move the matcher onto the device.** `resolveMs` measured 741ms on a
+      phone against 9.5ms of actual work on the server — it is the link, and it
+      is now the largest single cost per card. The index is 6.0MB and the
+      identity table 0.8MB gzipped, against the 12.7MB of OpenCV the device
+      already downloads to find a card at all. The work is mostly one thing:
+      splitting the pure ranking in `resolveScanFused` — fusion, tiers,
+      `nameCertain`, set biasing — from the database hydration around it, and
+      moving the pure half to `src/shared/` for the same reason `cardHash.js`
+      and `cardGeometry.js` live there. See docs/ON_DEVICE_MATCHING.md, which
+      also says what a native app would and would not buy, and what would
+      settle it: a prototype search timed on the real phone.
+
 ## Sleeve glare
 
 Glare is a specular highlight: saturated pixels that break contour detection,
