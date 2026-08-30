@@ -493,10 +493,15 @@ So the next session does not re-derive it:
   signal, and it is only ever safe next to the first one.
 - **Where the time between shutter and verdict goes**, measured on a phone:
   `shutterMs` 745-1215, `hashMs` 142-241, `resolveMs` 450-921 — about 1.8s in
-  total. The shutter half is a 12MP frame read plus a detection round trip, now
-  overlapped rather than sequential. `resolveMs` is a single request carrying
-  five probes, against 1.7ms of index work per probe on the server, so nearly
-  all of it is network.
+  total. Overlapping the frame read with the detection round trip took the
+  shutter half to 579ms mean on the next run.
+- **`resolveMs` is the network, not the matcher.** The same nine captures
+  resolved locally, index and all, in a **mean of 9.5ms** (max 17.5; dropping
+  `limit` from 25 to 3 saves under 2ms). The phone measures 700-900ms for the
+  same work. So ~730ms is the link — WiFi round trip and radio wake between
+  captures five seconds apart — and no amount of server work will touch it.
+  Anything aimed at `resolveMs` should be aimed at the connection: keeping it
+  warm, or overlapping the request with work the client has to do anyway.
 - **Detection answers about 3.6 times a second on a phone.** Measured:
   `detector: { mean: 281.5, max: 865.2, rate: 3.6, worker: true }`. The loop asks
   twenty times a second and drops what it cannot keep up with, so the live quad

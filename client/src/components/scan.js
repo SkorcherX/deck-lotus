@@ -1393,20 +1393,44 @@ function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null
   const hashed = hashSize();
   const card = warpQuad(frame, quad, hashed.width, hashed.height);
 
-  const cropOf = (region) => {
-    const out = regionOutputSize(size, region);
-    return warpRegion(frame, quad, region, out.width, out.height);
+  /**
+   * The reader's crops, cut when the reader asks for them and not before.
+   *
+   * They are the two most expensive warps a capture does — cut from the source
+   * frame at three times their size on the card, because the collector line is
+   * a dozen pixels tall and OCR needs every one. On a 12MP frame that is around
+   * two million destination pixels, and with the reader switched off, which is
+   * the default, every one of them was thrown away unread.
+   *
+   * Memoised rather than merely deferred: the preview panel draws them too, and
+   * a capture that is read *and* looked at should still only cut them once.
+   */
+  let crops = null;
+  const cropsOf = () => {
+    if (crops) return crops;
+    const cropOf = (region) => {
+      const out = regionOutputSize(size, region);
+      return warpRegion(frame, quad, region, out.width, out.height);
+    };
+    crops = {
+      title: cropOf(state.settings.regions.title),
+      collector: cropOf(state.settings.regions.collector),
+    };
+    return crops;
   };
-
-  const title = cropOf(state.settings.regions.title);
-  const collector = cropOf(state.settings.regions.collector);
 
   const entry = {
     id: Date.now() + Math.random(),
     trigger,
     card,
-    title,
-    collector,
+    // Getters, so every existing reader of entry.title / entry.collector keeps
+    // working and only the ones that actually look pay for the warp.
+    get title() {
+      return cropsOf().title;
+    },
+    get collector() {
+      return cropsOf().collector;
+    },
     quad,
     snap,
     // What the camera gave, kept because `card` no longer says it: the rectified
@@ -1475,6 +1499,8 @@ function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null
     // resolver treats a missing hash as "no second signal" and says so.
     entry.hashError = error.message;
   }
+
+  entry.timings.emitMs = started === null ? null : Math.round(performance.now() - started);
 
   state.captures.unshift(entry);
   state.captures = state.captures.slice(0, MAX_RECENT_CAPTURES);
@@ -2319,10 +2345,18 @@ function renderCapture(entry) {
   // sitting above the card that was actually identified — and they invite the
   // reasonable but wrong conclusion that the scanner is reading the text.
   //
-  // Still cut either way: they cost a warp each, they are what the reader wants
-  // the moment the toggle goes on, and the recording carries them.
-  swapCanvas('scan-preview-title', entry.title);
-  swapCanvas('scan-preview-collector', entry.collector);
+  // Not cut either, now, which is a change: they used to be warped on every
+  // capture on the grounds that the reader would want them the moment the
+  // toggle went on and that the recording carried them. The recording carries
+  // the rectified card and the frame, not these; and the toggle path re-reads
+  // through the same getter, which cuts them then. They are the two most
+  // expensive warps a capture does — three times their size on the card, off a
+  // 12MP frame — and with the reader off, which is the default, every one was
+  // thrown away unread.
+  if (state.ocrEnabled) {
+    swapCanvas('scan-preview-title', entry.title);
+    swapCanvas('scan-preview-collector', entry.collector);
+  }
   el('scan-crop-title')?.classList.toggle('hidden', !state.ocrEnabled);
   el('scan-crop-collector')?.classList.toggle('hidden', !state.ocrEnabled);
 
