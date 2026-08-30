@@ -1,6 +1,7 @@
 import express from 'express';
 import { createReadStream, statSync } from 'fs';
-import { resolveScan, resolveScanFused } from '../services/scanService.js';
+import { resolveScan, resolveScanFused, printingsByIds } from '../services/scanService.js';
+import { identityPayload } from '../services/scanIdentityService.js';
 import { authenticate } from '../middleware/auth.js';
 import {
   commitScanToCollection,
@@ -159,6 +160,71 @@ router.get('/hash-index', authenticate, (req, res, next) => {
     if (error.code === 'ENOENT') {
       return res.status(503).json({ error: 'No hash index has been built on this server' });
     }
+    next(error);
+  }
+});
+
+/**
+ * GET /api/scan/identity
+ * What each row of the hash index is: printing, card, name, set, collector,
+ * price. The half of the matcher the packed file does not carry.
+ *
+ * Columns in index row order rather than a map keyed by uuid — the client has
+ * just downloaded every uuid inside the index and re-sending them would be 4MB
+ * of the payload. See scanIdentityService for the alignment rule and for why
+ * image URLs are not in here.
+ *
+ * Cached on a hash of its own contents, so the weekly sync's reassigned
+ * printing ids and new prices both invalidate it and nothing else does.
+ */
+router.get('/identity', authenticate, (req, res, next) => {
+  try {
+    const { body, etag } = identityPayload();
+
+    res.set({
+      'Content-Type': 'application/json',
+      ETag: etag,
+      'Cache-Control': 'private, max-age=0, must-revalidate',
+    });
+
+    if (req.headers['if-none-match'] === etag) return res.status(304).end();
+
+    res.send(body);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/scan/printings
+ * Full printing rows for a list of ids.
+ *
+ * The one thing a locally matched card is missing. The identity table carries
+ * what the scanning loop needs — name, set, collector, price — and not the
+ * image URL, which costs more than the rest of the table put together; the
+ * review screen wants the reference art beside the capture and asks for it in
+ * one request for the whole session rather than one per card.
+ *
+ * Body: { printingIds: [] }
+ */
+router.post('/printings', authenticate, (req, res, next) => {
+  try {
+    const { printingIds } = req.body || {};
+
+    if (!Array.isArray(printingIds)) {
+      return res.status(400).json({ error: 'printingIds must be an array' });
+    }
+
+    const ids = [...new Set(printingIds.map((id) => parseInt(id, 10)).filter(Number.isInteger))];
+
+    // A whole session's worth of rows, generously. The cap is here because this
+    // takes a list from a client and turns it into an IN clause.
+    if (ids.length > 500) {
+      return res.status(400).json({ error: 'Ask for 500 printings or fewer' });
+    }
+
+    res.json({ printings: printingsByIds(ids) });
+  } catch (error) {
     next(error);
   }
 });

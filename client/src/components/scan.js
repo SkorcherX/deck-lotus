@@ -343,6 +343,10 @@ const state = {
   // What "Time local matching" measured, if it was pressed. Kept so the
   // recording carries the answer rather than a phone's status line.
   localMatching: null,
+  // Whether this device is holding the matcher — the packed index and the
+  // identity table that says what its rows are. Idle until the detector is up;
+  // never blocking, because scanning works without it, only slower.
+  localMatcher: { status: 'idle', references: 0, loadMs: 0, error: null },
   // Sets this session has resolved unambiguously, counted. Ties between
   // printings of one card are ordered by it — see rememberSet.
   setTally: new Map(),
@@ -1634,7 +1638,12 @@ async function preflight() {
   // Nothing to wait for — a camera restarted in the same session, with both
   // assets already in memory. Putting the scrim up to take it down again a
   // frame later would be a flash of "not ready" on a scanner that is.
-  if (detectorReady() && !needsReader) return;
+  if (detectorReady() && !needsReader) {
+    // A restart still gets the matcher going, in case a first attempt failed or
+    // the camera came up before it finished.
+    ensureLocalMatcher();
+    return;
+  }
 
   if (!detectorReady()) {
     showPreflight('Downloading the card detector…', null);
@@ -1657,6 +1666,10 @@ async function preflight() {
 
   hidePreflight();
   renderDetection(state.detected);
+
+  // Not awaited: the scanner is ready now, and this only decides whether the
+  // next card's verdict comes from here or from the server.
+  ensureLocalMatcher();
 }
 
 /**
@@ -1680,6 +1693,55 @@ async function preflightReader() {
   } catch (error) {
     console.error('The card reader could not be loaded', error);
     showToast('Card reader unavailable — scanning on the art alone', 'error');
+  }
+}
+
+/**
+ * Bring the matcher onto the device, in the background.
+ *
+ * Measured on a phone: matching a capture here takes 12ms against 626-741ms of
+ * asking the server, which is not a saving in the matcher — the server does the
+ * same search in 9.5ms — but the round trip either side of it. The whole
+ * matcher is the 6MB index plus a 5.6MB identity table, against the 12.7MB of
+ * OpenCV the same device has just downloaded to find a card at all. See
+ * docs/ON_DEVICE_MATCHING.md.
+ *
+ * Deliberately not awaited and deliberately not fatal. The server path still
+ * works and stays the fallback, so a slow download costs nothing but the
+ * captures taken while it runs, and a failure costs nothing at all — it is only
+ * ever the difference between a cue that arrives while your hand is still
+ * moving and one that arrives after.
+ *
+ * Started after the detector rather than beside it: they compete for the same
+ * radio, and the detector is the one without which nothing works.
+ */
+async function ensureLocalMatcher() {
+  const matcher = state.localMatcher;
+  if (matcher.status === 'ready' || matcher.status === 'loading') return;
+
+  matcher.status = 'loading';
+  matcher.error = null;
+
+  try {
+    const started = performance.now();
+    if (!localIndex.isLoaded()) await localIndex.load(() => api.fetchHashIndex());
+    // The two halves are checked against each other inside loadIdentity: an
+    // identity table from a different build would name cards by the wrong rows,
+    // confidently, which is the worst thing this code could do.
+    if (!localIndex.hasIdentity()) await localIndex.loadIdentity(() => api.fetchScanIdentity());
+
+    matcher.status = 'ready';
+    matcher.references = localIndex.stats().count;
+    matcher.loadMs = Math.round(performance.now() - started);
+    console.log(
+      `[scan] matching on the device: ${matcher.references} references in ${matcher.loadMs}ms`
+    );
+  } catch (error) {
+    matcher.status = 'failed';
+    matcher.error = error.message;
+    // Not a toast. Nothing the person holding the cards can do about it, and
+    // the scanner they are using still works.
+    console.warn('[scan] local matching unavailable, using the server', error);
   }
 }
 
@@ -1943,15 +2005,34 @@ async function resolveCapture(entry) {
       ? entry.probes
       : [{ artHash: entry.artHash, frameHash: entry.frameHash }];
 
-    const resolveStarted = performance.now();
-    const resolved = await api.resolveScanProbes({
-      artHashes: probes.map((p) => p.artHash),
-      frameHashes: probes.map((p) => p.frameHash),
-      setBias: setTally(),
-      limit: 25,
-    });
+    // On the device where it can be, over the network where it cannot.
+    //
+    // The two paths run the same ranking — `fuseScanResult` from src/shared, one
+    // copy — over the same index, so the verdict, the tier and the candidate
+    // order do not depend on which one answered. What the local path does not
+    // have is the text half of the resolver and the reference image, both of
+    // which are database questions; the reader still refines through the server
+    // below, and the review screen fetches the art for a whole session at once.
+    const onDevice = localIndex.isReady();
 
-    if (entry.timings) entry.timings.resolveMs = Math.round(performance.now() - resolveStarted);
+    const resolveStarted = performance.now();
+    const resolved = onDevice
+      ? localIndex.resolve({ probes, setBias: setTally(), limit: 25 })
+      : await api.resolveScanProbes({
+          artHashes: probes.map((p) => p.artHash),
+          frameHashes: probes.map((p) => p.frameHash),
+          setBias: setTally(),
+          limit: 25,
+        });
+
+    if (entry.timings) {
+      entry.timings.resolveMs = Math.round(performance.now() - resolveStarted);
+      // Which side answered, because `resolveMs` means two different things
+      // depending: 12ms of searching, or a round trip with 9.5ms of searching
+      // inside it. A recorded session that cannot tell them apart cannot be
+      // compared with the ones taken before this existed.
+      entry.timings.resolvedBy = onDevice ? 'device' : 'server';
+    }
 
     rememberSet(resolved);
 

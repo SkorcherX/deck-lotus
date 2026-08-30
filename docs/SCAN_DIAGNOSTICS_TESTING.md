@@ -503,6 +503,15 @@ So the next session does not re-derive it:
   captures five seconds apart — and no amount of server work will touch it.
   Anything aimed at `resolveMs` should be aimed at the connection: keeping it
   warm, or overlapping the request with work the client has to do anyway.
+- **The matcher now runs on the device, so `resolveMs` means two things.** A
+  capture matched locally measured 12ms mean on the phone; one that went over
+  the network measured 626-741ms for the same work. `timings.resolvedBy` in a
+  bundle says which answered — `device` or `server` — and a bundle recorded
+  before that field existed is a server one. The scanner downloads the 6MB
+  index and the 5.6MB identity table in the background after the detector is
+  up, so the first few captures of a cold session are still server-matched;
+  that is expected, and comparing `resolveMs` across a session without reading
+  `resolvedBy` will average the two.
 - **Detection answers about 3.6 times a second on a phone.** Measured:
   `detector: { mean: 281.5, max: 865.2, rate: 3.6, worker: true }`. The loop asks
   twenty times a second and drops what it cannot keep up with, so the live quad

@@ -185,7 +185,7 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       second signal for a card whose art cannot be matched, and `readIfUnresolved`
       already asks for it on anything short of `confident`.
 
-- [ ] **18. Move the matcher onto the device.** `resolveMs` measured 741ms on a
+- [x] **18. Move the matcher onto the device.** `resolveMs` measured 741ms on a
       phone against 9.5ms of actual work on the server — it is the link, and it
       is now the largest single cost per card. The index is 6.0MB and the
       identity table 0.8MB gzipped, against the 12.7MB of OpenCV the device
@@ -205,9 +205,24 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       set biasing and the match thresholds — with `resolveScanFused` reduced to
       the text lookup, the index passes and the hydration around them. The
       fusion tests pass unchanged, which is the only evidence worth having that
-      a move was a move. What is left is the wiring: the client searching its
-      own index, hydrating names from the identity table, and calling
-      `fuseScanResult` itself, with the server path kept as the fallback.
+      a move was a move.
+      *And the wiring is in.* `GET /api/scan/identity` serves what each index
+      row is — printing, card, name, set, collector, price — in index row order,
+      so the uuids the device already downloaded are not sent a second time;
+      `localIndex.resolve` searches, hydrates from it and calls
+      `fuseScanResult`, the same function the server calls. The scanner fetches
+      both halves in the background once the detector is up and matches locally
+      from then on, falling back to the server when the index has not loaded,
+      failed to load, or the reader wants a capture refined by text — that half
+      is a card-table lookup and stays where the card table is.
+      `timings.resolvedBy` records which side answered.
+      `test/integration/localResolve.test.js` is the thing to keep: it asserts
+      device against server rather than against expectations, tier, candidate
+      order, probe choice, set bias and the nearest-reference message included.
+      Image URLs are the one thing the device does not carry — they nearly
+      triple the identity payload (1.25MB gzipped to 3.54MB) for the review
+      screen's thumbnail — so `POST /api/scan/printings` fetches those once per
+      session when the review table opens.
 
 ## Sleeve glare
 

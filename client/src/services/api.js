@@ -201,6 +201,33 @@ class ApiClient {
     return response.arrayBuffer();
   }
 
+  /**
+   * The identity table that goes with the index: what each of its rows is.
+   *
+   * Its own method for the same reason as the index — 5.6MB of JSON, fetched
+   * once per sync and revalidated to a 304 after that, so it must not go
+   * through `request`, which has no opinion about caching.
+   */
+  async fetchScanIdentity() {
+    const response = await fetch(`${this.baseURL}/scan/identity`, {
+      headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+    });
+    if (!response.ok) throw new Error(`Card identities unavailable (HTTP ${response.status})`);
+    return response.json();
+  }
+
+  /**
+   * Full printing rows for a list of ids — the image URLs a locally matched
+   * card has no way to know. One request for a whole session, at review time.
+   */
+  async fetchPrintings(printingIds) {
+    const { printings } = await this.request('/scan/printings', {
+      method: 'POST',
+      body: JSON.stringify({ printingIds }),
+    });
+    return printings;
+  }
+
   async resolveScanProbes({
     artHashes,
     frameHashes,

@@ -502,8 +502,15 @@ export function resolveScan({ name = null, setCode = null, collectorNumber = nul
   };
 }
 
-/** Hydrate printings by id, for candidates the hash found and the text did not. */
-function printingsByIds(ids) {
+/**
+ * Hydrate printings by id, for candidates the hash found and the text did not.
+ *
+ * Exported because a device that matched locally has the same gap and cannot
+ * fill it: it holds names, sets and prices, not image URLs — those nearly
+ * triple the identity table for a thumbnail the review screen asks for once.
+ * See scanIdentityService.
+ */
+export function printingsByIds(ids) {
   if (!ids.length) return [];
   return db.all(
     `SELECT ${PRINTING_COLUMNS}

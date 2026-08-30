@@ -9,18 +9,18 @@
  * trip is not worth paying; half a second and it was cheaper than it looked.
  * See docs/ON_DEVICE_MATCHING.md.
  *
- * What this deliberately does *not* do is resolve. It returns distances and
- * uuids — no tiers, no fusion, no set biasing, no names or prices. Those live in
- * `resolveScanFused`, wound together with database lookups, and untangling them
- * is the actual work the note describes. Reimplementing any of it here would
- * produce a second copy of the rules to drift from the first, which is the
- * mistake `src/shared/` exists to prevent.
+ * The answer was twelve milliseconds, so this is no longer a spike: it resolves
+ * now. Not by reimplementing the rules — that is the mistake `src/shared/`
+ * exists to prevent — but by calling `fuseScanResult`, the same function the
+ * server calls, over an identity table that says what each index row is. The
+ * search below is still the search the spike measured; `resolve` is the wiring
+ * around it.
  */
 import { ART_HASH_BYTES, FRAME_HASH_BYTES, hexToWords, hammingWords } from '../../../src/shared/cardHash.js';
 // Taken from the shared module rather than repeated as 0.3: the two ends search
 // the same index, so a threshold that drifts between them is a disagreement
 // about what matched, not a tuning difference.
-import { ART_MATCH_THRESHOLD } from '../../../src/shared/scanFusion.js';
+import { ART_MATCH_THRESHOLD, fuseScanResult, matchConfidence } from '../../../src/shared/scanFusion.js';
 
 const MAGIC = 0x444c4348; // 'DLCH'
 const HEADER_BYTES = 16;
@@ -157,6 +157,10 @@ export function search(artHash, frameHash = null, { threshold = ART_MATCH_THRESH
   );
 
   return matches.slice(0, limit).map((match) => ({
+    // The row, because the identity table is aligned to it — and the uuid,
+    // because that is what a match means outside this process and what the
+    // bench compares against the server's answer.
+    row: match.row,
     uuid: uuidAt(match.row),
     artDistance: match.artDistance,
     frameDistance: match.frameDistance,
@@ -177,4 +181,186 @@ export function searchProbes(probes, options = {}) {
   }
 
   return { matches: best, probeIndex: bestIndex };
+}
+
+/**
+ * The identity table: what each index row *is*.
+ *
+ * Columns in index row order, so `identity.names[row]` belongs to the row a
+ * search just returned. The count is checked against the index's own before it
+ * is used — the alignment is the whole design and a mismatched pair would name
+ * cards by the wrong rows, silently and confidently, which is the worst failure
+ * this code could have.
+ */
+const identity = {
+  count: 0,
+  printingIds: null,
+  cardIds: null,
+  names: null,
+  sets: null,
+  collectors: null,
+  promos: null,
+  prices: null,
+  bytes: 0,
+  loadMs: 0,
+};
+
+export function hasIdentity() {
+  return identity.count > 0 && identity.count === state.count;
+}
+
+/** Whether this device can resolve a capture without asking the server. */
+export function isReady() {
+  return isLoaded() && hasIdentity();
+}
+
+/** Fetch and adopt the identity table. Resolves to the row count. */
+export async function loadIdentity(request) {
+  const started = performance.now();
+  const payload = await request();
+
+  if (payload.count !== state.count) {
+    throw new Error(
+      `Identity table is ${payload.count} rows and the index is ${state.count} — they are not the same build`
+    );
+  }
+
+  identity.count = payload.count;
+  identity.printingIds = payload.printingIds;
+  identity.cardIds = payload.cardIds;
+  identity.names = payload.names;
+  identity.sets = payload.sets;
+  identity.collectors = payload.collectors;
+  identity.promos = new Set(payload.promos || []);
+  identity.prices = payload.prices;
+  identity.loadMs = Math.round(performance.now() - started);
+
+  return identity.count;
+}
+
+/**
+ * One index row as a candidate, in the shape the review screen and the commit
+ * already take.
+ *
+ * `imageUrl` is null on purpose and is not a gap in the answer: the identity
+ * table leaves image URLs out because they cost more than everything else in it
+ * put together, and the review screen fills them in for a whole session in one
+ * request. Everything the scanning loop itself shows — the name, the printing,
+ * the price band the overlay pulses in — is here.
+ */
+function candidateAt(row) {
+  const printingId = identity.printingIds[row];
+  if (printingId === null || printingId === undefined) return null;
+
+  const price = identity.prices[row];
+
+  return {
+    cardId: identity.cardIds[row],
+    name: identity.names[row],
+    printingId,
+    uuid: uuidAt(row),
+    setCode: identity.sets[row],
+    collectorNumber: identity.collectors[row],
+    isPromo: identity.promos.has(row),
+    imageUrl: null,
+    price: price === null || price === undefined ? null : price / 100,
+    manaCost: null,
+    typeLine: null,
+    rarity: null,
+    releasedAt: null,
+  };
+}
+
+/**
+ * Resolve a capture here, with the same rules the server would have used.
+ *
+ * The ranking is `fuseScanResult` from src/shared — the same function, not a
+ * copy of it — so a locally matched card gets the same tier, the same
+ * `nameCertain`, the same set biasing and the same candidate order as one the
+ * server answered. What differs is only what is not in the identity table: no
+ * text signal, because the OCR lookup is a database question, and no image URL.
+ *
+ * Returns the resolver's own shape, so a caller can use it wherever it used the
+ * server's reply.
+ */
+export function resolve({ probes, setBias = null, limit = 25 } = {}) {
+  const { matches, probeIndex } = searchProbes(probes);
+
+  const hashMatches = [];
+  const hydrated = new Map();
+
+  for (const match of matches) {
+    const candidate = candidateAt(match.row);
+    // A row the index holds and this database does not. The server skips these
+    // by never joining them; here they simply have no identity to offer.
+    if (!candidate) continue;
+
+    hashMatches.push({
+      printingId: candidate.printingId,
+      artDistance: match.artDistance,
+      frameDistance: match.frameDistance,
+      confidence: matchConfidence(match.artDistance),
+    });
+    hydrated.set(candidate.printingId, candidate);
+  }
+
+  return fuseScanResult({
+    // Only paid for on a miss: fuseScanResult returns early with it, and a
+    // capture that matched something never looks at it.
+    nearest: hashMatches.length ? null : nearestReference(probes),
+    // No reader ran, and this path never has one: refining by text goes back to
+    // the server, which is where the card table is.
+    text: { query: { name: null, setCode: null, collectorNumber: null }, candidates: [] },
+    probes,
+    probe: probes[probeIndex ?? 0] || { artHash: null, frameHash: null },
+    probeIndex,
+    hashMatches,
+    hydrated,
+    setBias,
+    cap: limit,
+  });
+}
+
+/**
+ * The nearest reference to a hash, whatever the distance.
+ *
+ * The server's `nearestArtDistance`, on the device and for the same reason: a
+ * capture whose nearest reference sits at 80 bits was framed slightly wrong and
+ * is worth another try, one at 130 was not a picture of a card. Reported as a
+ * bare "no match" those are indistinguishable, and they need opposite responses
+ * from whoever is holding the cards.
+ *
+ * A second full pass, so it is asked for only once a resolve has already come
+ * back empty — which on this device is about twelve milliseconds.
+ */
+function nearestReference(probes) {
+  let best = null;
+
+  for (const probe of probes) {
+    if (!probe.artHash) continue;
+    const words = hexToWords(probe.artHash);
+
+    for (let row = 0; row < state.count; row++) {
+      const distance = hammingWords(words, 0, state.words, row * WORDS_PER_ROW, ART_WORDS);
+      if (!best || distance < best.artDistance) best = { row, artDistance: distance };
+    }
+  }
+
+  if (!best) return null;
+
+  const printingId = identity.printingIds?.[best.row] ?? null;
+
+  return {
+    printingId,
+    artDistance: best.artDistance,
+    bits: ART_BITS,
+    // What it would have taken to match, so the number reads without having to
+    // look the thresholds up.
+    matchWithin: Math.round(ART_MATCH_THRESHOLD * ART_BITS),
+  };
+}
+
+/** What the device is holding, for the diagnostics bundle and the status line. */
+export function identityStats() {
+  return { count: identity.count, loadMs: identity.loadMs };
 }

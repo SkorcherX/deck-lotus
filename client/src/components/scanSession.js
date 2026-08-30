@@ -272,6 +272,49 @@ function candidateOption(candidate, selectedId) {
   return option;
 }
 
+/**
+ * Fill in the reference art for rows matched on the device.
+ *
+ * A capture matched locally knows its card, its printing and its price — but
+ * not the image URL, because carrying 112,815 of those would nearly triple the
+ * identity table the device downloads, to serve a picture nothing but this
+ * screen ever shows. So it is fetched here, once, for the whole session, at the
+ * moment the reviewer actually opens the table.
+ *
+ * Silent on failure. The row still names the card and offers its printings; it
+ * is a thumbnail beside the capture, and losing it is not worth an error over a
+ * list somebody is part-way through working on.
+ */
+async function hydrateArtwork(candidates) {
+  const missing = candidates.filter(
+    (candidate) => candidate && !candidate.imageUrl && candidate.printingId
+  );
+  if (!missing.length) return;
+
+  const wanted = [...new Set(missing.map((candidate) => candidate.printingId))];
+
+  try {
+    const printings = await api.fetchPrintings(wanted);
+    const byId = new Map(printings.map((row) => [row.printing_id, row]));
+
+    let filled = 0;
+    for (const candidate of missing) {
+      const row = byId.get(candidate.printingId);
+      if (!row) continue;
+      candidate.imageUrl = row.image_url;
+      // The price comes back too, and is the fresher of the two: the device's
+      // copy is as new as the last sync it downloaded, this one is as new as
+      // the database.
+      if (row.price !== undefined && row.price !== null) candidate.price = row.price;
+      filled++;
+    }
+
+    if (filled) render();
+  } catch (error) {
+    console.warn('[scan] could not fetch the reference art', error);
+  }
+}
+
 function renderRow(row) {
   const node = document.createElement('div');
   node.className = `scan-row scan-row-${row.tier || 'pending'}`;
@@ -334,6 +377,9 @@ function renderRow(row) {
       // has already chosen by hand.
       row.picked = true;
       render();
+      // Picking a different printing shows a different picture, and a locally
+      // matched candidate that was not the row's first choice has none yet.
+      hydrateArtwork([chosen(row)]);
     });
 
     const tierChip = document.createElement('span');
@@ -668,6 +714,9 @@ export function setupScanSession() {
 
   el('scan-review-start')?.addEventListener('click', () => {
     state.phase = 'review';
+    // One request for the session, not awaited: the table is drawn from what is
+    // already known and the pictures arrive into it.
+    hydrateArtwork(state.rows.filter((row) => !row.deleted).map(chosen));
     // Stop the camera, rather than leaving it firing into the list being worked
     // through. Auto-capture does not know a review is happening, so a session
     // reviewed in front of a live lens grows new rows while you read it — which

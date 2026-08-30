@@ -51,6 +51,7 @@ import {
   hammingWords,
 } from '../shared/cardHash.js';
 import { ART_MATCH_THRESHOLD, matchConfidence } from '../shared/scanFusion.js';
+import { invalidate as invalidateIdentity } from './scanIdentityService.js';
 
 const ART_WORDS = ART_HASH_BYTES / 4;
 const FRAME_WORDS = FRAME_HASH_BYTES / 4;
@@ -152,6 +153,10 @@ export function load({ path = PACKED_PATH, quiet = false } = {}) {
  * or the scanner will resolve to printings that no longer exist.
  */
 export function refresh() {
+  // The identity table is this join, spelled out — it is stale the instant the
+  // ids are reassigned, and a client holding one that disagrees with the index
+  // would name cards by the wrong rows.
+  invalidateIdentity();
   return load({ quiet: true });
 }
 
@@ -168,6 +173,20 @@ export function isAvailable() {
 export function stats() {
   const current = ensureLoaded();
   return { count: current.count, joined: current.matched };
+}
+
+/**
+ * Every row's printing id, in file order, -1 where this database has no such
+ * printing.
+ *
+ * The join is the thing worth exposing. It is rebuilt on every sync and it is
+ * what scanIdentityService needs to say what each index row *is* — and building
+ * that from the file a second time would be a second copy of the parse to drift
+ * from this one. Returned as the live array rather than a copy; the caller
+ * reads it once and builds a payload.
+ */
+export function printingIdsByRow() {
+  return ensureLoaded().printingIds;
 }
 
 /**

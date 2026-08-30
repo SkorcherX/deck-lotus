@@ -82,9 +82,21 @@ Roughly in order, and the third item is the one with teeth:
    `test/serverImports.test.js` fails any shared module that imports outside
    `src/shared/` — that is what stops a stray `import db` quietly putting the
    ranking back on the server.
-4. **Prices and commit stay on the server.** Prices change daily and are not
-   part of identifying a card; the commit is one request at the end of a
-   session, which is what the whole exercise is for.
+3.5 **What shipped.** `GET /api/scan/identity` serves the identity table —
+   printing, card, name, set, collector and price per index row, in index row
+   order, 5.6MB of JSON on a content hash etag — and `localIndex.resolve` puts
+   it through `fuseScanResult`. `scan.js` fetches both halves in the background
+   once the detector is up and matches locally from then on, falling back to the
+   server whenever the index is not loaded, has failed to load, or the reader
+   wants a capture refined by text. `timings.resolvedBy` records which answered.
+   Image URLs are the one thing left out: they nearly triple the payload
+   (1.25MB gzipped to 3.54MB) to serve the review screen's thumbnail, so
+   `POST /api/scan/printings` hydrates those once per session at review time.
+4. **Prices and commit stay on the server.** Prices are the exception the
+   identity table makes — the price band is the colour the overlay pulses, so
+   it cannot arrive a round trip late, and it is as fresh as the last sync.
+   Everything else about a price stays server-side; the commit is one request
+   at the end of a session, which is what the whole exercise is for.
 5. **Keep the server path.** It is what the review screen, the session resolve
    and every existing test use, and it is the fallback when the index has not
    downloaded yet.
