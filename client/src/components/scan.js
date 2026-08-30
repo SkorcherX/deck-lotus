@@ -1718,7 +1718,8 @@ async function benchLocalMatching() {
     localIndex.searchProbes(captures[0].probes);
 
     const times = [];
-    let agreed = 0;
+    let found = 0;
+    let sameDistance = 0;
     let compared = 0;
 
     for (const entry of captures) {
@@ -1726,11 +1727,24 @@ async function benchLocalMatching() {
       const { matches } = localIndex.searchProbes(entry.probes);
       times.push(performance.now() - started);
 
-      const server = entry.candidates?.[0]?.uuid;
-      if (server) {
-        compared++;
-        if (matches[0]?.uuid === server) agreed++;
-      }
+      const chosen = entry.candidates?.[0];
+      if (!chosen?.uuid) continue;
+      compared++;
+
+      // What this can honestly compare is the *evidence*, not the answer.
+      // The server's top candidate has been through fusion, tiers and set
+      // biasing; the device returns art order and nothing else, because
+      // reimplementing those here would create the second copy of the rules
+      // this spike exists to avoid. Asking whether the two agree on the top
+      // uuid therefore scores set biasing as a disagreement — which it did, on
+      // the first session this ran in, reading 0/1 while the reader was exactly
+      // right.
+      //
+      // So: did the device find the printing the server settled on, and did it
+      // measure the same distance to it?
+      const match = matches.find((m) => m.uuid === chosen.uuid);
+      if (match) found++;
+      if (match && match.artDistance === chosen.artDistance) sameDistance++;
     }
 
     const mean = times.reduce((sum, ms) => sum + ms, 0) / times.length;
@@ -1738,7 +1752,7 @@ async function benchLocalMatching() {
       `${(bytes / 1048576).toFixed(1)}MB / ${count} refs in ${loadMs}ms · ` +
       `match ${mean.toFixed(0)}ms mean, ${Math.max(...times).toFixed(0)}ms worst ` +
       `(${captures.length} captures × ${captures[0].probes.length} probes) · ` +
-      `agreed with server on ${agreed}/${compared}`;
+      `found the server's printing in ${found}/${compared}, same distance ${sameDistance}/${compared}`;
 
     say(line);
     console.log('[local matching]', line);
@@ -1755,7 +1769,8 @@ async function benchLocalMatching() {
       worstMs: Math.round(Math.max(...times) * 10) / 10,
       captures: captures.length,
       probes: captures[0].probes.length,
-      agreed,
+      found,
+      sameDistance,
       compared,
       userAgent: navigator.userAgent,
     };
