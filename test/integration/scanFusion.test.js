@@ -127,6 +127,17 @@ before(async () => {
   // is in the hand.
   insertPrinting(reprint, 7, 'EEE', '77');
 
+  // Two *different* cards that share an illustration. Rare but real — Alchemy
+  // rebalances against their originals, the two faces of a transforming card,
+  // the un-set sticker goblins — and about 1.5% of the reference set is within
+  // 27 bits of a different card for exactly this reason. It is the one case
+  // where a capture can be within the threshold of two names at once, which is
+  // what `nameCertain` exists to refuse.
+  const twinA = insertCard('Test Twin One', '{U}', 'Sorcery');
+  insertPrinting(twinA, 8, 'FFF', '88');
+  const twinB = insertCard('Test Twin Two', '{U}', 'Sorcery');
+  insertPrinting(twinB, 9, 'GGG', '99');
+
   fs.writeFileSync(HASH_PATH, packHashes([
     // Both Bolt printings share the art hash; only the frame hash differs.
     { uuid: printings[1].uuid, artHash: zeros(ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) },
@@ -146,6 +157,10 @@ before(async () => {
     // far enough that only one of the two scores strongly.
     { uuid: printings[6].uuid, artHash: hashNear('5'.repeat(ART_HASH_HEX), 55), frameHash: zeros(FRAME_HASH_HEX) },
     { uuid: printings[7].uuid, artHash: hashNear('5'.repeat(ART_HASH_HEX), 3), frameHash: zeros(FRAME_HASH_HEX) },
+    // The shared-art pair, on a pattern 128 bits from every other reference
+    // here so it cannot disturb the tests that ask what matches nothing.
+    { uuid: printings[8].uuid, artHash: '3'.repeat(ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) },
+    { uuid: printings[9].uuid, artHash: hashNear('3'.repeat(ART_HASH_HEX), 30), frameHash: opposite(FRAME_HASH_HEX) },
   ]));
 
   hashIndex.load({ quiet: true });
@@ -159,7 +174,7 @@ after(() => {
 
 describe('the hash index', () => {
   test('loads the packed file and joins every row to a printing', () => {
-    assert.deepEqual(hashIndex.stats(), { count: 7, joined: 7 });
+    assert.deepEqual(hashIndex.stats(), { count: 9, joined: 9 });
     assert.equal(hashIndex.isAvailable(), true);
   });
 
@@ -376,6 +391,48 @@ describe('resolveScanFused tiers', () => {
       SCAN_TIERS.PICK_PRINTING,
       'ordering a tie is not the same as knowing which one it is'
     );
+  });
+
+  test('the name is certain even where the printing is not', () => {
+    // Three printings of one card, all matching. The printing is genuinely
+    // open — that is what pick-printing means — but there is nothing to decide
+    // about the name, and a session that reads the tier as doubt about the card
+    // is reading it wrong. Nine recorded sessions, 61 resolved captures, and
+    // not one had two names within the threshold.
+    const result = resolveScanFused({
+      artHash: '5'.repeat(ART_HASH_HEX),
+      frameHash: zeros(FRAME_HASH_HEX),
+    });
+
+    assert.equal(result.tier, SCAN_TIERS.PICK_PRINTING);
+    assert.equal(result.signals.nameCertain, true);
+    assert.equal(new Set(result.candidates.map((c) => c.name)).size, 1);
+  });
+
+  test('a certain name is a claim the art made, not the text', () => {
+    // Reprints of one card are one name however many printings match.
+    const bolt = resolveScanFused({ artHash: zeros(ART_HASH_HEX) });
+    assert.equal(bolt.signals.nameCertain, true);
+
+    // But a name the *reader* proposed is not the art agreeing with anything,
+    // and must not be announced as settled. This is the case that would have
+    // let a misread card be waved through with a tick beside it.
+    const read = resolveScanFused({ name: 'Test Bolt', setCode: 'AAA', collectorNumber: '11' });
+    assert.equal(read.signals.nameCertain, false, 'text alone never settles a name');
+  });
+
+  test('two different cards within the threshold is never a certain name', () => {
+    // The shared-art pair: one capture, two names, both well inside the
+    // threshold. This is the whole safety property — announcing a name here
+    // would be announcing a coin toss.
+    const result = resolveScanFused({
+      artHash: '3'.repeat(ART_HASH_HEX),
+      frameHash: zeros(FRAME_HASH_HEX),
+    });
+
+    const names = new Set(result.candidates.map((candidate) => candidate.name));
+    assert.equal(names.size, 2, 'the fixture pair must both be offered');
+    assert.equal(result.signals.nameCertain, false);
   });
 
   test('unsure: no hash at all falls back to the text-only result', () => {

@@ -159,6 +159,9 @@ export function recordCapture(entry, context = {}) {
     // docs/SCAN_DIAGNOSTICS_TESTING.md.
     singleArtHash: entry.singleArtHash || null,
     burst: entry.burst || 1,
+    // Milliseconds from the shutter to the verdict, split into its parts. The
+    // one measurement that turns "it feels slow" into something answerable.
+    timings: entry.timings || null,
     frameHash: entry.frameHash || null,
     hashError: entry.hashError || null,
     // How much of the captured card was a blown-out highlight, as a percentage.

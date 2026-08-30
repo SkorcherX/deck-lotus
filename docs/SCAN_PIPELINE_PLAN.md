@@ -117,6 +117,18 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       throughput figure users see should be the art-hash one. Capping `readBest`
       at two variants when the queue is deep is optional and low value.
 
+## Naming and cues
+
+- [x] **16. Say when the *name* is settled, separately from the printing.**
+      Nine sessions, 61 resolved captures, and every one had a single card name
+      inside the threshold — the tier was reporting doubt the evidence never
+      had. `signals.nameCertain` now carries it, and the shutter's tone and the
+      status line read from it rather than from `confident`. See
+      docs/SCAN_ACTION_PLAN_2026-08-29.md.
+- [x] **17. Record where the time between shutter and verdict goes.**
+      `timings: { shutterMs, hashMs, resolveMs }` per capture. Should have come
+      before the speed work rather than after it.
+
 ## Printings
 
 - [x] **14. Bias candidates toward the sets a session has already resolved.**
