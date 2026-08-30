@@ -1178,6 +1178,7 @@ function nextVideoFrame(video) {
 }
 
 async function captureFromVideo(video, trigger) {
+  const started = performance.now();
   // Held across the burst. The analysis loop keeps running while this awaits,
   // and without this a second shutter could fire into the middle of it — the
   // disarm that normally prevents that lives in emitCapture, which is now two
@@ -1196,7 +1197,7 @@ async function captureFromVideo(video, trigger) {
       frames.push(frameImageData(video, video.videoWidth, video.videoHeight));
     }
 
-    emitCapture(frames, quad, video.videoWidth, video.videoHeight, trigger, snap);
+    emitCapture(frames, quad, video.videoWidth, video.videoHeight, trigger, snap, started);
   } finally {
     state.capturing = false;
   }
@@ -1365,7 +1366,7 @@ function expandQuad(quad, scale) {
   }));
 }
 
-function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null) {
+function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null, started = null) {
   // One photograph, made of however many the shutter managed to take. Every
   // warp below — the card, the five framing probes, both OCR crops — is cut
   // from this rather than from any single frame, which is the cheap way round:
@@ -1407,6 +1408,13 @@ function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null
     // were actually on the card is this. A session that matches badly at arm's
     // length and well up close is invisible without it.
     nativeSize: size,
+    // Where the time between the shutter and the answer goes. Recorded because
+    // "make the notification faster" could not be measured at all otherwise —
+    // the bundle knew when a capture happened and never how long it took to
+    // become a verdict. `shutterMs` covers framing and the frame reads,
+    // `hashMs` the rectify-and-hash of the card and its five probes, and
+    // `resolveMs` the round trip to the matcher.
+    timings: { shutterMs: started === null ? null : Math.round(performance.now() - started) },
     // How many frames the shutter actually managed to composite. Fewer than
     // CAPTURE_BURST means the camera stopped mid-burst.
     burst: burst.length,
@@ -1436,6 +1444,7 @@ function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null
     // index pass each on the server; guessing a single framing would be right
     // for one lighting setup and wrong for the next. See FRAMING_PROBES for
     // which way the ladder points and why it was turned around.
+    const hashStarted = performance.now();
     entry.probes = FRAMING_PROBES.map((scale) => {
       const framed = expandQuad(quad, scale);
       const probe = hashRectified(
@@ -1443,6 +1452,8 @@ function emitCapture(frames, quad, frameWidth, frameHeight, trigger, snap = null
       );
       return { scale, ...probe };
     });
+    entry.timings.hashMs = Math.round(performance.now() - hashStarted);
+
     // The same card cut from the first frame alone, hashed and kept but never
     // sent. It is the control for compositing: without it a bundle says how
     // well the composite did and nothing about whether the burst was worth
@@ -1792,12 +1803,15 @@ async function resolveCapture(entry) {
       ? entry.probes
       : [{ artHash: entry.artHash, frameHash: entry.frameHash }];
 
+    const resolveStarted = performance.now();
     const resolved = await api.resolveScanProbes({
       artHashes: probes.map((p) => p.artHash),
       frameHashes: probes.map((p) => p.frameHash),
       setBias: setTally(),
       limit: 25,
     });
+
+    if (entry.timings) entry.timings.resolveMs = Math.round(performance.now() - resolveStarted);
 
     rememberSet(resolved);
 
@@ -1840,9 +1854,14 @@ async function resolveCapture(entry) {
     const wonScale = Number.isInteger(won) && entry.probes?.[won]
       ? ` ×${entry.probes[won].scale}`
       : '';
+    // The name first, and marked settled when it is. A tier of `unsure` is a
+    // verdict about the *printing*, and reading it as doubt about the card is
+    // what made every scan of a reprint look like a failed one.
     setReadStatus(
       best
-        ? `${best.name} — ${best.setCode} ${best.collectorNumber || ''} (art${wonScale})`
+        ? `${best.name}${resolved.signals?.nameCertain ? ' ✓' : ''} — ${best.setCode} ${
+            best.collectorNumber || ''
+          }${resolved.signals?.nameCertain && resolved.tier !== CONFIDENT_TIER ? ' (choosing printing)' : ''} (art${wonScale})`
         : near
           ? `No match — nearest ${near.artDistance}/${near.bits} bits (needs ≤${near.matchWithin})`
           : 'No art match'
@@ -1853,7 +1872,7 @@ async function resolveCapture(entry) {
     // still thinking.
     if (!best) pulseOverlay('miss');
     diagnostics.attachResolution(entry.id, resolved);
-    signalMatch(resolved.tier);
+    signalMatch(resolved);
 
     window.dispatchEvent(new CustomEvent('scan:resolved', {
       detail: {
@@ -2047,8 +2066,17 @@ function pulseElement(node, className, band) {
  * this card will be waiting in review. Built from an oscillator rather than an
  * asset so it costs nothing to ship and works offline.
  */
-function signalMatch(tier) {
+/**
+ * @param resolved  the whole verdict, not just its tier: the tone answers "can
+ *   I move on", and the honest answer to that is the *name* being settled. A
+ *   reprint that will need its printing picked at review time is still a card
+ *   the scanner has identified, and sounding the same note for it as for a card
+ *   it could not read at all was telling somebody to stop when they need not.
+ */
+function signalMatch(resolved) {
   if (!state.sound) return;
+
+  const settled = resolved?.tier === CONFIDENT_TIER || resolved?.signals?.nameCertain;
 
   try {
     state.audio = state.audio || new (window.AudioContext || window.webkitAudioContext)();
@@ -2058,7 +2086,7 @@ function signalMatch(tier) {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
     oscillator.type = 'sine';
-    oscillator.frequency.value = tier === CONFIDENT_TIER ? 1320 : 440;
+    oscillator.frequency.value = settled ? 1320 : 440;
     gain.gain.setValueAtTime(0.0001, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.15, context.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.12);

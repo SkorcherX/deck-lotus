@@ -748,6 +748,12 @@ export function resolveScanFused({
         nearest,
         probes: probes.length,
         probeIndex: null,
+        // Stated rather than left undefined: the art matched nothing here, so
+        // whatever the reader proposed is a proposal. A caller reading a
+        // missing field as falsy would get the right answer by luck, and the
+        // one thing this flag must never do is let a misread card be announced
+        // as settled.
+        nameCertain: false,
       },
     };
   }
@@ -907,6 +913,20 @@ export function resolveScanFused({
 
   applySetBias(merged, setBias);
 
+  // Whether the art agreed on *which card this is*, as distinct from which
+  // printing of it. Every art-backed candidate belonging to one card means
+  // there is nothing left to decide about the name, however many printings are
+  // still on the table.
+  //
+  // Measured over nine recorded sessions: 61 captures resolved to something,
+  // and in all 61 every candidate within the match threshold shared a single
+  // card name. Not one had two names to choose between. So a tier of `unsure`
+  // has been reporting doubt about the name that the evidence never had — it is
+  // a printing-level verdict, and the name deserves its own.
+  const nameCertain = Boolean(
+    best && artBacked(best) && merged.filter(artBacked).every((c) => c.cardId === best.cardId)
+  );
+
   let tier;
   if (agreed && isStrongMatch(bestHash)) {
     tier = SCAN_TIERS.CONFIDENT;
@@ -948,6 +968,8 @@ export function resolveScanFused({
       // recording says when the order shown was the art's and when it was the
       // stack's. See applySetBias.
       setBiased: !!setBias && bestCardPrintings > 1,
+      // The name is settled even where the printing is not. See above.
+      nameCertain,
       agreed,
       bestArtDistance: bestHash ? bestHash.artDistance : null,
       // Which of the offered framings won. On its own it is trivia; across a
