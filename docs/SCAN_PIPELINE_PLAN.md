@@ -194,6 +194,36 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       The cheap mitigation for foils meanwhile is the reader: OCR is exactly the
       second signal for a card whose art cannot be matched, and `readIfUnresolved`
       already asks for it on anything short of `confident`.
+      *Re-measured on a wider corpus — 126 captures, fourteen sessions — and it
+      is still not a clean win.* Per card against the baseline:
+
+          card                 baseline   high-pass r2   local-norm r4
+          Ashling (foil)          11/14          11/14           11/14
+          Mass of Mysteries        7/14           6/14            8/14
+          Abundant Growth         10/14          11/14           10/14
+          Cultivate                5/14           8/14            8/14
+          Fertile Ground          11/14          10/14           12/14
+          Ingot Chewer            10/14          13/14           14/14
+          Smokebraider            14/14          13/14           10/14
+          Jungle Shrine           11/14          11/14           13/14
+          Seaside Citadel         14/14          14/14           14/14
+          total                   93/126         97/126         100/126
+          strong                      15             19              12
+
+      `local-norm r4` matches most and **strong-matches fewest** — and a match
+      that never reaches `confident` is a row somebody still has to look at. It
+      also drops Smokebraider from 14/14 to 10/14, which is the largest single
+      regression anywhere in this table. `high-pass r2` is the better shape: +4
+      matched, +4 strong, and its three regressions are one capture each.
+      Neither is clean, and that is the point. The corpus is **one precon, nine
+      cards, shot fourteen times** — a change that moves every distance in a
+      112,815-row index should not be decided on nine cards, however many times
+      they were photographed. What this wants before it ships is a second stack:
+      a different set, non-foil, so "does not regress the cards it was not aimed
+      at" means something wider than these nine.
+      The cost side has not moved: shipping invalidates every reference, which
+      is ~3 hours of Scryfall downloads and a hash version bump, and every client
+      re-downloads a 6MB index.
 
 - [x] **18. Move the matcher onto the device.** `resolveMs` measured 741ms on a
       phone against 9.5ms of actual work on the server — it is the link, and it
