@@ -1187,8 +1187,14 @@ async function captureFromVideo(video, trigger) {
   state.capturing = true;
 
   try {
+    // The detection request goes first and is awaited last. Reading a 12MP
+    // frame out of the video takes a few hundred milliseconds and detection's
+    // round trip is another ~240; done in sequence that is most of a second
+    // between the shutter and anything happening, and they have no need of each
+    // other until the end.
+    const framing = captureQuad(video);
     const frames = [frameImageData(video, video.videoWidth, video.videoHeight)];
-    const { quad, snap } = await captureQuad(frames[0], video);
+    const { quad, snap } = await framing;
 
     for (let i = 1; i < CAPTURE_BURST; i++) {
       await nextVideoFrame(video);
@@ -1221,7 +1227,7 @@ async function captureFromVideo(video, trigger) {
  * Falls back to the live framing when detection cannot answer: the whole point
  * of the fallback is that a capture framed a little late still beats no capture.
  */
-async function captureQuad(frame, video) {
+async function captureQuad(video) {
   const live = snapQuad(video, video.videoWidth, video.videoHeight);
   if (!state.settings.detectEnabled) return live;
 
@@ -2148,12 +2154,21 @@ async function runRead(entry) {
   }
 
   try {
-    const resolved = await api.resolveScan({
+    const probes = entry.probes?.length
+      ? entry.probes
+      : [{ artHash: entry.artHash, frameHash: entry.frameHash }];
+
+    const resolved = await api.resolveScanProbes({
+      // The same ladder the first pass used. Re-asking with the unexpanded hash
+      // alone is how a reading that misfired came to *replace* a correct art
+      // answer: at scale 1.0 the art matches nothing on a sleeved card, and an
+      // unopposed misread is a wrong card with a confident-looking row.
+      artHashes: probes.map((p) => p.artHash),
+      frameHashes: probes.map((p) => p.frameHash),
       name: reading.name,
       setCode: reading.setCode,
       collectorNumber: reading.collectorNumber,
-      artHash: entry.artHash,
-      frameHash: entry.frameHash,
+      setBias: setTally(),
       // Enough for the review table's printing picker to be a real choice. The
       // tuning panel below only ever showed the top few, but the session's
       // picker is how a reprint gets corrected, and five is not a list of

@@ -1341,6 +1341,26 @@
                             <option value="">Default camera</option>
                         </select>
                         <span id="scan-resolution" class="scan-resolution"></span>
+                        <!-- The art hash names the card and cannot name the
+                             printing: reprints share an illustration, so a
+                             session's ties are ordered by the sets it has
+                             already been sure about. That tally is seeded by
+                             cards unique to one set, and a box whose unique
+                             cards happen to miss gets no seed at all — a
+                             precon's unique cards are usually its foil
+                             commanders, the hardest in the box to match. Saying
+                             which set is being scanned supplies it directly.
+
+                             In the header rather than the diagnostics panel: it
+                             is a normal-use control for anybody working through
+                             one box, and it spent a session folded inside
+                             "Diagnostics & tuning" where nobody found it. -->
+                        <label class="scan-set-hint" title="Breaks ties between reprints of one card. Never overrides the art.">
+                            <span>Set</span>
+                            <input id="scan-set-hint" type="text" maxlength="6"
+                                   placeholder="ECC" autocomplete="off" spellcheck="false" />
+                        </label>
+
                         <button id="scan-start-btn" class="btn btn-primary">
                             <i class="ph ph-video-camera btn-icon"></i>
                             <span class="btn-text">Start Camera</span>
@@ -1537,21 +1557,6 @@
                             <span id="scan-chip-glare" class="scan-chip">Glare &mdash;</span>
                             <span id="scan-streak" class="scan-streak">Camera off</span>
                         </div>
-
-                        <!-- The art hash names the card and cannot name the
-                             printing: reprints share an illustration, so a
-                             session's ties are ordered by the sets it has
-                             already been sure about. That tally is seeded by
-                             cards unique to one set, and a box whose unique
-                             cards happen to miss gets no seed at all. Saying
-                             which set is being scanned supplies it directly. -->
-                        <label class="scan-set-hint">
-                            <span>Scanning set</span>
-                            <input id="scan-set-hint" type="text" maxlength="6"
-                                   placeholder="e.g. ECC" autocomplete="off"
-                                   spellcheck="false" />
-                            <small>Optional. Breaks ties between reprints; never overrides the art.</small>
-                        </label>
 
                         <div class="scan-controls">
                             <button id="scan-clear-btn" class="btn btn-secondary">

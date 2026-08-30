@@ -177,10 +177,32 @@ class ApiClient {
    * belong in a query string. See resolveScanFused on the server for why one
    * capture has more than one framing.
    */
-  async resolveScanProbes({ artHashes, frameHashes, setBias = null, limit = 25 }) {
+  /**
+   * Resolve one capture from its framing probes, optionally with a reading.
+   *
+   * The probes go with the text rather than instead of it. Refining a capture
+   * used to re-ask with the *unexpanded* hash alone, which threw away the
+   * framing ladder — and since the winning probe is almost always an inward one,
+   * the art then matched nothing and a garbage read stood unopposed. A recorded
+   * session had "Lava Axe" replace a correctly identified Jungle Shrine that
+   * way. Both signals, or the fusion has nothing to fuse.
+   */
+  async resolveScanProbes({
+    artHashes,
+    frameHashes,
+    name = null,
+    setCode = null,
+    collectorNumber = null,
+    setBias = null,
+    limit = 25,
+  }) {
     const { results } = await this.request('/scan/resolve', {
       method: 'POST',
-      body: JSON.stringify({ scans: [{ id: 0, artHashes, frameHashes }], setBias, limit }),
+      body: JSON.stringify({
+        scans: [{ id: 0, artHashes, frameHashes, name, setCode, collectorNumber }],
+        setBias,
+        limit,
+      }),
     });
     return results[0];
   }
