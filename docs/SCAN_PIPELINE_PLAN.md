@@ -263,7 +263,7 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
       reads. It also cost 402ms per capture in the median alone at 12MP.
       `CAPTURE_BURST = 1`; the code and its tests stay for the fixed-rig case,
       where the frames would align and the glare would not.
-- [ ] **9. Glare-aware hashing.** In `downsampleToGrid`, exclude near-saturated
+- [x] **9. Glare-aware hashing.** In `downsampleToGrid`, exclude near-saturated
       pixels from each cell's average, falling back to the full average when a
       cell is entirely blown. This is shared-module arithmetic — reference
       hashes are built by `scripts/build-card-hashes.mjs` from clean scans, so
@@ -271,6 +271,20 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
       require a hash-version bump. Check it against the crowding measurement in
       the testing doc too: ~1.5% of cards already sit within 27 bits of a
       different card, and this change moves every distance at once.
+      *Measured, and declined.* Built as `downsampleToGrid`'s `glareCut` option
+      and run through `hash-variants.mjs` over 126 captures from fourteen
+      sessions: **93/126 matched, which is the baseline exactly**, at cuts of
+      250, 240 and 230. Per card it is identical on eight of the nine and half a
+      bit worse on the ninth, does nothing for the two foils it was aimed at,
+      and combined with the high-pass it undoes part of it (97/126 to 94/126).
+      The reason retires the idea rather than deferring it: **task 7's shutter
+      gate means a capture with blown pixels is never taken.** Across every
+      recorded session the glare metric maxes at 1.13% of pixels and is 0.00% in
+      most. There is nothing to exclude, and shipping it would cost all 112,815
+      references rebuilt and a hash version bump to move no number. The option
+      stays, off by default and byte-identical when off, because it is what lets
+      the harness measure the real pipeline instead of a copy — and because the
+      next person to propose this is owed the measurement, not the idea.
 - [ ] **10. Add the adaptive-threshold attempt the header promises.**
       `cardContour.js:34` says "a foil under a lamp needs the adaptive one", but
       the attempts are Otsu, inverted Otsu and Canny — there is no

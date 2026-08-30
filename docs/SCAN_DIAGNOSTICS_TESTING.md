@@ -264,15 +264,23 @@ it match more captures to the card that was on the table, does it bring
 A variant that wins the first and loses the second is a looser threshold wearing
 a disguise.
 
-**What it has measured so far**, over 72 captures from ten recorded sessions:
+**What it has measured so far.** Re-run over **126 captures from fourteen
+sessions** — the ECC nine, same stack, same order, sleeved and bare:
 
-     variant          matched  strong    mean   nearest wrong card
-     baseline           51/72       5    64.9                  116
-     high-pass r1       51/72       8    65.0                  112
-     high-pass r2       56/72       8    64.1                  114
-     high-pass r4       53/72       9    64.2                  116
-     local-norm r2      51/72       6    68.3                  114
-     local-norm r4      53/72       7    66.3                  114
+     variant                        matched  strong    mean   nearest wrong
+     baseline                        93/126      15    62.7             116
+     high-pass r1                    93/126      18    62.9             112
+     high-pass r2                    97/126      19    62.0             114
+     high-pass r4                    95/126      20    61.8             116
+     local-norm r2                   95/126      11    65.5             114
+     local-norm r4                  100/126      12    63.3             114
+     glare-cut 250                   93/126      15    62.8             116
+     glare-cut 240                   93/126      14    62.9             116
+     glare-cut 230                   93/126      15    63.0             116
+     glare-cut 240 + high-pass r2    94/126      19    62.7             114
+
+(The earlier ten-session run read 51/72 baseline, 56/72 for high-pass r2 — the
+same ordering, on a smaller corpus.)
 
 A high-pass of radius 2 — the grid minus a blurred copy of itself — matches five
 more captures, strong-matches three more, and leaves discrimination untouched
@@ -281,7 +289,30 @@ threshold). Per card, it gains Cultivate 3/8 to 5/8, Abundant Growth and Ingot
 Chewer one each, one of the two foils one, and **regresses nothing**.
 
 It is not, however, the foil rescue it was proposed as. Foils remain the worst
-cards in the sample either way.
+cards in the sample either way. On the wider corpus `local-norm r4` now scores
+higher still — 100/126 — but strong-matches fewer than half what the high-pass
+does (12 against 19), and a match that never reaches `confident` is a row
+somebody still has to look at.
+
+**Glare-aware hashing was measured here and declined.** Excluding near-saturated
+pixels from each cell's average — task 9 of the pipeline plan — matches
+**93/126, exactly the baseline**, at every cut tried, and drifts the mean
+slightly the wrong way. Per card it is identical to baseline on eight of the
+nine and half a bit worse on the ninth; it does nothing for the two foils it was
+aimed at. Combined with the high-pass it *undoes* part of it, 97/126 down to
+94/126.
+
+The reason is the glare gate, and it is worth stating because it retires the
+idea rather than deferring it: **the shutter refuses to fire while glare is over
+threshold**, so a capture with blown pixels never gets taken. Measured over
+every recorded session, the glare metric maxes at 1.13% of pixels and is 0.00%
+in most of them. There is nothing for this filter to exclude. Shipping it would
+cost a rebuild of all 112,815 references — three hours of Scryfall downloads —
+and a hash version bump, for a number that does not move.
+
+`downsampleToGrid` keeps the `glareCut` option, off by default and
+byte-identical when off (pinned by a test in `test/cardHash.test.js`), so the
+measurement stays reproducible against the real pipeline.
 
 **The cost is the reason it has not shipped.** Changing this arithmetic
 invalidates all 112,815 references at once, and only the *hashes* are cached —

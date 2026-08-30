@@ -18,6 +18,7 @@ import {
   hexToWords,
   hammingWords,
   ART_WINDOW,
+  downsampleToGrid,
   ART_HASH_HEX,
   FRAME_HASH_HEX,
 } from '../src/shared/cardHash.js';
@@ -274,4 +275,65 @@ test('the art window stays inside the card', () => {
   assert.ok(ART_WINDOW.x > 0 && ART_WINDOW.y > 0);
   assert.ok(ART_WINDOW.x + ART_WINDOW.w <= 1);
   assert.ok(ART_WINDOW.y + ART_WINDOW.h <= 1);
+});
+
+/**
+ * Excluding blown pixels from a cell's average — the sleeve-glare proposal in
+ * task 9 of the pipeline plan.
+ *
+ * Measured and not shipped: across fourteen recorded sessions it matched 93 of
+ * 126 captures either way, because the shutter's glare gate means a capture
+ * with blown pixels is never taken in the first place. The option stays because
+ * it is what lets scripts/hash-variants.mjs measure the real pipeline rather
+ * than a copy of it — and because the *next* person to propose this deserves
+ * the measurement rather than the idea.
+ *
+ * What has to hold for it to stay harmless is that it is off by default and
+ * that off means byte-identical: every one of the 112,815 references was built
+ * through this function, and a change that quietly moved the default would
+ * invalidate all of them without a version bump to say so.
+ */
+test('the glare cut is off by default, and off is byte-identical', () => {
+  const card = syntheticCard(11);
+
+  const asShipped = downsampleToGrid(card, ART_WINDOW);
+  const spelledOut = downsampleToGrid(card, ART_WINDOW, { glareCut: null });
+
+  assert.deepEqual(Array.from(asShipped), Array.from(spelledOut));
+});
+
+test('the glare cut ignores blown pixels, and a wholly blown cell still reads bright', () => {
+  const card = syntheticCard(12);
+  const blown = { ...card, data: new Uint8ClampedArray(card.data) };
+
+  // A stripe of pure white across the art window, as a specular highlight is:
+  // strictly brighter than the print under it.
+  const y0 = Math.floor(card.height * 0.2);
+  for (let y = y0; y < y0 + 12; y++) {
+    for (let x = 0; x < card.width; x++) {
+      const p = (y * card.width + x) * 4;
+      blown.data[p] = 255;
+      blown.data[p + 1] = 255;
+      blown.data[p + 2] = 255;
+    }
+  }
+
+  const clean = downsampleToGrid(card, ART_WINDOW);
+  const withGlare = downsampleToGrid(blown, ART_WINDOW);
+  const cut = downsampleToGrid(blown, ART_WINDOW, { glareCut: 250 });
+
+  const drift = (a, b) =>
+    a.reduce((sum, value, i) => sum + Math.abs(value - b[i]), 0) / a.length;
+
+  assert.ok(
+    drift(cut, clean) < drift(withGlare, clean),
+    'excluding the blown pixels has to land nearer the unglared grid than including them'
+  );
+
+  // A cell with nothing left after the cut falls back to the plain average
+  // rather than reading as black. A card can legitimately be white, and the
+  // fallback is what stops that being hashed as its opposite.
+  const white = { width: 64, height: 64, data: new Uint8ClampedArray(64 * 64 * 4).fill(255) };
+  const grid = downsampleToGrid(white, ART_WINDOW, { glareCut: 250 });
+  assert.ok(grid.every((value) => value > 250), 'a wholly blown cell must not read as black');
 });

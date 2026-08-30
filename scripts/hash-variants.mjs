@@ -79,17 +79,39 @@ function localNorm(grid, radius) {
   return out;
 }
 
+/**
+ * Each variant is a grid builder and a filter over the grid.
+ *
+ * Two stages because the proposals live at two different points. A high-pass
+ * runs between the grid and the DCT; excluding blown pixels from a cell's
+ * average happens while the grid is *being built* and cannot be expressed as a
+ * filter over one. `downsampleToGrid` takes `glareCut` for exactly this, so
+ * both stages are still the real pipeline rather than a copy of it.
+ */
+const identity = (grid) => grid;
+const plain = (image) => downsampleToGrid(image, ART_WINDOW);
+const glareAware = (cut) => (image) => downsampleToGrid(image, ART_WINDOW, { glareCut: cut });
+
 const VARIANTS = {
-  baseline: (grid) => grid,
-  'high-pass r1': (grid) => highPass(grid, 1),
-  'high-pass r2': (grid) => highPass(grid, 2),
-  'high-pass r4': (grid) => highPass(grid, 4),
-  'local-norm r2': (grid) => localNorm(grid, 2),
-  'local-norm r4': (grid) => localNorm(grid, 4),
+  baseline: [plain, identity],
+  'high-pass r1': [plain, (grid) => highPass(grid, 1)],
+  'high-pass r2': [plain, (grid) => highPass(grid, 2)],
+  'high-pass r4': [plain, (grid) => highPass(grid, 4)],
+  'local-norm r2': [plain, (grid) => localNorm(grid, 2)],
+  'local-norm r4': [plain, (grid) => localNorm(grid, 4)],
+  'glare-cut 250': [glareAware(250), identity],
+  'glare-cut 240': [glareAware(240), identity],
+  'glare-cut 230': [glareAware(230), identity],
+  // The two together, since they are aimed at the same failure from opposite
+  // ends: one drops the highlight's pixels, the other drops the shading the
+  // highlight leaves behind.
+  'glare-cut 240 + high-pass r2': [glareAware(240), (grid) => highPass(grid, 2)],
 };
 
-const hashUnder = (image, variant) =>
-  signBlock(dct2d(VARIANTS[variant](downsampleToGrid(image, ART_WINDOW))), ART_BLOCK);
+const hashUnder = (image, variant) => {
+  const [grid, filter] = VARIANTS[variant];
+  return signBlock(dct2d(filter(grid(image))), ART_BLOCK);
+};
 
 /**
  * A centred sub-rectangle of a rectified card — a framing probe, once the card
@@ -140,7 +162,7 @@ if (!refFiles.length) {
 const shotDirs = fs.readdirSync(shotsDir).map((d) => path.join(shotsDir, d)).filter((d) => fs.statSync(d).isDirectory());
 
 console.log(`${shotDirs.length} sessions, ${refFiles.length} references, ladder [${ladder.join(', ')}]\n`);
-console.log('variant          matched  strong   mean   nearest wrong card');
+console.log('variant                        matched  strong   mean   nearest wrong card');
 
 for (const variant of Object.keys(VARIANTS)) {
   const refs = refFiles.map((f) => hashUnder(decode(path.join(refsDir, f)), variant));
@@ -174,7 +196,7 @@ for (const variant of Object.keys(VARIANTS)) {
 
   const mean = distances.reduce((s, x) => s + x, 0) / distances.length;
   console.log(
-    variant.padEnd(16),
+    variant.padEnd(30),
     String(distances.filter((d) => d <= 77).length).padStart(3) + '/' + distances.length,
     String(distances.filter((d) => d <= 41).length).padStart(6),
     mean.toFixed(1).padStart(7),

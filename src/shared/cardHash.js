@@ -122,8 +122,19 @@ const COS = (() => {
  * one average to nearly the same grid, while point sampling would chase the
  * noise. It also makes the result independent of the source resolution, so a
  * 12MP phone capture and a 488px Scryfall thumbnail land on comparable grids.
+ *
+ * `glareCut` excludes near-saturated pixels from a cell's average, for the
+ * sleeve-glare case: a specular highlight is strictly brighter than the print
+ * under it, so dropping the blown pixels averages what is left rather than
+ * letting the highlight set the cell. A cell with nothing left falls back to
+ * the plain average — a card can legitimately be white, and reporting a blown
+ * cell as black would be a worse lie than reporting it as bright.
+ *
+ * Off by default, and it has to stay that way until the references are rebuilt
+ * with it: it changes the arithmetic that produced all 112,815 of them.
+ * scripts/hash-variants.mjs is where it is measured.
  */
-export function downsampleToGrid(image, window) {
+export function downsampleToGrid(image, window, { glareCut = null } = {}) {
   const { data, width, height } = image;
 
   const x0 = Math.max(0, Math.floor(window.x * width));
@@ -149,17 +160,26 @@ export function downsampleToGrid(image, window) {
 
       let sum = 0;
       let count = 0;
+      // Kept alongside, so a cell that turns out to be entirely blown can fall
+      // back to the plain average without a second pass over its pixels.
+      let allSum = 0;
+      let allCount = 0;
 
       for (let sy = sy0; sy < sy1 && sy < height; sy++) {
         let p = (sy * width + sx0) * 4;
         for (let sx = sx0; sx < sx1 && sx < width; sx++, p += 4) {
           // Rec. 601 luma, matching toGrayscale in cardCapture.js.
-          sum += data[p] * 0.299 + data[p + 1] * 0.587 + data[p + 2] * 0.114;
+          const luma = data[p] * 0.299 + data[p + 1] * 0.587 + data[p + 2] * 0.114;
+          allSum += luma;
+          allCount++;
+          if (glareCut !== null && luma >= glareCut) continue;
+          sum += luma;
           count++;
         }
       }
 
-      grid[gy * GRID + gx] = count ? sum / count : 0;
+      grid[gy * GRID + gx] =
+        count ? sum / count : allCount ? allSum / allCount : 0;
     }
   }
 

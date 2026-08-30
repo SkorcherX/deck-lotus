@@ -22,3 +22,8 @@ client/public/opencv/
 data/card-hashes.raw.jsonl
 data/card-hashes.normal.jsonl
 data/card-hashes.build.log
+
+# Replay working directory: extracted captures and the Scryfall references they
+# are measured against. Rebuilt from the bundles whenever a hash change is
+# weighed — see docs/SCAN_DIAGNOSTICS_TESTING.md — and about 19MB of JPEGs.
+out/
