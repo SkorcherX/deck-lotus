@@ -406,11 +406,11 @@ function environment(settings, reader) {
  *   whether the sets came from the field somebody typed or from a seed the
  *   session had inferred wrongly — two very different faults.
  */
-export function download(settings, reader = null, setBias = null) {
+export function download(settings, reader = null, setBias = null, localMatching = null) {
   const bundle = {
     format: 'deck-lotus-scan-diagnostics',
     version: 1,
-    environment: { ...environment(settings, reader), setBias },
+    environment: { ...environment(settings, reader), setBias, localMatching },
     captures: state.records,
   };
 
