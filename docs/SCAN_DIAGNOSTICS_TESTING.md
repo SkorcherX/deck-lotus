@@ -392,6 +392,34 @@ What it has settled so far:
   card; one tracked frame agrees with a cold sweep to within 1px, at 1.3-2.3ms
   against 3.7-8.1ms. A hint aimed at the wrong corner, or one whose window cuts
   the card, both return the cold answer exactly.
+- **An adaptive-threshold attempt was measured here and declined** (task 10).
+  The **Glare stripe** button draws the case it was proposed for. Adaptive alone,
+  swept over block sizes 21-81, constants 2-10 and both polarities — 168
+  combinations, 51 of which found anything at all:
+
+      scene                                 shipped   adaptive, best params
+      dark card, pale desk                   -0.40%   -0.40%
+      pale card, dark mat                    -0.40%   +3.57%
+      card and desk alike                   -37.40%   +1.59%
+      card barely darker than desk          -37.40%   -0.40%
+      dark card, glare stripe               -37.40%   not found, any parameters
+      card like desk, glare stripe           -0.40%   +1.59%
+      pale card on dark mat, glare stripe    -0.40%   +3.57%
+
+  It fails the glare case it was for, is worse than Otsu where Otsu works, and
+  cannot be added as a fourth attempt anyway: attempts are scored by area, so a
+  looser threshold wins by being looser — at its default parameters it took
+  scenes Otsu had right and framed them 9.51% too large. It also took the frame
+  from 3.8ms to 12.6ms. The header of `cardContour.js` now records this instead
+  of promising the attempt.
+- **The detector frames the art box on a low-contrast card**, which is what
+  those glare scenes actually caught. Where the card and the desk are close in
+  brightness, the quad comes back **37.4% smaller than the card** — the art
+  window's contour, with an aspect error of 0.060, inside the 0.16 tolerance,
+  and the tracked path then locks onto it. It is a confident wrong answer rather
+  than a miss, and a capture framed at 0.63 is off the bottom of a ladder that
+  spans 0.84-1.0. That is task 19, and the first move on it is to check a
+  recorded session's misses rather than to trust this fixture.
 
 The **Cold vs tracked** button measures that last point, and is worth re-running
 after any change to the attempts or the contour filters.

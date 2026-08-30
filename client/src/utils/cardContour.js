@@ -29,10 +29,35 @@
  * its own contour, entirely inside the card's, and the two never mix. It also
  * does not care that one border is faint, as long as the region closes.
  *
- * Two thresholdings are tried, because cards fail in opposite directions: a
+ * Three thresholdings are tried, because cards fail in different directions: a
  * dark-bordered card on a pale desk and a white-bordered card on a dark mat
- * need opposite polarities, and a foil under a lamp needs the adaptive one.
- * Whichever produces the better-scoring card-shaped quad wins.
+ * need opposite polarities of Otsu, and a card the same brightness as the desk
+ * needs the gradient instead. Whichever produces the better-scoring card-shaped
+ * quad wins.
+ *
+ * ── There is no adaptive attempt, and that is now a measurement ──────────────
+ * This header used to end "and a foil under a lamp needs the adaptive one",
+ * describing a fourth attempt that was never written. It was built and measured
+ * in client/lab/contour-lab.html, against a glare stripe drawn across a card of
+ * known corners, and it does not earn its place:
+ *
+ *   - It does not answer the case it was proposed for. On a dark card with a
+ *     specular band across it, `cv.adaptiveThreshold` found nothing at all, at
+ *     every block size and constant tried.
+ *   - It is worse where the others already work: +3.57% of card width against
+ *     Otsu's -0.40% on a pale card, at its own best parameters. A 2% framing
+ *     error puts a capture 92 bits of 256 from its reference.
+ *   - It cannot be added safely anyway. The attempts are scored by area, so a
+ *     looser threshold wins by being looser — added as a fourth pass at its
+ *     default parameters it *took* scenes Otsu had right and framed them 9.51%
+ *     too large.
+ *   - It costs. Three attempts run in ~3.8ms on the lab's frames; four ran in
+ *     ~12.6ms, and detection already answers only 3.6 times a second on a phone.
+ *
+ * What it would have needed is not a parameter: a fallback that runs only when
+ * the others fail would never fire, because on those scenes they do not fail,
+ * they succeed at the wrong thing — see the note on the art box in
+ * docs/SCAN_PIPELINE_PLAN.md.
  */
 
 /**

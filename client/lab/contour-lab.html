@@ -32,6 +32,7 @@
 
 <button id="run">Run</button>
 <button id="run-noisy">Run with noise and blur</button>
+<button id="run-glare">Glare stripe</button>
 <button id="run-tracked">Cold vs tracked</button>
 <div id="log">Loading OpenCV…</div>
 <table id="out" hidden>
@@ -61,7 +62,7 @@
    * desk in brightness — the low-contrast scene is the one the Canny attempt
    * exists for, since a global threshold has nothing to separate there.
    */
-  function scene(ctx, { desk, border, noise = 0, blur = 0 }) {
+  function scene(ctx, { desk, border, noise = 0, blur = 0, glare = 0 }) {
     ctx.filter = 'none';
     ctx.fillStyle = desk;
     ctx.fillRect(0, 0, W, H);
@@ -79,6 +80,21 @@
     ctx.fillRect(tl.x + 12, tl.y + 26, w - 24, h * 0.42);
     ctx.fillStyle = '#cfc6b0';
     ctx.fillRect(tl.x + 12, tl.y + h * 0.62, w - 24, h * 0.26);
+
+    // A specular band across the card, which is what a sleeve under a lamp
+    // does. The point is not that it is bright: it is that the card's own
+    // region now spans two brightnesses, so no *single* threshold keeps it in
+    // one piece. It was drawn to test an adaptive-threshold attempt, which was
+    // measured and declined; what it actually caught was the detector framing
+    // the art box instead of the card. See the note on GLARE_SCENES below.
+    if (glare) {
+      const gradient = ctx.createLinearGradient(0, tl.y + h * 0.22, 0, tl.y + h * 0.52);
+      gradient.addColorStop(0, 'rgba(255,255,255,0)');
+      gradient.addColorStop(0.5, `rgba(255,255,255,${glare})`);
+      gradient.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(tl.x, tl.y + h * 0.22, w, h * 0.3);
+    }
 
     if (noise) {
       const img = ctx.getImageData(0, 0, W, H);
@@ -137,6 +153,22 @@
     ['card barely darker than desk', { desk: '#6b6960', border: '#5f5d55' }],
   ];
 
+  /**
+   * Glare cases: a specular band across the card, as a sleeve under a lamp
+   * gives. Added to measure a proposed adaptive-threshold attempt, which was
+   * then declined — see the header of cardContour.js. They earn their place
+   * anyway, because of what they showed about the detector as it stands: on a
+   * card close to the desk in brightness, with or without the stripe, it
+   * returns the card's *art box* at -37% of card width. Not a miss — a
+   * confident wrong answer, and a capture framed that way can only ever read as
+   * a card the index does not have.
+   */
+  const GLARE_SCENES = [
+    ['dark card, glare stripe', { desk: '#d8d4cc', border: '#1b1a18', glare: 0.95 }],
+    ['card like desk, glare stripe', { desk: '#4a4842', border: '#5d5a51', glare: 0.95 }],
+    ['pale card on dark mat, glare stripe', { desk: '#1a1a1e', border: '#e6e2d8', glare: 0.9 }],
+  ];
+
   async function run({ noise = 0, blur = 0, scenes = SCENES, hint = null, repeat = 1 } = {}) {
     const canvas = document.getElementById('view');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -183,6 +215,7 @@
   log('OpenCV ready.');
   document.getElementById('run').addEventListener('click', () => run());
   document.getElementById('run-noisy').addEventListener('click', () => run({ noise: 26, blur: 1 }));
+  document.getElementById('run-glare').addEventListener('click', () => run({ scenes: GLARE_SCENES, repeat: 3 }));
 
   /**
    * The tracking question: does searching a window around the last quad give
@@ -234,4 +267,7 @@
   document.getElementById('run-tracked').addEventListener('click', tracked);
   window.__tracked = tracked;
   window.__run = run;
+  window.__glare = () => run({ scenes: GLARE_SCENES, repeat: 3 });
+  window.__scenes = { SCENES, GLARE_SCENES };
+
 </script>

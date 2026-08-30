@@ -285,18 +285,61 @@ flip hash bits across whole grid cells, and blank the collector block for OCR.
       stays, off by default and byte-identical when off, because it is what lets
       the harness measure the real pipeline instead of a copy — and because the
       next person to propose this is owed the measurement, not the idea.
-- [ ] **10. Add the adaptive-threshold attempt the header promises.**
-      `cardContour.js:34` says "a foil under a lamp needs the adaptive one", but
+- [x] **10. Add the adaptive-threshold attempt the header promises.**
+      `cardContour.js:34` said "a foil under a lamp needs the adaptive one", but
       the attempts are Otsu, inverted Otsu and Canny — there is no
       `cv.adaptiveThreshold`. A glare stripe splits the card's region under a
       global threshold; adaptive is the tool for it. Add as a fourth attempt, or
       replace one Otsu polarity to keep the per-frame budget flat.
+      *Built, measured, declined — the comment is what got fixed.* Three glare
+      scenes went into `client/lab/contour-lab.html` (a specular band drawn
+      across a card of known corners) and the attempt was written against them:
+      - **It does not answer the case it was proposed for.** On a dark card with
+        a stripe across it, adaptive found nothing at all, at every block size
+        (21-81) and constant (2-10) and both polarities — 51 of 168 parameter
+        combinations found anything anywhere.
+      - **It is worse where the others already work:** +3.57% of card width at
+        its own best parameters against Otsu's -0.40%, and 2% is 92 bits.
+      - **It cannot be added safely.** Attempts are scored by area, so a looser
+        threshold wins by being looser: added as a fourth pass at its default
+        parameters it took scenes Otsu had right and framed them 9.51% too big.
+      - **It costs.** 3.8ms for three attempts, 12.6ms for four, against a
+        detector already answering 3.6 times a second on a phone.
+      A fallback that ran only when the others found nothing would never fire,
+      for the reason in task 19: on those scenes they do not fail, they succeed
+      at the wrong thing.
 - [ ] **11. Highlight-clipping OCR variant.** Clamp above the 95th percentile
       before Sauvola so a bright band does not drag the local mean up and erase
       the strokes beside it. Lowest priority of all — OCR is off by default and
       has yet to earn its cost; do not spend a session here before task 6.
 - [ ] **12. Docs: hardware footnote.** For a fixed rig, linear polarizing film
       over the lens plus a cross-polarized light kills sleeve glare outright.
+
+## Framing
+
+- [ ] **19. The detector frames the art box on a low-contrast card.** Found by
+      the glare scenes added for task 10, and it is the more useful half of that
+      session. On a card close to the desk in brightness — with or without a
+      glare stripe — `detectCardContour` returns a quad **37.4% smaller than the
+      card**: the art window's own contour, traced as though it were the card.
+      Not a miss. A confident wrong answer, with an aspect error of 0.060, well
+      inside the 0.16 tolerance, and it survives into the tracked path because
+      the hint then locks onto it.
+      A capture framed that way cannot match anything: the framing ladder spans
+      0.84-1.0 and this is 0.63. It would read as "no match, nearest reference
+      80-something bits away" — which is the shape of the misses that remain in
+      the recorded sessions, though nothing yet ties the two together. That is
+      the first thing to check: `--extract` a session's misses and look at
+      whether the rectified card is the whole card.
+      `RETR_EXTERNAL` is supposed to prevent this — the art box is a hole inside
+      the card's region — so it only happens when the card's own region never
+      closes and the box is the largest thing that does. Which suggests the fix
+      is about closing the card's region rather than about scoring: the aspect
+      and area bounds cannot tell a card from a picture of one, and tightening
+      them to exclude a 0.63-scale quad would exclude real cards held further
+      from the lens.
+      Measured on synthetic scenes, so confirm it on a recorded session before
+      building anything — that is what the lab's own header says it is for.
 
 ## Tidy-ups
 
