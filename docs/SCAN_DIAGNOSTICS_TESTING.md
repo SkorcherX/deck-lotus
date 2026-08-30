@@ -481,6 +481,22 @@ So the next session does not re-derive it:
   `[0.84, 0.88, 0.92, 0.96, 1]` took those sessions from 4/9 and 4/9 to 8/9 and
   7/9 at identical cost. The earlier unexplained 3/11 sleeved run is very likely
   the same thing.
+- **The reader can rescue a foil, and could also overwrite a good answer.**
+  With OCR on, one session read `Ashling, the Limitless / ECC / 0001` off a foil
+  the art had missed at 88 bits — the rescue the reader exists for. In the same
+  session it also replaced a correctly identified Jungle Shrine with "Lava Axe",
+  a Smokebraider with "Tributary Instructor", and a Seaside Citadel with
+  "Plains". The cause was not the reader: refinement re-asked the matcher with
+  the *unexpanded* art hash instead of the framing ladder, so at scale 1.0 the
+  art matched nothing on a sleeved card and an unopposed misread stood alone.
+  Refinement now sends the same probes as the first pass. A reading is a second
+  signal, and it is only ever safe next to the first one.
+- **Where the time between shutter and verdict goes**, measured on a phone:
+  `shutterMs` 745-1215, `hashMs` 142-241, `resolveMs` 450-921 — about 1.8s in
+  total. The shutter half is a 12MP frame read plus a detection round trip, now
+  overlapped rather than sequential. `resolveMs` is a single request carrying
+  five probes, against 1.7ms of index work per probe on the server, so nearly
+  all of it is network.
 - **Detection answers about 3.6 times a second on a phone.** Measured:
   `detector: { mean: 281.5, max: 865.2, rate: 3.6, worker: true }`. The loop asks
   twenty times a second and drops what it cannot keep up with, so the live quad
