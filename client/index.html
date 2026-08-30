@@ -1538,6 +1538,25 @@
                                 </span>
                             </div>
 
+                            <!-- A spike, kept behind the diagnostics panel. The
+                                 largest cost per card is the round trip to the
+                                 matcher — 741ms measured on a phone against
+                                 9.5ms of work — and the index is 6MB against
+                                 the 12.7MB of OpenCV this page already pulls.
+                                 The open question is what a *phone* takes to
+                                 search 112k references, which no measurement
+                                 taken on a desktop can answer. See
+                                 docs/ON_DEVICE_MATCHING.md. -->
+                            <div class="scan-controls scan-diagnostics-record">
+                                <button id="scan-bench-local" class="btn btn-secondary">
+                                    <i class="ph ph-timer btn-icon"></i>
+                                    <span class="btn-text">Time local matching</span>
+                                </button>
+                                <span id="scan-bench-status" class="scan-record-status">
+                                    Downloads the 6MB index and matches this session's captures on the device.
+                                </span>
+                            </div>
+
                         <p class="scan-hint">
                             One capture per card: the shutter waits for a card to leave
                             the frame before it fires again. Tap the picture to scan the
