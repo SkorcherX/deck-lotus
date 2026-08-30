@@ -127,9 +127,29 @@ agreed with the server. The first session it ran in, the answer existed only in
 a status line on a phone and the bundle that came back could not be asked what
 it had said.
 
-## What would settle it
+## What settled it
 
-A prototype that loads `card-hashes.bin` in the scan worker and searches it,
-timed on the actual phone, against the same nine-card batch. If the search comes
-in under 100ms, the case is made; if a mid-range phone takes half a second to
-hamming 112k references five times, the round trip was cheaper than it looked.
+Measured on the phone, through the button, on that phone's own captures:
+
+    6.0MB / 112,815 refs downloaded and parsed in   1302 ms   (once)
+    five-probe match                                  12 ms   mean, 13 ms worst
+
+Against a `resolveMs` of 626-741 ms for the same work over the network. The
+matching is roughly **fifty times faster on the phone than asking the server**,
+and the whole index costs one 1.3-second download that a cache turns into a 304.
+
+The bar set above was "under 100ms and the case is made". It came in at twelve.
+
+### One misreading, worth recording
+
+The same run reported "agreed with server on 0/1", which looked like the reader
+being wrong and was not. The device returns art order; the server's top
+candidate has been through fusion, tiers and **set biasing** — and that session
+had `ECC` typed in, so the server had deliberately reordered tied printings and
+the device had not. Comparing the two top answers scored set biasing as a
+disagreement.
+
+The bench now compares what it can honestly compare: whether the device *found*
+the printing the server settled on, and whether it measured the same distance to
+it. The answer, not the ranking, is what the untangling in step 3 moves — and
+until it moves, the device has no opinion about it.

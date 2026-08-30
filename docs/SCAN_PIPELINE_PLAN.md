@@ -196,6 +196,12 @@ re-arming needs 3 absent frames (`ABSENCE_FRAMES_TO_REARM`) or 2 changed
       and `cardGeometry.js` live there. See docs/ON_DEVICE_MATCHING.md, which
       also says what a native app would and would not buy, and what would
       settle it: a prototype search timed on the real phone.
+      *The prototype ran, and settled it:* 12ms mean on the phone for a
+      five-probe match over all 112,815 references, against 626-741ms for the
+      same work over the network, plus a one-off 1.3s to download the index.
+      Fifty times faster, and it works with no network until commit. What
+      remains is the refactor in step 3 of the note — splitting the pure
+      ranking out of `resolveScanFused` — which is the whole of the work.
 
 ## Sleeve glare
 
