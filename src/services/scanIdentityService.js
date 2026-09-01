@@ -70,7 +70,14 @@ export function identityPayload() {
           WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1),
         (SELECT price FROM prices
           WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'foil' LIMIT 1)
-      ) AS price
+      ) AS price,
+      -- And which of the two it is, for the same reason the resolver carries it.
+      CASE
+        WHEN EXISTS (SELECT 1 FROM prices
+          WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal') THEN 'normal'
+        WHEN EXISTS (SELECT 1 FROM prices
+          WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'foil') THEN 'foil'
+      END AS price_type
     FROM printings p
     JOIN cards c ON c.id = p.card_id
   `);
@@ -85,6 +92,10 @@ export function identityPayload() {
   const collectors = new Array(count);
   const promos = [];
   const prices = new Array(count);
+  // Rows whose price is a foil price standing in for a normal one. About 11k
+  // of 112k, so a list of row numbers is far smaller than a column — the same
+  // trade `promos` makes.
+  const foilPriced = [];
 
   for (let row = 0; row < count; row++) {
     const printing = rows[row] >= 0 ? byId.get(rows[row]) : null;
@@ -114,10 +125,13 @@ export function identityPayload() {
     // Cents, as an integer. A float column is JSON's longest number and the
     // client divides once.
     prices[row] = printing.price == null ? null : Math.round(printing.price * 100);
+    if (printing.price != null && printing.price_type === 'foil') foilPriced.push(row);
   }
 
   const body = JSON.stringify({
-    version: 1,
+    // 2 adds foilPriced. The client tolerates its absence, so an older payload
+    // still loads — it simply cannot mark a substituted price.
+    version: 2,
     count,
     printingIds,
     cardIds,
@@ -126,6 +140,7 @@ export function identityPayload() {
     collectors,
     promos,
     prices,
+    foilPriced,
   });
 
   cached = {

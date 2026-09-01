@@ -201,6 +201,7 @@ const identity = {
   collectors: null,
   promos: null,
   prices: null,
+  foilPriced: null,
   bytes: 0,
   loadMs: 0,
 };
@@ -233,6 +234,8 @@ export async function loadIdentity(request) {
   identity.collectors = payload.collectors;
   identity.promos = new Set(payload.promos || []);
   identity.prices = payload.prices;
+  // Absent on a version 1 payload; an empty set simply marks nothing.
+  identity.foilPriced = new Set(payload.foilPriced || []);
   identity.loadMs = Math.round(performance.now() - started);
 
   return identity.count;
@@ -264,6 +267,8 @@ function candidateAt(row) {
     isPromo: identity.promos.has(row),
     imageUrl: null,
     price: price === null || price === undefined ? null : price / 100,
+    priceType:
+      price === null || price === undefined ? null : identity.foilPriced.has(row) ? 'foil' : 'normal',
     manaCost: null,
     typeLine: null,
     rarity: null,

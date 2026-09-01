@@ -83,6 +83,16 @@ before(async () => {
      VALUES (?, 'tcgplayer', 'normal', 12.5)`,
     [uuidFor(1)]
   );
+  // And a foil-only price on its reprint, which is the shape that produced the
+  // bug these tests pin: a printing with no normal price at all falls back to
+  // the foil one, and foil-only printings are the showcase and serialised
+  // ones. Flusterstorm is $9.78 as SOA 18 and $208.59 as the foil-only SOA 148,
+  // and a scan of the cheap one was pricing it at the dear one's figure.
+  db.run(
+    `INSERT INTO prices (printing_uuid, provider, price_type, price)
+     VALUES (?, 'tcgplayer', 'foil', 208.59)`,
+    [uuidFor(2)]
+  );
 
   fs.writeFileSync(
     HASH_PATH,
@@ -242,5 +252,49 @@ describe('matching on the device', () => {
     assert.equal(best.price, 12.5);
     assert.equal(best.imageUrl, null);
     assert.equal(best.uuid, uuidFor(1), 'the uuid is what a match means off this device');
+  });
+
+  test('a price that is really a foil price says so, on both sides', () => {
+    // Otherwise the two are indistinguishable on screen, and the substituted
+    // figure is the one most likely to be wildly wrong for the card in hand.
+    const { device, server } = bothWays([
+      { artHash: zeros(ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) },
+    ]);
+
+    const byId = (result, key) =>
+      result.candidates.find((candidate) => candidate.printingId === printings[key].id);
+
+    for (const result of [device, server]) {
+      assert.equal(byId(result, 1).priceType, 'normal');
+      assert.equal(byId(result, 2).price, 208.59);
+      assert.equal(byId(result, 2).priceType, 'foil');
+    }
+  });
+
+  test('an undecided printing reports the spread, not one of its ends', () => {
+    // The art names the card and cannot separate two printings of it. Quoting
+    // whichever led the list is a coin flip presented as a fact, and across a
+    // reprint the ends are an order of magnitude apart.
+    const { device, server } = bothWays([
+      { artHash: zeros(ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) },
+    ]);
+
+    for (const result of [device, server]) {
+      assert.ok(result.signals.printingsOfBest > 1, 'both printings are still in play');
+      assert.deepEqual(result.signals.priceRange, { low: 12.5, high: 208.59 });
+    }
+  });
+
+  test('a settled printing has no range to report', () => {
+    // The other card has exactly one printing, so there is nothing to disagree
+    // about and the caller shows a figure rather than a span.
+    const { device, server } = bothWays([
+      { artHash: hashAtDistance(60, ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) },
+    ]);
+
+    for (const result of [device, server]) {
+      assert.equal(result.signals.printingsOfBest, 1);
+      assert.equal(result.signals.priceRange, null);
+    }
   });
 });

@@ -305,7 +305,13 @@ async function hydrateArtwork(candidates) {
       // The price comes back too, and is the fresher of the two: the device's
       // copy is as new as the last sync it downloaded, this one is as new as
       // the database.
-      if (row.price !== undefined && row.price !== null) candidate.price = row.price;
+      if (row.price !== undefined && row.price !== null) {
+        candidate.price = row.price;
+        // Carried with it: which finish the figure came from. A price that is a
+        // foil price standing in for a missing normal one is the difference
+        // between $9.78 and $208.59 on the same card.
+        candidate.priceType = row.price_type ?? null;
+      }
       filled++;
     }
 

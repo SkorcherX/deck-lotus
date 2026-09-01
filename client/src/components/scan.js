@@ -2087,7 +2087,7 @@ async function resolveCapture(entry) {
           ? `No match — nearest ${near.artDistance}/${near.bits} bits (needs ≤${near.matchWithin})`
           : 'No art match'
     );
-    renderLiveMatch(best || null);
+    renderLiveMatch(best || null, resolved.signals);
     // A miss gets a pulse of its own: renderLiveMatch(null) clears the panel and
     // would otherwise leave nothing at all to see, which reads as the scanner
     // still thinking.
@@ -2206,7 +2206,37 @@ function formatPrice(price) {
   return `$${price.toFixed(2)}`;
 }
 
-function renderLiveMatch(candidate) {
+/**
+ * What to put in the price line, given the match and what the fusion made of it.
+ *
+ * Two things it has to avoid claiming. A card whose printing is still undecided
+ * has no single price — the candidates it is choosing between ran $9.78 to
+ * $208.59 on a real scan — so the range goes up instead of whichever of them
+ * happened to lead the list. And a price that is really a foil price standing
+ * in for a missing normal one says so: those are the showcase printings, and
+ * they are the ones that produce a wild figure for an ordinary card.
+ */
+function priceLabel(candidate, signals) {
+  const range = signals?.priceRange;
+  if (range) return `${formatPrice(range.low)}–${formatPrice(range.high)}`;
+  const base = formatPrice(candidate.price);
+  return candidate.priceType === 'foil' ? `${base} foil` : base;
+}
+
+/**
+ * The value the outline is coloured by.
+ *
+ * The low end of an undecided range, not the high one: the band exists to say
+ * "stop for this card", and pulling a scanner out of its rhythm on the chance
+ * that a reprint is the expensive variant costs more than it finds. The range
+ * is on screen for anyone who wants to look.
+ */
+function bandValue(candidate, signals) {
+  const range = signals?.priceRange;
+  return range ? range.low : candidate.price;
+}
+
+function renderLiveMatch(candidate, signals = null) {
   const live = el('scan-live');
   if (!live) return;
 
@@ -2216,7 +2246,7 @@ function renderLiveMatch(candidate) {
   // when the match goes away — an outline still coloured from the last card is
   // worse than no colour at all, because it is a claim about this one.
   const overlay = el('scan-overlay');
-  const band = candidate ? priceBand(candidate.price) : null;
+  const band = candidate ? priceBand(bandValue(candidate, signals)) : null;
   if (overlay) {
     for (const entry of PRICE_BANDS) {
       overlay.classList.toggle(`scan-price-${entry.band}`, band === entry.band);
@@ -2234,8 +2264,10 @@ function renderLiveMatch(candidate) {
 
   const price = el('scan-live-price');
   if (price) {
-    price.textContent = formatPrice(candidate.price);
-    price.className = `scan-live-price${band ? ` scan-live-price-${band}` : ''}`;
+    price.textContent = priceLabel(candidate, signals);
+    price.className =
+      `scan-live-price${band ? ` scan-live-price-${band}` : ''}` +
+      (signals?.priceRange ? ' scan-live-price-range' : '');
   }
 }
 

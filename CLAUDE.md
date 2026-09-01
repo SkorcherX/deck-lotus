@@ -222,5 +222,15 @@ taken on GitHub — only do it when explicitly asked.
   shopping (`shoppingService.js`) share the rule and must stay in step —
   including `decksHoldingCards`, which names the holders behind the count and
   would otherwise name a deck the count never included.
+- A scanned price is two claims, and both can be wrong in the same direction.
+  The scanner's `COALESCE(normal, foil)` covers 10,972 of 112,815 printings
+  that have no normal price — and those are the showcase and serialised ones,
+  so the substituted figure is the most inflated available. It therefore
+  travels with a `priceType`, and the UI marks a foil-derived figure. Separately,
+  where the art matched several printings of one card (`printingsOfBest > 1`)
+  there is no single price to quote: `fuseScanResult` reports a `priceRange`
+  across them and the live panel shows the span, banding on the low end. Both
+  came out of one scan — Flusterstorm from an SOA precon priced at $208.59, the
+  foil-only SOA 148, when the card in hand was SOA 18 at $9.78.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.

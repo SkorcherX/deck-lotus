@@ -430,9 +430,31 @@ export function fuseScanResult({
   // That matters more here than a ranking usually would: this app stores and
   // prices *printings*, so collapsing a reprint out of review at `confident`
   // files the wrong set into someone's collection at the wrong price, silently.
-  const bestCardPrintings = best
-    ? merged.filter((candidate) => artBacked(candidate) && candidate.cardId === best.cardId).length
-    : 0;
+  const bestCardSiblings = best
+    ? merged.filter((candidate) => artBacked(candidate) && candidate.cardId === best.cardId)
+    : [];
+  const bestCardPrintings = bestCardSiblings.length;
+
+  // What the printings still on the table are worth, low to high.
+  //
+  // The scanner quotes `best.price` — the top candidate's — and where the
+  // printing is undecided that is a coin flip presented as a fact. Flusterstorm
+  // was scanned out of an SOA precon and priced at $208.59, which is what the
+  // foil-only SOA 148 goes for; the card in the hand was SOA 18, at $9.78.
+  // Both were art-backed candidates of the same card, and which of them led the
+  // list is decided by a few bits of resampling.
+  //
+  // So where more than one printing is in play the range is reported and the
+  // caller shows it instead of a single figure. Null when there is nothing to
+  // disagree about — one printing, or no priced ones — so a caller can simply
+  // check for it rather than compare a low against a high.
+  const siblingPrices = bestCardSiblings
+    .map((candidate) => candidate.price)
+    .filter((price) => typeof price === 'number' && Number.isFinite(price));
+  const priceRange =
+    siblingPrices.length > 1 && Math.min(...siblingPrices) !== Math.max(...siblingPrices)
+      ? { low: Math.min(...siblingPrices), high: Math.max(...siblingPrices) }
+      : null;
 
   applySetBias(merged, setBias);
 
@@ -487,6 +509,8 @@ export function fuseScanResult({
       // Printings of the winning card the art matched. Above one means the
       // printing was chosen by hand, not by the scanner.
       printingsOfBest: bestCardPrintings,
+      // The spread across those printings, where they disagree. See above.
+      priceRange,
       // Whether a session's set tally was used to order tied printings, so a
       // recording says when the order shown was the art's and when it was the
       // stack's. See applySetBias.

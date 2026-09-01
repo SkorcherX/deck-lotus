@@ -6054,6 +6054,15 @@ body.maintenance-locked #app {
 .scan-live-price-blue   { color: #60a5fa; }
 .scan-live-price-purple { color: #c084fc; }
 
+/* A range rather than a price: the printing is still undecided, and the two
+   ends can be an order of magnitude apart. Lighter than a settled figure so the
+   difference is visible at a glance, without a second colour competing with the
+   five bands. */
+.scan-live-price-range {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
 /* The preflight scrim: the scanner is not ready and no card placed under the
    lens will be seen yet.
 

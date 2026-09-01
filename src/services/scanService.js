@@ -173,7 +173,19 @@ const PRINTING_COLUMNS = `
       WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal' LIMIT 1),
     (SELECT price FROM prices
       WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'foil' LIMIT 1)
-  ) AS price
+  ) AS price,
+  -- Which of the two the price above actually came from. The fallback is not
+  -- a rounding difference: 10,972 of 112,815 printings have no normal price at
+  -- all, and they are the showcase and serialised ones, so the substituted
+  -- figure is systematically the most inflated number available. Flusterstorm
+  -- is $9.78 as SOA 18 and $208.59 as the foil-only SOA 148. Quoted without
+  -- saying which, that is not a price, it is a guess wearing one.
+  CASE
+    WHEN EXISTS (SELECT 1 FROM prices
+      WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'normal') THEN 'normal'
+    WHEN EXISTS (SELECT 1 FROM prices
+      WHERE printing_uuid = p.uuid AND provider = 'tcgplayer' AND price_type = 'foil') THEN 'foil'
+  END AS price_type
 `;
 
 function queryPrintings(where, params, limit = MAX_CANDIDATES) {
@@ -418,6 +430,7 @@ export function resolveScan({ name = null, setCode = null, collectorNumber = nul
         isPromo: !!row.is_promo,
         releasedAt: row.released_at,
         price: row.price ?? null,
+        priceType: row.price_type ?? null,
         confidence: Math.round(confidence * 1000) / 1000,
         nameSimilarity: similarity === null ? null : Math.round(similarity * 1000) / 1000,
         matchedBy: [strategy],
@@ -547,6 +560,7 @@ function printingRowToCandidate(row) {
     isPromo: !!row.is_promo,
     releasedAt: row.released_at,
     price: row.price ?? null,
+    priceType: row.price_type ?? null,
   };
 }
 
