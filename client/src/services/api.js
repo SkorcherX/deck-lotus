@@ -786,6 +786,20 @@ class ApiClient {
     });
   }
 
+  async resolveBulkRemoveItems(items) {
+    return this.request('/inventory/bulk-remove-resolve', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+  }
+
+  async bulkRemoveFromInventory(items) {
+    return this.request('/inventory/bulk-remove', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+  }
+
   // `quantity` is how many copies to add, not the total to end up with. The
   // server increments; the response carries the row's new total back.
   //

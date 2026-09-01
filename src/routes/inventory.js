@@ -4,7 +4,9 @@ import {
   getInventoryStats,
   searchCardsForInventoryAdd,
   bulkAddToInventory,
+  bulkRemoveFromInventory,
   resolveBulkAddItems,
+  resolveBulkRemoveItems,
   getAvailability,
   getBuilderInventory,
   getOwnedSets,
@@ -128,6 +130,47 @@ router.post('/bulk-add', authenticate, (req, res, next) => {
       source: auditSource(source, 'bulk_add'),
     });
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/bulk-remove
+ * Take cards back out of the inventory — the undo for a paste that went in
+ * wrong. Same line formats as bulk-add; the confirmation lives in the UI.
+ */
+router.post('/bulk-remove', authenticate, (req, res, next) => {
+  try {
+    const { items, source } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Items array is required' });
+    }
+
+    const result = bulkRemoveFromInventory(req.user.id, items, {
+      source: auditSource(source, 'bulk_remove'),
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/bulk-remove-resolve
+ * Resolve bulk-remove lines without writing anything, so the preview can
+ * show which printing each line lands on and how many copies are owned.
+ */
+router.post('/bulk-remove-resolve', authenticate, (req, res, next) => {
+  try {
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Items array is required' });
+    }
+
+    res.json({ items: resolveBulkRemoveItems(req.user.id, items) });
   } catch (error) {
     next(error);
   }

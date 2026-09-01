@@ -572,8 +572,15 @@ export function searchCardsForInventoryAdd(userId, query, limit = 10) {
  * Returns { printing, cardId, cardName, setCode, collectorNumber } on success
  * or { error } describing why the line could not be resolved.
  */
-function resolveBulkItem(item) {
+function resolveBulkItem(item, options = {}) {
   const { cardName, collectorNumber } = item;
+  // When removing, the line has to land on a printing the collection actually
+  // holds. "4 Lightning Bolt" resolving to the cheapest printing is the right
+  // guess when adding and the wrong one when taking away — the copies that
+  // were added a minute ago may sit on a different printing entirely, and the
+  // removal would report "not owned" while the mistake stayed in the binder.
+  const ownedBy = options.ownedBy ?? null;
+  const ownedFoilFlag = options.isFoil ? 1 : 0;
   // Set codes are stored the way MTGJSON emits them: uppercase.
   const setCode = item.setCode ? item.setCode.toUpperCase() : null;
 
@@ -622,7 +629,23 @@ function resolveBulkItem(item) {
 
   // Find the printing
   let printing;
-  if (setCode) {
+
+  if (ownedBy) {
+    printing = db.get(`
+      SELECT p.id, p.card_id, p.set_code, p.collector_number
+      FROM owned_printings op
+      JOIN printings p ON p.id = op.printing_id
+      WHERE op.user_id = ? AND op.is_foil = ? AND op.quantity > 0
+        AND p.card_id = ?
+        ${setCode ? 'AND p.set_code = ?' : ''}
+      ORDER BY op.quantity DESC, p.id ASC
+      LIMIT 1
+    `, setCode
+      ? [ownedBy, ownedFoilFlag, card.id, setCode]
+      : [ownedBy, ownedFoilFlag, card.id]);
+  }
+
+  if (!printing && setCode) {
     printing = db.get(
       `SELECT id, card_id, set_code, collector_number FROM printings
        WHERE card_id = ? AND set_code = ? LIMIT 1`,
@@ -793,6 +816,185 @@ export function bulkAddToInventory(userId, items, context = {}) {
 
   // Handed back so the import's own result can link straight to the batch it
   // just wrote, rather than making the user hunt for it by timestamp.
+  return { ...results, batchId };
+}
+
+/**
+ * How many copies of one printing and finish the user holds right now.
+ */
+function ownedQuantity(userId, printingId, isFoil) {
+  return db.get(
+    `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+    [userId, printingId, isFoil ? 1 : 0]
+  )?.quantity || 0;
+}
+
+/**
+ * Resolve bulk-remove lines without writing anything.
+ *
+ * Same shape as `resolveBulkAddItems`, plus what the collection actually
+ * holds for each resolved line. Removal is the destructive direction, so the
+ * preview has to be able to say "you own 1 of the 4 this line takes away"
+ * before the confirmation is answered.
+ */
+export function resolveBulkRemoveItems(userId, items) {
+  return items.map((item) => {
+    const quantity = item.quantity ?? 1;
+    const isFoil = !!item.isFoil;
+
+    let resolved;
+    try {
+      resolved = resolveBulkItem(item, { ownedBy: userId, isFoil });
+    } catch (error) {
+      resolved = { error: error.message };
+    }
+
+    if (resolved.error) {
+      return {
+        input: item,
+        quantity,
+        isFoil,
+        resolved: false,
+        error: resolved.error
+      };
+    }
+
+    const owned = ownedQuantity(userId, resolved.printing.id, isFoil);
+
+    return {
+      input: item,
+      quantity,
+      isFoil,
+      resolved: true,
+      printingId: resolved.printing.id,
+      cardName: resolved.cardName,
+      setCode: resolved.setCode,
+      collectorNumber: resolved.collectorNumber,
+      owned,
+      willRemove: Math.min(owned, quantity)
+    };
+  });
+}
+
+/**
+ * Bulk remove cards from inventory — the mirror of `bulkAddToInventory`, and
+ * the way back out of a paste that went into the wrong collection.
+ *
+ * Takes the same items and the same line formats. A line asking for more
+ * copies than are owned removes what is there and reports the shortfall as a
+ * warning rather than a failure: the point of the feature is to undo a bad
+ * add, and stopping halfway through a hundred-line list because one line was
+ * already corrected by hand helps nobody.
+ */
+export function bulkRemoveFromInventory(userId, items, context = {}) {
+  const results = {
+    removed: 0,
+    failed: 0,
+    errors: [],
+    warnings: []
+  };
+
+  const batchId = context.batchId
+    || `bulk-remove-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const source = context.source || 'bulk_remove';
+
+  const describe = (item) => ({
+    cardName: item.cardName,
+    setCode: item.setCode,
+    collectorNumber: item.collectorNumber
+  });
+
+  for (const item of items) {
+    try {
+      const { quantity = 1, isFoil = false } = item;
+      const foilFlag = isFoil ? 1 : 0;
+
+      const resolved = resolveBulkItem(item, { ownedBy: userId, isFoil });
+
+      if (resolved.error) {
+        results.failed++;
+        results.errors.push({ ...describe(item), error: resolved.error });
+        continue;
+      }
+
+      const { printing, cardId } = resolved;
+
+      const existing = db.get(
+        `SELECT id, quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+        [userId, printing.id, foilFlag]
+      );
+
+      if (!existing || existing.quantity <= 0) {
+        results.failed++;
+        results.errors.push({
+          ...describe(item),
+          error: `Not in your collection${isFoil ? ' as a foil' : ''}`
+        });
+        continue;
+      }
+
+      const taken = Math.min(existing.quantity, quantity);
+      const after = existing.quantity - taken;
+
+      if (after > 0) {
+        db.run(
+          `UPDATE owned_printings SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+          [after, existing.id]
+        );
+      } else {
+        db.run(`DELETE FROM owned_printings WHERE id = ?`, [existing.id]);
+
+        // owned_cards is a presence table: it only comes off once no printing
+        // of the card is left in any finish.
+        const remaining = db.get(
+          `SELECT COUNT(*) as count
+             FROM owned_printings op
+             JOIN printings p ON op.printing_id = p.id
+            WHERE op.user_id = ? AND p.card_id = ?`,
+          [userId, cardId]
+        );
+
+        if (remaining.count === 0) {
+          db.run(`DELETE FROM owned_cards WHERE user_id = ? AND card_id = ?`, [userId, cardId]);
+        }
+      }
+
+      recordInventoryChange({
+        userId,
+        actorUserId: context.actorUserId ?? userId,
+        printingId: printing.id,
+        isFoil,
+        before: existing.quantity,
+        after,
+        source,
+        detail: {
+          batchId,
+          entered: {
+            cardName: item.cardName ?? null,
+            setCode: item.setCode ?? null,
+            collectorNumber: item.collectorNumber ?? null,
+            quantity,
+            isFoil: !!isFoil,
+          },
+        },
+      });
+
+      if (taken < quantity) {
+        results.warnings.push({
+          ...describe(item),
+          requested: quantity,
+          removed: taken,
+          message: `Only ${taken} of ${quantity} copies were in your collection`
+        });
+      }
+
+      results.removed += taken;
+    } catch (error) {
+      results.failed++;
+      results.errors.push({ cardName: item.cardName, error: error.message });
+    }
+  }
+
   return { ...results, batchId };
 }
 

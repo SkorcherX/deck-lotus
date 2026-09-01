@@ -63,6 +63,9 @@ export function setupInventory() {
   // Setup bulk add modal
   setupBulkAddModal();
 
+  // Setup bulk remove modal
+  setupBulkRemoveModal();
+
   // Setup quick search
   setupQuickSearch();
 
@@ -1087,6 +1090,183 @@ function setupBulkAddModal() {
       }
     });
   }
+}
+
+/**
+ * The mirror of the bulk-add modal: same box, same parser, opposite direction.
+ *
+ * The one thing it does not share is going straight through on the button —
+ * an accidental paste here empties rows rather than filling them, so the
+ * confirmation names the count and the button that answers it is the
+ * destructive-styled one.
+ */
+function setupBulkRemoveModal() {
+  const openBtn = document.getElementById('inventory-bulk-remove-btn');
+  const modal = document.getElementById('bulk-remove-modal');
+  const closeBtn = document.getElementById('bulk-remove-modal-close');
+  const previewBtn = document.getElementById('bulk-remove-preview-btn');
+  const submitBtn = document.getElementById('bulk-remove-submit-btn');
+
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      modal?.classList.remove('hidden');
+      document.getElementById('bulk-remove-text').value = '';
+      document.getElementById('bulk-remove-preview').classList.add('hidden');
+      document.getElementById('bulk-remove-result').classList.add('hidden');
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      modal?.classList.add('hidden');
+    });
+  }
+
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.add('hidden');
+      }
+    });
+  }
+
+  if (previewBtn) {
+    previewBtn.addEventListener('click', async () => {
+      const items = parseBulkAddText(document.getElementById('bulk-remove-text').value);
+
+      if (items.length === 0) {
+        renderBulkRemovePreview([]);
+        return;
+      }
+
+      try {
+        previewBtn.disabled = true;
+        previewBtn.textContent = 'Looking up...';
+
+        const result = await api.resolveBulkRemoveItems(items);
+        renderBulkRemovePreview(result.items);
+      } catch (error) {
+        showError('Lookup failed: ' + error.message);
+      } finally {
+        previewBtn.disabled = false;
+        previewBtn.textContent = 'Preview';
+      }
+    });
+  }
+
+  if (submitBtn) {
+    submitBtn.addEventListener('click', async () => {
+      const items = parseBulkAddText(document.getElementById('bulk-remove-text').value);
+
+      if (items.length === 0) {
+        showError('No valid cards to remove');
+        return;
+      }
+
+      const copies = items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
+
+      const confirmed = await confirmDialog({
+        title: 'Remove these cards?',
+        message: `This takes up to ${copies} ${copies === 1 ? 'copy' : 'copies'} across `
+          + `${items.length} ${items.length === 1 ? 'line' : 'lines'} out of your collection. `
+          + 'It cannot be undone from here — the history page records every row if you need to put them back.',
+        confirmText: `Remove ${copies} ${copies === 1 ? 'copy' : 'copies'}`,
+        cancelText: 'Cancel',
+        danger: true,
+      });
+
+      if (!confirmed) return;
+
+      try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Removing...';
+
+        const result = await api.bulkRemoveFromInventory(items);
+
+        const describeLine = (e) => e.cardName
+          || [e.setCode, e.collectorNumber].filter(Boolean).join(' ')
+          || 'Unknown card';
+
+        const resultDiv = document.getElementById('bulk-remove-result');
+        resultDiv.classList.remove('hidden');
+        resultDiv.innerHTML = `
+          <div style="color: var(--success);">Removed ${result.removed} cards from inventory</div>
+          ${result.warnings?.length ? `
+            <div style="color: var(--warning, var(--text-secondary)); margin-top: 0.5rem;">
+              Partly removed:
+              <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
+                ${result.warnings.map(w => `<li>${describeLine(w)}: ${w.message}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+          ${result.failed > 0 ? `
+            <div style="color: var(--danger); margin-top: 0.5rem;">
+              Failed: ${result.failed}
+              <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
+                ${result.errors.map(e => `<li>${describeLine(e)}: ${e.error}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+        `;
+
+        showToast(`Removed ${result.removed} cards`, 'success');
+
+        await loadInventoryData();
+      } catch (error) {
+        showError('Bulk remove failed: ' + error.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Remove from Inventory';
+      }
+    });
+  }
+}
+
+/**
+ * Preview for a removal. Shows the printing each line lands on and how many
+ * copies are actually there, because "4 Lightning Bolt" against a collection
+ * holding one is the case worth seeing before confirming.
+ */
+function renderBulkRemovePreview(items) {
+  const previewDiv = document.getElementById('bulk-remove-preview');
+  const contentDiv = document.getElementById('bulk-remove-preview-content');
+
+  if (!previewDiv || !contentDiv) return;
+
+  if (items.length === 0) {
+    contentDiv.innerHTML = '<div style="color: var(--text-secondary);">No valid cards found</div>';
+  } else {
+    const describeInput = (input) => {
+      if (!input) return '';
+      if (input.cardName) return input.cardName;
+      return `${input.setCode || '?'} ${input.collectorNumber || '?'}`;
+    };
+
+    contentDiv.innerHTML = items.map((item) => {
+      if (!item.resolved) {
+        return `
+          <div style="display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; border-bottom: 1px solid var(--border);">
+            <span style="color: var(--danger);">${item.quantity}x ${describeInput(item.input)}</span>
+            <span style="color: var(--danger);">${item.error}</span>
+          </div>
+        `;
+      }
+
+      const printing = [item.setCode, item.collectorNumber].filter(Boolean).join(' ');
+      const short = item.willRemove < item.quantity;
+
+      return `
+        <div style="display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; border-bottom: 1px solid var(--border);">
+          <span>-${item.willRemove}x ${item.cardName}${item.isFoil ? ' <span style="color: var(--text-secondary);">(foil)</span>' : ''}</span>
+          <span style="color: ${short ? 'var(--danger)' : 'var(--text-secondary)'};">
+            ${printing} &middot; own ${item.owned}${short ? ` of ${item.quantity} asked` : ''}
+          </span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  previewDiv.classList.remove('hidden');
 }
 
 /**

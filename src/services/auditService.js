@@ -42,6 +42,7 @@ export const AUDIT_ACTIONS = {
 
 export const AUDIT_SOURCES = [
   'bulk_add',
+  'bulk_remove',
   'quick_add',
   'card_page',
   'deck_builder',

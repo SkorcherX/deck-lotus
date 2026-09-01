@@ -1087,6 +1087,10 @@
                             <i class="ph ph-plus-circle btn-icon"></i>
                             <span class="btn-text">Bulk Add</span>
                         </button>
+                        <button id="inventory-bulk-remove-btn" class="btn btn-secondary" title="Take a pasted list back out of your collection">
+                            <i class="ph ph-minus-circle btn-icon"></i>
+                            <span class="btn-text">Bulk Remove</span>
+                        </button>
                     </div>
                 </div>
 
@@ -1323,6 +1327,38 @@
                         <button id="bulk-add-submit-btn" class="btn btn-primary" style="flex: 1">Add to Inventory</button>
                     </div>
                     <div id="bulk-add-result" class="hidden" style="margin-top: 1rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 0.5rem;"></div>
+                </div>
+            </div>
+
+            <div id="bulk-remove-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 700px">
+                    <span class="modal-close" id="bulk-remove-modal-close">&times;</span>
+                    <h2 style="margin-bottom: 1rem">Bulk Remove Cards</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                        Paste a list of cards to take <strong>out</strong> of your inventory &mdash; the
+                        undo for an add that went in wrong. Same formats as Bulk Add: "4 Lightning Bolt",
+                        "1 Abundant Growth (ECC) 97", "4 DSK 123", <code>*F*</code> for foils. A line
+                        without a set matches a printing you actually own. Use Preview to see what each
+                        line would remove; nothing is removed until you confirm.
+                    </p>
+                    <div class="form-group">
+                        <label for="bulk-remove-text">Card List</label>
+                        <textarea
+                            id="bulk-remove-text"
+                            rows="12"
+                            placeholder="4 Lightning Bolt&#10;2 Counterspell [DMR]&#10;4 DSK 123&#10;1 BLB 84 *F*"
+                            style="font-family: monospace; font-size: 0.875rem; width: 100%;"
+                        ></textarea>
+                    </div>
+                    <div id="bulk-remove-preview" class="hidden" style="margin-bottom: 1rem;">
+                        <h4 style="margin-bottom: 0.5rem;">Preview</h4>
+                        <div id="bulk-remove-preview-content" style="background: var(--bg-tertiary); padding: 1rem; border-radius: 0.5rem; max-height: 200px; overflow-y: auto;"></div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="bulk-remove-preview-btn" class="btn btn-secondary" style="flex: 1">Preview</button>
+                        <button id="bulk-remove-submit-btn" class="btn btn-danger" style="flex: 1">Remove from Inventory</button>
+                    </div>
+                    <div id="bulk-remove-result" class="hidden" style="margin-top: 1rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 0.5rem;"></div>
                 </div>
             </div>
 
