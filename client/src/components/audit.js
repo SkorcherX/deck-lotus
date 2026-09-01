@@ -378,6 +378,7 @@ const SOURCE_LABELS = {
   deck_import: 'Deck import',
   trade: 'Trade',
   scan: 'Scan',
+  scanner: 'Phone scanner',
   api: 'API',
 };
 

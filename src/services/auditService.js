@@ -49,6 +49,13 @@ export const AUDIT_SOURCES = [
   'deck_import',
   'trade',
   'scan',
+  // The in-browser scanner and the Android companion app are kept apart on
+  // purpose. They resolve cards by different means — the web scanner asks
+  // /api/scan, the phone matches against a bundled index and posts the
+  // finished lines to /api/inventory/bulk-add — so when a card lands on the
+  // wrong printing, which one produced the row is the first thing worth
+  // knowing. Collapsing them into 'scan' throws that away.
+  'scanner',
   'api',
 ];
 

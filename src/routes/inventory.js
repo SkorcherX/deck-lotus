@@ -31,6 +31,16 @@ function auditSource(requested, fallback) {
 }
 
 /**
+ * How many lines one bulk add may carry.
+ *
+ * A paste is human-sized and a scan session is a box of cards, so this is set
+ * well above either. It is here because the loop is one write per item with no
+ * transaction around it, and the body parser's 10mb ceiling is the only other
+ * thing bounding how long a single request can hold the database.
+ */
+const BULK_ITEM_LIMIT = 1000;
+
+/**
  * GET /api/inventory
  * Get paginated inventory list with filters
  */
@@ -124,6 +134,12 @@ router.post('/bulk-add', authenticate, (req, res, next) => {
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Items array is required' });
+    }
+
+    if (items.length > BULK_ITEM_LIMIT) {
+      return res.status(400).json({
+        error: `At most ${BULK_ITEM_LIMIT} items per request`,
+      });
     }
 
     const result = bulkAddToInventory(req.user.id, items, {
