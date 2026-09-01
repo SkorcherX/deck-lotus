@@ -71,7 +71,7 @@ export async function getCardInfoBulk(names) {
 // GET /prices/singles — no params, returns all in-stock singles
 // Response: { meta: { as_of }, data: [{ name, scryfall_id, price_cents, price_cents_nm, price_cents_lp_plus, ... }] }
 // All prices are in cents — divide by 100 for dollars.
-async function getAllSinglePrices() {
+export async function getAllSinglePrices() {
   assertConfigured();
   const res = await apiGet('/prices/singles');
   return Array.isArray(res) ? res : (res.data ?? []);
