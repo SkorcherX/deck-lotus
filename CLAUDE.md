@@ -232,5 +232,16 @@ taken on GitHub — only do it when explicitly asked.
   across them and the live panel shows the span, banding on the low end. Both
   came out of one scan — Flusterstorm from an SOA precon priced at $208.59, the
   foil-only SOA 148, when the card in hand was SOA 18 at $9.78.
+- Prices refresh daily, on their own cron, separately from the weekly MTGJSON
+  sync (`runPriceSync` / `PRICE_SYNC_START` in `src/services/syncService.js`,
+  `PRICES_ONLY=true` in `scripts/import-mtgjson.js`). It is safe to run without
+  a maintenance notice precisely because it touches nothing but `prices`, which
+  key on `printing_uuid` — the moment it clears or rebuilds anything else that
+  stops being true. It skips itself while a full sync is running or pending.
+  The prune of rows the feed no longer carries is scoped to **the providers
+  that run actually saw**: on the day it was written AllPricesToday carried
+  tcgplayer and cardkingdom and no cardmarket at all, and an unscoped prune
+  deleted 158,000 cardmarket prices because MTGJSON's file was short a provider
+  that morning.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.

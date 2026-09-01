@@ -518,13 +518,18 @@ async function importCards(sourceDb, targetDb) {
 /**
  * Import pricing data from MTGJSON
  */
-async function importPricing(targetDb) {
+async function importPricing(targetDb, { pruneStale = false } = {}) {
   console.log('Importing pricing data...');
 
   // Download pricing data if not exists
   if (!fs.existsSync(PRICES_PATH)) {
     await downloadFile(PRICES_URL, PRICES_PATH);
   }
+
+  // When the table was not cleared first - a prices-only run - this is what
+  // separates the rows this feed refreshed from the ones it no longer carries.
+  // Read before the inserts, so nothing written by this run can fall under it.
+  const startedAt = targetDb.prepare(`SELECT datetime('now') AS t`).get().t;
 
   const pricesData = JSON.parse(fs.readFileSync(PRICES_PATH, 'utf8'));
   const data = pricesData.data;
@@ -537,6 +542,12 @@ async function importPricing(targetDb) {
 
   // Check which UUIDs exist in our printings table
   const checkUuid = targetDb.prepare(`SELECT 1 FROM printings WHERE uuid = ? LIMIT 1`);
+
+  // Which providers this feed actually carried. Not decoration: on the day this
+  // was written AllPricesToday had tcgplayer and cardkingdom and no cardmarket
+  // at all, and a prune that did not ask would have deleted 158,000 cardmarket
+  // prices because MTGJSON's file was short one provider that morning.
+  const providersSeen = new Set();
 
   const insertPricesMany = targetDb.transaction((entries) => {
     let count = 0;
@@ -571,6 +582,7 @@ async function importPricing(targetDb) {
         if (tcp.retail) {
           const normalPrice = extractPrice(tcp.retail.normal);
           const foilPrice = extractPrice(tcp.retail.foil);
+          if (normalPrice || foilPrice) providersSeen.add('tcgplayer');
           if (normalPrice) insertPrice.run(uuid, 'tcgplayer', 'normal', normalPrice);
           if (foilPrice) insertPrice.run(uuid, 'tcgplayer', 'foil', foilPrice);
         }
@@ -582,6 +594,7 @@ async function importPricing(targetDb) {
         if (cm.retail) {
           const normalPrice = extractPrice(cm.retail.normal);
           const foilPrice = extractPrice(cm.retail.foil);
+          if (normalPrice || foilPrice) providersSeen.add('cardmarket');
           if (normalPrice) insertPrice.run(uuid, 'cardmarket', 'normal', normalPrice);
           if (foilPrice) insertPrice.run(uuid, 'cardmarket', 'foil', foilPrice);
         }
@@ -593,6 +606,7 @@ async function importPricing(targetDb) {
         if (ck.retail) {
           const normalPrice = extractPrice(ck.retail.normal);
           const foilPrice = extractPrice(ck.retail.foil);
+          if (normalPrice || foilPrice) providersSeen.add('cardkingdom');
           if (normalPrice) insertPrice.run(uuid, 'cardkingdom', 'normal', normalPrice);
           if (foilPrice) insertPrice.run(uuid, 'cardkingdom', 'foil', foilPrice);
         }
@@ -610,6 +624,63 @@ async function importPricing(targetDb) {
 
   runBatched(insertPricesMany, Object.entries(data));
   console.log(`\n✓ Imported pricing for ${Object.keys(data).length} printings`);
+
+  // A card that has sold out everywhere drops out of the feed, and its last
+  // known price would otherwise sit in the table indefinitely, quoted as
+  // current. Dropped after the new rows are in rather than before, so a failed
+  // download leaves the old prices standing instead of leaving none at all.
+  if (pruneStale && providersSeen.size) {
+    const providers = [...providersSeen];
+    const dropped = targetDb
+      .prepare(
+        `DELETE FROM prices
+          WHERE updated_at < ?
+            AND provider IN (${providers.map(() => '?').join(', ')})`
+      )
+      .run(startedAt, ...providers).changes;
+    if (dropped > 0) {
+      console.log(`  Dropped ${dropped} prices ${providers.join(', ')} no longer carry`);
+    }
+  }
+}
+
+/**
+ * Refresh prices and nothing else.
+ *
+ * The weekly sync rebuilds `printings` and everything hanging off it, which is
+ * why it needs a maintenance notice, a safety backup and several minutes.
+ * Prices need none of that: they key on `printing_uuid`, which the rebuild is
+ * the only thing that changes, the feed is one JSON file, and MTGJSON
+ * publishes a new one every day. Quoting a week-old price when a day-old one
+ * is free is just a stale number.
+ *
+ * Deliberately refuses to run against an empty database. A prices-only pass on
+ * an instance that has never imported would insert nothing, report success and
+ * leave someone wondering why nothing has a price.
+ */
+async function refreshPrices() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+  const targetDb = new Database(TARGET_DB_PATH);
+  targetDb.pragma('journal_mode = WAL');
+
+  try {
+    const printingCount = targetDb.prepare('SELECT COUNT(*) AS count FROM printings').get();
+    if (!printingCount.count) {
+      throw new Error('No printings imported yet - run the full import before refreshing prices');
+    }
+
+    // Yesterday's file is not today's prices, and this is the one path that
+    // would otherwise happily reuse it.
+    if (fs.existsSync(PRICES_PATH)) fs.unlinkSync(PRICES_PATH);
+
+    await importPricing(targetDb, { pruneStale: true });
+  } finally {
+    targetDb.close();
+    if (fs.existsSync(PRICES_PATH)) fs.unlinkSync(PRICES_PATH);
+  }
+
+  console.log('\nPrices refreshed.');
 }
 
 /**
@@ -617,6 +688,13 @@ async function importPricing(targetDb) {
  */
 async function main() {
   try {
+    // Prices only: no rebuild, no backup, no maintenance window, no cleared
+    // tables. See refreshPrices.
+    if (process.env.PRICES_ONLY === 'true') {
+      await refreshPrices();
+      return;
+    }
+
     // Ensure data directory exists
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });

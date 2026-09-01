@@ -58,9 +58,28 @@ const SYNC_CRON = warningCronFor();
 // the schedule says what it means wherever the container runs.
 const SYNC_TIMEZONE = process.env.SYNC_TIMEZONE || process.env.TZ || 'UTC';
 
+/**
+ * When prices are refreshed, daily.
+ *
+ * A different job from the weekly sync and on purpose. That one rebuilds
+ * `printings` and everything keyed to its integer ids, which is why it needs a
+ * warning, a backup and a maintenance window; prices key on `printing_uuid`
+ * and are one JSON file, and MTGJSON publishes a new one every day. There is
+ * no reason to quote a six-day-old price because the rebuild is weekly.
+ *
+ * 04:00 rather than 03:00: an hour clear of the weekly sync's advertised
+ * start, so the two are not contending for the write lock on the one day they
+ * share. The guard in runPriceSync is what actually makes that safe - this
+ * only keeps it from being the normal case.
+ */
+export const PRICE_SYNC_START = { hour: 4, minute: 0 };
+const PRICE_SYNC_CRON = `${PRICE_SYNC_START.minute} ${PRICE_SYNC_START.hour} * * *`;
+
 let isRunning = false;
 let lastRun = null;
 let pendingSyncTimer = null;
+let isPriceSyncRunning = false;
+let lastPriceRun = null;
 
 /**
  * Run the MTGJSON import/update
@@ -139,12 +158,76 @@ export async function runSync({ trigger = 'manual' } = {}) {
 }
 
 /**
+ * Refresh prices, and nothing else.
+ *
+ * Runs the same import script with PRICES_ONLY=true, which skips the rebuild
+ * entirely - see refreshPrices there. No maintenance notice, because nothing a
+ * user can see goes away: the rows are replaced in place and every table they
+ * hang off is left alone.
+ *
+ * Skipped outright while a full sync is running or pending. That sync clears
+ * and reimports prices itself, so there is nothing to gain by racing it for
+ * the write lock, and the announced one has users watching a countdown.
+ */
+export async function runPriceSync({ trigger = 'scheduled' } = {}) {
+  if (isRunning || pendingSyncTimer) {
+    return { success: false, skipped: 'a full sync is running or pending' };
+  }
+  if (isPriceSyncRunning) {
+    return { success: false, skipped: 'a price refresh is already running' };
+  }
+
+  try {
+    isPriceSyncRunning = true;
+    console.log(`\nRefreshing prices (${trigger})...`);
+
+    const scriptPath = join(__dirname, '../../scripts/import-mtgjson.js');
+
+    await new Promise((resolve, reject) => {
+      const child = spawn('node', [scriptPath], {
+        stdio: ['ignore', 'inherit', 'inherit'],
+        env: { ...process.env, PRICES_ONLY: 'true' },
+      });
+
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Price refresh exited with code ${code}`));
+      });
+    });
+
+    lastPriceRun = new Date();
+
+    // Printing ids are untouched by a prices-only run, so the card hash index
+    // does not need re-joining. What is stale is the identity table the
+    // scanner holds - it carries the price, and a device revalidates against
+    // its etag every time the scanner opens.
+    try {
+      const { invalidate } = await import('./scanIdentityService.js');
+      invalidate();
+    } catch (error) {
+      console.error('Could not invalidate the scan identity table:', error.message);
+    }
+
+    console.log('Prices refreshed successfully');
+    return { success: true, lastPriceRun };
+  } catch (error) {
+    console.error('Price refresh failed:', error.message);
+    throw error;
+  } finally {
+    isPriceSyncRunning = false;
+  }
+}
+
+/**
  * Get sync status
  */
 export function getSyncStatus() {
   return {
     isRunning,
-    lastRun
+    lastRun,
+    isPriceSyncRunning,
+    lastPriceRun
   };
 }
 
@@ -205,4 +288,17 @@ export function setupDailySync() {
     `✓ Weekly sync scheduled for ${DAY_NAMES[SYNC_START.weekday]} at ${start} ${SYNC_TIMEZONE}` +
     ` (users warned from ${warning.time}${warnDay})`
   );
+
+  cron.schedule(PRICE_SYNC_CRON, () => {
+    runPriceSync({ trigger: 'scheduled' }).catch(() => {
+      // Already logged. A failed price refresh leaves the previous day's
+      // prices standing, which is the same position a weekly sync left them
+      // in until now - not a reason to take the process down.
+    });
+  }, { timezone: SYNC_TIMEZONE });
+
+  const priceTime =
+    `${String(PRICE_SYNC_START.hour).padStart(2, '0')}:` +
+    `${String(PRICE_SYNC_START.minute).padStart(2, '0')}`;
+  console.log(`✓ Daily price refresh scheduled for ${priceTime} ${SYNC_TIMEZONE}`);
 }

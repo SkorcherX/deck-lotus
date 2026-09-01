@@ -1,5 +1,5 @@
 import express from 'express';
-import { scheduleSyncWithWarning, getSyncStatus } from '../services/syncService.js';
+import { scheduleSyncWithWarning, getSyncStatus, runPriceSync } from '../services/syncService.js';
 import {
   createBackup,
   restoreBackup,
@@ -68,6 +68,23 @@ router.post('/sync', authenticate, requireAdmin, async (req, res, next) => {
     }
 
     res.json({ scheduled: true, startsAt: result.startsAt, warnSeconds });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/refresh-prices
+ * Refresh prices without rebuilding anything else (admin only)
+ */
+router.post('/refresh-prices', authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    // Awaited, unlike /sync: this is a download and a few hundred thousand
+    // replaced rows rather than a multi-minute rebuild, and there is no
+    // countdown to watch because nothing goes away while it runs.
+    const result = await runPriceSync({ trigger: 'manual' });
+    if (result.skipped) return res.status(409).json({ error: result.skipped });
+    res.json(result);
   } catch (error) {
     next(error);
   }
