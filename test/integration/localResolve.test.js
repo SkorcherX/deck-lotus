@@ -32,7 +32,7 @@ const { packHashes } = await import('../../src/services/cardHashFile.js');
 const { ART_HASH_HEX, FRAME_HASH_HEX } = await import('../../src/shared/cardHash.js');
 const hashIndex = await import('../../src/services/cardHashIndex.js');
 const { identityPayload } = await import('../../src/services/scanIdentityService.js');
-const { resolveScanFused } = await import('../../src/services/scanService.js');
+const { resolveScanFused, SCAN_TIERS } = await import('../../src/services/scanService.js');
 const local = await import('../../client/src/utils/localIndex.js');
 
 const zeros = (hexWidth) => '0'.repeat(hexWidth);
@@ -282,6 +282,52 @@ describe('matching on the device', () => {
     for (const result of [device, server]) {
       assert.ok(result.signals.printingsOfBest > 1, 'both printings are still in play');
       assert.deepEqual(result.signals.priceRange, { low: 12.5, high: 208.59 });
+    }
+  });
+
+  test('among printings the art tied, the cheaper one leads', () => {
+    // The capture sits on the dear printing's art and 4 bits off the cheap
+    // one's — inside the tie width, so that gap is resampling noise rather
+    // than evidence. Both are offered either way; which leads decides what a
+    // reviewer accepts without thinking, and the common printing is the
+    // likelier card to be holding.
+    const { device, server } = bothWays([
+      { artHash: hashAtDistance(4, ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) },
+    ]);
+
+    for (const result of [device, server]) {
+      assert.equal(result.candidates[0].printingId, printings[1].id);
+      assert.equal(result.candidates[0].price, 12.5);
+      assert.equal(result.signals.priceBiased, true);
+      // Never a promotion: the printing is still the reviewer's to choose.
+      assert.notEqual(result.tier, SCAN_TIERS.CONFIDENT);
+    }
+  });
+
+  test('a set the session has seen still beats the cheaper printing', () => {
+    // Somebody looking at the box knows what is in it. A guess that the common
+    // printing is likelier is the weaker claim of the two and must not override
+    // it — the tally sorts first and the price only separates what it tied.
+    const { device, server } = bothWays(
+      [{ artHash: zeros(ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) }],
+      { BBB: 3 }
+    );
+
+    for (const result of [device, server]) {
+      assert.equal(result.candidates[0].printingId, printings[2].id, 'the tallied set leads');
+      assert.equal(result.signals.priceBiased, false, 'the tally moved it, not the price');
+    }
+  });
+
+  test('price never reorders printings the art actually separated', () => {
+    // The dear printing is the only one the art matched at all here. Nothing is
+    // tied, so there is nothing for the price to say.
+    const { device, server } = bothWays([
+      { artHash: hashAtDistance(60, ART_HASH_HEX), frameHash: zeros(FRAME_HASH_HEX) },
+    ]);
+
+    for (const result of [device, server]) {
+      assert.equal(result.signals.priceBiased, false);
     }
   });
 

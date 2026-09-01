@@ -171,45 +171,16 @@ export const SCAN_TIERS = {
 const PRINTING_TIE_BITS = 12;
 
 /**
- * Order tied printings by the sets a session has already been sure about.
+ * The run of leading candidates the art could not separate.
  *
- * The art can name the card and has nothing to say about which printing is in
- * the hand. The information that would settle it is not in the photograph — it
- * is in the stack: cards come from a precon, a booster box, a binder, and one
- * session is usually one place. So a caller may pass a tally of the sets it has
- * already resolved unambiguously, and ties are broken toward it.
- *
- * Three rules, and the whole value of this depends on keeping them:
- *
- * 1. **Only printings of the card that already won.** This never changes which
- *    *card* is first. A tally about sets is not evidence about identity.
- * 2. **Only where the art is genuinely tied**, within PRINTING_TIE_BITS. A
- *    distance the art actually separated is evidence; overriding it with a
- *    tally would be preferring a guess about the stack to a measurement of the
- *    picture.
- * 3. **Never promotes anything.** Tiers are decided before this runs, so a
- *    biased order cannot turn a printing choice into a `confident` one. A tally
- *    is a hint about a pile of cards, not proof about the one in hand.
- *
- * Mutates `merged` in place, because it is the list about to be returned and
- * copying it to reorder a handful of neighbours would be ceremony.
+ * Contiguous from the front, and all one card: anything below a candidate the
+ * art genuinely separated is not tied with the winner however close it looks.
+ * Returns how many, which is 0 or 1 when there is nothing to order.
  */
-function applySetBias(merged, setBias) {
-  if (!setBias || !merged.length) return;
-
-  const tally = new Map(
-    Object.entries(setBias)
-      .filter(([code, count]) => code && Number.isFinite(count) && count > 0)
-      .map(([code, count]) => [String(code).toUpperCase(), count])
-  );
-  if (!tally.size) return;
-
+function tiedRun(merged) {
   const best = merged[0];
-  if (best.artDistance === null || best.artDistance === undefined) return;
+  if (!best || best.artDistance === null || best.artDistance === undefined) return 0;
 
-  // The run of leading candidates that are the same card and tied with it. A
-  // contiguous run from the front, because anything below a candidate the art
-  // separated is not tied with the winner however close it looks.
   let end = 0;
   while (
     end < merged.length &&
@@ -220,17 +191,77 @@ function applySetBias(merged, setBias) {
     end++;
   }
 
-  if (end < 2) return;
+  return end;
+}
+
+/**
+ * Order tied printings: by the sets a session has already been sure about, and
+ * then — where that says nothing — toward the cheaper printing.
+ *
+ * The set tally is the stronger evidence and sorts first, so this never
+ * overrides it; the price only ever separates printings the tally scored
+ * equally, which in a session that has resolved nothing is all of them.
+ *
+ * Why price at all. Among reprints the art has tied, the list is currently led
+ * by whichever printing a few bits of resampling favoured, and the candidates
+ * are not equally likely to be the card in someone's hand: the dear one is dear
+ * because it is scarce. The Flusterstorm that started this was $9.78 as SOA 18
+ * and $208.59 as the foil-only SOA 148, and there are a great many more of the
+ * first. Leading with the cheaper one is right more often, and it fails softly
+ * — a printing shown first still goes to review, and the reviewer is choosing
+ * from the same list either way.
+ *
+ * Unpriced printings sort last. Not a claim that they are expensive: a price we
+ * do not have cannot be the reason to promote something over one we do.
+ *
+ * Three rules, and the whole value of this depends on keeping them. They hold
+ * for the price exactly as they held for the tally:
+ *
+ * 1. **Only printings of the card that already won.** This never changes which
+ *    *card* is first. Neither a tally about sets nor a difference in price is
+ *    evidence about identity.
+ * 2. **Only where the art is genuinely tied**, within PRINTING_TIE_BITS. A
+ *    distance the art actually separated is evidence; overriding it would be
+ *    preferring a guess to a measurement of the picture.
+ * 3. **Never promotes anything.** Tiers are decided before this runs, so a
+ *    biased order cannot turn a printing choice into a `confident` one. Both
+ *    rules are hints about which card is likelier to be in a pile, not proof
+ *    about the one in hand.
+ *
+ * Mutates `merged` in place. Returns whether the price was what moved the
+ * leader, so a recording can say when the order shown was the art's, the
+ * stack's, or this.
+ */
+function applySetBias(merged, setBias) {
+  if (!merged.length) return false;
+
+  const tally = new Map(
+    Object.entries(setBias || {})
+      .filter(([code, count]) => code && Number.isFinite(count) && count > 0)
+      .map(([code, count]) => [String(code).toUpperCase(), count])
+  );
+
+  const end = tiedRun(merged);
+  if (end < 2) return false;
 
   const tied = merged.slice(0, end);
-  tied.sort((a, b) => {
-    const score = (candidate) => tally.get(String(candidate.setCode || '').toUpperCase()) || 0;
-    // Stable within equal scores: the art's own order is the fallback, not an
-    // alphabetical or arbitrary one.
-    return score(b) - score(a);
-  });
+  const score = (candidate) => tally.get(String(candidate.setCode || '').toUpperCase()) || 0;
 
-  merged.splice(0, end, ...tied);
+  // The tally's answer on its own, so the caller can be told which of the two
+  // rules actually moved the leader. Stable within equal scores: the art's own
+  // order is the fallback, not an alphabetical or arbitrary one.
+  const bySet = [...tied].sort((a, b) => score(b) - score(a));
+
+  const priceOf = (candidate) =>
+    typeof candidate.price === 'number' && Number.isFinite(candidate.price)
+      ? candidate.price
+      : Infinity;
+
+  const ordered = [...tied].sort((a, b) => score(b) - score(a) || priceOf(a) - priceOf(b));
+
+  merged.splice(0, end, ...ordered);
+
+  return ordered[0] !== bySet[0];
 }
 
 /**
@@ -456,7 +487,7 @@ export function fuseScanResult({
       ? { low: Math.min(...siblingPrices), high: Math.max(...siblingPrices) }
       : null;
 
-  applySetBias(merged, setBias);
+  const priceBiased = applySetBias(merged, setBias);
 
   // Whether the art agreed on *which card this is*, as distinct from which
   // printing of it. Every art-backed candidate belonging to one card means
@@ -515,6 +546,9 @@ export function fuseScanResult({
       // recording says when the order shown was the art's and when it was the
       // stack's. See applySetBias.
       setBiased: !!setBias && bestCardPrintings > 1,
+      // And whether the price was what moved the leader, which is only ever
+      // among printings the tally scored equally. See applySetBias.
+      priceBiased,
       // The name is settled even where the printing is not. See above.
       nameCertain,
       agreed,
