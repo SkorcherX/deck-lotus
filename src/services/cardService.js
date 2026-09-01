@@ -340,11 +340,22 @@ export function browseCards(filters = {}) {
   }
 
   if (needsPriceJoin) {
+    // The cheapest printing, not the dearest.
+    //
+    // A card is not worth what its rarest printing goes for. Sorting on the
+    // maximum put Flusterstorm above genuinely expensive cards on the strength
+    // of the foil-only SOA 148 at ~$200, while the printing anybody would
+    // actually buy is under $10 - the same mistake the scanner was making when
+    // it quoted one printing's price for a card it had not pinned down.
+    //
+    // The minimum is also what the rest of the app already means by a card's
+    // price: `cheapest_printing_id` in inventoryService and the MIN in
+    // shoppingService both answer "what does it cost to get this card".
     sql += `,
-             (SELECT pr.price FROM printings p2
-              LEFT JOIN prices pr ON p2.uuid = pr.printing_uuid
+             (SELECT MIN(pr.price) FROM printings p2
+              JOIN prices pr ON p2.uuid = pr.printing_uuid
               WHERE p2.card_id = c.id AND pr.provider = 'tcgplayer' AND pr.price_type = 'normal'
-              ORDER BY pr.price DESC LIMIT 1) as max_price`;
+             ) as card_price`;
   }
 
   sql += `
@@ -556,7 +567,9 @@ export function browseCards(filters = {}) {
       sql += ` ORDER BY c.colors ASC, c.name ASC`;
       break;
     case 'price':
-      sql += ` ORDER BY max_price DESC, c.name ASC`;
+      // Unpriced cards last rather than wherever NULL happens to fall, the
+      // same way the inventory sort spells it out.
+      sql += ` ORDER BY card_price IS NULL, card_price DESC, c.name ASC`;
       break;
     case 'random':
     default:

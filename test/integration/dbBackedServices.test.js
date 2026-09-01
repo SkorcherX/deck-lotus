@@ -34,7 +34,7 @@ const { getBulkBinList, getShoppingList } =
   await import('../../src/services/shoppingService.js');
 const { addCardToDeck, updateDeckCard, getDeckById } =
   await import('../../src/services/deckService.js');
-const { addOwnedPrintingQuantity, setOwnedPrintingQuantity, toggleCardOwnership } =
+const { addOwnedPrintingQuantity, setOwnedPrintingQuantity, toggleCardOwnership, browseCards } =
   await import('../../src/services/cardService.js');
 
 let userId;
@@ -830,5 +830,62 @@ describe('a write computed from a stale number is refused', () => {
 
     setOwnedPrintingQuantity(userId, printingId(), 3, false, { expectedQuantity: 0 });
     assert.equal(quantityNow(), 3);
+  });
+});
+
+
+/**
+ * Sorting a browse list by price.
+ *
+ * The question a price sort answers is "what does this card cost", and a card
+ * does not cost what its rarest printing goes for. Sorting on the dearest
+ * printing put a $9 card above genuinely expensive ones on the strength of a
+ * foil-only variant nobody is buying - the same mistake the scanner made when
+ * it quoted one printing's price for a card it had not pinned down.
+ */
+describe('browsing by price', () => {
+  before(() => {
+    // Grizzly Bears gets a second printing worth two hundred times its first,
+    // and a new card is added whose only printing costs $5 - dearer than any
+    // copy of the Bears anyone would buy, and far below the Bears' showcase.
+    // Sorted on the dearest printing the Bears lead; sorted on what a copy
+    // actually costs, the $5 card does.
+    db.run(
+      `INSERT INTO printings (card_id, uuid, set_code, collector_number, rarity)
+       VALUES (?, 'uuid-Grizzly Bears-showcase', 'TST', '301', 'mythic')`,
+      [printings['Grizzly Bears'].cardId]
+    );
+    db.run(
+      `INSERT INTO prices (printing_uuid, provider, price_type, price)
+       VALUES ('uuid-Grizzly Bears-showcase','tcgplayer','normal',50)`
+    );
+    db.run(
+      `INSERT INTO cards (name, name_normalized, type_line, color_identity)
+       VALUES ('Steady Five','steady five','Artifact','')`
+    );
+    db.run(
+      `INSERT INTO printings (card_id, uuid, set_code, collector_number, rarity)
+       VALUES ((SELECT id FROM cards WHERE name='Steady Five'), 'uuid-Steady Five', 'TST', '302', 'rare')`
+    );
+    db.run(
+      `INSERT INTO prices (printing_uuid, provider, price_type, price)
+       VALUES ('uuid-Steady Five','tcgplayer','normal',5)`
+    );
+  });
+
+  test('a cheap card with one dear printing does not lead the list', () => {
+    const { cards } = browseCards({ sort: 'price', limit: 10 });
+    const names = cards.map((card) => card.name);
+
+    assert.ok(
+      names.indexOf('Steady Five') < names.indexOf('Grizzly Bears'),
+      `a $5 card must outrank a $0.25 one with a $50 printing - got ${names.join(', ')}`
+    );
+  });
+
+  test('the price a card sorts on is the cheapest way to own it', () => {
+    const { cards } = browseCards({ sort: 'price', limit: 10 });
+    const bears = cards.find((card) => card.name === 'Grizzly Bears');
+    assert.equal(bears.card_price, 0.25, 'not the $50 printing');
   });
 });
