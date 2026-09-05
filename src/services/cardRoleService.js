@@ -30,7 +30,7 @@ function selfReference(card) {
  * ..."), and leaving that in makes patterns match on the name rather than the
  * effect — a card called "Counterspell Collector" should not read as removal.
  */
-function effectText(card) {
+export function effectText(card) {
   const self = selfReference(card);
   const raw = textOf(card);
   return self ? raw.replace(self, 'this') : raw;
