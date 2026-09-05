@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import {
   buildDeck, buildManaBase, colorDemands, landProduces, resolveTheme,
 } from '../src/services/deckGeneratorService.js';
+import { colorSourcesWanted, castingTurn } from '../src/config/deckProfiles.js';
 
 /** A pool row, shaped the way getGeneratorPool hands one over. */
 const card = (name, props = {}) => ({
@@ -106,11 +107,37 @@ describe('colorDemands', () => {
     const demands = colorDemands([
       { mana_cost: '{4}{B}', cmc: 5 },
       { mana_cost: '{B}{B}', cmc: 2 },
-    ]);
+    ], 60, 'modern');
+
     // The double-pip two-drop is what the mana base has to serve.
     assert.equal(demands.B.pips, 2);
     assert.equal(demands.B.turn, 2);
     assert.equal(demands.B.cards, 2);
+  });
+
+  test('the pips and the turn come from one card, never combined across two', () => {
+    // A {B} one-drop and a {B}{B} five-drop must not become "two pips on
+    // turn one", a demand neither card makes and nothing can satisfy.
+    const demands = colorDemands([
+      { mana_cost: '{B}', cmc: 1 },
+      { mana_cost: '{3}{B}{B}', cmc: 5 },
+    ], 60, 'modern');
+
+    assert.ok(!(demands.B.pips === 2 && demands.B.turn === 1));
+  });
+
+  test('a slow format asks for the colour later than the mana value', () => {
+    const spells = [{ mana_cost: '{B}{B}', cmc: 2 }];
+
+    // On curve in a 60-card format...
+    assert.equal(colorDemands(spells, 60, 'modern').B.turn, 2);
+    // ...but a Commander deck is not casting this on turn two, and asking as
+    // though it were demands more sources than any mana base can hold.
+    assert.equal(colorDemands(spells, 100, 'commander').B.turn, 5);
+    assert.ok(
+      colorDemands(spells, 100, 'commander').B.wanted
+      < colorSourcesWanted(2, 2, 100)
+    );
   });
 
   test('generic costs demand no colour', () => {
@@ -308,5 +335,28 @@ describe('buildManaBase', () => {
 
     assert.ok(!result.lands.some((l) => l.name.startsWith('Forest')));
     assert.equal(result.total, 36);
+  });
+});
+
+describe('castingTurn', () => {
+  test('a 60-card format asks on curve', () => {
+    assert.equal(castingTurn(1, 'modern'), 1);
+    assert.equal(castingTurn(3, 'modern'), 3);
+    // The tables stop at turn five, so later drops ask there.
+    assert.equal(castingTurn(8, 'modern'), 5);
+  });
+
+  test('Commander asks at the far end of the tables regardless of cost', () => {
+    // Its clock is 10: nothing is cast on curve, and asking as though it were
+    // demands more sources than a 36-land mana base can physically hold.
+    assert.equal(castingTurn(1, 'commander'), 5);
+    assert.equal(castingTurn(2, 'commander'), 5);
+  });
+
+  test('the Commander target for a double pip is reachable, unlike the on-curve one', () => {
+    // 36 lands with a real dual base reaches about 25 sources of a colour;
+    // the on-curve reading wanted 33, which nothing can reach.
+    assert.ok(colorSourcesWanted(castingTurn(2, 'commander'), 2, 100) <= 25);
+    assert.ok(colorSourcesWanted(2, 2, 100) > 30);
   });
 });

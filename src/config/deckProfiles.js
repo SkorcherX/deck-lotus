@@ -61,6 +61,34 @@ export function colorSourcesWanted(turn, pips, deckSize = 60) {
 }
 
 /**
+ * The turn a card's colour requirement has to be met by.
+ *
+ * Mana value is the obvious answer and it is wrong for Commander. Scaling the
+ * source counts to 100 cards is fine — a hypergeometric check of the
+ * single-pip column lands within one of the scaled figures — but pairing them
+ * with "cast on curve" is not: it asks for 33 sources of a colour for a
+ * double-pip two-drop, which no 36-land two-colour mana base can reach, so
+ * every Commander deck ever built reports as broken. A threshold nothing can
+ * satisfy is not a strict warning, it is noise, and noise is what makes people
+ * stop reading the panel.
+ *
+ * The error is the turn, not the count. Commander's `clock` is 10: nobody is
+ * casting their {B}{B} two-drop on turn two in a four-player game, and with
+ * ten turns of land drops the question is whether the deck can cast it *at
+ * all*, reliably, not whether it can cast it on schedule. So a slow format
+ * asks its requirement at the last turn the tables describe, which puts a
+ * double-pip card at 25 sources in a 100-card deck — demanding, reachable with
+ * a real dual-land base, and false only when the mana really is bad.
+ *
+ * Sixty-card formats are unchanged: there, on-curve is the whole point.
+ */
+export function castingTurn(manaValue, format) {
+  const onCurve = Math.max(1, Math.min(5, Math.ceil(Number(manaValue) || 0) || 1));
+  // 8 is above every constructed format's clock and below Commander's 10.
+  return getFormatProfile(format).clock >= 8 ? 5 : onCurve;
+}
+
+/**
  * How many cards of each job a deck of this format wants, and how many lands.
  *
  * These are targets for *building* a deck, which is a different question from
