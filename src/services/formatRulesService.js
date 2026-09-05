@@ -1,6 +1,7 @@
 import db from '../db/connection.js';
 import { checkDeckLegality } from './deckService.js';
 import { adviseDeck } from './deckAdvisorService.js';
+import { findPreconMatch, hasPrecons, describeMatch } from './preconService.js';
 import { getDisruptions } from './tradeService.js';
 
 /**
@@ -87,7 +88,7 @@ function boardOf(card) {
  * `advice` is the new part — the archetype and the measurements behind the
  * findings, for callers that want to show the numbers rather than the prose.
  */
-function adviceFor(mainboard, sideboard, format) {
+function adviceFor(mainboard, sideboard, format, allCards = null) {
   const advice = adviseDeck(mainboard, sideboard, format);
 
   return {
@@ -95,8 +96,46 @@ function adviceFor(mainboard, sideboard, format) {
     advice: {
       archetype: advice.archetype,
       snapshot: advice.snapshot
-    }
+    },
+    precon: preconFor(allCards || [...mainboard, ...sideboard])
   };
+}
+
+/**
+ * Does this deck come out of a box?
+ *
+ * The findings themselves are left exactly as they are. A precon's problems
+ * are real — they are built to a price and their mana bases show it — so
+ * nothing is deleted; the client collapses them behind `summary` and the
+ * reader opens it if they want the detail.
+ *
+ * Every board is compared, commander included, because that is what the
+ * precon's own list contains.
+ *
+ * Failing here must not fail the deck page. Precon matching is a nicety on top
+ * of a page whose job is telling somebody whether their deck is legal, and a
+ * missing table on an instance that has never run the importer is the normal
+ * case rather than an error.
+ */
+function preconFor(cards) {
+  try {
+    if (!hasPrecons()) return null;
+
+    const match = findPreconMatch(cards);
+    if (!match) return null;
+
+    return {
+      ...match,
+      summary: describeMatch(match),
+      // The client's cue to fold the findings away. Kept separate from
+      // `isStock` so the threshold can move without the two meaning
+      // different things.
+      collapseFindings: match.isStock
+    };
+  } catch (error) {
+    console.error('Precon match failed:', error.message);
+    return null;
+  }
 }
 
 
@@ -153,7 +192,7 @@ export function checkFormatRules(deckId, userId, formatOverride = null) {
       violations: [],
       // Advice does not need a known format — a deck still wants lands. The
       // advisor falls back to permissive, format-agnostic expectations.
-      ...adviceFor(mainboard, sideboard, null),
+      ...adviceFor(mainboard, sideboard, null, cards),
       unresolvedTrades: getDisruptions(userId, deckId),
       isLegal: true
     };
@@ -306,7 +345,7 @@ export function checkFormatRules(deckId, userId, formatOverride = null) {
       sideboardMax: rules.sideboardMax ?? null
     },
     violations,
-    ...adviceFor(mainboard, sideboard, format),
+    ...adviceFor(mainboard, sideboard, format, cards),
     // Cards traded away that the owner has not yet decided about. The counts
     // and violations above describe the deck as listed; once those cards are
     // removed the deck shrinks and the size violation appears on its own.
