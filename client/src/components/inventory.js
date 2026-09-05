@@ -66,6 +66,9 @@ export function setupInventory() {
   // Setup bulk remove modal
   setupBulkRemoveModal();
 
+  // Setup export modal
+  setupExportModal();
+
   // Setup quick search
   setupQuickSearch();
 
@@ -990,6 +993,75 @@ function toggleCardSelection(cardId) {
     selectedCards.add(cardId);
   }
   updateBulkActionsBar();
+}
+
+/**
+ * The export modal: the collection as text, copied or saved.
+ *
+ * The list is fetched fresh each time the modal opens and again on every
+ * change of shape, rather than being generated in the browser from the page's
+ * rows. The page shows one filtered, paginated slice of the collection and an
+ * export that quietly matched it would be a subset presented as a backup.
+ */
+function setupExportModal() {
+  const openBtn = document.getElementById('inventory-export-btn');
+  const modal = document.getElementById('inventory-export-modal');
+  const closeBtn = document.getElementById('inventory-export-close');
+  const textarea = document.getElementById('inventory-export-text');
+  const summary = document.getElementById('inventory-export-summary');
+  const copyBtn = document.getElementById('inventory-export-copy');
+  const downloadBtn = document.getElementById('inventory-export-download');
+  const shapeInputs = [...document.querySelectorAll('input[name="inventory-export-shape"]')];
+
+  if (!openBtn || !modal) return;
+
+  const selectedShape = () => shapeInputs.find((i) => i.checked)?.value || 'precise';
+
+  async function load() {
+    textarea.value = 'Loading...';
+    summary.textContent = '';
+    try {
+      const result = await api.exportInventory(selectedShape());
+      textarea.value = result.text;
+      summary.textContent = `${result.cards} cards, ${result.copies} copies, ${result.lines} lines`;
+    } catch (error) {
+      console.error('Failed to export inventory:', error);
+      textarea.value = '';
+      showToast('Failed to build the export', 'error');
+    }
+  }
+
+  const close = () => modal.classList.add('hidden');
+
+  openBtn.addEventListener('click', () => {
+    modal.classList.remove('hidden');
+    load();
+  });
+
+  closeBtn?.addEventListener('click', close);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) close();
+  });
+
+  shapeInputs.forEach((input) => input.addEventListener('change', load));
+
+  copyBtn?.addEventListener('click', () => {
+    if (!textarea.value) return;
+    navigator.clipboard.writeText(textarea.value)
+      .then(() => showToast('Collection copied to clipboard', 'success'))
+      .catch(() => showToast('Failed to copy to clipboard', 'error'));
+  });
+
+  downloadBtn?.addEventListener('click', () => {
+    if (!textarea.value) return;
+    const blob = new Blob([textarea.value], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `collection-${new Date().toISOString().slice(0, 10)}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  });
 }
 
 function setupBulkAddModal() {

@@ -10,6 +10,7 @@ import {
   getAvailability,
   getBuilderInventory,
   getOwnedSets,
+  exportInventory,
 } from '../services/inventoryService.js';
 import { addOwnedPrintingQuantity } from '../services/cardService.js';
 import { AUDIT_SOURCES } from '../services/auditService.js';
@@ -119,6 +120,27 @@ router.get('/sets', authenticate, (req, res, next) => {
   try {
     const sets = getOwnedSets(req.user.id);
     res.json({ sets });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/inventory/export
+ * The collection as a list that pastes back into bulk add.
+ *
+ * Returns the text as JSON rather than as a file download, because every
+ * authenticated call here carries a bearer token in a header and a plain
+ * `<a download>` cannot send one. The client makes the file from this.
+ *
+ * Own collection only. `getInventory` takes an array of ids for the admin
+ * cross-user views; this deliberately does not, because a list of exactly what
+ * somebody owns is the thing the partner-browse rules exist to withhold.
+ */
+router.get('/export', authenticate, (req, res, next) => {
+  try {
+    const shape = req.query.shape === 'simple' ? 'simple' : 'precise';
+    res.json(exportInventory(req.user.id, { shape }));
   } catch (error) {
     next(error);
   }

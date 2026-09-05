@@ -739,6 +739,10 @@ class ApiClient {
     return this.request('/inventory/sets');
   }
 
+  async exportInventory(shape = 'precise') {
+    return this.request(`/inventory/export?shape=${encodeURIComponent(shape)}`);
+  }
+
   async bulkAddToInventory(items) {
     return this.request('/inventory/bulk-add', {
       method: 'POST',

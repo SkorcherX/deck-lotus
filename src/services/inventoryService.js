@@ -999,6 +999,89 @@ export function bulkRemoveFromInventory(userId, items, context = {}) {
 }
 
 /**
+ * The collection as a pasteable card list.
+ *
+ * This is the mirror of bulk add, and the two are held to a round trip: what
+ * comes out of here goes back into `parseCardLine` and lands on the rows it
+ * came from. That is the whole reason the line shapes here are not invented —
+ * every one of them is a format documented at the top of
+ * `src/shared/cardLines.js`, and a change there this file does not follow
+ * breaks the round trip silently, because an export that is never re-imported
+ * looks perfect.
+ *
+ * Two shapes, because the export answers two different questions:
+ *
+ *   'precise'  one line per owned row — "4 Lightning Bolt (M21) 137". Restores
+ *              the exact printings, which is what a move between instances or
+ *              a hand-checkable backup needs.
+ *   'simple'   quantities summed per card — "4 Lightning Bolt". Loses which
+ *              printing, which is what a paste into Moxfield or a deck list
+ *              wants, since those care about the card and not the art.
+ *
+ * Foils stay on their own line in **both** shapes, marked `*F*`. Finish is half
+ * the unique key of `owned_printings`, so folding a foil in with its non-foil
+ * would not merely lose a detail — it would re-import as the wrong rows.
+ */
+export function exportInventory(userId, { shape = 'precise' } = {}) {
+  const rows = db.all(`
+    SELECT
+      c.name,
+      p.set_code,
+      p.collector_number,
+      op.is_foil,
+      op.quantity
+    FROM owned_printings op
+    JOIN printings p ON op.printing_id = p.id
+    JOIN cards c ON p.card_id = c.id
+    WHERE op.user_id = ? AND op.quantity > 0
+    ORDER BY c.name COLLATE NOCASE, p.set_code, p.collector_number
+  `, [userId]);
+
+  const foilMark = (isFoil) => (isFoil ? ' *F*' : '');
+  let lines;
+
+  if (shape === 'simple') {
+    // Summed per card and finish. A Map preserves the ORDER BY above, so the
+    // list stays alphabetical without being sorted a second time.
+    const totals = new Map();
+    for (const row of rows) {
+      const key = `${row.name}:${row.is_foil ? 1 : 0}`;
+      const seen = totals.get(key);
+      if (seen) seen.quantity += row.quantity;
+      else totals.set(key, { name: row.name, isFoil: !!row.is_foil, quantity: row.quantity });
+    }
+    lines = [...totals.values()].map((c) => `${c.quantity} ${c.name}${foilMark(c.isFoil)}`);
+  } else {
+    lines = rows.map((row) => {
+      // The collector number is optional in the Moxfield form, and a printing
+      // recorded without one still has to come out re-importable.
+      const set = `(${String(row.set_code).toUpperCase()})`;
+      const collector = row.collector_number ? ` ${row.collector_number}` : '';
+      return `${row.quantity} ${row.name} ${set}${collector}${foilMark(row.is_foil)}`;
+    });
+  }
+
+  const copies = rows.reduce((sum, row) => sum + row.quantity, 0);
+  const cards = new Set(rows.map((row) => row.name)).size;
+
+  // A `//` header, which `parseCardLine` drops, so the text stays a valid
+  // paste. Worth the two lines: a list found on a disk a year later is
+  // otherwise undated and unlabelled.
+  const header = [
+    `// Deck Lotus collection export - ${new Date().toISOString().slice(0, 10)}`,
+    `// ${cards} cards, ${copies} copies, ${shape} format`,
+  ];
+
+  return {
+    shape,
+    text: [...header, ...lines].join('\n'),
+    lines: lines.length,
+    cards,
+    copies,
+  };
+}
+
+/**
  * Get sets that the user owns cards from (for filtering)
  */
 export function getOwnedSets(userId) {

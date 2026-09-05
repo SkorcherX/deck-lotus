@@ -1091,6 +1091,10 @@
                             <i class="ph ph-minus-circle btn-icon"></i>
                             <span class="btn-text">Bulk Remove</span>
                         </button>
+                        <button id="inventory-export-btn" class="btn btn-secondary" title="Copy or download your collection as a card list">
+                            <i class="ph ph-export btn-icon"></i>
+                            <span class="btn-text">Export</span>
+                        </button>
                     </div>
                 </div>
 
@@ -1327,6 +1331,44 @@
                         <button id="bulk-add-submit-btn" class="btn btn-primary" style="flex: 1">Add to Inventory</button>
                     </div>
                     <div id="bulk-add-result" class="hidden" style="margin-top: 1rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 0.5rem;"></div>
+                </div>
+            </div>
+
+            <div id="inventory-export-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 700px">
+                    <span class="modal-close" id="inventory-export-close">&times;</span>
+                    <h2 style="margin-bottom: 1rem">Export Collection</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                        Your collection as a card list, in the same formats Bulk Add takes &mdash; so
+                        this pastes straight back in, or into the deck importer, or into another site.
+                        Foils are marked <code>*F*</code> either way.
+                    </p>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: baseline; gap: 0.5rem; font-weight: normal;">
+                            <input type="radio" name="inventory-export-shape" value="precise" style="width: auto; flex: none;" checked />
+                            <span><strong>With printings</strong> &mdash; "4 Lightning Bolt (M21) 137".
+                            Restores the exact printings you own.</span>
+                        </label>
+                        <label style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.5rem; font-weight: normal;">
+                            <input type="radio" name="inventory-export-shape" value="simple" style="width: auto; flex: none;" />
+                            <span><strong>Names only</strong> &mdash; "4 Lightning Bolt". Portable to
+                            other sites; loses which printing.</span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="inventory-export-text">Card List</label>
+                        <textarea
+                            id="inventory-export-text"
+                            rows="12"
+                            readonly
+                            style="font-family: monospace; font-size: 0.875rem; width: 100%;"
+                        ></textarea>
+                    </div>
+                    <div id="inventory-export-summary" style="color: var(--text-secondary); margin-bottom: 1rem;"></div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="inventory-export-copy" class="btn btn-secondary" style="flex: 1">Copy</button>
+                        <button id="inventory-export-download" class="btn btn-primary" style="flex: 1">Download .txt</button>
+                    </div>
                 </div>
             </div>
 
