@@ -61,6 +61,46 @@ export function colorSourcesWanted(turn, pips, deckSize = 60) {
 }
 
 /**
+ * How many cards of each job a deck of this format wants, and how many lands.
+ *
+ * These are targets for *building* a deck, which is a different question from
+ * the thresholds above — those describe whether a finished deck looks sane,
+ * these say what to reach for when there is nothing yet. They are received
+ * wisdom rather than rules (the Commander numbers are the widely repeated
+ * 10 ramp / 10 draw / 8 removal / 3 wipes template), and they are here as data
+ * so they can be argued with without touching the generator.
+ *
+ * Roles are named by code rather than by predicate so this file stays
+ * import-free; the generator maps each code to the matching predicate in
+ * `cardRoleService`. `minimum` is a floor the generator tries to reach and
+ * reports honestly when the collection cannot.
+ *
+ * The 60-card entry is deliberately a placeholder: constructed formats lean far
+ * harder on interaction and far less on build-around themes, and tuning them is
+ * its own piece of work.
+ */
+export const ROLE_TARGETS = {
+  commander: {
+    deckSize: 100,
+    lands: 36,
+    // One of each card, and the commander occupies one of the 100.
+    singleton: true,
+    roles: { ramp: 10, draw: 10, removal: 8, sweeper: 3 }
+  },
+  default: {
+    deckSize: 60,
+    lands: 24,
+    singleton: false,
+    maxCopies: 4,
+    roles: { ramp: 0, draw: 5, removal: 7, sweeper: 2 }
+  }
+};
+
+export function getRoleTargets(format) {
+  return ROLE_TARGETS[String(format || '').toLowerCase()] || ROLE_TARGETS.default;
+}
+
+/**
  * Cards whose text states a requirement on the rest of the deck.
  *
  * This is Part 7's lesson generalised: Delver wants a high density of instants

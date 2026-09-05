@@ -250,11 +250,11 @@ export const THEMES = {
 /**
  * A theme's strength has to clear this before it is worth calling a theme.
  *
- * A Commander deck is 99 cards: roughly 36 lands and 63 spells, of which the
- * role minimums in `deckProfiles` claim about 31 (ramp, draw, removal,
- * wipes). That leaves about 32 slots for the theme itself, and a theme cannot
- * fill them from fewer than ten cards on its thinner side without repeating
- * itself into a deck that does one thing badly.
+ * A Commander deck is 99 cards: roughly 36 lands and 63 spells, of which
+ * `ROLE_TARGETS.commander` in `deckProfiles` claims 31 (10 ramp, 10 draw,
+ * 8 removal, 3 wipes). That leaves about 32 slots for the theme itself, and a
+ * theme cannot fill them from fewer than ten cards on its thinner side without
+ * repeating itself into a deck that does one thing badly.
  */
 export const MIN_VIABLE_STRENGTH = 10;
 

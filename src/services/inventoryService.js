@@ -7,6 +7,7 @@ import {
 import { ROLE_FILTERS } from './cardRoleService.js';
 import { colorFilterSql } from '../utils/colorFilter.js';
 import { isBasicLandSql } from './basicLands.js';
+import { deckPrioritySql, DECK_PRIORITY } from './deckPriority.js';
 import { recordInventoryChange } from './auditService.js';
 
 // Price of one owned copy, honouring its finish. Foil copies are worth their
@@ -1079,6 +1080,81 @@ export function exportInventory(userId, { shape = 'precise' } = {}) {
     cards,
     copies,
   };
+}
+
+/**
+ * Every card the user could put in a *new* deck, with copies free to spend.
+ *
+ * The deck generator needs the whole pool at once rather than a page of it,
+ * and it needs one row per card rather than per printing — it chooses cards,
+ * and binding them to printings is a later step.
+ *
+ * `available` is where the care is. A generated deck is an idea (see
+ * `deckPriority.js`), so it may only claim copies that decks *at least as
+ * committed as an idea* have not already taken — which is every deck except
+ * retired ones. Counting all decks would make a collection look emptier than
+ * it is; counting none would propose decks built out of sleeved ones.
+ *
+ * Basic lands are excluded outright. They are free and unlimited, the mana
+ * base adds them by name, and leaving them in a pool sorted by availability
+ * would let them win slots they are not competing for.
+ *
+ * `includeCommitted` widens `available` to every copy owned, and exists
+ * because the strict reading can leave nothing to build with: a collection
+ * with four finished Commander decks in it has half its cards spoken for, and
+ * the generator then reports gaps everywhere rather than proposing anything.
+ * `committed` comes back on every row either way, so a caller offering this
+ * can say which cards would have to come out of an existing deck instead of
+ * quietly proposing a teardown.
+ */
+export function getGeneratorPool(userId, { includeCommitted = false } = {}) {
+  // `available` is computed in an outer select because SQLite cannot see one
+  // column alias from another expression in the same SELECT list, and both
+  // `owned` and `committed` are needed to work it out.
+  const available = includeCommitted ? 'owned' : 'owned - committed';
+
+  return db.all(`
+    SELECT *, ${available} AS available FROM (
+    SELECT
+      c.id AS card_id,
+      c.name,
+      c.mana_cost,
+      c.cmc,
+      c.colors,
+      c.color_identity,
+      c.type_line,
+      c.oracle_text,
+      c.subtypes,
+      c.supertypes,
+      c.keywords,
+      c.power,
+      c.toughness,
+      c.legalities,
+      c.edhrec_rank,
+      (
+        SELECT MIN(p2.id) FROM printings p2
+        JOIN owned_printings op2 ON op2.printing_id = p2.id
+        WHERE p2.card_id = c.id AND op2.user_id = ?
+      ) AS printing_id,
+      COALESCE((
+        SELECT SUM(dc.quantity)
+          FROM deck_cards dc
+          JOIN printings dp ON dc.printing_id = dp.id
+          JOIN decks d ON dc.deck_id = d.id
+         WHERE d.user_id = ?
+           AND dp.card_id = c.id
+           AND ${deckPrioritySql('d')} <= ${DECK_PRIORITY.idea}
+      ), 0) AS committed,
+      COALESCE(SUM(op.quantity), 0) AS owned
+    FROM cards c
+    JOIN printings p ON p.card_id = c.id
+    JOIN owned_printings op ON op.printing_id = p.id
+    WHERE op.user_id = ?
+      AND NOT ${isBasicLandSql('c')}
+    GROUP BY c.id
+    )
+    WHERE available > 0
+  `, [userId, userId, userId]);
 }
 
 /**
