@@ -125,6 +125,9 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
         // was changed, which left the two halves of one screen disagreeing
         // about what omitting the flag meant.
         includeCommitted: req.query.includeCommitted !== 'false',
+        // A 60-card format has no commander to take colours from.
+        identity: req.query.identity || null,
+        format: req.query.format || 'commander',
       }),
     });
   } catch (error) {
@@ -138,7 +141,7 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
  */
 router.post('/generate', authenticate, (req, res, next) => {
   try {
-    const { commanderCardId, format, themeKey, includeCommitted, landCount } = req.body || {};
+    const { commanderCardId, format, themeKey, includeCommitted, landCount, identity } = req.body || {};
 
     res.json({
       proposal: proposeDeck(req.user.id, {
@@ -147,6 +150,7 @@ router.post('/generate', authenticate, (req, res, next) => {
         themeKey: themeKey || null,
         includeCommitted: includeCommitted !== false,
         landCount: landCount == null ? null : Number(landCount),
+        identity: identity || null,
       }),
     });
   } catch (error) {
@@ -166,13 +170,14 @@ router.post('/generate', authenticate, (req, res, next) => {
  */
 router.post('/generate/gaps', authenticate, (req, res, next) => {
   try {
-    const { commanderCardId, format, themeKey, includeCommitted } = req.body || {};
+    const { commanderCardId, format, themeKey, includeCommitted, identity } = req.body || {};
 
     res.json(suggestForGaps(req.user.id, {
       commanderCardId: commanderCardId == null ? null : Number(commanderCardId),
       format: format || 'commander',
       themeKey: themeKey || null,
       includeCommitted: includeCommitted !== false,
+      identity: identity || null,
     }));
   } catch (error) {
     if (/not in your collection/i.test(error.message)) {

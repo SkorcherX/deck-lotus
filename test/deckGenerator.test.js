@@ -18,7 +18,7 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  buildDeck, buildManaBase, colorDemands, landProduces, resolveTheme,
+  buildDeck, buildManaBase, colorDemands, landProduces, resolveTheme, isLegalIn,
 } from '../src/services/deckGeneratorService.js';
 import { colorSourcesWanted, castingTurn } from '../src/config/deckProfiles.js';
 
@@ -358,5 +358,123 @@ describe('castingTurn', () => {
     // the on-curve reading wanted 33, which nothing can reach.
     assert.ok(colorSourcesWanted(castingTurn(2, 'commander'), 2, 100) <= 25);
     assert.ok(colorSourcesWanted(2, 2, 100) > 30);
+  });
+});
+
+describe('format legality', () => {
+  const legalities = (obj) => JSON.stringify(obj);
+
+  test('a card not in the format is left out', () => {
+    // MTGJSON always carries the key for a format it tracks and sets it null
+    // when the card is not legal there; a rotated-out card looks like this.
+    const old = card('Rotated Out', {
+      legalities: legalities({ standard: null, modern: 'Legal' }),
+    });
+    assert.equal(isLegalIn(old, 'standard'), false);
+    assert.equal(isLegalIn(old, 'modern'), true);
+  });
+
+  test('a format the data says nothing about is not treated as a ban', () => {
+    // An absent key means MTGJSON does not track that format, which is a gap
+    // in the data rather than a statement about the card.
+    const c = card('Untracked', { legalities: legalities({ modern: 'Legal' }) });
+    assert.equal(isLegalIn(c, 'some-future-format'), true);
+  });
+
+  test('banned is not playable, restricted is', () => {
+    const banned = card('Banned Thing', { legalities: legalities({ legacy: 'Banned' }) });
+    const restricted = card('Restricted Thing', { legalities: legalities({ vintage: 'Restricted' }) });
+    assert.equal(isLegalIn(banned, 'legacy'), false);
+    // Restricted means one copy, which maxCopies enforces — not unplayable.
+    assert.equal(isLegalIn(restricted, 'vintage'), true);
+  });
+
+  test('missing or unreadable legality data lets the card through', () => {
+    // Refusing to build for a format the card data has no opinion about is a
+    // worse answer than building.
+    assert.equal(isLegalIn(card('No Data', { legalities: null }), 'modern'), true);
+    assert.equal(isLegalIn(card('Junk', { legalities: '{not json' }), 'modern'), true);
+    assert.equal(isLegalIn(card('Anything', { legalities: legalities({ modern: 'Legal' }) }), ''), true);
+  });
+
+  test('the generator will not propose a card the format bans', () => {
+    const pool = [
+      ...many(40, (i) => card(`Legal ${i}`, {
+        oracle_text: 'Destroy target creature.', type_line: 'Instant',
+        legalities: legalities({ modern: 'Legal' }), available: 4,
+      })),
+      ...many(20, (i) => card(`Illegal ${i}`, {
+        oracle_text: 'Destroy target creature.', type_line: 'Instant',
+        legalities: legalities({ modern: 'Banned' }), available: 4,
+      })),
+    ];
+
+    const deck = buildDeck(pool, { format: 'modern', identity: 'B' });
+    assert.ok(!deck.mainboard.some((c) => c.name.startsWith('Illegal')));
+  });
+});
+
+describe('playsets', () => {
+  const answers = (n) => many(n, (i) => card(`Answer ${i}`, {
+    oracle_text: 'Destroy target creature.', type_line: 'Instant', available: 4,
+  }));
+
+  test('a 60-card format takes several copies of the same card', () => {
+    // Consistency is the point of a four-of. Taking one copy each of forty
+    // different spells is a pile that draws a different deck every game.
+    const deck = buildDeck(answers(40), { format: 'modern', identity: 'B' });
+    assert.ok(deck.mainboard.some((c) => c.quantity > 1), 'no card was played twice');
+    assert.ok(deck.mainboard.every((c) => c.quantity <= 4), 'more than a playset');
+  });
+
+  test('Commander stays singleton however many copies are owned', () => {
+    const pool = answers(80).map((c) => ({ ...c, available: 4 }));
+    const deck = buildDeck(pool, { format: 'commander', identity: 'B' });
+    for (const entry of deck.mainboard) assert.equal(entry.quantity, 1);
+  });
+
+  test('it never takes more copies than the collection holds', () => {
+    const pool = many(60, (i) => card(`Only Two ${i}`, {
+      oracle_text: 'Destroy target creature.', type_line: 'Instant', available: 2,
+    }));
+    const deck = buildDeck(pool, { format: 'modern', identity: 'B' });
+    assert.ok(deck.mainboard.every((c) => c.quantity <= 2));
+  });
+});
+
+describe('60-card shapes', () => {
+  const pool = () => [
+    ...many(30, (i) => card(`Killer ${i}`, {
+      oracle_text: 'Destroy target creature.', type_line: 'Instant', available: 4,
+    })),
+    ...many(30, (i) => card(`Drawer ${i}`, {
+      oracle_text: 'Draw two cards.', type_line: 'Sorcery', available: 4,
+    })),
+    ...many(20, (i) => card(`Body ${i}`, { available: 4 })),
+  ];
+
+  for (const [format, size, lands] of [
+    ['standard', 60, 25], ['modern', 60, 23], ['legacy', 60, 21], ['pauper', 60, 22],
+  ]) {
+    test(`${format} builds ${size} cards with ${lands} lands`, () => {
+      const deck = buildDeck(pool(), { format, identity: 'B' });
+      assert.equal(deck.summary.totalCards, size);
+      assert.equal(deck.summary.lands, lands);
+    });
+  }
+
+  test('no commander is needed when the colours are given outright', () => {
+    const deck = buildDeck(pool(), { format: 'modern', identity: 'B' });
+    assert.equal(deck.commander, null);
+    assert.equal(deck.colorIdentity, 'B');
+    assert.equal(deck.summary.totalCards, 60);
+  });
+
+  test('constructed formats are not asked for ramp', () => {
+    // Ramp exists in constructed but only in particular green decks; asking
+    // every deck for it fills four slots with mana rocks nobody wanted.
+    const deck = buildDeck(pool(), { format: 'modern', identity: 'B' });
+    assert.equal(deck.summary.roles.ramp, 0);
+    assert.ok(!deck.shortfalls.some((s) => s.code === 'ramp'));
   });
 });

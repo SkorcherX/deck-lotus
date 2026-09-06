@@ -1351,8 +1351,32 @@
 
                     <div class="generate-controls">
                         <div class="form-group">
+                            <label for="generate-format">Format</label>
+                            <select id="generate-format">
+                                <option value="commander" selected>Commander</option>
+                                <option value="standard">Standard</option>
+                                <option value="pioneer">Pioneer</option>
+                                <option value="modern">Modern</option>
+                                <option value="legacy">Legacy</option>
+                                <option value="vintage">Vintage</option>
+                                <option value="pauper">Pauper</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="generate-commander-group">
                             <label for="generate-commander">Commander</label>
                             <select id="generate-commander"></select>
+                        </div>
+                        <!-- Sixty-card formats have no commander to take colours from,
+                             so they are chosen outright. -->
+                        <div class="form-group hidden" id="generate-colors-group">
+                            <label>Colours</label>
+                            <div class="generate-colors">
+                                <label><input type="checkbox" class="generate-color" value="W" /> White</label>
+                                <label><input type="checkbox" class="generate-color" value="U" /> Blue</label>
+                                <label><input type="checkbox" class="generate-color" value="B" /> Black</label>
+                                <label><input type="checkbox" class="generate-color" value="R" /> Red</label>
+                                <label><input type="checkbox" class="generate-color" value="G" /> Green</label>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="generate-theme">Build around</label>

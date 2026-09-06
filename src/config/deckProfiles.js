@@ -103,9 +103,16 @@ export function castingTurn(manaValue, format) {
  * `cardRoleService`. `minimum` is a floor the generator tries to reach and
  * reports honestly when the collection cannot.
  *
- * The 60-card entry is deliberately a placeholder: constructed formats lean far
- * harder on interaction and far less on build-around themes, and tuning them is
- * its own piece of work.
+ * The 60-card formats differ from Commander in kind, not just in size. A
+ * hundred-card singleton deck is a toolbox and wants one of everything; a
+ * sixty-card deck wants four of the right thing, because consistency is what
+ * the format is built around. They also get faster the older the format is,
+ * and the numbers below follow the `clock` above: a shorter clock means fewer
+ * lands and more cheap interaction, because there is less game to play.
+ *
+ * Ramp stays at zero everywhere but Commander. It exists in constructed, but
+ * only in particular green decks, and asking every Modern deck for ramp fills
+ * four slots with mana rocks nobody wanted.
  */
 export const ROLE_TARGETS = {
   commander: {
@@ -115,6 +122,38 @@ export const ROLE_TARGETS = {
     singleton: true,
     roles: { ramp: 10, draw: 10, removal: 8, sweeper: 3 }
   },
+
+  // Slow enough to durdle; the extra land supports a higher curve.
+  standard: {
+    deckSize: 60, lands: 25, singleton: false, maxCopies: 4,
+    roles: { ramp: 0, draw: 6, removal: 8, sweeper: 3 }
+  },
+  pioneer: {
+    deckSize: 60, lands: 24, singleton: false, maxCopies: 4,
+    roles: { ramp: 0, draw: 5, removal: 8, sweeper: 2 }
+  },
+  modern: {
+    deckSize: 60, lands: 23, singleton: false, maxCopies: 4,
+    roles: { ramp: 0, draw: 5, removal: 8, sweeper: 2 }
+  },
+  // Legacy and Vintage are decided in the first few turns, so the land count
+  // drops again and the interaction is cheap rather than plentiful.
+  legacy: {
+    deckSize: 60, lands: 21, singleton: false, maxCopies: 4,
+    roles: { ramp: 0, draw: 6, removal: 8, sweeper: 1 }
+  },
+  vintage: {
+    deckSize: 60, lands: 20, singleton: false, maxCopies: 4,
+    roles: { ramp: 0, draw: 6, removal: 8, sweeper: 1 }
+  },
+  // Commons only, so answers are plentiful and cheap but sweepers barely
+  // exist at common — asking for two produces a shortfall in every colour.
+  pauper: {
+    deckSize: 60, lands: 22, singleton: false, maxCopies: 4,
+    roles: { ramp: 0, draw: 6, removal: 8, sweeper: 1 }
+  },
+
+  // Used when the format is unknown. Deliberately the mildest of the above.
   default: {
     deckSize: 60,
     lands: 24,
@@ -127,6 +166,9 @@ export const ROLE_TARGETS = {
 export function getRoleTargets(format) {
   return ROLE_TARGETS[String(format || '').toLowerCase()] || ROLE_TARGETS.default;
 }
+
+/** The formats the generator can build for, for a picker to offer. */
+export const GENERATOR_FORMATS = Object.keys(ROLE_TARGETS).filter((key) => key !== 'default');
 
 /**
  * Cards whose text states a requirement on the rest of the deck.

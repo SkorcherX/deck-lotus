@@ -757,9 +757,13 @@ class ApiClient {
     return this.request(`/decks/generate/commanders?includeCommitted=${includeCommitted}`);
   }
 
-  async getGeneratorThemes(commanderCardId, includeCommitted = true) {
+  async getGeneratorThemes(commanderCardId, includeCommitted = true, extra = {}) {
     const params = new URLSearchParams({ includeCommitted: String(includeCommitted) });
     if (commanderCardId != null) params.set('commanderCardId', commanderCardId);
+    // A 60-card format has no commander, so the colours and the format itself
+    // have to be stated.
+    if (extra.identity) params.set('identity', extra.identity);
+    if (extra.format) params.set('format', extra.format);
     return this.request(`/decks/generate/themes?${params}`);
   }
 

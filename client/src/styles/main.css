@@ -9067,3 +9067,21 @@ body.maintenance-locked #app {
   letter-spacing: 0.05em;
   color: var(--text-secondary);
 }
+
+/* Colour picker, shown for formats that have no commander to infer from. */
+.generate-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+}
+
+.generate-colors label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: normal;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.generate-colors input { width: auto; flex: none; }

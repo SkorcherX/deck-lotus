@@ -92,6 +92,38 @@ export const ROLE_PREDICATE_BY_CODE = Object.fromEntries(
 );
 
 /**
+ * May this card be played in this format at all?
+ *
+ * The generator did not ask until 60-card formats arrived, and for Commander
+ * it very nearly did not matter: almost everything is legal there and the ban
+ * list is a few dozen cards. In Standard it matters completely — a proposal
+ * built without this came back with 15 of its 36 spells illegal, because a
+ * collection is mostly cards that have rotated out.
+ *
+ * Restricted counts as playable, at one copy; `maxCopies` is what enforces
+ * that, and only Vintage has a restricted list. An unknown format lets
+ * everything through rather than nothing: refusing to build for a format the
+ * card data has no opinion about would be a worse answer than building.
+ */
+export function isLegalIn(card, format) {
+  const key = String(format || '').toLowerCase();
+  if (!key || !card.legalities) return true;
+
+  let statuses;
+  try {
+    statuses = typeof card.legalities === 'string' ? JSON.parse(card.legalities) : card.legalities;
+  } catch {
+    // Unparseable legality data is the importer's problem, not a reason to
+    // leave a card out of a deck.
+    return true;
+  }
+
+  const status = statuses?.[key];
+  if (status === undefined) return true;
+  return status === 'Legal' || status === 'Restricted';
+}
+
+/**
  * What colours a land can tap for.
  *
  * Read from the type line first — a Sacred Foundry is a "Mountain Plains" and
@@ -254,6 +286,7 @@ export function buildDeck(pool, {
     if (commander && card.card_id != null && card.card_id === commander.card_id) return false;
     if (commander && card.name === commander.name) return false;
     if (isBasicLand(card)) return false;
+    if (!isLegalIn(card, format)) return false;
     if (colorIdentity != null && !withinColorIdentity(card, colorIdentity)) return false;
     return (card.available ?? 0) > 0;
   });
@@ -291,12 +324,27 @@ export function buildDeck(pool, {
 
   const copiesLeft = (card) => Math.min(maxCopies, card.available ?? 0) - (taken.get(card.name) || 0);
 
-  const take = (card, reason) => {
-    if (chosen.length >= spellSlots || copiesLeft(card) <= 0) return false;
-    chosen.push(card);
-    taken.set(card.name, (taken.get(card.name) || 0) + 1);
+  /**
+   * Take up to `want` copies of one card, and return how many were taken.
+   *
+   * Copies at a time, not one at a time, and that difference is what makes a
+   * 60-card deck a deck. The fill used to take a single copy and move to the
+   * next-best card, which in a singleton format is exactly right and in
+   * Standard produced 36 different spells — a pile that draws a different deck
+   * every game. Consistency is the whole point of a four-of: the format allows
+   * repeats because decks are supposed to use them.
+   *
+   * Bounded by what the format allows and by what the collection holds, so
+   * this cannot invent copies.
+   */
+  const take = (card, reason, want = 1) => {
+    const room = Math.min(want, copiesLeft(card), spellSlots - chosen.length);
+    if (room <= 0) return 0;
+
+    for (let i = 0; i < room; i += 1) chosen.push(card);
+    taken.set(card.name, (taken.get(card.name) || 0) + room);
     if (!reasons.has(card.name)) reasons.set(card.name, reason);
-    return true;
+    return room;
   };
 
   // Role quotas first. These are what stop a themed deck from being a theme
@@ -310,7 +358,9 @@ export function buildDeck(pool, {
     for (const card of rankCandidates(spellPool.filter(matches), theme)) {
       if (roleCounts[code] >= want || chosen.length >= spellSlots) break;
       if (copiesLeft(card) <= 0) continue;
-      if (take(card, label)) roleCounts[code] += 1;
+      // As many copies as the quota still needs, so a format that allows
+      // playsets gets four of the best answer rather than one each of four.
+      roleCounts[code] += take(card, label, want - roleCounts[code]);
     }
 
     if (roleCounts[code] < want) {
@@ -350,11 +400,15 @@ export function buildDeck(pool, {
       const picked = candidates.find((card) => copiesLeft(card) > 0);
       if (!picked) break;
 
-      take(picked, `${theme.label} (${wantPayoff ? 'payoff' : 'enabler'})`);
+      // A playset at a time here too, but capped so one card cannot swing the
+      // enabler-to-payoff ratio four steps before it is looked at again.
+      const took = take(picked, `${theme.label} (${wantPayoff ? 'payoff' : 'enabler'})`, maxCopies);
+      if (took === 0) break;
+
       const role = themeRole(picked, theme);
-      if (role === 'both') { enablers += 1; payoffs += 1; }
-      else if (role === 'payoff') payoffs += 1;
-      else enablers += 1;
+      if (role === 'both') { enablers += took; payoffs += took; }
+      else if (role === 'payoff') payoffs += took;
+      else enablers += took;
     }
 
     if (spellSlots - chosen.length > 0) {
@@ -375,7 +429,7 @@ export function buildDeck(pool, {
   for (const card of rankCandidates(spellPool, theme)) {
     if (chosen.length >= spellSlots) break;
     if (copiesLeft(card) <= 0) continue;
-    take(card, 'filling out the deck');
+    take(card, 'filling out the deck', maxCopies);
   }
 
   if (chosen.length < spellSlots) {

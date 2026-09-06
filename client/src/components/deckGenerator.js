@@ -34,6 +34,22 @@ function escapeHtml(value) {
 
 const includeCommitted = () => Boolean($('generate-include-committed')?.checked);
 
+const chosenFormat = () => $('generate-format')?.value || 'commander';
+const isCommander = () => chosenFormat() === 'commander';
+
+/** The colours ticked, as a bare identity string. */
+const chosenColors = () => [...document.querySelectorAll('.generate-color:checked')]
+  .map((box) => box.value).join('');
+
+/**
+ * Commander picks its colours from the commander; every other format has to be
+ * told. Swapping which control is shown keeps the panel from asking for both.
+ */
+function applyFormat() {
+  $('generate-commander-group')?.classList.toggle('hidden', !isCommander());
+  $('generate-colors-group')?.classList.toggle('hidden', isCommander());
+}
+
 /** Mana symbols as plain text — the panel is dense enough without pips. */
 const cost = (manaCost) => (manaCost || '').replace(/[{}]/g, ' ').trim();
 
@@ -47,7 +63,9 @@ export function setupDeckGenerator() {
   openBtn.addEventListener('click', async () => {
     modal.classList.remove('hidden');
     resetResult();
-    await loadCommanders();
+    applyFormat();
+    if (isCommander()) await loadCommanders();
+    else await loadThemes();
   });
 
   $('generate-deck-close')?.addEventListener('click', close);
@@ -64,6 +82,20 @@ export function setupDeckGenerator() {
   $('generate-include-committed')?.addEventListener('change', async () => {
     resetResult();
     await loadCommanders();
+  });
+
+  $('generate-format')?.addEventListener('change', async () => {
+    resetResult();
+    applyFormat();
+    if (isCommander()) await loadCommanders();
+    else await loadThemes();
+  });
+
+  document.querySelectorAll('.generate-color').forEach((box) => {
+    box.addEventListener('change', async () => {
+      resetResult();
+      await loadThemes();
+    });
   });
 
   $('generate-theme')?.addEventListener('change', resetResult);
@@ -106,12 +138,17 @@ async function loadCommanders() {
 
 async function loadThemes() {
   const select = $('generate-theme');
-  const commanderCardId = $('generate-commander')?.value;
-  if (!select || !commanderCardId) return;
+  if (!select) return;
+
+  const commanderCardId = isCommander() ? $('generate-commander')?.value : null;
+  if (isCommander() && !commanderCardId) return;
 
   select.innerHTML = '<option>Loading…</option>';
   try {
-    const data = await api.getGeneratorThemes(commanderCardId, includeCommitted());
+    const data = await api.getGeneratorThemes(commanderCardId, includeCommitted(), {
+      identity: chosenColors(),
+      format: chosenFormat(),
+    });
     const themes = data.themes || [];
 
     // "Let it choose" first, then the themes with their evidence in the label.
@@ -134,9 +171,14 @@ async function loadThemes() {
 }
 
 async function run() {
-  const commanderCardId = $('generate-commander')?.value;
-  if (!commanderCardId) {
+  const commanderCardId = isCommander() ? $('generate-commander')?.value : null;
+
+  if (isCommander() && !commanderCardId) {
     showToast('Pick a commander first', 'warning');
+    return;
+  }
+  if (!isCommander() && !chosenColors()) {
+    showToast('Pick at least one colour first', 'warning');
     return;
   }
 
@@ -146,10 +188,11 @@ async function run() {
 
   try {
     const data = await api.generateDeck({
-      commanderCardId: Number(commanderCardId),
-      format: 'commander',
+      commanderCardId: commanderCardId ? Number(commanderCardId) : null,
+      format: chosenFormat(),
       themeKey: $('generate-theme')?.value || null,
       includeCommitted: includeCommitted(),
+      identity: chosenColors() || null,
     });
 
     proposal = data.proposal;
@@ -160,7 +203,9 @@ async function run() {
     const name = $('generate-deck-name');
     if (name && !name.value) {
       const themeLabel = proposal.theme ? ` ${proposal.theme.label}` : '';
-      name.value = `${proposal.commanderCard?.name || 'Generated'}${themeLabel}`.slice(0, 80);
+      const lead = proposal.commanderCard?.name
+        || `${chosenFormat()} ${proposal.colorIdentity || ''}`.trim();
+      name.value = `${lead}${themeLabel}`.slice(0, 80);
     }
   } catch (error) {
     console.error('Generate failed:', error);
@@ -279,10 +324,11 @@ async function findGaps() {
 
   try {
     const data = await api.getGeneratorGaps({
-      commanderCardId: Number($('generate-commander')?.value),
-      format: 'commander',
+      commanderCardId: isCommander() ? Number($('generate-commander')?.value) : null,
+      format: chosenFormat(),
       themeKey: $('generate-theme')?.value || null,
       includeCommitted: includeCommitted(),
+      identity: chosenColors() || null,
     });
 
     const gaps = (data.gaps || []).filter((g) => g.suggestions.length);
@@ -384,7 +430,7 @@ async function accept() {
   try {
     const result = await api.acceptGeneratedDeck({
       name,
-      format: proposal.format || 'commander',
+      format: proposal.format || chosenFormat(),
       commander: proposal.commanderCard
         ? {
           name: proposal.commanderCard.name,

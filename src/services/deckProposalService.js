@@ -24,7 +24,9 @@
  */
 
 import db from '../db/connection.js';
-import { buildDeck, resolveTheme, ROLE_PREDICATE_BY_CODE } from './deckGeneratorService.js';
+import {
+  buildDeck, resolveTheme, isLegalIn, ROLE_PREDICATE_BY_CODE,
+} from './deckGeneratorService.js';
 import { rankThemes, withinColorIdentity } from './cardSynergyService.js';
 import { getGeneratorPool } from './inventoryService.js';
 import { findCard } from './importService.js';
@@ -71,12 +73,15 @@ function commanderFrom(pool, commanderCardId) {
  * enablers, 20 payoffs — and picks. A generator that decided quietly would be
  * asking to be trusted about a judgement it makes from regular expressions.
  */
-export function themeOptions(userId, commanderCardId, { includeCommitted = true } = {}) {
-  const pool = getGeneratorPool(userId, { includeCommitted });
+export function themeOptions(userId, commanderCardId, {
+  includeCommitted = true, identity: chosenIdentity = null, format = 'commander',
+} = {}) {
+  const pool = getGeneratorPool(userId, { includeCommitted })
+    .filter((card) => isLegalIn(card, format));
   const commander = commanderFrom(pool, commanderCardId);
   const identity = commander
     ? String(commander.color_identity || '').replace(/[^WUBRG]/g, '')
-    : null;
+    : (chosenIdentity || null);
 
   const spells = pool.filter((card) => !/\bland\b/i.test(String(card.type_line || '')));
 
@@ -106,6 +111,7 @@ export function proposeDeck(userId, {
   themeKey = null,
   includeCommitted = true,
   landCount = null,
+  identity = null,
 } = {}) {
   const pool = getGeneratorPool(userId, { includeCommitted });
   const commander = commanderFrom(pool, commanderCardId);
@@ -114,7 +120,13 @@ export function proposeDeck(userId, {
     throw new Error('That commander is not in your collection, or every copy is already in a deck');
   }
 
-  const proposal = buildDeck(pool, { commander, format, themeKey, landCount });
+  // Colours come from the commander when there is one, and are chosen
+  // outright when there is not — a 60-card format has nothing to infer them
+  // from.
+  const proposal = buildDeck(pool, {
+    commander, format, themeKey, landCount,
+    identity: commander ? null : (identity || null),
+  });
 
   return {
     ...proposal,
@@ -175,10 +187,11 @@ export function suggestForGaps(userId, {
   format = 'commander',
   themeKey = null,
   includeCommitted = true,
+  identity = null,
   perGap = 6,
 } = {}) {
   const proposal = proposeDeck(userId, {
-    commanderCardId, format, themeKey, includeCommitted,
+    commanderCardId, format, themeKey, includeCommitted, identity,
   });
 
   const roleGaps = proposal.shortfalls.filter((s) => s.kind === 'role' && s.found < s.wanted);
@@ -186,7 +199,9 @@ export function suggestForGaps(userId, {
     return { proposal, gaps: [] };
   }
 
-  const identity = String(proposal.colorIdentity || '').replace(/[^WUBRG]/g, '');
+  // The identity the proposal actually settled on, which is the commander's
+  // where there is one and the chosen colours where there is not.
+  const deckIdentity = String(proposal.colorIdentity || '').replace(/[^WUBRG]/g, '');
   const where = [
     `c.oracle_text IS NOT NULL`,
     `c.oracle_text != ''`,
@@ -206,7 +221,7 @@ export function suggestForGaps(userId, {
   const params = [`%"${format.toLowerCase()}":"Legal"%`, userId];
 
   for (const color of ['W', 'U', 'B', 'R', 'G']) {
-    if (!identity.includes(color)) {
+    if (!deckIdentity.includes(color)) {
       where.push(`(c.color_identity IS NULL OR c.color_identity NOT LIKE ?)`);
       params.push(`%${color}%`);
     }
