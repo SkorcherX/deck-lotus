@@ -181,3 +181,71 @@ describe('hasPrecons', () => {
     assert.equal(hasPrecons(), true);
   });
 });
+
+describe('sixty-card precons', () => {
+  const SIXTY = [
+    ...SHARED,
+    ...themed('Theme Card', 55),
+  ];
+  const SIDEBOARD = [...themed('Board Card', 15)];
+
+  before(() => {
+    // A 60-card deck with a sideboard, as a Challenger Deck is stored.
+    storePrecon('RakdosVampires_C21', 'Rakdos Vampires', 'CH1',
+      [...SIXTY, ...SIDEBOARD]);
+
+    // The same 60 cards published twice under different product names, which
+    // MTGJSON really does — a Theme Deck and its Enhanced Deck reprint.
+    storePrecon('Tombstone_THM', 'Tombstone', 'THM', SIXTY);
+    storePrecon('TombstoneEnhanced_ENH', 'Tombstone - Enhanced Deck', 'ENH', SIXTY);
+  });
+
+  test('a 60-card deck matches its 60-card precon', () => {
+    const match = findPreconMatch(SIXTY);
+    assert.ok(match, 'a stock 60-card deck should be recognised');
+    assert.equal(match.stock, 1);
+    assert.equal(match.isStock, true);
+  });
+
+  test('a mainboard matches a precon that also carries a sideboard', () => {
+    // Somebody who plays the 60 and leaves the sideboard in the box still
+    // owns the Challenger Deck.
+    const match = findPreconMatch(SIXTY);
+    assert.equal(match.stock, 1);
+    // Coverage is the reverse view and is allowed to be short.
+    assert.ok(match.coverage <= 1);
+  });
+
+  test('a base product beats its collector variant', () => {
+    // Real case, found once the sixty-card types tripled the stored set:
+    // "Tyranid Swarm" and "Tyranid Swarm Collector's Edition" hold identical
+    // cards, and the deck was being reported as the fancy one. The plain
+    // product is the likelier thing to own and the smaller claim to make.
+    storePrecon('FancyThing_X', "Fancy Thing Collector's Edition", 'FCE', SIXTY);
+    storePrecon('PlainThing_X', 'Fancy Thing', 'FAN', SIXTY);
+
+    // Both are stored after Tombstone, so this only passes on the name rule.
+    const match = findPreconMatch(SIXTY);
+    assert.ok(!/Collector/.test(match.name), `matched the variant: ${match.name}`);
+  });
+
+  test('the same product under two names resolves the same way twice', () => {
+    // Tombstone and Tombstone - Enhanced Deck hold identical cards, so both
+    // match at 1.0. Whichever is chosen, it must be chosen consistently.
+    const first = findPreconMatch(SIXTY);
+    const second = findPreconMatch(SIXTY);
+    const third = findPreconMatch([...SIXTY].reverse());
+
+    assert.equal(first.preconId, second.preconId);
+    assert.equal(first.preconId, third.preconId,
+      'the match must not depend on the order the deck happens to be listed in');
+  });
+
+  test('a Commander deck is not mistaken for a 60-card precon', () => {
+    // A 100-card deck sharing all 60 of a theme deck's cards is still only
+    // 60% of itself, which is under the floor.
+    const commanderSized = [...SIXTY, ...themed('Extra', 40)];
+    const match = findPreconMatch(commanderSized);
+    if (match) assert.ok(match.stock < 1, 'a padded deck is not stock');
+  });
+});

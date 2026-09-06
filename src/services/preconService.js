@@ -58,8 +58,16 @@ const MATCH_FLOOR = 0.50;
 /** Precons sharing fewer cards than this are not worth the exact comparison. */
 const CANDIDATE_FLOOR = 10;
 
-/** How many candidates get the precise second pass. */
-const CANDIDATES = 5;
+/**
+ * How many candidates get the precise second pass.
+ *
+ * Raised from five when the sixty-card types went in and the stored set grew
+ * from 190 decks to about 660. The shortlist is by distinct shared names, and
+ * with that many decks a genuine match has more company near the top — every
+ * deck of the same colours shares its basics and its staples. Each extra
+ * candidate is one small query.
+ */
+const CANDIDATES = 8;
 
 /**
  * Cards keyed by normalised name, with quantities summed.
@@ -144,6 +152,38 @@ export function compareToPrecon(deckCards, preconCards) {
  * shortlist is by distinct names and a deck of thirty Islands would otherwise
  * rank oddly.
  */
+/**
+ * Is this candidate a better match than the one already held?
+ *
+ * Ties need a rule, and they are not hypothetical: MTGJSON publishes the same
+ * physical product more than once. "Tombstone" is a Theme Deck and "Tombstone
+ * - Enhanced Deck" is an Advanced Deck with the same 60 cards, so a deck built
+ * from that box matches both at exactly 1.0. Without a tiebreak the summary
+ * line would name whichever the query happened to return first and could
+ * change between page loads, which reads as a bug even though both answers are
+ * right.
+ *
+ * Higher coverage wins first — the deck that has least left over is the closer
+ * description. Then the shorter name, which sounds arbitrary and is not: the
+ * duplicates are a base product and a variant of it, and the variant's name is
+ * the base name with something appended. "Tyranid Swarm" and "Tyranid Swarm
+ * Collector's Edition" hold the same cards, and the plain one is both the more
+ * likely thing to own and the smaller claim to make about somebody's shelf.
+ * The lower id settles anything still tied, because it is stable.
+ */
+function better(comparison, candidate, best) {
+  if (comparison.stock !== best.comparison.stock) return comparison.stock > best.comparison.stock;
+  if (comparison.coverage !== best.comparison.coverage) {
+    return comparison.coverage > best.comparison.coverage;
+  }
+
+  const name = String(candidate.name || '');
+  const heldName = String(best.candidate.name || '');
+  if (name.length !== heldName.length) return name.length < heldName.length;
+
+  return candidate.id < best.candidate.id;
+}
+
 export function findPreconMatch(deckCards, { threshold = STOCK_THRESHOLD } = {}) {
   const deck = byName(deckCards);
   if (deck.size === 0) return null;
@@ -175,7 +215,7 @@ export function findPreconMatch(deckCards, { threshold = STOCK_THRESHOLD } = {})
     );
 
     const comparison = compareToPrecon(deckCards, cards);
-    if (!best || comparison.stock > best.comparison.stock) {
+    if (!best || better(comparison, candidate, best)) {
       best = { candidate, comparison };
     }
   }

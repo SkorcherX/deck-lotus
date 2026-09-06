@@ -40,13 +40,66 @@ const DECK_URL = (fileName) => `https://mtgjson.com/api/v5/decks/${fileName}.jso
 /**
  * Which of MTGJSON's deck types are worth storing.
  *
- * Commander only, deliberately. The index carries 3,029 decks, but 739 are
- * Secret Lair drops and 570 are Jumpstart packs — neither is a deck anybody
- * builds from — and the 60-card precon types belong with the 60-card format
- * work that has not been done yet. Widening this is a one-line change and
- * roughly triples the download.
+ * The index carries 3,029 decks across 48 types, and most of them are not
+ * decks. Rather than guess from the names, one of each candidate type was
+ * fetched and its mainboard counted; these are the ones that came back as
+ * actual constructed decks:
+ *
+ *   Commander Deck 190      100 cards
+ *   Theme Deck 220           60
+ *   Duel Deck 52             60
+ *   Planeswalker Deck 41     60
+ *   World Championship 32    60 + 15
+ *   Event Deck 26            60 + 15
+ *   Challenger Deck 22       60 + 15
+ *   Enhanced Deck 20         60 + 15
+ *   Game Night Deck 15       60
+ *   Advanced Deck 12         60 + 15
+ *   Starter Kit 12           60
+ *   Guild Kit 10             60
+ *   Clash Pack 9             60
+ *   Pioneer Challenger 8     60 + 15
+ *   Spellslinger Kit 4       60
+ *   Premium Deck 3           60
+ *   Modern Event Deck 1      60 + 15
+ *
+ * And these are the ones left out, with the count the sample returned:
+ *
+ *   Secret Lair Drop 739     not a deck
+ *   Jumpstart 570            20-card halves, not a deck
+ *   MTGO Redemption 197      a set redemption, not a deck
+ *   Intro Pack 167           41 cards, and inconsistent across the line
+ *   Deck Builder's Toolkit   10 cards; a box of singles
+ *   Bundle Land Pack 89      lands only
+ *   Box Set 71               15 cards
+ *   Arena Starter Deck 101   60 cards, but Arena-only — nobody owns it on
+ *                            paper, so matching a paper collection to it is
+ *                            noise
+ *   Welcome / Sample / Starter Deck   30-40 cards
+ *
+ * The sixty-card files are *smaller* than the Commander ones — around 180KB
+ * against 650KB — because a sixty-card deck holds far fewer distinct cards.
+ * The whole set is roughly 210MB once, against 124MB for Commander alone.
  */
-const WANTED_TYPES = new Set(['Commander Deck']);
+const WANTED_TYPES = new Set([
+  'Commander Deck',
+  'Theme Deck',
+  'Duel Deck',
+  'Planeswalker Deck',
+  'World Championship Deck',
+  'Event Deck',
+  'Challenger Deck',
+  'Enhanced Deck',
+  'Game Night Deck',
+  'Advanced Deck',
+  'Starter Kit',
+  'Guild Kit',
+  'Clash Pack',
+  'Pioneer Challenger Deck',
+  'Spellslinger Starter Kit',
+  'Premium Deck',
+  'Modern Event Deck',
+]);
 
 /** Be a good guest: MTGJSON is free infrastructure and this is a bulk read. */
 const CONCURRENCY = 4;
