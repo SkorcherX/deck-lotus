@@ -1,5 +1,7 @@
 import express from 'express';
-import { scheduleSyncWithWarning, getSyncStatus, runPriceSync } from '../services/syncService.js';
+import {
+  scheduleSyncWithWarning, getSyncStatus, runPriceSync, runPreconSync,
+} from '../services/syncService.js';
 import {
   createBackup,
   restoreBackup,
@@ -85,6 +87,38 @@ router.post('/refresh-prices', authenticate, requireAdmin, async (req, res, next
     const result = await runPriceSync({ trigger: 'manual' });
     if (result.skipped) return res.status(409).json({ error: result.skipped });
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/refresh-precons
+ * Fetch preconstructed decklists MTGJSON has published since last time.
+ *
+ * The weekly sync does this by itself; this is here so the first run — the
+ * only expensive one, at around 124MB — can be started deliberately rather
+ * than arriving unannounced on a Sunday morning, and so a run that failed
+ * because MTGJSON was down can be retried without waiting a week.
+ *
+ * Not awaited. The first run takes minutes, and an admin request that hangs
+ * for the duration of a 190-file download will be timed out by every proxy in
+ * front of it; the log is where the progress is.
+ */
+router.post('/refresh-precons', authenticate, requireAdmin, (req, res, next) => {
+  try {
+    // Checked here rather than relying on the service's own guard, because
+    // this route answers before the run finishes and so never sees what that
+    // guard returned. Without this an impatient second click is told the
+    // import started when it was skipped.
+    if (getSyncStatus().isPreconSyncRunning) {
+      return res.status(409).json({ error: 'a precon refresh is already running' });
+    }
+
+    runPreconSync({ trigger: 'manual' }).catch((error) => {
+      console.error('Manual precon refresh failed:', error.message);
+    });
+    res.status(202).json({ started: true });
   } catch (error) {
     next(error);
   }

@@ -80,6 +80,8 @@ let lastRun = null;
 let pendingSyncTimer = null;
 let isPriceSyncRunning = false;
 let lastPriceRun = null;
+let isPreconSyncRunning = false;
+let lastPreconRun = null;
 
 /**
  * Run the MTGJSON import/update
@@ -146,6 +148,21 @@ export async function runSync({ trigger = 'manual' } = {}) {
 
     markSyncFinished();
     console.log('✓ Sync completed successfully');
+
+    // Precons come after the maintenance window closes, deliberately.
+    //
+    // They touch nothing the app reads to answer a question about a card —
+    // `precon_decks` has no foreign key to `cards` or `printings` and is not
+    // rebuilt by the import — so there is nothing to protect users from, and
+    // holding a maintenance notice open for a download nobody is waiting on
+    // would be an outage invented for the convenience of the code.
+    //
+    // Failure is logged and swallowed for the same reason the card-hash
+    // re-join above is: MTGJSON being unreachable for the deck index is not a
+    // reason to report the card sync as failed when it succeeded. The next
+    // run picks up whatever was missed, because the importer fetches only
+    // decklists it has never seen.
+    await refreshPrecons({ trigger }).catch(() => {});
 
     return { success: true, lastRun };
   } catch (error) {
@@ -220,6 +237,63 @@ export async function runPriceSync({ trigger = 'scheduled' } = {}) {
 }
 
 /**
+ * Fetch preconstructed decklists MTGJSON has published since last time.
+ *
+ * Cheap on every run but the first. Decklists are immutable — Witherbloom
+ * Witchcraft shipped in 2021 and will never gain a card — so the importer
+ * compares MTGJSON's index against what is stored and downloads only what is
+ * new, which after the first run is the handful released that quarter. The
+ * first run is around 124MB, because MTGJSON serves a whole card object per
+ * card per deck; that is the price of admission and it is paid once.
+ *
+ * Riding the weekly sync rather than owning a cron of its own is on purpose:
+ * new precons appear a few times a year, and a schedule that fires more often
+ * than the thing it watches changes is just noise in the logs.
+ */
+export async function runPreconSync({ trigger = 'scheduled' } = {}) {
+  if (isPreconSyncRunning) {
+    return { success: false, skipped: 'a precon refresh is already running' };
+  }
+
+  try {
+    isPreconSyncRunning = true;
+    console.log(`\nChecking for new preconstructed decklists (${trigger})...`);
+
+    const scriptPath = join(__dirname, '../../scripts/import-precons.js');
+
+    await new Promise((resolve, reject) => {
+      const child = spawn('node', [scriptPath], {
+        stdio: ['ignore', 'inherit', 'inherit'],
+        env: { ...process.env },
+      });
+
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Precon import exited with code ${code}`));
+      });
+    });
+
+    lastPreconRun = new Date();
+    return { success: true, lastPreconRun };
+  } catch (error) {
+    console.error('Precon import failed:', error.message);
+    throw error;
+  } finally {
+    isPreconSyncRunning = false;
+  }
+}
+
+/** The non-throwing form, for callers that must not fail because of this. */
+async function refreshPrecons(options) {
+  try {
+    return await runPreconSync(options);
+  } catch {
+    return { success: false };
+  }
+}
+
+/**
  * Get sync status
  */
 export function getSyncStatus() {
@@ -227,7 +301,9 @@ export function getSyncStatus() {
     isRunning,
     lastRun,
     isPriceSyncRunning,
-    lastPriceRun
+    lastPriceRun,
+    isPreconSyncRunning,
+    lastPreconRun
   };
 }
 
