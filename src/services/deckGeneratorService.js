@@ -443,6 +443,10 @@ function groupByName(cards, reasons) {
       name: card.name,
       cardId: card.card_id ?? null,
       printingId: card.printing_id ?? null,
+      // Travels with the printing, never separately. Finish is half the unique
+      // key of both owned_printings and deck_cards, so a deck row written with
+      // the wrong one claims a copy that does not exist.
+      isFoil: Boolean(card.is_foil),
       manaCost: card.mana_cost || null,
       cmc: mvOf(card),
       typeLine: card.type_line || null,
@@ -527,7 +531,9 @@ export function buildManaBase({
     if (basicSlots <= 0 || weightTotal <= 0) break;
     const share = Math.round((weights[color] / weightTotal) * basicSlots);
     if (share <= 0) continue;
-    basics.push({ name: BASIC_FOR[color], quantity: share, isBasic: true, color });
+    // isFoil spelled out even though a basic has no tracked finish, so the
+    // land list is one shape and a caller never has to know which kind it holds.
+    basics.push({ name: BASIC_FOR[color], quantity: share, isBasic: true, isFoil: false, color });
     assigned += share;
   }
 
@@ -543,7 +549,7 @@ export function buildManaBase({
     const fallback = [...colorIdentity].filter((c) => COLORS.includes(c));
     if (fallback.length > 0) {
       const each = Math.floor(basicSlots / fallback.length);
-      for (const color of fallback) basics.push({ name: BASIC_FOR[color], quantity: each, isBasic: true, color });
+      for (const color of fallback) basics.push({ name: BASIC_FOR[color], quantity: each, isBasic: true, isFoil: false, color });
       basics[0].quantity += basicSlots - each * fallback.length;
     }
   }

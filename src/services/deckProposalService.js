@@ -132,6 +132,7 @@ export function proposeDeck(userId, {
         // name and stores whichever printing sorts first, which is routinely
         // one that is not in the collection.
         printingId: commander.printing_id ?? null,
+        isFoil: Boolean(commander.is_foil),
         name: commander.name,
         manaCost: commander.mana_cost,
         typeLine: commander.type_line,
@@ -206,12 +207,20 @@ export function acceptProposal(userId, { name, format = 'commander', commander =
       // card carrying is_commander. Storing it any other way fails the CHECK.
       const boardType = 'mainboard';
 
+      // The finish the pool actually found, not an assumed non-foil. Somebody
+      // who owns only a foil copy owns no non-foil one, and writing the deck
+      // row as non-foil claims a card that is not in the collection — 32 of
+      // one fixture collection's 538 cards are in exactly that position.
+      const isFoil = entry.isFoil ? 1 : 0;
+
       // Keyed UNIQUE(deck_id, printing_id, board_type, is_foil) since migration
-      // 038, so a printing proposed twice adds up rather than colliding.
+      // 038, so a printing proposed twice adds up rather than colliding — and
+      // the same printing in two finishes stays two rows, which is the point
+      // of the key.
       const existing = db.get(
         `SELECT id FROM deck_cards
-          WHERE deck_id = ? AND printing_id = ? AND board_type = ? AND is_foil = 0`,
-        [deckId, printingId, boardType]
+          WHERE deck_id = ? AND printing_id = ? AND board_type = ? AND is_foil = ?`,
+        [deckId, printingId, boardType, isFoil]
       );
 
       if (existing) {
@@ -220,8 +229,8 @@ export function acceptProposal(userId, { name, format = 'commander', commander =
         db.run(
           `INSERT INTO deck_cards
              (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
-           VALUES (?, ?, ?, 0, ?, ?, 0)`,
-          [deckId, printingId, quantity, isCommander, boardType]
+           VALUES (?, ?, ?, 0, ?, ?, ?)`,
+          [deckId, printingId, quantity, isCommander, boardType, isFoil]
         );
       }
       added += quantity;

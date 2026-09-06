@@ -1107,6 +1107,51 @@ export function exportInventory(userId, { shape = 'precise' } = {}) {
  * can say which cards would have to come out of an existing deck instead of
  * quietly proposing a teardown.
  */
+/**
+ * The copy of a card a generated deck should be built out of.
+ *
+ * One column at a time, because a scalar subquery returns one value and the
+ * printing and the finish have to come from the *same* row — picking them
+ * independently is how a deck ends up claiming a non-foil copy of a card
+ * somebody owns only in foil. Both subqueries carry the identical ORDER BY so
+ * they cannot disagree about which row they mean.
+ *
+ * The order is a judgement, and these are the reasons:
+ *
+ *   is_foil    Non-foil first. Finish is half the unique key of
+ *              `owned_printings`, so this is not cosmetic — writing the wrong
+ *              one claims a copy that does not exist. Beyond correctness,
+ *              quietly sleeving somebody's foils into a deck a program
+ *              invented is presumptuous.
+ *   price      Cheapest first, so the expensive printing stays free to sell or
+ *              trade and the bulk copy goes in the deck. `cheapestPrintingOf`
+ *              in shoppingService already means "what this card costs" the
+ *              same way.
+ *   id         A stable tiebreak, so the same collection proposes the same
+ *              deck twice.
+ *
+ * The old expression was MIN(printing_id) over owned printings, which is
+ * whichever row happened to be inserted first. Measured against the fixture it
+ * chose a printing with no non-foil copy for 32 of one collection's 538 cards.
+ */
+const BEST_OWNED_COPY = (column) => `(
+  SELECT op2.${column}
+    FROM owned_printings op2
+    JOIN printings p2 ON p2.id = op2.printing_id
+   WHERE p2.card_id = c.id AND op2.user_id = ? AND op2.quantity > 0
+   ORDER BY
+     op2.is_foil ASC,
+     COALESCE((
+       SELECT pr.price FROM prices pr
+        WHERE pr.printing_uuid = p2.uuid
+          AND pr.provider = 'tcgplayer'
+          AND pr.price_type = CASE WHEN op2.is_foil = 1 THEN 'foil' ELSE 'normal' END
+        LIMIT 1
+     ), 999999) ASC,
+     p2.id ASC
+   LIMIT 1
+)`;
+
 export function getGeneratorPool(userId, { includeCommitted = false } = {}) {
   // `available` is computed in an outer select because SQLite cannot see one
   // column alias from another expression in the same SELECT list, and both
@@ -1131,11 +1176,8 @@ export function getGeneratorPool(userId, { includeCommitted = false } = {}) {
       c.toughness,
       c.legalities,
       c.edhrec_rank,
-      (
-        SELECT MIN(p2.id) FROM printings p2
-        JOIN owned_printings op2 ON op2.printing_id = p2.id
-        WHERE p2.card_id = c.id AND op2.user_id = ?
-      ) AS printing_id,
+      ${BEST_OWNED_COPY('printing_id')} AS printing_id,
+      ${BEST_OWNED_COPY('is_foil')} AS is_foil,
       COALESCE((
         SELECT SUM(dc.quantity)
           FROM deck_cards dc
@@ -1154,7 +1196,11 @@ export function getGeneratorPool(userId, { includeCommitted = false } = {}) {
     GROUP BY c.id
     )
     WHERE available > 0
-  `, [userId, userId, userId]);
+  `,
+  // Four bindings, in the order the placeholders appear: the printing
+  // subquery, the finish subquery, the committed-elsewhere subquery, and the
+  // outer WHERE.
+  [userId, userId, userId, userId]);
 }
 
 /**

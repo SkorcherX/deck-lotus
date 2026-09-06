@@ -271,18 +271,28 @@ async function accept() {
         ? {
           name: proposal.commanderCard.name,
           printingId: proposal.commanderCard.printingId,
+          isFoil: proposal.commanderCard.isFoil,
           quantity: 1,
         }
         : null,
       // Printing ids come straight from the proposal so the deck is built out
       // of copies actually owned, rather than whatever printing a name lookup
-      // happens to return first.
+      // happens to return first. The finish travels with the printing and
+      // never on its own: they identify one row together.
       cards: [
         ...proposal.mainboard.map((c) => ({
-          name: c.name, printingId: c.printingId, quantity: c.quantity,
+          name: c.name, printingId: c.printingId, isFoil: c.isFoil, quantity: c.quantity,
         })),
+        // The land list is two kinds of thing: basics, which carry no printing
+        // because they are not tracked as inventory, and nonbasic lands picked
+        // out of the collection like any other card. Hard-coding the finish
+        // here was wrong for the second kind — a foil-only Maze's End came
+        // back as a non-foil copy nobody owns.
         ...proposal.lands.map((l) => ({
-          name: l.name, printingId: l.printingId || null, quantity: l.quantity,
+          name: l.name,
+          printingId: l.printingId || null,
+          isFoil: Boolean(l.isFoil),
+          quantity: l.quantity,
         })),
       ],
     });
