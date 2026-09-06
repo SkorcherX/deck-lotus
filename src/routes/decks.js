@@ -35,7 +35,7 @@ import {
   getAvailableSets
 } from '../services/printingOptimizerService.js';
 import {
-  commanderOptions, themeOptions, proposeDeck, acceptProposal,
+  commanderOptions, themeOptions, proposeDeck, acceptProposal, revisableDecks,
   suggestForGaps, addGapsToShoppingList,
 } from '../services/deckProposalService.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.js';
@@ -109,6 +109,18 @@ router.get('/generate/commanders', authenticate, (req, res, next) => {
 });
 
 /**
+ * GET /api/decks/generate/decks
+ * Decks a revision could start from.
+ */
+router.get('/generate/decks', authenticate, (req, res, next) => {
+  try {
+    res.json({ decks: revisableDecks(req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/decks/generate/themes
  * What could be built around, in a commander's colours, strongest first.
  */
@@ -128,6 +140,7 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
         // A 60-card format has no commander to take colours from.
         identity: req.query.identity || null,
         format: req.query.format || 'commander',
+        reviseDeckId: req.query.reviseDeckId ? Number(req.query.reviseDeckId) : null,
       }),
     });
   } catch (error) {
@@ -141,22 +154,29 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
  */
 router.post('/generate', authenticate, (req, res, next) => {
   try {
-    const { commanderCardId, format, themeKey, includeCommitted, landCount, identity } = req.body || {};
+    const {
+      commanderCardId, format, themeKey, includeCommitted, landCount, identity, reviseDeckId,
+    } = req.body || {};
 
     res.json({
       proposal: proposeDeck(req.user.id, {
         commanderCardId: commanderCardId == null ? null : Number(commanderCardId),
-        format: format || 'commander',
+        // Left unset when revising so the deck's own format wins; proposeDeck
+        // falls back to commander for everything else.
+        format: format || (reviseDeckId == null ? 'commander' : null),
         themeKey: themeKey || null,
         includeCommitted: includeCommitted !== false,
         landCount: landCount == null ? null : Number(landCount),
         identity: identity || null,
+        reviseDeckId: reviseDeckId == null ? null : Number(reviseDeckId),
       }),
     });
   } catch (error) {
     // A commander the caller does not own is their mistake to correct, not a
     // server fault, so it comes back as a 400 with the reason.
-    if (/not in your collection/i.test(error.message)) {
+    // A deck id that is not theirs, and a commander they do not own, are both
+    // the caller's mistake to correct rather than a server fault.
+    if (/not in your collection|not one of yours/i.test(error.message)) {
       return res.status(400).json({ error: error.message });
     }
     next(error);

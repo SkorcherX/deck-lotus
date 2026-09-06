@@ -214,6 +214,14 @@ export function colorDemands(cards, deckSize = 100, format = 'commander') {
  * rather than power: with a thousand cards there will be genuine ties, and
  * breaking them by what most people play is better than breaking them by
  * whatever order SQLite returned.
+ *
+ * Between theme fit and cost sits `in_deck`, which is non-zero only when a
+ * deck is being revised: among cards the heuristics cannot tell apart, the one
+ * already sleeved into the deck wins. Without it a revision churns — swapping
+ * a dozen cards for equally-ranked ones it happened to sort first — and a diff
+ * that long is one nobody reads. It sits below theme fit rather than above it
+ * because a revision that cannot replace a card with a better one is not a
+ * revision.
  */
 function rankCandidates(cards, theme) {
   return [...cards].sort((a, b) => {
@@ -221,6 +229,10 @@ function rankCandidates(cards, theme) {
       const fit = synergyScore(b, theme) - synergyScore(a, theme);
       if (fit !== 0) return fit;
     }
+
+    const sleeved = Math.sign(Number(b.in_deck) || 0) - Math.sign(Number(a.in_deck) || 0);
+    if (sleeved !== 0) return sleeved;
+
     const cost = mvOf(a) - mvOf(b);
     if (cost !== 0) return cost;
 
@@ -575,6 +587,11 @@ export function buildManaBase({
       // utility land) sorts last but is still ahead of nothing.
       const byUse = useful(b) - useful(a);
       if (byUse !== 0) return byUse;
+      // Same tiebreak as the spells: when revising, a land already in the deck
+      // beats an equally useful one that is not, so the diff does not fill up
+      // with mana-base churn nobody asked for.
+      const sleeved = Math.sign(Number(b.in_deck) || 0) - Math.sign(Number(a.in_deck) || 0);
+      if (sleeved !== 0) return sleeved;
       return String(a.name).localeCompare(String(b.name));
     });
 

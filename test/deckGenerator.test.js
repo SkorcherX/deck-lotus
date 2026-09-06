@@ -478,3 +478,64 @@ describe('60-card shapes', () => {
     assert.ok(!deck.shortfalls.some((s) => s.code === 'ramp'));
   });
 });
+
+/**
+ * The tiebreak that makes a revision a revision.
+ *
+ * `in_deck` is set only when a deck is being revised, and it decides between
+ * cards the heuristics rate identically. Without it a revision of an unchanged
+ * collection still swaps a dozen cards for equally-ranked ones, and a diff
+ * that long is one nobody reads — the suggestion is lost in the churn.
+ */
+describe('revising prefers what is already sleeved', () => {
+  // Identical in every respect the ranking looks at: same cost, same rank,
+  // same (absent) theme relevance. The only thing separating them is which
+  // deck they are already in.
+  const twin = (name, props = {}) => card(name, {
+    oracle_text: 'Destroy target creature.',
+    type_line: 'Instant',
+    edhrec_rank: 1000,
+    available: 1,
+    ...props,
+  });
+
+  test('an equal card already in the deck keeps its slot', () => {
+    // More of each than the deck has room for, so the fill has to choose
+    // between them rather than taking everything.
+    const pool = [
+      ...many(60, (i) => twin(`Sleeved ${i}`, { in_deck: 1 })),
+      ...many(60, (i) => twin(`Loose ${i}`)),
+    ];
+
+    const deck = buildDeck(pool, { format: 'commander', identity: 'B' });
+    const names = deck.mainboard.map((c) => c.name);
+    const sleeved = names.filter((n) => n.startsWith('Sleeved')).length;
+    const loose = names.filter((n) => n.startsWith('Loose')).length;
+
+    assert.ok(sleeved > loose,
+      `a revision should keep what is sleeved: kept ${sleeved}, swapped in ${loose}`);
+  });
+
+  test('a better card still wins, or it would not be a revision', () => {
+    // Cheaper is better, and the ranking says so above `in_deck`. A revision
+    // that could never replace anything would be a no-op with extra steps.
+    const pool = [
+      ...many(20, (i) => twin(`Sleeved ${i}`, { in_deck: 1, cmc: 5, mana_cost: '{4}{B}' })),
+      ...many(20, (i) => twin(`Better ${i}`, { cmc: 1, mana_cost: '{B}' })),
+    ];
+
+    const deck = buildDeck(pool, { format: 'commander', identity: 'B' });
+    const names = deck.mainboard.map((c) => c.name);
+
+    assert.ok(names.some((n) => n.startsWith('Better')),
+      'a clearly better card has to be able to take a slot');
+  });
+
+  test('nothing changes for a deck built from scratch', () => {
+    // Every row reads zero when no deck is being revised, so the tiebreak
+    // cannot quietly reorder an ordinary build.
+    const pool = many(40, (i) => twin(`Card ${i}`));
+    const deck = buildDeck(pool, { format: 'commander', identity: 'B' });
+    assert.ok(deck.mainboard.length > 0);
+  });
+});

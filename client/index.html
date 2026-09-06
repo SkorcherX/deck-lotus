@@ -1366,9 +1366,49 @@
                 </div>
 
                 <div class="generator-page">
+                    <!--
+                      Revising is the same machinery pointed at a deck that
+                      already exists: the deck's own cards stop counting as
+                      spoken for, so they compete for their slots against
+                      everything else free in the collection, and what comes
+                      back is a diff rather than a pile.
+                    -->
                     <section class="generator-step">
                         <div class="generator-step-head">
                             <span class="generator-step-number">1</span>
+                            <div>
+                                <h3>Start from</h3>
+                                <p>A blank page, or a deck you have already built. Revising keeps
+                                   the deck exactly as it is &mdash; it proposes a new list, and
+                                   says what it would change.</p>
+                            </div>
+                        </div>
+
+                        <div class="generator-mode">
+                            <label class="generator-mode-option">
+                                <input type="radio" name="generate-mode" value="new" checked />
+                                <span><strong>A new deck</strong> &mdash; built from cards nothing
+                                      else has claimed, and whatever else you allow below.</span>
+                            </label>
+                            <label class="generator-mode-option">
+                                <input type="radio" name="generate-mode" value="revise" />
+                                <span><strong>Revise a deck I have built</strong> &mdash; its own
+                                      cards come back into the pool alongside the free ones, and
+                                      cards already sleeved keep their slot unless something
+                                      clearly better is available.</span>
+                            </label>
+                        </div>
+
+                        <div class="form-group hidden" id="generate-revise-group">
+                            <label for="generate-revise-deck">Deck to revise</label>
+                            <select id="generate-revise-deck"></select>
+                            <p class="generator-note" id="generate-revise-note"></p>
+                        </div>
+                    </section>
+
+                    <section class="generator-step">
+                        <div class="generator-step-head">
+                            <span class="generator-step-number">2</span>
                             <div>
                                 <h3>Format</h3>
                                 <p>What kind of deck this is. It sets the size, the land count and
@@ -1408,7 +1448,7 @@
                          take colours from, so they are chosen outright below. -->
                     <section class="generator-step" id="generate-commander-group">
                         <div class="generator-step-head">
-                            <span class="generator-step-number">2</span>
+                            <span class="generator-step-number">3</span>
                             <div>
                                 <h3>Commander</h3>
                                 <p>The legendary creature the deck is built around. It fixes which
@@ -1424,12 +1464,30 @@
                                 placeholder="Search your commanders by name..."
                                 autocomplete="off"
                             />
-                            <div class="generate-colors" id="generate-commander-colors">
-                                <label><input type="checkbox" class="generate-commander-color" value="W" /> White</label>
-                                <label><input type="checkbox" class="generate-commander-color" value="U" /> Blue</label>
-                                <label><input type="checkbox" class="generate-commander-color" value="B" /> Black</label>
-                                <label><input type="checkbox" class="generate-commander-color" value="R" /> Red</label>
-                                <label><input type="checkbox" class="generate-commander-color" value="G" /> Green</label>
+                            <!-- The same mana swatches the collection filters
+                                 by, so one symbol means one colour everywhere
+                                 in the app. -->
+                            <div class="color-filter-group" id="generate-commander-colors">
+                                <label class="color-checkbox" title="White" aria-label="White">
+                                    <input type="checkbox" class="generate-commander-color" value="W" />
+                                    <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox" title="Blue" aria-label="Blue">
+                                    <input type="checkbox" class="generate-commander-color" value="U" />
+                                    <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox" title="Black" aria-label="Black">
+                                    <input type="checkbox" class="generate-commander-color" value="B" />
+                                    <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox" title="Red" aria-label="Red">
+                                    <input type="checkbox" class="generate-commander-color" value="R" />
+                                    <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox" title="Green" aria-label="Green">
+                                    <input type="checkbox" class="generate-commander-color" value="G" />
+                                    <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
+                                </label>
                             </div>
                             <span id="generate-commander-count" class="generator-count"></span>
                         </div>
@@ -1444,25 +1502,40 @@
 
                     <section class="generator-step hidden" id="generate-colors-group">
                         <div class="generator-step-head">
-                            <span class="generator-step-number">2</span>
+                            <span class="generator-step-number">3</span>
                             <div>
                                 <h3>Colours</h3>
                                 <p>Which colours the deck may play. Fewer colours means more
                                    reliable mana; more colours means a wider choice of cards.</p>
                             </div>
                         </div>
-                        <div class="generate-colors">
-                            <label><input type="checkbox" class="generate-color" value="W" /> White</label>
-                            <label><input type="checkbox" class="generate-color" value="U" /> Blue</label>
-                            <label><input type="checkbox" class="generate-color" value="B" /> Black</label>
-                            <label><input type="checkbox" class="generate-color" value="R" /> Red</label>
-                            <label><input type="checkbox" class="generate-color" value="G" /> Green</label>
+                        <div class="color-filter-group generator-color-pick">
+                            <label class="color-checkbox" title="White" aria-label="White">
+                                <input type="checkbox" class="generate-color" value="W" />
+                                <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
+                            </label>
+                            <label class="color-checkbox" title="Blue" aria-label="Blue">
+                                <input type="checkbox" class="generate-color" value="U" />
+                                <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
+                            </label>
+                            <label class="color-checkbox" title="Black" aria-label="Black">
+                                <input type="checkbox" class="generate-color" value="B" />
+                                <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
+                            </label>
+                            <label class="color-checkbox" title="Red" aria-label="Red">
+                                <input type="checkbox" class="generate-color" value="R" />
+                                <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
+                            </label>
+                            <label class="color-checkbox" title="Green" aria-label="Green">
+                                <input type="checkbox" class="generate-color" value="G" />
+                                <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
+                            </label>
                         </div>
                     </section>
 
                     <section class="generator-step">
                         <div class="generator-step-head">
-                            <span class="generator-step-number">3</span>
+                            <span class="generator-step-number">4</span>
                             <div>
                                 <h3>Build around</h3>
                                 <p>The thing the deck is trying to do. Every option below was

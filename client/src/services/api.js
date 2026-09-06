@@ -757,6 +757,10 @@ class ApiClient {
     return this.request(`/decks/generate/commanders?includeCommitted=${includeCommitted}`);
   }
 
+  async getRevisableDecks() {
+    return this.request('/decks/generate/decks');
+  }
+
   async getGeneratorThemes(commanderCardId, includeCommitted = true, extra = {}) {
     const params = new URLSearchParams({ includeCommitted: String(includeCommitted) });
     if (commanderCardId != null) params.set('commanderCardId', commanderCardId);
@@ -764,6 +768,9 @@ class ApiClient {
     // have to be stated.
     if (extra.identity) params.set('identity', extra.identity);
     if (extra.format) params.set('format', extra.format);
+    // A revision measures its themes against a pool that includes the deck's
+    // own cards, so the id travels with the question.
+    if (extra.reviseDeckId) params.set('reviseDeckId', extra.reviseDeckId);
     return this.request(`/decks/generate/themes?${params}`);
   }
 

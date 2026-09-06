@@ -1163,11 +1163,26 @@ const BEST_OWNED_COPY = (column) => `(
    LIMIT 1
 )`;
 
-export function getGeneratorPool(userId, { includeCommitted = true } = {}) {
+/**
+ * The cards a generated deck may be built from.
+ *
+ * `exceptDeckId` is what makes revising a deck different from building one.
+ * A deck's own cards are committed to it, so without this a revision proposes
+ * a deck out of everything *except* the cards already sleeved into the deck
+ * being revised — the opposite of what was asked for. Excluding it from the
+ * committed count hands those copies back, and `in_deck` says which ones they
+ * are so the ranking can prefer leaving them where they are.
+ */
+export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId = null } = {}) {
   // `available` is computed in an outer select because SQLite cannot see one
   // column alias from another expression in the same SELECT list, and both
   // `owned` and `committed` are needed to work it out.
   const available = includeCommitted ? 'owned' : 'owned - committed';
+
+  // Two clauses rather than one binding used twice: SQLite takes bindings
+  // positionally here, and a clause that vanishes has to take its binding
+  // with it.
+  const notThisDeck = exceptDeckId == null ? '' : 'AND d.id != ?';
 
   return db.all(`
     SELECT *, ${available} AS available FROM (
@@ -1201,7 +1216,17 @@ export function getGeneratorPool(userId, { includeCommitted = true } = {}) {
          WHERE d.user_id = ?
            AND dp.card_id = c.id
            AND ${deckPrioritySql('d')} <= ${DECK_PRIORITY.idea}
+           ${notThisDeck}
       ), 0) AS committed,
+      -- Copies of this card already in the deck being revised, mainboard and
+      -- sideboard alike. Zero for every card when nothing is being revised.
+      ${exceptDeckId == null ? '0' : `COALESCE((
+        SELECT SUM(dc.quantity)
+          FROM deck_cards dc
+          JOIN printings dp ON dc.printing_id = dp.id
+         WHERE dc.deck_id = ?
+           AND dp.card_id = c.id
+      ), 0)`} AS in_deck,
       COALESCE(SUM(op.quantity), 0) AS owned
     FROM cards c
     JOIN printings p ON p.card_id = c.id
@@ -1212,10 +1237,16 @@ export function getGeneratorPool(userId, { includeCommitted = true } = {}) {
     )
     WHERE available > 0
   `,
-  // Five bindings, in the order the placeholders appear: the printing
-  // subquery, the finish subquery, the image subquery, the committed-elsewhere
-  // subquery, and the owned-by filter.
-  [userId, userId, userId, userId, userId]);
+  // In the order the placeholders appear: the printing subquery, the finish
+  // subquery, the image subquery, the committed-elsewhere subquery and the
+  // deck it excludes, the in-this-deck subquery, and the owned-by filter. The
+  // two deck ids are conditional and drop out together with their clauses.
+  [
+    userId, userId, userId,
+    userId, ...(exceptDeckId == null ? [] : [exceptDeckId]),
+    ...(exceptDeckId == null ? [] : [exceptDeckId]),
+    userId,
+  ]);
 }
 
 /**

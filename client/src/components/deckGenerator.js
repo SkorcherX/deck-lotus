@@ -36,6 +36,7 @@ import { zoomButton } from '../utils/cardZoom.js';
 let proposal = null;
 let commanders = [];
 let themes = [];
+let revisable = [];
 let wired = false;
 
 const $ = (id) => document.getElementById(id);
@@ -47,6 +48,20 @@ function escapeHtml(value) {
 }
 
 const includeCommitted = () => Boolean($('generate-include-committed')?.checked);
+
+/** Is the page proposing a revision of an existing deck? */
+const isRevising = () =>
+  document.querySelector('input[name="generate-mode"]:checked')?.value === 'revise';
+
+/** The deck being revised, as an id, or null when building from scratch. */
+function revisingDeckId() {
+  if (!isRevising()) return null;
+  const value = $('generate-revise-deck')?.value;
+  return value ? Number(value) : null;
+}
+
+/** The chosen deck's row, for the things the page says about it. */
+const revisingDeck = () => revisable.find((d) => d.id === revisingDeckId()) || null;
 
 const chosenFormat = () => $('generate-format')?.value || 'commander';
 const isCommander = () => chosenFormat() === 'commander';
@@ -64,8 +79,41 @@ const galleryColors = () => [...document.querySelectorAll('.generate-commander-c
  * told. Swapping which section is shown keeps the page from asking for both.
  */
 function applyFormat() {
-  $('generate-commander-group')?.classList.toggle('hidden', !isCommander());
-  $('generate-colors-group')?.classList.toggle('hidden', isCommander());
+  // A revision takes its format and its commander from the deck, so both
+  // pickers go away rather than sitting there inviting a contradiction the
+  // server would only overrule.
+  const revising = isRevising();
+
+  $('generate-commander-group')?.classList.toggle('hidden', revising || !isCommander());
+  $('generate-colors-group')?.classList.toggle('hidden', revising || isCommander());
+
+  const format = $('generate-format');
+  if (format) {
+    format.disabled = revising;
+    format.title = revising ? 'Taken from the deck being revised' : '';
+  }
+
+  $('generate-revise-group')?.classList.toggle('hidden', !revising);
+  renderRevisionNote();
+}
+
+/** What the chosen deck is, said back to the person who chose it. */
+function renderRevisionNote() {
+  const note = $('generate-revise-note');
+  if (!note) return;
+
+  const deck = revisingDeck();
+  if (!isRevising() || !deck) { note.textContent = ''; return; }
+
+  const parts = [
+    deck.commanderName ? `led by ${deck.commanderName}` : null,
+    deck.format || null,
+    `${deck.cards} cards`,
+    deck.status || null,
+  ].filter(Boolean);
+
+  note.textContent = `Revising ${deck.name} — ${parts.join(' · ')}. `
+    + 'Nothing about this deck changes until you save the proposal as a deck of its own.';
 }
 
 /** Mana symbols as plain text — the page is dense enough without pips. */
@@ -105,9 +153,49 @@ async function onShow() {
     wired = true;
   }
 
+  await loadRevisableDecks();
   applyFormat();
-  if (isCommander()) await loadCommanders();
+  await reload();
+}
+
+/**
+ * Load whatever the current mode needs.
+ *
+ * Revising skips the commander gallery entirely — the deck names its own
+ * leader — and goes straight to the themes, which are measured against a pool
+ * that has the deck's own cards back in it.
+ */
+async function reload() {
+  if (isRevising()) await loadThemes();
+  else if (isCommander()) await loadCommanders();
   else await loadThemes();
+}
+
+async function loadRevisableDecks() {
+  const select = $('generate-revise-deck');
+  if (!select) return;
+
+  try {
+    const data = await api.getRevisableDecks();
+    revisable = data.decks || [];
+
+    if (revisable.length === 0) {
+      select.innerHTML = '<option value="">You have no decks to revise yet</option>';
+      return;
+    }
+
+    // The chosen deck survives a reload of the list, the same way the chosen
+    // commander does.
+    const chosen = select.value;
+    select.innerHTML = revisable.map((deck) => `
+      <option value="${deck.id}">
+        ${escapeHtml(deck.name)} — ${escapeHtml(deck.format || 'no format')}, ${deck.cards} cards
+      </option>`).join('');
+    if (revisable.some((d) => String(d.id) === String(chosen))) select.value = chosen;
+  } catch (error) {
+    console.error('Failed to load decks to revise:', error);
+    select.innerHTML = '<option value="">Could not load your decks</option>';
+  }
 }
 
 function wire() {
@@ -116,15 +204,27 @@ function wire() {
   // wrong deck.
   $('generate-include-committed')?.addEventListener('change', async () => {
     resetResult();
-    if (isCommander()) await loadCommanders();
-    else await loadThemes();
+    await reload();
   });
 
   $('generate-format')?.addEventListener('change', async () => {
     resetResult();
     applyFormat();
-    if (isCommander()) await loadCommanders();
-    else await loadThemes();
+    await reload();
+  });
+
+  document.querySelectorAll('input[name="generate-mode"]').forEach((radio) => {
+    radio.addEventListener('change', async () => {
+      resetResult();
+      applyFormat();
+      await reload();
+    });
+  });
+
+  $('generate-revise-deck')?.addEventListener('change', async () => {
+    resetResult();
+    renderRevisionNote();
+    await loadThemes();
   });
 
   // Filtering the gallery is not choosing anything, so it redraws the tiles
@@ -313,10 +413,17 @@ async function loadThemes() {
   const list = $('generate-theme-list');
   if (!list) return;
 
-  const commanderCardId = isCommander() ? $('generate-commander')?.value : null;
-  if (isCommander() && !commanderCardId) return;
+  const revising = isRevising();
 
-  if (!isCommander() && !chosenColors()) {
+  if (revising && !revisingDeckId()) {
+    list.innerHTML = '<div class="generator-empty">Pick a deck to revise above.</div>';
+    return;
+  }
+
+  const commanderCardId = (!revising && isCommander()) ? $('generate-commander')?.value : null;
+  if (!revising && isCommander() && !commanderCardId) return;
+
+  if (!revising && !isCommander() && !chosenColors()) {
     list.innerHTML = '<div class="generator-empty">Pick at least one colour above.</div>';
     return;
   }
@@ -324,8 +431,11 @@ async function loadThemes() {
   list.innerHTML = '<div class="generator-empty">Measuring your collection…</div>';
   try {
     const data = await api.getGeneratorThemes(commanderCardId, includeCommitted(), {
-      identity: chosenColors(),
-      format: chosenFormat(),
+      // A revision's colours and format come from the deck, which the server
+      // reads for itself; sending this page's pickers would overrule it.
+      identity: revising ? '' : chosenColors(),
+      format: revising ? (revisingDeck()?.format || '') : chosenFormat(),
+      reviseDeckId: revisingDeckId(),
     });
     themes = data.themes || [];
     renderThemes();
@@ -343,7 +453,21 @@ function renderThemes() {
   // "Let it choose" first and always present: it is the answer for somebody
   // who does not yet know which of these they want, which is most of the
   // people this page was widened for.
-  const auto = `
+  // The default means something different in each mode, and saying the same
+  // thing in both would be wrong in one of them: from scratch it is the
+  // collection's strongest theme, and on a revision it is whatever the deck is
+  // already doing, read off the cards in it.
+  const auto = isRevising() ? `
+    <button type="button" class="generator-theme" data-theme-key="" aria-pressed="false">
+      <div class="generator-theme-head">
+        <span class="generator-theme-label">Keep what this deck already does</span>
+      </div>
+      <p class="generator-theme-blurb">
+        Reads the deck's own cards for its theme and revises towards that, rather
+        than rebuilding it around something else. Pick one of the others to point
+        the deck somewhere new.
+      </p>
+    </button>` : `
     <button type="button" class="generator-theme" data-theme-key="" aria-pressed="false">
       <div class="generator-theme-head">
         <span class="generator-theme-label">Let it choose for me</span>
@@ -394,13 +518,18 @@ function renderThemes() {
 // --- Generating ------------------------------------------------------------
 
 async function run() {
-  const commanderCardId = isCommander() ? $('generate-commander')?.value : null;
+  const revising = isRevising();
+  const commanderCardId = (!revising && isCommander()) ? $('generate-commander')?.value : null;
 
-  if (isCommander() && !commanderCardId) {
+  if (revising && !revisingDeckId()) {
+    showToast('Pick a deck to revise first', 'warning');
+    return;
+  }
+  if (!revising && isCommander() && !commanderCardId) {
     showToast('Pick a commander first', 'warning');
     return;
   }
-  if (!isCommander() && !chosenColors()) {
+  if (!revising && !isCommander() && !chosenColors()) {
     showToast('Pick at least one colour first', 'warning');
     return;
   }
@@ -412,10 +541,13 @@ async function run() {
   try {
     const data = await api.generateDeck({
       commanderCardId: commanderCardId ? Number(commanderCardId) : null,
-      format: chosenFormat(),
+      // Both left unsaid when revising, so the deck's own format and colours
+      // are what the proposal is built to.
+      format: revising ? null : chosenFormat(),
       themeKey: $('generate-theme')?.value || null,
       includeCommitted: includeCommitted(),
-      identity: chosenColors() || null,
+      identity: revising ? null : (chosenColors() || null),
+      reviseDeckId: revisingDeckId(),
     });
 
     proposal = data.proposal;
@@ -425,10 +557,16 @@ async function run() {
     // "Generated deck 3" is useless a week later.
     const name = $('generate-deck-name');
     if (name && !name.value) {
-      const themeLabel = proposal.theme ? ` ${proposal.theme.label}` : '';
-      const lead = proposal.commanderCard?.name
-        || `${chosenFormat()} ${proposal.colorIdentity || ''}`.trim();
-      name.value = `${lead}${themeLabel}`.slice(0, 80);
+      if (proposal.revision) {
+        // Named after the deck it came from, because that is the only thing
+        // that tells the two apart in a list a week later.
+        name.value = `${proposal.revision.deckName} (revised)`.slice(0, 80);
+      } else {
+        const themeLabel = proposal.theme ? ` ${proposal.theme.label}` : '';
+        const lead = proposal.commanderCard?.name
+          || `${chosenFormat()} ${proposal.colorIdentity || ''}`.trim();
+        name.value = `${lead}${themeLabel}`.slice(0, 80);
+      }
     }
 
     $('generate-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -439,6 +577,56 @@ async function run() {
     button.disabled = false;
     button.textContent = 'Generate';
   }
+}
+
+/**
+ * What a revision would change, before anything about the deck itself.
+ *
+ * The diff is the answer to the question that was asked — "how should this
+ * deck be different" — and the hundred-card list below it is only the working.
+ * Cuts and additions are shown as two lists rather than a merged one: they are
+ * two decisions, and a shopper reads the cut list to see what comes out of the
+ * box.
+ */
+function renderRevision(revision) {
+  const list = (rows) => rows.map((row) => `
+    <li>
+      <span class="generate-card-cost">${row.quantity}&times;</span>
+      <span class="generate-card-name">${escapeHtml(row.name)}</span>
+    </li>`).join('');
+
+  if (revision.unchanged) {
+    return `
+      <div class="generate-revision">
+        <div class="generate-head">No changes to ${escapeHtml(revision.deckName)}</div>
+        <div class="generate-note">
+          Given the cards you own, this deck is already the deck the generator would
+          build. That is a real answer, not a failure to find one.
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="generate-revision">
+      <div class="generate-head">
+        What this would change about ${escapeHtml(revision.deckName)}
+      </div>
+      <div class="generate-note">
+        ${revision.keptCount} cards stay as they are. Saving keeps
+        ${escapeHtml(revision.deckName)} exactly as it is and creates a separate deck
+        from this proposal, so nothing is lost if you disagree with it.
+      </div>
+      <div class="generate-columns">
+        <div>
+          <div class="generate-head">Add (${revision.added.length})</div>
+          <ul>${list(revision.added) || '<li>Nothing new.</li>'}</ul>
+        </div>
+        <div>
+          <div class="generate-head">Cut (${revision.cut.length})</div>
+          <ul>${list(revision.cut) || '<li>Nothing comes out.</li>'}</ul>
+        </div>
+      </div>
+    </div>`;
 }
 
 function render(p) {
@@ -458,6 +646,8 @@ function render(p) {
       </span>`).join('');
 
   result.innerHTML = `
+    ${p.revision ? renderRevision(p.revision) : ''}
+
     <div class="generate-summary">
       ${stat(p.summary.totalCards, 'cards')}
       ${stat(p.summary.lands, 'lands')}
@@ -553,11 +743,13 @@ async function findGaps() {
 
   try {
     const data = await api.getGeneratorGaps({
-      commanderCardId: isCommander() ? Number($('generate-commander')?.value) : null,
-      format: chosenFormat(),
+      commanderCardId: (!isRevising() && isCommander())
+        ? Number($('generate-commander')?.value)
+        : (proposal?.commanderCard?.cardId ?? null),
+      format: proposal?.format || chosenFormat(),
       themeKey: $('generate-theme')?.value || null,
       includeCommitted: includeCommitted(),
-      identity: chosenColors() || null,
+      identity: isRevising() ? (proposal?.colorIdentity || null) : (chosenColors() || null),
     });
 
     const gaps = (data.gaps || []).filter((g) => g.suggestions.length);

@@ -30,7 +30,7 @@ import {
 import { rankThemes, withinColorIdentity } from './cardSynergyService.js';
 import { getGeneratorPool } from './inventoryService.js';
 import { findCard } from './importService.js';
-import { isBasicLandSql } from './basicLands.js';
+import { isBasicLandSql, isBasicLand } from './basicLands.js';
 import { cheapestPrintingOf, addWantedCard } from './shoppingService.js';
 import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
 
@@ -83,8 +83,13 @@ function commanderFrom(pool, commanderCardId) {
  */
 export function themeOptions(userId, commanderCardId, {
   includeCommitted = true, identity: chosenIdentity = null, format = 'commander',
+  reviseDeckId = null,
 } = {}) {
-  const pool = getGeneratorPool(userId, { includeCommitted })
+  // The same pool the proposal will be built from, revision included: a theme
+  // measured without the deck's own cards is measured against a collection the
+  // build will never see, and the numbers offered would not be the numbers the
+  // deck was built with.
+  const pool = getGeneratorPool(userId, { includeCommitted, exceptDeckId: reviseDeckId })
     .filter((card) => isLegalIn(card, format));
   const commander = commanderFrom(pool, commanderCardId);
   const identity = commander
@@ -117,7 +122,150 @@ export function themeOptions(userId, commanderCardId, {
 }
 
 /**
- * Build a proposal. Writes nothing.
+ * The decks a revision could start from, newest first.
+ *
+ * Every deck qualifies, including the ones the generator made: a proposal
+ * saved as an idea and then half-tuned by hand is exactly the thing somebody
+ * wants a second pass over.
+ */
+export function revisableDecks(userId) {
+  return db.all(
+    `SELECT
+       d.id,
+       d.name,
+       d.format,
+       d.status,
+       (SELECT SUM(dc.quantity)
+          FROM deck_cards dc
+         WHERE dc.deck_id = d.id
+           AND COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) = 'mainboard'
+       ) AS cards,
+       (SELECT c.name
+          FROM deck_cards dc
+          JOIN printings p ON dc.printing_id = p.id
+          JOIN cards c ON p.card_id = c.id
+         WHERE dc.deck_id = d.id AND dc.is_commander = 1
+         LIMIT 1) AS commander_name
+     FROM decks d
+     WHERE d.user_id = ?
+     ORDER BY d.updated_at DESC`,
+    [userId]
+  ).map((row) => ({
+    id: row.id,
+    name: row.name,
+    format: row.format || null,
+    status: row.status || null,
+    cards: row.cards || 0,
+    commanderName: row.commander_name || null,
+  }));
+}
+
+/**
+ * The theme a deck already has, read from the cards in it.
+ *
+ * Ranked over the deck's own cards rather than the whole pool, so it answers
+ * "what is this deck doing" instead of "what could be built". Nothing is
+ * returned when the deck is not dense enough in anything to be described —
+ * a pile of good cards is a real answer, and inventing a theme for it would
+ * make the revision chase something the deck never was.
+ */
+function themeOfDeck(pool) {
+  const own = pool.filter((card) => (card.in_deck || 0) > 0);
+  if (own.length === 0) return null;
+
+  const best = rankThemes(own).filter((theme) => theme.strength > 0)[0];
+  return best ? best.key : null;
+}
+
+/** A deck being revised: what it is, and what is in it. */
+function revisionTarget(userId, deckId) {
+  const deck = db.get('SELECT id, name, format, status FROM decks WHERE id = ? AND user_id = ?',
+    [deckId, userId]);
+
+  if (!deck) throw new Error('That deck is not one of yours');
+
+  const cards = db.all(
+    `SELECT
+       c.id AS card_id,
+       c.name,
+       c.color_identity,
+       c.type_line,
+       dc.quantity,
+       dc.is_commander,
+       COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) AS board
+     FROM deck_cards dc
+     JOIN printings p ON dc.printing_id = p.id
+     JOIN cards c ON p.card_id = c.id
+     WHERE dc.deck_id = ?`,
+    [deckId]
+  );
+
+  return { deck, cards };
+}
+
+/**
+ * What a proposal would change about the deck it was built from.
+ *
+ * Counted by name and by copies, because a revision that cuts two of a
+ * four-of is a real change and a diff that only knows presence would call
+ * that deck unchanged. Basics are left out of both sides: they are free and
+ * unlimited (see basicLands.js), the mana base recomputes them from scratch
+ * every time, and listing "cut 4 Island, add 3 Island" as revisions buries
+ * the changes that are actually decisions.
+ *
+ * The commander is not diffed either. It is chosen, not proposed — a revision
+ * that swapped it would be a different deck.
+ */
+function diffAgainstDeck(target, proposal) {
+  const before = new Map();
+  for (const row of target.cards) {
+    if (row.board !== 'mainboard' || row.is_commander) continue;
+    if (isBasicLand(row)) continue;
+    before.set(row.name, (before.get(row.name) || 0) + row.quantity);
+  }
+
+  const after = new Map();
+  for (const card of [...proposal.mainboard, ...proposal.lands]) {
+    if (card.isBasic || isBasicLand({ type_line: card.typeLine })) continue;
+    after.set(card.name, (after.get(card.name) || 0) + card.quantity);
+  }
+
+  const added = [];
+  const cut = [];
+  const kept = [];
+
+  for (const [name, count] of after) {
+    const had = before.get(name) || 0;
+    if (had === 0) added.push({ name, quantity: count });
+    else {
+      kept.push({ name, quantity: Math.min(had, count) });
+      if (count > had) added.push({ name, quantity: count - had });
+    }
+  }
+
+  for (const [name, count] of before) {
+    const now = after.get(name) || 0;
+    if (now < count) cut.push({ name, quantity: count - now });
+  }
+
+  const byName = (a, b) => a.name.localeCompare(b.name);
+
+  return {
+    deckId: target.deck.id,
+    deckName: target.deck.name,
+    deckStatus: target.deck.status || null,
+    added: added.sort(byName),
+    cut: cut.sort(byName),
+    keptCount: kept.reduce((sum, row) => sum + row.quantity, 0),
+    // Said outright rather than left to be inferred from three empty lists.
+    unchanged: added.length === 0 && cut.length === 0,
+  };
+}
+
+/**
+ * Build a proposal. Writes nothing — including when revising: a revision is a
+ * suggestion about a deck, and the deck it is about is left exactly as it was
+ * until somebody saves the result as a deck of its own.
  */
 export function proposeDeck(userId, {
   commanderCardId = null,
@@ -126,12 +274,40 @@ export function proposeDeck(userId, {
   includeCommitted = true,
   landCount = null,
   identity = null,
+  reviseDeckId = null,
 } = {}) {
-  const pool = getGeneratorPool(userId, { includeCommitted });
+  const target = reviseDeckId == null ? null : revisionTarget(userId, reviseDeckId);
+
+  // A revision inherits the deck's own format and commander unless it was
+  // told otherwise. Asking again for facts already recorded against the deck
+  // is how the two end up disagreeing.
+  if (target) {
+    format = format || target.deck.format || 'commander';
+    if (commanderCardId == null) {
+      const leader = target.cards.find((row) => row.is_commander);
+      if (leader) commanderCardId = leader.card_id;
+    }
+  }
+
+  const pool = getGeneratorPool(userId, {
+    includeCommitted,
+    // The deck's own cards stop counting as spoken for, which is the whole
+    // point: a revision may keep what is already sleeved.
+    exceptDeckId: reviseDeckId,
+  });
   const commander = commanderFrom(pool, commanderCardId);
 
   if (commanderCardId != null && !commander) {
     throw new Error('That commander is not in your collection, or every copy is already in a deck');
+  }
+
+  // A revision with no theme named takes the deck's own theme, not the
+  // collection's strongest. Left to choose freely the generator answers a
+  // different question — "what is the best deck in these colours" — and
+  // proposes something that shares a commander with the deck and very little
+  // else. That is a rebuild, and the person asked for a revision.
+  if (target && !themeKey) {
+    themeKey = themeOfDeck(pool);
   }
 
   // Colours come from the commander when there is one, and are chosen
@@ -144,6 +320,10 @@ export function proposeDeck(userId, {
 
   return {
     ...proposal,
+    // What this would change about the deck it started from. Null when
+    // nothing was being revised, so a caller can tell "built from scratch"
+    // apart from "revised and changed nothing".
+    revision: target ? diffAgainstDeck(target, proposal) : null,
     // What the pool actually was, because "no removal found" means something
     // very different at 271 cards than at 1,033. Without this the shortfalls
     // read as a fault in the collection rather than in what was available.

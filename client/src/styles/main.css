@@ -9314,6 +9314,74 @@ body.maintenance-locked #app {
   line-height: 1.5;
 }
 
+/* Build or revise. Two long labels rather than a segmented control: the
+   difference between them is what happens to the pool, which is not a thing a
+   two-word toggle can say. */
+.generator-mode {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.generator-mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  font-weight: normal;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.generator-mode-option:has(input:checked) {
+  border-color: var(--accent, var(--text-primary));
+  color: var(--text-primary);
+}
+
+.generator-mode-option input { width: auto; flex: none; margin-top: 0.2rem; }
+
+.generator-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* The deck's colours, picked as mana symbols like everywhere else. Slightly
+   roomier than the filter rows, because this is a decision rather than a
+   filter and it is the only control in its step. */
+.generator-color-pick { gap: 0.6rem; }
+
+/* The diff sits above the deck it describes: it is the answer, and the
+   hundred-card list below it is the working. */
+.generate-revision {
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+}
+
+.generate-revision .generate-columns { margin-top: 0.6rem; }
+
+.generate-revision ul {
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82rem;
+}
+
+.generate-revision li {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+}
+
 .generator-run { width: 100%; }
 
 .generate-theme-evidence { display: block; margin-top: 0.35rem; font-size: 0.78rem; }

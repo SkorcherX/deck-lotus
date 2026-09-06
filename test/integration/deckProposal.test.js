@@ -27,7 +27,7 @@ const { runMigrations, closeDb } = await import('../../src/db/index.js');
 const { default: db } = await import('../../src/db/connection.js');
 const {
   commanderOptions, themeOptions, proposeDeck, acceptProposal,
-  suggestForGaps, addGapsToShoppingList,
+  suggestForGaps, addGapsToShoppingList, revisableDecks,
 } = await import('../../src/services/deckProposalService.js');
 
 let userId;
@@ -333,5 +333,137 @@ describe('addGapsToShoppingList', () => {
 
   test('an empty selection is refused', () => {
     assert.throws(() => addGapsToShoppingList(userId, { items: [] }), /Nothing was selected/);
+  });
+});
+
+/**
+ * Revising a deck that already exists.
+ *
+ * The claim being tested is not "a deck comes back" — it always does — but
+ * that the deck being revised is treated differently from every other deck:
+ * its cards are available to it, and what comes back is described as a change
+ * to it rather than as a pile. And that none of it is written: a suggestion
+ * that edited the deck it was a suggestion about would be indefensible.
+ */
+describe('revising a deck', () => {
+  let deckId;
+
+  before(() => {
+    const proposal = proposeDeck(userId, { commanderCardId, format: 'commander' });
+    const saved = acceptProposal(userId, {
+      name: 'Sleeved Deck',
+      format: 'commander',
+      commander: {
+        name: proposal.commanderCard.name,
+        printingId: proposal.commanderCard.printingId,
+        isFoil: proposal.commanderCard.isFoil,
+        quantity: 1,
+      },
+      cards: proposal.mainboard.map((c) => ({
+        name: c.name, printingId: c.printingId, isFoil: c.isFoil, quantity: c.quantity,
+      })),
+    });
+    deckId = saved.deckId ?? saved.deck?.id ?? saved.id;
+    // Built, not an idea: a revision has to work on a deck that is holding its
+    // cards against everything else.
+    db.run(`UPDATE decks SET status = 'ready' WHERE id = ?`, [deckId]);
+
+    // Earlier tests in this file accepted proposals of their own, and every
+    // one of those decks is holding a copy of everything. Left in place they
+    // decide the strict reading on their own, and these tests would be
+    // measuring them rather than the deck being revised. This describe runs
+    // last, so clearing them takes nothing away from anybody.
+    db.run(`DELETE FROM deck_cards WHERE deck_id != ?`, [deckId]);
+    db.run(`DELETE FROM decks WHERE id != ?`, [deckId]);
+  });
+
+  test('the deck is offered as somewhere to start from', () => {
+    const offered = revisableDecks(userId).find((d) => d.id === deckId);
+    assert.ok(offered, 'a deck the user owns should be revisable');
+    assert.equal(offered.commanderName, 'Test Commander');
+    assert.ok(offered.cards > 0);
+  });
+
+  test('the deck gets its own cards back, and the strict reading proves it', () => {
+    // One copy owned, one copy sleeved into this deck: under the strict
+    // reading that card is entirely spoken for and drops out of the pool.
+    // Revising the deck holding it is the one case where it must not.
+    const sleeved = db.get(
+      `SELECT p.id AS printing_id, c.name
+         FROM deck_cards dc
+         JOIN printings p ON dc.printing_id = p.id
+         JOIN cards c ON p.card_id = c.id
+        WHERE dc.deck_id = ? AND dc.is_commander = 0
+        LIMIT 1`,
+      [deckId]
+    );
+
+    const owned = db.get(
+      `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ?`,
+      [userId, sleeved.printing_id]
+    ).quantity;
+
+    db.run(`UPDATE owned_printings SET quantity = 1 WHERE user_id = ? AND printing_id = ?`,
+      [userId, sleeved.printing_id]);
+    db.run(`UPDATE deck_cards SET quantity = 1 WHERE deck_id = ? AND printing_id = ?`,
+      [deckId, sleeved.printing_id]);
+
+    try {
+      const fromScratch = proposeDeck(userId, { commanderCardId, includeCommitted: false });
+      const revising = proposeDeck(userId, { reviseDeckId: deckId, includeCommitted: false });
+
+      assert.equal(revising.pool.cards, fromScratch.pool.cards + 1,
+        'the card this deck is holding has to come back to it, and only to it');
+    } finally {
+      db.run(`UPDATE owned_printings SET quantity = ? WHERE user_id = ? AND printing_id = ?`,
+        [owned, userId, sleeved.printing_id]);
+    }
+  });
+
+  test('what comes back is described as a change to that deck', () => {
+    const revision = proposeDeck(userId, { reviseDeckId: deckId }).revision;
+
+    assert.equal(revision.deckId, deckId);
+    assert.equal(revision.deckName, 'Sleeved Deck');
+    assert.ok(Array.isArray(revision.added) && Array.isArray(revision.cut));
+  });
+
+  test('revising the deck it was built from keeps nearly all of it', () => {
+    // The pool has not changed since the deck was made from it, so the
+    // proposal should land back on the same cards. This is what the in_deck
+    // tiebreak in rankCandidates is for: without it the diff fills with swaps
+    // between cards the heuristics cannot tell apart.
+    const revision = proposeDeck(userId, { reviseDeckId: deckId }).revision;
+    assert.ok(revision.keptCount > revision.added.length,
+      'a revision of an unchanged collection must not be a rebuild');
+  });
+
+  test('a revision inherits the format and the commander it was not given', () => {
+    const proposal = proposeDeck(userId, { reviseDeckId: deckId });
+    assert.equal(proposal.format, 'commander');
+    assert.equal(proposal.commanderCard.name, 'Test Commander');
+  });
+
+  test('revising writes nothing, including to the deck being revised', () => {
+    const decksBefore = db.get(`SELECT COUNT(*) AS n FROM decks`).n;
+    const cardsBefore = db.get(`SELECT COUNT(*) AS n FROM deck_cards WHERE deck_id = ?`, [deckId]).n;
+
+    proposeDeck(userId, { reviseDeckId: deckId });
+
+    assert.equal(db.get(`SELECT COUNT(*) AS n FROM decks`).n, decksBefore);
+    assert.equal(db.get(`SELECT COUNT(*) AS n FROM deck_cards WHERE deck_id = ?`, [deckId]).n, cardsBefore);
+  });
+
+  test("another user's deck is refused", () => {
+    db.run(`INSERT INTO users (username, email, password_hash) VALUES ('other','x@example.test','h')`);
+    const otherId = db.get(`SELECT id FROM users WHERE username='other'`).id;
+
+    assert.throws(() => proposeDeck(otherId, { reviseDeckId: deckId }), /not one of yours/);
+  });
+
+  test('nothing is said about a revision when none was asked for', () => {
+    // Null rather than an empty diff, so a caller can tell "built from
+    // scratch" apart from "revised and changed nothing".
+    assert.equal(proposeDeck(userId, { commanderCardId }).revision, null);
   });
 });

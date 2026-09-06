@@ -129,3 +129,58 @@ describe('getGeneratorPool', () => {
       [deckId, printings['Claimed Card']]);
   });
 });
+
+/**
+ * Revising a deck, which is the one case where a deck's own claim on a card
+ * must not count against it.
+ *
+ * Without `exceptDeckId` a revision is built from everything the collection
+ * holds *except* the cards already in the deck being revised — the exact
+ * opposite of what revising means, and invisible in the result: it comes back
+ * as a full deck, just one that quietly refuses to keep anything.
+ */
+describe('getGeneratorPool while revising a deck', () => {
+  const built = () => db.get(`SELECT id FROM decks WHERE name='Built'`).id;
+
+  test("the revised deck's own claim is released", () => {
+    const strict = poolBy(getGeneratorPool(userId, { includeCommitted: false }));
+    assert.equal(strict.get('Claimed Card').available, 1);
+
+    const revising = poolBy(getGeneratorPool(userId, {
+      includeCommitted: false, exceptDeckId: built(),
+    }));
+    assert.equal(revising.get('Claimed Card').committed, 0);
+    assert.equal(revising.get('Claimed Card').available, 2);
+  });
+
+  test('other decks keep their claim', () => {
+    // Only the deck being revised is exempted. A second deck holding a copy is
+    // still holding it, and a revision that took it would be proposing a deck
+    // that cannot be sleeved without dismantling something else.
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,'Other','commander','ready')`, [userId]);
+    const other = db.get(`SELECT id FROM decks WHERE name='Other'`).id;
+    db.run(`INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_foil, board_type)
+            VALUES (?,?,1,0,0,'mainboard')`, [other, printings['Free Card']]);
+
+    const revising = poolBy(getGeneratorPool(userId, {
+      includeCommitted: false, exceptDeckId: built(),
+    }));
+    assert.equal(revising.get('Free Card').committed, 1);
+
+    db.run(`DELETE FROM deck_cards WHERE deck_id = ?`, [other]);
+    db.run(`DELETE FROM decks WHERE id = ?`, [other]);
+  });
+
+  test('in_deck names the cards the deck already holds', () => {
+    // The ranking uses this to leave sleeved cards where they are, so a card
+    // in no deck must read zero rather than null.
+    const revising = poolBy(getGeneratorPool(userId, { exceptDeckId: built() }));
+    assert.equal(revising.get('Claimed Card').in_deck, 1);
+    assert.equal(revising.get('Free Card').in_deck, 0);
+  });
+
+  test('nothing is in a deck when nothing is being revised', () => {
+    const plain = poolBy(getGeneratorPool(userId));
+    assert.equal(plain.get('Claimed Card').in_deck, 0);
+  });
+});
