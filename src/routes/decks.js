@@ -36,6 +36,7 @@ import {
 } from '../services/printingOptimizerService.js';
 import {
   commanderOptions, themeOptions, proposeDeck, acceptProposal,
+  suggestForGaps, addGapsToShoppingList,
 } from '../services/deckProposalService.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.js';
 
@@ -119,7 +120,11 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
 
     res.json({
       themes: themeOptions(req.user.id, commanderCardId, {
-        includeCommitted: req.query.includeCommitted === 'true',
+        // Absent means on, the same as the commanders route above. These two
+        // lines were identical when the default was flipped and only the first
+        // was changed, which left the two halves of one screen disagreeing
+        // about what omitting the flag meant.
+        includeCommitted: req.query.includeCommitted !== 'false',
       }),
     });
   } catch (error) {
@@ -150,6 +155,47 @@ router.post('/generate', authenticate, (req, res, next) => {
     if (/not in your collection/i.test(error.message)) {
       return res.status(400).json({ error: error.message });
     }
+    next(error);
+  }
+});
+
+/**
+ * POST /api/decks/generate/gaps
+ * Cards worth buying to close the roles the collection came up short on.
+ * Writes nothing.
+ */
+router.post('/generate/gaps', authenticate, (req, res, next) => {
+  try {
+    const { commanderCardId, format, themeKey, includeCommitted } = req.body || {};
+
+    res.json(suggestForGaps(req.user.id, {
+      commanderCardId: commanderCardId == null ? null : Number(commanderCardId),
+      format: format || 'commander',
+      themeKey: themeKey || null,
+      includeCommitted: includeCommitted !== false,
+    }));
+  } catch (error) {
+    if (/not in your collection/i.test(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
+ * POST /api/decks/generate/gaps/shopping-list
+ * Put chosen suggestions on the shopping list as wanted cards.
+ */
+router.post('/generate/gaps/shopping-list', authenticate, (req, res, next) => {
+  try {
+    const { items } = req.body || {};
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Nothing was selected' });
+    }
+
+    res.status(201).json(addGapsToShoppingList(req.user.id, { items }));
+  } catch (error) {
     next(error);
   }
 });

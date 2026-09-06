@@ -80,6 +80,18 @@ const ROLE_PREDICATES = [
 ];
 
 /**
+ * The same predicates keyed by role code.
+ *
+ * Exported so that anything answering "what would fill this gap" tests the
+ * identical thing that decided the slot was empty. Two lists of predicates
+ * that were supposed to agree would eventually disagree, and the symptom
+ * would be a shopping suggestion the generator then declines to use.
+ */
+export const ROLE_PREDICATE_BY_CODE = Object.fromEntries(
+  ROLE_PREDICATES.map(([code, , matches]) => [code, matches])
+);
+
+/**
  * What colours a land can tap for.
  *
  * Read from the type line first — a Sacred Foundry is a "Mountain Plains" and

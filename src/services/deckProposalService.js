@@ -24,10 +24,12 @@
  */
 
 import db from '../db/connection.js';
-import { buildDeck, resolveTheme } from './deckGeneratorService.js';
+import { buildDeck, resolveTheme, ROLE_PREDICATE_BY_CODE } from './deckGeneratorService.js';
 import { rankThemes, withinColorIdentity } from './cardSynergyService.js';
 import { getGeneratorPool } from './inventoryService.js';
 import { findCard } from './importService.js';
+import { isBasicLandSql } from './basicLands.js';
+import { cheapestPrintingOf, addWantedCard } from './shoppingService.js';
 import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
 
 /**
@@ -140,6 +142,169 @@ export function proposeDeck(userId, {
       }
       : null,
   };
+}
+
+/**
+ * Cards worth buying to close a proposal's role gaps.
+ *
+ * A shortfall is a count — "wanted 8 spot removal, found 4" — and a shopping
+ * list holds cards, so something has to turn one into the other. That is all
+ * this does: for each role the collection came up short on, it names cards
+ * that would fill it and are not already owned.
+ *
+ * ── Ranked by how much they are played, which is a reversal ────────────────
+ *
+ * Popularity was rejected as the objective for choosing *from* a collection,
+ * because there the pool is fixed and what matters is how the cards work
+ * together. Shopping is the opposite question. The pool is every card ever
+ * printed, the constraint is money, and "what do people actually put in this
+ * slot" is exactly what somebody about to spend money wants to know. So
+ * `edhrec_rank` ranks these, and the price travels with every suggestion so
+ * the choice stays the buyer's.
+ *
+ * Only the most-played cards in the identity are examined rather than all
+ * 34,656: the role predicates are regular expressions over oracle text and
+ * running them across the whole table for a web request is wasteful when the
+ * cards that fill a removal slot are, by construction, near the top of that
+ * ordering.
+ */
+const SUGGESTION_SCAN = 2500;
+
+export function suggestForGaps(userId, {
+  commanderCardId = null,
+  format = 'commander',
+  themeKey = null,
+  includeCommitted = true,
+  perGap = 6,
+} = {}) {
+  const proposal = proposeDeck(userId, {
+    commanderCardId, format, themeKey, includeCommitted,
+  });
+
+  const roleGaps = proposal.shortfalls.filter((s) => s.kind === 'role' && s.found < s.wanted);
+  if (roleGaps.length === 0) {
+    return { proposal, gaps: [] };
+  }
+
+  const identity = String(proposal.colorIdentity || '').replace(/[^WUBRG]/g, '');
+  const where = [
+    `c.oracle_text IS NOT NULL`,
+    `c.oracle_text != ''`,
+    // Legal in the format being built. The column is MTGJSON's JSON blob and
+    // the values are capitalised, hence the LIKE rather than a comparison.
+    `c.legalities LIKE ?`,
+    // Not already owned: this is a buy list, and a card sitting in a box is
+    // not something to buy.
+    `NOT EXISTS (
+       SELECT 1 FROM owned_printings op
+       JOIN printings op_p ON op_p.id = op.printing_id
+       WHERE op.user_id = ? AND op_p.card_id = c.id
+     )`,
+    // Never suggest basics: they are free everywhere.
+    `NOT ${isBasicLandSql('c')}`,
+  ];
+  const params = [`%"${format.toLowerCase()}":"Legal"%`, userId];
+
+  for (const color of ['W', 'U', 'B', 'R', 'G']) {
+    if (!identity.includes(color)) {
+      where.push(`(c.color_identity IS NULL OR c.color_identity NOT LIKE ?)`);
+      params.push(`%${color}%`);
+    }
+  }
+
+  const candidates = db.all(
+    `SELECT c.id AS card_id, c.name, c.mana_cost, c.cmc, c.type_line, c.oracle_text,
+            c.keywords, c.power, c.color_identity, c.supertypes, c.edhrec_rank
+       FROM cards c
+      WHERE ${where.join(' AND ')}
+        AND c.edhrec_rank IS NOT NULL
+      ORDER BY c.edhrec_rank ASC
+      LIMIT ?`,
+    [...params, SUGGESTION_SCAN]
+  );
+
+  const gaps = roleGaps.map((gap) => {
+    const matches = ROLE_PREDICATE_BY_CODE[gap.code] || (() => false);
+    const picks = [];
+
+    for (const card of candidates) {
+      if (picks.length >= perGap) break;
+      if (!matches(card)) continue;
+
+      const printingId = cheapestPrintingOf(card.card_id);
+      if (!printingId) continue;
+
+      picks.push({
+        cardId: card.card_id,
+        name: card.name,
+        manaCost: card.mana_cost,
+        typeLine: card.type_line,
+        printingId,
+        edhrecRank: card.edhrec_rank,
+        price: priceOfPrinting(printingId),
+      });
+    }
+
+    return {
+      code: gap.code,
+      label: gap.label,
+      wanted: gap.wanted,
+      found: gap.found,
+      short: gap.wanted - gap.found,
+      suggestions: picks,
+    };
+  });
+
+  return { proposal, gaps };
+}
+
+/** What the cheapest printing costs, so a suggestion can carry its price. */
+function priceOfPrinting(printingId) {
+  const row = db.get(
+    `SELECT pr.price FROM printings p
+       JOIN prices pr ON pr.printing_uuid = p.uuid
+      WHERE p.id = ? AND pr.provider = 'tcgplayer' AND pr.price_type = 'normal'
+      LIMIT 1`,
+    [printingId]
+  );
+  return row ? row.price : null;
+}
+
+/**
+ * Add chosen suggestions to the shopping list.
+ *
+ * They go in as *wanted* cards rather than as a deck's needs. The derived half
+ * of the shopping list is computed from decks on every read, and a proposal is
+ * not a deck — it may never become one. `shopping_list_items` is the half that
+ * holds "I want this on its own account", which is exactly what pressing this
+ * means.
+ *
+ * The note says where the entry came from, because a shopping list read in a
+ * shop three weeks later is a list of names with no memory attached.
+ */
+export function addGapsToShoppingList(userId, { items = [] } = {}) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('Nothing was selected');
+  }
+
+  const added = [];
+  const failed = [];
+
+  for (const item of items) {
+    try {
+      added.push(addWantedCard(userId, {
+        printingId: Number(item.printingId),
+        quantity: Math.max(1, Number(item.quantity) || 1),
+        isFoil: false,
+        note: item.note || 'Suggested by the deck generator',
+      }));
+    } catch (error) {
+      // One bad printing id must not lose the rest of a selection.
+      failed.push({ printingId: item.printingId, reason: error.message });
+    }
+  }
+
+  return { added, failed };
 }
 
 /**

@@ -208,8 +208,15 @@ function render(p) {
       <div class="generate-shortfalls">
         <div class="generate-head">What your collection could not cover</div>
         <ul>${p.shortfalls.map((s) => `<li>${escapeHtml(s.message)}</li>`).join('')}</ul>
+        ${p.shortfalls.some((s) => s.kind === 'role') ? `
+          <button id="generate-find-gaps" class="btn btn-secondary generate-gap-btn">
+            Find cards that would fill these
+          </button>
+        ` : ''}
       </div>
     ` : ''}
+
+    <div id="generate-gaps" class="hidden"></div>
 
     <div class="generate-curve">${curve}</div>
 
@@ -249,6 +256,117 @@ function render(p) {
 
   result.classList.remove('hidden');
   $('generate-accept-row')?.classList.remove('hidden');
+
+  // Bound after the panel is written, because the button only exists when the
+  // proposal actually came up short on a role.
+  $('generate-find-gaps')?.addEventListener('click', findGaps);
+}
+
+/**
+ * Suggest cards to buy for the roles the collection could not fill.
+ *
+ * A separate request rather than part of the proposal: it searches the whole
+ * card database rather than the collection, and most proposals are read and
+ * closed without anybody wanting to spend money.
+ */
+async function findGaps() {
+  const button = $('generate-find-gaps');
+  const target = $('generate-gaps');
+  if (!button || !target) return;
+
+  button.disabled = true;
+  button.textContent = 'Looking…';
+
+  try {
+    const data = await api.getGeneratorGaps({
+      commanderCardId: Number($('generate-commander')?.value),
+      format: 'commander',
+      themeKey: $('generate-theme')?.value || null,
+      includeCommitted: includeCommitted(),
+    });
+
+    const gaps = (data.gaps || []).filter((g) => g.suggestions.length);
+    if (gaps.length === 0) {
+      target.innerHTML = '<div class="generate-note">Nothing to suggest for these gaps.</div>';
+      target.classList.remove('hidden');
+      return;
+    }
+
+    const money = (p) => (p == null ? '—' : `$${Number(p).toFixed(2)}`);
+
+    target.innerHTML = `
+      <div class="generate-head">Cards you could buy</div>
+      <div class="generate-note">
+        Ranked by how often they are played, with the cheapest printing's price.
+        Ticking these puts them on your shopping list as wanted cards; it does not
+        change the deck.
+      </div>
+      ${gaps.map((gap) => `
+        <div class="generate-gap">
+          <div class="generate-gap-head">
+            ${escapeHtml(gap.label)} &mdash; ${gap.short} short
+          </div>
+          <ul class="generate-gap-list">
+            ${gap.suggestions.map((s) => `
+              <li>
+                <label>
+                  <input type="checkbox" class="generate-gap-pick"
+                         data-printing-id="${s.printingId}" />
+                  <span class="generate-card-cost">${escapeHtml(cost(s.manaCost))}</span>
+                  <span class="generate-card-name">${escapeHtml(s.name)}</span>
+                  <span class="generate-gap-price">${escapeHtml(money(s.price))}</span>
+                </label>
+              </li>`).join('')}
+          </ul>
+        </div>
+      `).join('')}
+      <button id="generate-gap-add" class="btn btn-secondary">Add ticked cards to my shopping list</button>
+    `;
+    target.classList.remove('hidden');
+    $('generate-gap-add')?.addEventListener('click', addGaps);
+  } catch (error) {
+    console.error('Gap suggestions failed:', error);
+    showError(error.body?.error || error.message || 'Could not look for cards');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Find cards that would fill these';
+  }
+}
+
+async function addGaps() {
+  const picked = [...document.querySelectorAll('.generate-gap-pick:checked')]
+    .map((box) => ({ printingId: Number(box.dataset.printingId), quantity: 1 }));
+
+  if (picked.length === 0) {
+    showToast('Tick the cards you want first', 'warning');
+    return;
+  }
+
+  const button = $('generate-gap-add');
+  button.disabled = true;
+
+  try {
+    const result = await api.addGapsToShoppingList(picked);
+    showToast(`Added ${result.added.length} to your shopping list`, 'success');
+
+    // Marked as well as disabled. A disabled checkbox that looks like an
+    // unticked one tells you nothing about what you just added, and the
+    // obvious next move is to add it again.
+    document.querySelectorAll('.generate-gap-pick:checked').forEach((box) => {
+      box.checked = false;
+      box.disabled = true;
+      const row = box.closest('label');
+      if (row && !row.querySelector('.generate-gap-added')) {
+        row.classList.add('generate-gap-done');
+        row.insertAdjacentHTML('beforeend', '<span class="generate-gap-added">on your list</span>');
+      }
+    });
+  } catch (error) {
+    console.error('Adding to the shopping list failed:', error);
+    showError(error.body?.error || error.message || 'Could not add to the shopping list');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function accept() {

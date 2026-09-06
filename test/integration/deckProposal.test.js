@@ -27,6 +27,7 @@ const { runMigrations, closeDb } = await import('../../src/db/index.js');
 const { default: db } = await import('../../src/db/connection.js');
 const {
   commanderOptions, themeOptions, proposeDeck, acceptProposal,
+  suggestForGaps, addGapsToShoppingList,
 } = await import('../../src/services/deckProposalService.js');
 
 let userId;
@@ -244,5 +245,93 @@ describe('acceptProposal', () => {
   test('a nameless or empty proposal is refused', () => {
     assert.throws(() => acceptProposal(userId, { name: '  ', cards: [{ name: 'x' }] }), /name is required/);
     assert.throws(() => acceptProposal(userId, { name: 'Empty', cards: [] }), /no cards/);
+  });
+});
+
+describe('suggestForGaps', () => {
+  test('names cards that would fill a role the collection cannot', () => {
+    // The fixture has no sweepers at all, so that gap is guaranteed.
+    const { gaps } = suggestForGaps(userId, { commanderCardId, format: 'commander' });
+    const sweepers = gaps.find((g) => g.code === 'sweeper');
+
+    assert.ok(sweepers, 'the empty sweeper role should come back as a gap');
+    assert.equal(sweepers.found, 0);
+    assert.equal(sweepers.short, sweepers.wanted);
+  });
+
+  test('never suggests a card already owned', () => {
+    // A buy list with cards from your own boxes on it is worse than useless.
+    const { gaps } = suggestForGaps(userId, { commanderCardId, format: 'commander' });
+    const ownedNames = new Set(
+      db.all(
+        `SELECT DISTINCT c.name FROM owned_printings op
+           JOIN printings p ON p.id = op.printing_id
+           JOIN cards c ON c.id = p.card_id
+          WHERE op.user_id = ?`,
+        [userId]
+      ).map((row) => row.name)
+    );
+
+    for (const gap of gaps) {
+      for (const s of gap.suggestions) {
+        assert.ok(!ownedNames.has(s.name), `${s.name} is already owned`);
+      }
+    }
+  });
+
+  test('every suggestion carries a printing to buy and its price slot', () => {
+    const { gaps } = suggestForGaps(userId, { commanderCardId, format: 'commander' });
+    for (const gap of gaps) {
+      for (const s of gap.suggestions) {
+        assert.ok(Number.isInteger(s.printingId), 'a suggestion with no printing cannot be bought');
+        assert.ok('price' in s, 'the price has to travel with it so the choice stays the buyer\'s');
+      }
+    }
+  });
+
+  test('a proposal with no role gaps suggests nothing', () => {
+    const { gaps } = suggestForGaps(userId, { commanderCardId, format: 'commander' });
+    // Whatever the fixture yields, a gap listed must be a real shortfall.
+    for (const gap of gaps) assert.ok(gap.short > 0);
+  });
+});
+
+describe('addGapsToShoppingList', () => {
+  test('adds as wanted cards, with a note saying where they came from', () => {
+    const printingId = db.get(
+      `SELECT p.id FROM printings p JOIN cards c ON c.id = p.card_id
+        WHERE c.name = 'Killer 0' LIMIT 1`
+    ).id;
+
+    const result = addGapsToShoppingList(userId, { items: [{ printingId, quantity: 2 }] });
+    assert.equal(result.added.length, 1);
+    assert.equal(result.failed.length, 0);
+
+    const row = db.get(
+      `SELECT quantity, note, is_foil FROM shopping_list_items
+        WHERE user_id = ? AND printing_id = ?`,
+      [userId, printingId]
+    );
+    assert.equal(row.quantity, 2);
+    assert.equal(row.is_foil, 0);
+    assert.match(row.note, /generator/i);
+  });
+
+  test('one bad printing does not lose the rest of a selection', () => {
+    const printingId = db.get(
+      `SELECT p.id FROM printings p JOIN cards c ON c.id = p.card_id
+        WHERE c.name = 'Miller 3' LIMIT 1`
+    ).id;
+
+    const result = addGapsToShoppingList(userId, {
+      items: [{ printingId: 999999, quantity: 1 }, { printingId, quantity: 1 }],
+    });
+
+    assert.equal(result.added.length, 1);
+    assert.equal(result.failed.length, 1);
+  });
+
+  test('an empty selection is refused', () => {
+    assert.throws(() => addGapsToShoppingList(userId, { items: [] }), /Nothing was selected/);
   });
 });

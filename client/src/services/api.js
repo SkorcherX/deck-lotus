@@ -770,6 +770,20 @@ class ApiClient {
     });
   }
 
+  async getGeneratorGaps(options) {
+    return this.request('/decks/generate/gaps', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  async addGapsToShoppingList(items) {
+    return this.request('/decks/generate/gaps/shopping-list', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+  }
+
   async acceptGeneratedDeck(payload) {
     return this.request('/decks/generate/accept', {
       method: 'POST',

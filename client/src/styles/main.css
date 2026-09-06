@@ -9017,3 +9017,53 @@ body.maintenance-locked #app {
 }
 
 .generate-accept-row input { flex: 1; }
+
+/* ---- Buying suggestions for a proposal's gaps ---- */
+
+.generate-gap-btn { margin-top: 0.6rem; }
+
+.generate-gap {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+  margin-bottom: 0.6rem;
+  background: var(--bg-tertiary);
+}
+
+.generate-gap-head {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+}
+
+.generate-gap-list { list-style: none; margin: 0; padding: 0; }
+
+.generate-gap-list label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+  font-weight: normal;
+  padding: 0.15rem 0;
+  cursor: pointer;
+}
+
+.generate-gap-list input { width: auto; flex: none; }
+
+.generate-gap-price {
+  flex: none;
+  font-family: monospace;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.generate-gap-done { opacity: 0.6; cursor: default; }
+
+.generate-gap-added {
+  flex: none;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
