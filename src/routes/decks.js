@@ -34,6 +34,9 @@ import {
   applyPrintingOptimization,
   getAvailableSets
 } from '../services/printingOptimizerService.js';
+import {
+  commanderOptions, themeOptions, proposeDeck, acceptProposal,
+} from '../services/deckProposalService.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -71,6 +74,103 @@ router.post('/', authenticate, (req, res, next) => {
 
     const deck = createDeck(req.user.id, name, format, description, { status });
     res.status(201).json({ deck });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * The deck generator.
+ *
+ * Declared before `/:id`, or Express matches "generate" as a deck id and every
+ * one of these becomes a 404 for a deck that does not exist.
+ *
+ * Generating writes nothing — see the note in deckProposalService about why
+ * proposing and building are separate calls.
+ */
+
+/**
+ * GET /api/decks/generate/commanders
+ * Commanders in the collection, to choose between.
+ */
+router.get('/generate/commanders', authenticate, (req, res, next) => {
+  try {
+    res.json({
+      commanders: commanderOptions(req.user.id, {
+        includeCommitted: req.query.includeCommitted === 'true',
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/decks/generate/themes
+ * What could be built around, in a commander's colours, strongest first.
+ */
+router.get('/generate/themes', authenticate, (req, res, next) => {
+  try {
+    const commanderCardId = req.query.commanderCardId
+      ? Number(req.query.commanderCardId)
+      : null;
+
+    res.json({
+      themes: themeOptions(req.user.id, commanderCardId, {
+        includeCommitted: req.query.includeCommitted === 'true',
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/decks/generate
+ * Propose a deck. Writes nothing.
+ */
+router.post('/generate', authenticate, (req, res, next) => {
+  try {
+    const { commanderCardId, format, themeKey, includeCommitted, landCount } = req.body || {};
+
+    res.json({
+      proposal: proposeDeck(req.user.id, {
+        commanderCardId: commanderCardId == null ? null : Number(commanderCardId),
+        format: format || 'commander',
+        themeKey: themeKey || null,
+        includeCommitted: Boolean(includeCommitted),
+        landCount: landCount == null ? null : Number(landCount),
+      }),
+    });
+  } catch (error) {
+    // A commander the caller does not own is their mistake to correct, not a
+    // server fault, so it comes back as a 400 with the reason.
+    if (/not in your collection/i.test(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
+ * POST /api/decks/generate/accept
+ * Save a proposal as a real deck, with status 'idea'.
+ */
+router.post('/generate/accept', authenticate, (req, res, next) => {
+  try {
+    const { name, format, commander, cards } = req.body || {};
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Deck name is required' });
+    }
+    if (!Array.isArray(cards) || cards.length === 0) {
+      return res.status(400).json({ error: 'The proposal has no cards' });
+    }
+
+    const result = acceptProposal(req.user.id, {
+      name, format: format || 'commander', commander, cards,
+    });
+    res.status(201).json(result);
   } catch (error) {
     next(error);
   }

@@ -47,6 +47,11 @@ export const AUDIT_SOURCES = [
   'card_page',
   'deck_builder',
   'deck_import',
+  // A deck the generator proposed and the user accepted. Kept apart from
+  // 'deck_import' for the same reason 'scanner' is kept apart from 'scan':
+  // when a deck turns out to hold the wrong card, whether a person chose it
+  // or a heuristic did is the first thing worth knowing.
+  'deck_generator',
   'trade',
   'scan',
   // The in-browser scanner and the Android companion app are kept apart on

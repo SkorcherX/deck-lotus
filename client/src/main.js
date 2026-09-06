@@ -1,6 +1,7 @@
 import api from './services/api.js';
 import { setupAuth } from './components/auth.js';
 import { setupDecks } from './components/decks.js';
+import { setupDeckGenerator } from './components/deckGenerator.js';
 import { setupDeckBuilder } from './components/deckBuilder.js';
 import { setupCards } from './components/cards.js';
 import { setupSettings } from './components/settings.js';
@@ -311,6 +312,7 @@ class App {
       await this.showApp(user);
     });
     setupDecks();
+    setupDeckGenerator();
     setupDeckBuilder();
     setupCards();
     setupShopping();

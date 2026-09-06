@@ -8852,3 +8852,168 @@ body.maintenance-locked #app {
 .deck-guidance-fold-summary:hover { color: var(--text-primary); }
 
 .deck-guidance-fold-body { margin-top: 0.75rem; }
+
+/* ---- Deck generator ----
+   A proposal, not a deck: everything here is arguing its case, so the panel
+   leans on the same tokens as the guidance panel rather than inventing a
+   louder visual language. */
+
+.generate-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .generate-controls { grid-template-columns: 1fr; }
+}
+
+.generate-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-weight: normal;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.generate-toggle input { width: auto; flex: none; margin-top: 0.2rem; }
+
+.generate-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.generate-stat {
+  flex: 1 1 5.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+}
+
+.generate-stat strong { display: block; font-size: 1.1rem; }
+.generate-stat span { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+
+.generate-theme-note,
+.generate-note,
+.generate-pool {
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.6rem;
+  line-height: 1.45;
+}
+
+.generate-shortfalls {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.85rem;
+  background: var(--bg-tertiary);
+}
+
+.generate-shortfalls ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+.generate-shortfalls li { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 0.2rem; }
+
+.generate-head {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+}
+
+/* The curve, drawn from divs rather than a chart library: it is eight bars. */
+.generate-curve {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.35rem;
+  height: 110px;
+  margin-bottom: 0.85rem;
+  padding-top: 0.5rem;
+}
+
+.generate-curve-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  gap: 0.2rem;
+}
+
+.generate-curve-bar > span {
+  width: 100%;
+  background: var(--primary, var(--accent, #7c3aed));
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+
+.generate-curve-bar small { font-size: 0.68rem; color: var(--text-secondary); }
+
+.generate-list { margin-bottom: 0.85rem; }
+
+.generate-list > summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.generate-columns {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  .generate-columns { grid-template-columns: 1fr; }
+}
+
+.generate-columns ul { list-style: none; margin: 0; padding: 0; }
+
+.generate-columns li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.8rem;
+  padding: 0.15rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.generate-card-cost {
+  flex: none;
+  min-width: 3.6rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+  font-size: 0.74rem;
+}
+
+.generate-card-name { flex: 1; }
+
+/* Why the card is here. Quiet, but never hidden — it is the whole reason the
+   proposal can be argued with. */
+.generate-card-reason {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.generate-accept-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+}
+
+.generate-accept-row input { flex: 1; }

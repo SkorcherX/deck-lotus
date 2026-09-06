@@ -396,6 +396,10 @@
                             <i class="ph ph-upload btn-icon"></i>
                             <span class="btn-text">Import Deck</span>
                         </button>
+                        <button id="generate-deck-btn" class="btn btn-secondary" title="Build a deck from cards you already own">
+                            <i class="ph ph-magic-wand btn-icon"></i>
+                            <span class="btn-text">Generate</span>
+                        </button>
                         <button id="new-deck-btn" class="btn btn-primary">
                             <i class="ph ph-plus btn-icon"></i>
                             <span class="btn-text">New Deck</span>
@@ -1331,6 +1335,50 @@
                         <button id="bulk-add-submit-btn" class="btn btn-primary" style="flex: 1">Add to Inventory</button>
                     </div>
                     <div id="bulk-add-result" class="hidden" style="margin-top: 1rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 0.5rem;"></div>
+                </div>
+            </div>
+
+            <div id="generate-deck-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 860px">
+                    <span class="modal-close" id="generate-deck-close">&times;</span>
+                    <h2 style="margin-bottom: 0.5rem">Generate a Deck</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+                        Builds a Commander deck out of cards you already own. Everything here is
+                        worked out from card text, so treat it as a starting point &mdash; each card
+                        says why it was picked, and anything the collection could not cover is
+                        listed rather than hidden. Nothing is saved until you accept it.
+                    </p>
+
+                    <div class="generate-controls">
+                        <div class="form-group">
+                            <label for="generate-commander">Commander</label>
+                            <select id="generate-commander"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="generate-theme">Build around</label>
+                            <select id="generate-theme"></select>
+                        </div>
+                    </div>
+
+                    <label class="generate-toggle">
+                        <input type="checkbox" id="generate-include-committed" />
+                        <span>
+                            <strong>Use cards that are in my other decks</strong>
+                            &mdash; off by default, so a proposal only claims cards nothing else has.
+                            Turn it on if your collection is mostly built into decks already.
+                        </span>
+                    </label>
+
+                    <div style="display: flex; gap: 0.5rem; margin: 1rem 0;">
+                        <button id="generate-run" class="btn btn-primary" style="flex: 1">Generate</button>
+                    </div>
+
+                    <div id="generate-result" class="hidden"></div>
+
+                    <div id="generate-accept-row" class="hidden generate-accept-row">
+                        <input type="text" id="generate-deck-name" placeholder="Deck name" />
+                        <button id="generate-accept" class="btn btn-primary">Save as a new deck</button>
+                    </div>
                 </div>
             </div>
 

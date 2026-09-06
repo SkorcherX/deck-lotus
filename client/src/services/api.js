@@ -750,6 +750,33 @@ class ApiClient {
     });
   }
 
+  // --- The deck generator ---------------------------------------------------
+  // Generating writes nothing; only acceptGeneratedDeck creates anything.
+
+  async getGeneratorCommanders(includeCommitted = false) {
+    return this.request(`/decks/generate/commanders?includeCommitted=${includeCommitted}`);
+  }
+
+  async getGeneratorThemes(commanderCardId, includeCommitted = false) {
+    const params = new URLSearchParams({ includeCommitted: String(includeCommitted) });
+    if (commanderCardId != null) params.set('commanderCardId', commanderCardId);
+    return this.request(`/decks/generate/themes?${params}`);
+  }
+
+  async generateDeck(options) {
+    return this.request('/decks/generate', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  async acceptGeneratedDeck(payload) {
+    return this.request('/decks/generate/accept', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async getDeckRules(deckId, format = null) {
     const query = format ? `?format=${encodeURIComponent(format)}` : '';
     return this.request(`/decks/${deckId}/rules${query}`);

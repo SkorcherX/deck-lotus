@@ -224,7 +224,9 @@ export function buildDeck(pool, {
 
   // The commander sets the colour identity unless one was given outright.
   const colorIdentity = identity
-    ?? (commander ? String(commander.color_identity || '').toUpperCase() : null);
+    // Stripped to bare symbols: the column is comma-joined ('B, R, U'), and a
+    // caller doing [...identity] on that gets commas and spaces.
+    ?? (commander ? String(commander.color_identity || '').toUpperCase().replace(/[^WUBRG]/g, '') : null);
 
   const shortfalls = [];
   const notes = [];
