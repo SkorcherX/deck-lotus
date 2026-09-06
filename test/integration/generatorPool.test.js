@@ -83,10 +83,19 @@ describe('getGeneratorPool', () => {
     assert.equal(pool.get('Free Card').committed, 0);
   });
 
-  test('a committed copy is not offered twice', () => {
-    const pool = poolBy(getGeneratorPool(userId));
+  test('the strict reading does not offer a committed copy twice', () => {
+    const pool = poolBy(getGeneratorPool(userId, { includeCommitted: false }));
     assert.equal(pool.get('Claimed Card').committed, 1);
     assert.equal(pool.get('Claimed Card').available, 1);
+  });
+
+  test('the default is the permissive reading, and still reports the claim', () => {
+    // Most of a collection is usually already built into something, and the
+    // strict reading leaves too little to propose from. Nothing is taken —
+    // `committed` still says what would have to come out of another deck.
+    const pool = poolBy(getGeneratorPool(userId));
+    assert.equal(pool.get('Claimed Card').committed, 1);
+    assert.equal(pool.get('Claimed Card').available, 2);
   });
 
   test('a retired deck releases its cards', () => {
@@ -113,8 +122,8 @@ describe('getGeneratorPool', () => {
     db.run(`UPDATE deck_cards SET quantity = 2 WHERE deck_id = ? AND printing_id = ?`,
       [deckId, printings['Claimed Card']]);
 
-    assert.equal(poolBy(getGeneratorPool(userId)).has('Claimed Card'), false);
-    assert.equal(poolBy(getGeneratorPool(userId, { includeCommitted: true })).has('Claimed Card'), true);
+    assert.equal(poolBy(getGeneratorPool(userId, { includeCommitted: false })).has('Claimed Card'), false);
+    assert.equal(poolBy(getGeneratorPool(userId)).has('Claimed Card'), true);
 
     db.run(`UPDATE deck_cards SET quantity = 1 WHERE deck_id = ? AND printing_id = ?`,
       [deckId, printings['Claimed Card']]);

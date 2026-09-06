@@ -36,7 +36,7 @@ import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
  * The same test the deck builder and the inventory panel already make, so the
  * three cannot disagree about what is a commander.
  */
-export function commanderOptions(userId, { includeCommitted = false } = {}) {
+export function commanderOptions(userId, { includeCommitted = true } = {}) {
   return getGeneratorPool(userId, { includeCommitted })
     .filter((card) => {
       const type = String(card.type_line || '');
@@ -69,7 +69,7 @@ function commanderFrom(pool, commanderCardId) {
  * enablers, 20 payoffs — and picks. A generator that decided quietly would be
  * asking to be trusted about a judgement it makes from regular expressions.
  */
-export function themeOptions(userId, commanderCardId, { includeCommitted = false } = {}) {
+export function themeOptions(userId, commanderCardId, { includeCommitted = true } = {}) {
   const pool = getGeneratorPool(userId, { includeCommitted });
   const commander = commanderFrom(pool, commanderCardId);
   const identity = commander
@@ -102,7 +102,7 @@ export function proposeDeck(userId, {
   commanderCardId = null,
   format = 'commander',
   themeKey = null,
-  includeCommitted = false,
+  includeCommitted = true,
   landCount = null,
 } = {}) {
   const pool = getGeneratorPool(userId, { includeCommitted });

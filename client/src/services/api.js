@@ -753,11 +753,11 @@ class ApiClient {
   // --- The deck generator ---------------------------------------------------
   // Generating writes nothing; only acceptGeneratedDeck creates anything.
 
-  async getGeneratorCommanders(includeCommitted = false) {
+  async getGeneratorCommanders(includeCommitted = true) {
     return this.request(`/decks/generate/commanders?includeCommitted=${includeCommitted}`);
   }
 
-  async getGeneratorThemes(commanderCardId, includeCommitted = false) {
+  async getGeneratorThemes(commanderCardId, includeCommitted = true) {
     const params = new URLSearchParams({ includeCommitted: String(includeCommitted) });
     if (commanderCardId != null) params.set('commanderCardId', commanderCardId);
     return this.request(`/decks/generate/themes?${params}`);

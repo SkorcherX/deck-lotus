@@ -1099,13 +1099,24 @@ export function exportInventory(userId, { shape = 'precise' } = {}) {
  * base adds them by name, and leaving them in a pool sorted by availability
  * would let them win slots they are not competing for.
  *
- * `includeCommitted` widens `available` to every copy owned, and exists
- * because the strict reading can leave nothing to build with: a collection
- * with four finished Commander decks in it has half its cards spoken for, and
- * the generator then reports gaps everywhere rather than proposing anything.
- * `committed` comes back on every row either way, so a caller offering this
- * can say which cards would have to come out of an existing deck instead of
- * quietly proposing a teardown.
+ * `includeCommitted` widens `available` to every copy owned, and it defaults
+ * to **on**, which is worth explaining because the strict reading is the more
+ * obviously correct one.
+ *
+ * The strict reading answers "what could I build without touching anything I
+ * have already built", and for most collections the answer is "not much". Four
+ * finished Commander decks account for half the cards in the fixture; with
+ * them held back the generator finds no theme dense enough to build around and
+ * reports gaps in every role, which reads as a broken feature rather than as
+ * an honest account of a full shelf. Somebody sitting down to design a deck is
+ * usually willing to take a card out of another one, and would rather be shown
+ * the deck and told what it would cost.
+ *
+ * Nothing is taken. `committed` comes back on every row either way, so a
+ * caller can say which cards would have to come out of an existing deck, and
+ * an accepted deck is an idea — per `deckPriority.js` an idea's claim yields
+ * to every deck above it, so proposing a card cannot make a built deck report
+ * as short. Pass `false` for the strict reading.
  */
 /**
  * The copy of a card a generated deck should be built out of.
@@ -1152,7 +1163,7 @@ const BEST_OWNED_COPY = (column) => `(
    LIMIT 1
 )`;
 
-export function getGeneratorPool(userId, { includeCommitted = false } = {}) {
+export function getGeneratorPool(userId, { includeCommitted = true } = {}) {
   // `available` is computed in an outer select because SQLite cannot see one
   // column alias from another expression in the same SELECT list, and both
   // `owned` and `committed` are needed to work it out.

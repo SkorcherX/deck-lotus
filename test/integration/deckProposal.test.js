@@ -119,8 +119,17 @@ describe('proposeDeck', () => {
   test('reports the pool it chose from', () => {
     const proposal = proposeDeck(userId, { commanderCardId, format: 'commander' });
     assert.ok(proposal.pool.cards > 0);
-    assert.equal(proposal.pool.includeCommitted, false);
+    // On by default: a collection is usually already built into decks, and the
+    // strict reading leaves too little to propose from.
+    assert.equal(proposal.pool.includeCommitted, true);
     assert.equal(proposal.commanderCard.name, 'Test Commander');
+  });
+
+  test('the strict reading is still available, and says so', () => {
+    const proposal = proposeDeck(userId, {
+      commanderCardId, format: 'commander', includeCommitted: false,
+    });
+    assert.equal(proposal.pool.includeCommitted, false);
   });
 
   test('a commander the user does not own is refused by name', () => {

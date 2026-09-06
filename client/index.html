@@ -1361,11 +1361,13 @@
                     </div>
 
                     <label class="generate-toggle">
-                        <input type="checkbox" id="generate-include-committed" />
+                        <input type="checkbox" id="generate-include-committed" checked />
                         <span>
                             <strong>Use cards that are in my other decks</strong>
-                            &mdash; off by default, so a proposal only claims cards nothing else has.
-                            Turn it on if your collection is mostly built into decks already.
+                            &mdash; on by default, because most of a collection is usually already
+                            built into something. Nothing is taken: a generated deck is saved as an
+                            idea, so it never reports your built decks as short. Turn it off to
+                            propose only from cards nothing else has claimed.
                         </span>
                     </label>
 

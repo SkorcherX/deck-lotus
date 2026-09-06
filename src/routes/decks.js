@@ -97,7 +97,9 @@ router.get('/generate/commanders', authenticate, (req, res, next) => {
   try {
     res.json({
       commanders: commanderOptions(req.user.id, {
-        includeCommitted: req.query.includeCommitted === 'true',
+        // Absent means on: see the note on getGeneratorPool about why the
+        // permissive reading is the useful default here.
+        includeCommitted: req.query.includeCommitted !== 'false',
       }),
     });
   } catch (error) {
@@ -138,7 +140,7 @@ router.post('/generate', authenticate, (req, res, next) => {
         commanderCardId: commanderCardId == null ? null : Number(commanderCardId),
         format: format || 'commander',
         themeKey: themeKey || null,
-        includeCommitted: Boolean(includeCommitted),
+        includeCommitted: includeCommitted !== false,
         landCount: landCount == null ? null : Number(landCount),
       }),
     });
