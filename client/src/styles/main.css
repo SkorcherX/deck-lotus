@@ -8783,3 +8783,72 @@ body.maintenance-locked #app {
 
   .scan-destination-buttons { grid-template-columns: 1fr; }
 }
+
+/* ---- Precon provenance ----
+   Shown when a deck is substantially a preconstructed one. Deliberately
+   quieter than a finding: it is context for the suggestions below it, not a
+   problem to solve. */
+
+.deck-precon {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.deck-precon-icon {
+  flex: none;
+  margin-top: 0.1rem;
+  font-size: 1rem;
+  opacity: 0.8;
+}
+
+.deck-precon-summary { flex: 1; }
+
+/* The fold the suggestions sit behind on a stock precon. */
+
+.deck-guidance-fold-summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  font-weight: 700;
+  list-style: none;
+  display: flex;
+  /* The label wraps to two lines in a narrow panel; the chevron belongs
+     against the first line rather than floating in the middle of both. */
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+/* Chevron, drawn rather than iconed so it rotates with the open state. */
+.deck-guidance-fold-summary::before {
+  content: '';
+  flex: none;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  margin-top: 0.28rem;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.deck-guidance-fold[open] > .deck-guidance-fold-summary::before {
+  transform: rotate(45deg);
+}
+
+/* Safari still paints its own marker without this. */
+.deck-guidance-fold-summary::-webkit-details-marker { display: none; }
+
+.deck-guidance-fold-summary:hover { color: var(--text-primary); }
+
+.deck-guidance-fold-body { margin-top: 0.75rem; }

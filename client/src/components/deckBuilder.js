@@ -2177,21 +2177,55 @@ function renderRules() {
     </li>
   `;
 
-  const guidanceHtml = guidance.length === 0 ? '' : `
+  // A deck that came out of a box is not its owner's work, and a wall of
+  // suggestions about it reads as "the thing you bought is broken". So when
+  // the server recognises one, the findings fold away behind a line naming it.
+  //
+  // Folded, not dropped. Precons really do have thin removal and weak mana, and
+  // somebody who wants that detail opens the summary and gets exactly what any
+  // other deck would show. `<details>` rather than a scripted toggle because it
+  // is keyboard-accessible and open-by-default when printed for free.
+  const precon = lastRules.precon || null;
+  const collapse = Boolean(precon && precon.collapseFindings && guidance.length);
+
+  const preconHtml = !precon ? '' : `
+    <div class="deck-precon">
+      <i class="ph ph-package deck-precon-icon"></i>
+      <span class="deck-precon-summary">${escapeHtml(precon.summary || '')}</span>
+    </div>
+  `;
+
+  const listsHtml = `
+    ${issues.length ? `
+      <div class="deck-guidance-head">Suggestions</div>
+      <ul class="deck-guidance-list">
+        ${issues.map((g) => item(g, guidance.indexOf(g))).join('')}
+      </ul>
+    ` : ''}
+    ${strengths.length ? `
+      <div class="deck-guidance-head deck-guidance-head-strength">What's working</div>
+      <ul class="deck-guidance-list">
+        ${strengths.map((g) => item(g, guidance.indexOf(g))).join('')}
+      </ul>
+    ` : ''}
+  `;
+
+  // The count goes in the summary line so folding never hides *how much* is
+  // hidden — the reader decides whether to open it knowing what is in there.
+  const foldLabel = issues.length
+    ? `${issues.length} suggestion${issues.length === 1 ? '' : 's'} for a stock deck`
+    : 'Notes on this deck';
+
+  const guidanceHtml = guidance.length === 0 ? preconHtml : `
     ${renderSnapshot(lastRules.advice)}
+    ${preconHtml}
     <div class="deck-guidance">
-      ${issues.length ? `
-        <div class="deck-guidance-head">Suggestions</div>
-        <ul class="deck-guidance-list">
-          ${issues.map((g) => item(g, guidance.indexOf(g))).join('')}
-        </ul>
-      ` : ''}
-      ${strengths.length ? `
-        <div class="deck-guidance-head deck-guidance-head-strength">What's working</div>
-        <ul class="deck-guidance-list">
-          ${strengths.map((g) => item(g, guidance.indexOf(g))).join('')}
-        </ul>
-      ` : ''}
+      ${collapse ? `
+        <details class="deck-guidance-fold">
+          <summary class="deck-guidance-fold-summary">${escapeHtml(foldLabel)}</summary>
+          <div class="deck-guidance-fold-body">${listsHtml}</div>
+        </details>
+      ` : listsHtml}
     </div>
   `;
 
