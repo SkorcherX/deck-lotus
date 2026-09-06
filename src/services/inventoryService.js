@@ -1595,3 +1595,114 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     totalPages: Math.max(1, Math.ceil(total / limit))
   };
 }
+
+/**
+ * What a collection wipe would take, without taking it.
+ *
+ * The confirmation is only meaningful if the person reading it is told the
+ * size of the thing they are about to lose, so this is what the dialog quotes
+ * back at them before they type anything.
+ */
+export function summarizeCollectionForClear(userId) {
+  const totals = db.get(
+    `SELECT COUNT(*) AS rows,
+            COALESCE(SUM(op.quantity), 0) AS copies,
+            COUNT(DISTINCT p.card_id) AS distinctCards,
+            COALESCE(SUM(CASE WHEN op.is_foil = 1 THEN op.quantity ELSE 0 END), 0) AS foilCopies
+       FROM owned_printings op
+       JOIN printings p ON op.printing_id = p.id
+      WHERE op.user_id = ?`,
+    [userId]
+  );
+
+  // A wipe does not touch decks — they are lists, not ownership — but every
+  // one of them is about to read as short of everything, and that surprise is
+  // worth naming up front rather than discovering on the deck page.
+  const decks = db.get(
+    `SELECT COUNT(*) AS count FROM decks WHERE user_id = ?`,
+    [userId]
+  );
+
+  const openTrades = db.get(
+    `SELECT COUNT(*) AS count
+       FROM trades
+      WHERE status IN ('pending', 'awaiting_counter')
+        AND (from_user_id = ? OR to_user_id = ?)`,
+    [userId, userId]
+  );
+
+  return {
+    rows: totals?.rows || 0,
+    copies: totals?.copies || 0,
+    distinctCards: totals?.distinctCards || 0,
+    foilCopies: totals?.foilCopies || 0,
+    deckCount: decks?.count || 0,
+    openTrades: openTrades?.count || 0,
+  };
+}
+
+/**
+ * Empty a user's collection.
+ *
+ * Deliberately narrow: this removes owned copies and nothing else. Decks,
+ * shopping list, found pile and audit history all survive, because none of
+ * them is ownership — a deck is a list of cards you intend to play whether or
+ * not you hold them today, and losing those alongside the collection would
+ * make the wipe unrecoverable in the one way the audit log cannot fix.
+ *
+ * Every removed row is audited individually under a shared `batchId`, the same
+ * way `bulkAddToInventory` stamps an import, so a wipe done in error can be
+ * pulled back out of the history as one unit and re-entered. That is the point
+ * of doing this row by row rather than as a single DELETE.
+ *
+ * Refused while a trade is open. An accepted trade moves both sides' rows
+ * inside one transaction and would otherwise settle against a collection that
+ * no longer holds what was promised; the person is asked to finish or cancel
+ * the trade first rather than have it fail later for reasons they cannot see.
+ */
+export function clearCollection(userId, context = {}) {
+  const summary = summarizeCollectionForClear(userId);
+
+  if (summary.openTrades > 0) {
+    const error = new Error(
+      `You have ${summary.openTrades} open ${summary.openTrades === 1 ? 'trade' : 'trades'}. ` +
+      'Finish or cancel them before clearing your collection.'
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const batchId = context.batchId
+    || `clear-collection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const source = context.source || 'bulk_remove';
+
+  const rows = db.all(
+    `SELECT id, printing_id, is_foil, quantity
+       FROM owned_printings
+      WHERE user_id = ?`,
+    [userId]
+  );
+
+  db.transaction(() => {
+    for (const row of rows) {
+      db.run(`DELETE FROM owned_printings WHERE id = ?`, [row.id]);
+
+      recordInventoryChange({
+        userId,
+        actorUserId: context.actorUserId ?? userId,
+        printingId: row.printing_id,
+        isFoil: !!row.is_foil,
+        before: row.quantity,
+        after: 0,
+        source,
+        detail: { batchId, reason: 'clear_collection' },
+      });
+    }
+
+    // owned_cards is the legacy presence table and carries no quantity of its
+    // own; with every printing gone there is nothing left for it to assert.
+    db.run(`DELETE FROM owned_cards WHERE user_id = ?`, [userId]);
+  });
+
+  return { ...summary, batchId, removedRows: rows.length };
+}

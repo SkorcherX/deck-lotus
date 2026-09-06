@@ -174,6 +174,11 @@ export function showToast(message, type = 'success', duration = 3000) {
 /**
  * Styled confirmation dialog — a drop-in replacement for native confirm().
  * Returns a Promise<boolean>.
+ *
+ * `requireText` turns it into a written confirmation: the confirm button stays
+ * disabled until that exact phrase has been typed. Reserved for the handful of
+ * actions where a mis-aimed click cannot be undone — a dialog you can dismiss
+ * with Enter is not a speed bump for those.
  */
 export function confirmDialog({
   title = 'Are you sure?',
@@ -182,6 +187,8 @@ export function confirmDialog({
   cancelText = 'Cancel',
   danger = false,
   icon,
+  requireText = null,
+  requireLabel = '',
 } = {}) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
@@ -192,9 +199,17 @@ export function confirmDialog({
         <div class="confirm-icon"><i class="ph-fill ${iconName}"></i></div>
         <h2>${title}</h2>
         ${message ? `<p>${message}</p>` : ''}
+        ${requireText ? `
+          <label class="confirm-phrase-label" for="confirm-phrase-input">
+            ${requireLabel || `Type <strong>${requireText}</strong> to confirm`}
+          </label>
+          <input id="confirm-phrase-input" class="confirm-phrase-input" type="text"
+                 autocomplete="off" autocapitalize="off" spellcheck="false">
+        ` : ''}
         <div class="modal-footer">
           <button class="btn btn-ghost" data-act="cancel">${cancelText}</button>
-          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-act="ok">${confirmText}</button>
+          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-act="ok"
+                  ${requireText ? 'disabled' : ''}>${confirmText}</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -204,17 +219,32 @@ export function confirmDialog({
       document.removeEventListener('keydown', onKey);
       resolve(val);
     };
-    overlay.querySelector('[data-act="ok"]').addEventListener('click', () => done(true));
+    const okBtn = overlay.querySelector('[data-act="ok"]');
+    const phraseInput = overlay.querySelector('#confirm-phrase-input');
+    // Whitespace is forgiven, case is not: the phrase is usually a username,
+    // and a copy-paste that carried a trailing space should not read as a
+    // failed confirmation.
+    const satisfied = () => !requireText || phraseInput.value.trim() === requireText;
+
+    if (phraseInput) {
+      phraseInput.addEventListener('input', () => {
+        okBtn.disabled = !satisfied();
+      });
+    }
+
+    okBtn.addEventListener('click', () => {
+      if (satisfied()) done(true);
+    });
     overlay.querySelector('[data-act="cancel"]').addEventListener('click', () => done(false));
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) done(false);
     });
     const onKey = (e) => {
       if (e.key === 'Escape') done(false);
-      else if (e.key === 'Enter') done(true);
+      else if (e.key === 'Enter' && satisfied()) done(true);
     };
     document.addEventListener('keydown', onKey);
-    overlay.querySelector('[data-act="ok"]').focus();
+    (phraseInput || okBtn).focus();
   });
 }
 

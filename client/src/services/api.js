@@ -481,6 +481,19 @@ class ApiClient {
     return this.request(`/sets/${code}/cards?page=${page}`);
   }
 
+  async getCollectionClearSummary() {
+    return this.request('/inventory/collection/summary');
+  }
+
+  // The typed phrase travels with the request: the server checks it too, so
+  // the confirmation cannot be lost by skipping the dialog.
+  async clearCollection(confirm) {
+    return this.request('/inventory/collection', {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm }),
+    });
+  }
+
   // Admin methods
   // Unauthenticated on the server: it has to answer while the card tables are
   // being rebuilt, which is when an API-key lookup could not.

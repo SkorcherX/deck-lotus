@@ -288,6 +288,9 @@ export function setupSettings() {
     } catch {}
   }
 
+  document.getElementById('clear-collection-btn')
+    .addEventListener('click', clearCollectionFlow);
+
   window.addEventListener('page:settings', async () => {
     await loadAvatarSettings();
     await loadApiKeys();
@@ -296,7 +299,130 @@ export function setupSettings() {
     await loadBackupConfig();
     await loadBackups();
     await loadPriceSchedule();
+    await loadClearCollectionSummary();
   });
+}
+
+/**
+ * The size of the collection, shown beside the clear button so the warning is
+ * about a number rather than an abstraction.
+ */
+async function loadClearCollectionSummary() {
+  const el = document.getElementById('clear-collection-summary');
+  if (!el) return;
+
+  try {
+    const summary = await api.getCollectionClearSummary();
+    const copies = summary.copies || 0;
+
+    el.innerHTML = copies === 0
+      ? 'Your collection is already empty.'
+      : `You currently own <strong>${copies}</strong> ${copies === 1 ? 'copy' : 'copies'} `
+        + `across <strong>${summary.distinctCards}</strong> `
+        + `${summary.distinctCards === 1 ? 'card' : 'cards'}`
+        + `${summary.foilCopies ? ` (${summary.foilCopies} foil)` : ''}.`;
+  } catch (error) {
+    el.textContent = '';
+    console.error('Failed to load collection summary:', error);
+  }
+}
+
+/**
+ * Clear-collection flow: offer a backup, then require the username typed out.
+ *
+ * The backup offer comes first and deliberately blocks on the file being
+ * written, because after the second dialog there is nothing left to back up.
+ * Declining it is allowed — someone who already has a nightly file should not
+ * be made to take another — but the choice is put in front of them rather
+ * than left as advice in a paragraph nobody reads.
+ */
+async function clearCollectionFlow() {
+  let summary;
+
+  try {
+    summary = await api.getCollectionClearSummary();
+  } catch (error) {
+    showToast('Failed to check your collection: ' + error.message, 'error');
+    return;
+  }
+
+  if (!summary.copies) {
+    showToast('Your collection is already empty', 'info');
+    return;
+  }
+
+  if (summary.openTrades > 0) {
+    showModal('Finish your trades first', `
+      <p>You have ${summary.openTrades} open
+      ${summary.openTrades === 1 ? 'trade' : 'trades'}. An accepted trade moves
+      cards out of your collection, so it cannot settle against a collection
+      that has been emptied underneath it.</p>
+      <p>Finish or cancel ${summary.openTrades === 1 ? 'it' : 'them'} and try again.</p>
+    `);
+    return;
+  }
+
+  const wantsBackup = await confirmDialog({
+    title: 'Take a backup first?',
+    message: 'A backup is the only way back from this. Create one now, or skip '
+      + 'if you already have a recent file.',
+    confirmText: 'Back up now',
+    cancelText: 'Skip backup',
+    icon: 'ph-floppy-disk',
+  });
+
+  if (wantsBackup) {
+    try {
+      showLoading();
+      const result = await api.createBackupNow();
+      hideLoading();
+      showToast(`Backup created: ${result.filename}`, 'success');
+      await loadBackups();
+    } catch (error) {
+      hideLoading();
+      showToast('Backup failed, nothing was cleared: ' + error.message, 'error');
+      return;
+    }
+  }
+
+  let username;
+
+  try {
+    username = (await api.getProfile()).user.username;
+  } catch (error) {
+    showToast('Could not confirm who you are: ' + error.message, 'error');
+    return;
+  }
+
+  const ok = await confirmDialog({
+    title: 'Clear your entire collection?',
+    message: `This permanently removes all ${summary.copies} `
+      + `${summary.copies === 1 ? 'copy' : 'copies'} you own across `
+      + `${summary.distinctCards} ${summary.distinctCards === 1 ? 'card' : 'cards'}. `
+      + `Your ${summary.deckCount} ${summary.deckCount === 1 ? 'deck' : 'decks'} stay as `
+      + 'listed but will read as short of every card. This cannot be undone from '
+      + 'the app.',
+    confirmText: 'Clear my collection',
+    danger: true,
+    requireText: username,
+    requireLabel: `Type your username <strong>${username}</strong> to confirm`,
+  });
+
+  if (!ok) return;
+
+  try {
+    showLoading();
+    const result = await api.clearCollection(username);
+    hideLoading();
+    showToast(
+      `Collection cleared — ${result.copies} ${result.copies === 1 ? 'copy' : 'copies'} removed`,
+      'success'
+    );
+    await loadClearCollectionSummary();
+  } catch (error) {
+    hideLoading();
+    showToast('Failed to clear collection: ' + error.message, 'error');
+  }
 }
 
 function setupAvatarSettings() {

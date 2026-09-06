@@ -11,6 +11,8 @@ import {
   getBuilderInventory,
   getOwnedSets,
   exportInventory,
+  clearCollection,
+  summarizeCollectionForClear,
 } from '../services/inventoryService.js';
 import { addOwnedPrintingQuantity } from '../services/cardService.js';
 import { AUDIT_SOURCES } from '../services/auditService.js';
@@ -209,6 +211,44 @@ router.post('/bulk-remove-resolve', authenticate, (req, res, next) => {
     }
 
     res.json({ items: resolveBulkRemoveItems(req.user.id, items) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/inventory/collection/summary
+ * What clearing the collection would take. Read-only; the confirmation
+ * dialog quotes these numbers back before asking anyone to type anything.
+ */
+router.get('/collection/summary', authenticate, (req, res, next) => {
+  try {
+    res.json(summarizeCollectionForClear(req.user.id));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/inventory/collection
+ * Empty the caller's collection. Body: { confirm: "<your username>" }
+ *
+ * The typed confirmation is checked here and not only in the browser. A
+ * dialog can be skipped — this endpoint is one call away from anything
+ * holding an API key — so the phrase has to be part of the request itself
+ * for the request to mean what the dialog claimed it meant.
+ */
+router.delete('/collection', authenticate, (req, res, next) => {
+  try {
+    const confirm = String(req.body?.confirm ?? '').trim();
+
+    if (confirm !== req.user.username) {
+      return res.status(400).json({
+        error: 'Type your username exactly to confirm clearing your collection',
+      });
+    }
+
+    res.json({ success: true, ...clearCollection(req.user.id, { source: 'bulk_remove' }) });
   } catch (error) {
     next(error);
   }

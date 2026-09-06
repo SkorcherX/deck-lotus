@@ -2998,6 +2998,25 @@ button.btn-icon.active {
 .confirm-dialog h2 { font-size: var(--text-lg); margin-bottom: var(--space-2); }
 .confirm-dialog p { color: var(--text-secondary); margin-bottom: var(--space-5); }
 
+/* Written confirmation: the phrase field on a destructive confirmDialog. */
+.confirm-phrase-label {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+.confirm-phrase-label strong { color: var(--text-primary); font-family: var(--font-mono, monospace); }
+.confirm-phrase-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.confirm-phrase-input:focus { outline: none; border-color: var(--danger); }
+
 @media (prefers-reduced-motion: reduce) {
   .drawer, .drawer-panel, .popover, .toast { animation: none; }
 }
