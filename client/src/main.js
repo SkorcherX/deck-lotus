@@ -196,6 +196,9 @@ class App {
       case 'cards':
         window.dispatchEvent(new CustomEvent('page:cards'));
         break;
+      case 'deck-generator':
+        window.dispatchEvent(new CustomEvent('page:deck-generator'));
+        break;
       case 'shopping':
         window.dispatchEvent(new CustomEvent('page:shopping'));
         break;

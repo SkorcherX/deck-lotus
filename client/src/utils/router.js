@@ -21,6 +21,11 @@
 /** Page name → path. The first entry is the default. */
 export const ROUTES = [
   ['decks', '/decks'],
+  // Before /decks/:id would ever be tried, but that is not why it is spelled
+  // out: parsePath matches the deck id with \d+, so "generate" could never be
+  // read as one. It is a page of its own because the generator holds a page's
+  // worth of choices, and losing them to a stray click was the modal's fault.
+  ['deck-generator', '/decks/generate'],
   ['cards', '/cards'],
   ['inventory', '/inventory'],
   ['shopping', '/shopping'],

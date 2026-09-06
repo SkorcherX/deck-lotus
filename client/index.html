@@ -1338,73 +1338,151 @@
                 </div>
             </div>
 
-            <div id="generate-deck-modal" class="modal hidden">
-                <div class="modal-content" style="max-width: 860px">
-                    <span class="modal-close" id="generate-deck-close">&times;</span>
-                    <h2 style="margin-bottom: 0.5rem">Generate a Deck</h2>
-                    <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
-                        Builds a Commander deck out of cards you already own. Everything here is
-                        worked out from card text, so treat it as a starting point &mdash; each card
-                        says why it was picked, and anything the collection could not cover is
-                        listed rather than hidden. Nothing is saved until you accept it.
-                    </p>
+            <!--
+              The deck generator, as a page rather than a dialog.
 
-                    <div class="generate-controls">
-                        <div class="form-group">
-                            <label for="generate-format">Format</label>
-                            <select id="generate-format">
-                                <option value="commander" selected>Commander</option>
-                                <option value="standard">Standard</option>
-                                <option value="pioneer">Pioneer</option>
-                                <option value="modern">Modern</option>
-                                <option value="legacy">Legacy</option>
-                                <option value="vintage">Vintage</option>
-                                <option value="pauper">Pauper</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="generate-commander-group">
-                            <label for="generate-commander">Commander</label>
-                            <select id="generate-commander"></select>
-                        </div>
-                        <!-- Sixty-card formats have no commander to take colours from,
-                             so they are chosen outright. -->
-                        <div class="form-group hidden" id="generate-colors-group">
-                            <label>Colours</label>
-                            <div class="generate-colors">
-                                <label><input type="checkbox" class="generate-color" value="W" /> White</label>
-                                <label><input type="checkbox" class="generate-color" value="U" /> Blue</label>
-                                <label><input type="checkbox" class="generate-color" value="B" /> Black</label>
-                                <label><input type="checkbox" class="generate-color" value="R" /> Red</label>
-                                <label><input type="checkbox" class="generate-color" value="G" /> Green</label>
+              It was a modal first, and the modal was the reason it stayed
+              shallow: a commander is chosen by looking at the card, and a
+              dropdown of six hundred names is not looking at anything. The
+              same is true of the theme — "blink (18 enablers / 11 payoffs)"
+              reads as a measurement to somebody who already knows what blink
+              is, and as nothing at all to somebody who does not. Both needed
+              room, so both got a page.
+
+              The order of the sections is the order the choices depend on each
+              other in: the format decides whether colours come from a
+              commander or are picked outright, and the colours decide which
+              themes there is any point offering.
+            -->
+            <div id="deck-generator-page" class="page hidden">
+                <div class="page-header">
+                    <h2>Generate a Deck</h2>
+                    <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+                        Builds a deck out of cards you already own. Everything here is worked out
+                        from card text, so treat it as a starting point &mdash; each card says why
+                        it was picked, and anything your collection could not cover is listed
+                        rather than hidden. Nothing is saved until you accept it.
+                    </p>
+                </div>
+
+                <div class="generator-page">
+                    <section class="generator-step">
+                        <div class="generator-step-head">
+                            <span class="generator-step-number">1</span>
+                            <div>
+                                <h3>Format</h3>
+                                <p>What kind of deck this is. It sets the size, the land count and
+                                   which cards are legal.</p>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="generate-theme">Build around</label>
-                            <select id="generate-theme"></select>
+
+                        <div class="generator-format-row">
+                            <div class="form-group">
+                                <label for="generate-format">Format</label>
+                                <select id="generate-format">
+                                    <option value="commander" selected>Commander (100 cards, one of each)</option>
+                                    <option value="standard">Standard (60 cards)</option>
+                                    <option value="pioneer">Pioneer (60 cards)</option>
+                                    <option value="modern">Modern (60 cards)</option>
+                                    <option value="legacy">Legacy (60 cards)</option>
+                                    <option value="vintage">Vintage (60 cards)</option>
+                                    <option value="pauper">Pauper (60 cards, commons only)</option>
+                                </select>
+                            </div>
+
+                            <label class="generate-toggle">
+                                <input type="checkbox" id="generate-include-committed" checked />
+                                <span>
+                                    <strong>Use cards that are in my other decks</strong>
+                                    &mdash; on by default, because most of a collection is usually
+                                    already built into something. Nothing is taken: a generated deck
+                                    is saved as an idea, so it never reports your built decks as
+                                    short. Turn it off to propose only from cards nothing else has
+                                    claimed.
+                                </span>
+                            </label>
                         </div>
-                    </div>
+                    </section>
 
-                    <label class="generate-toggle">
-                        <input type="checkbox" id="generate-include-committed" checked />
-                        <span>
-                            <strong>Use cards that are in my other decks</strong>
-                            &mdash; on by default, because most of a collection is usually already
-                            built into something. Nothing is taken: a generated deck is saved as an
-                            idea, so it never reports your built decks as short. Turn it off to
-                            propose only from cards nothing else has claimed.
-                        </span>
-                    </label>
+                    <!-- Commander only. Sixty-card formats have no commander to
+                         take colours from, so they are chosen outright below. -->
+                    <section class="generator-step" id="generate-commander-group">
+                        <div class="generator-step-head">
+                            <span class="generator-step-number">2</span>
+                            <div>
+                                <h3>Commander</h3>
+                                <p>The legendary creature the deck is built around. It fixes which
+                                   colours you may play and starts every game available to you, so
+                                   it matters more than any other single card.</p>
+                            </div>
+                        </div>
 
-                    <div style="display: flex; gap: 0.5rem; margin: 1rem 0;">
-                        <button id="generate-run" class="btn btn-primary" style="flex: 1">Generate</button>
-                    </div>
+                        <div class="generator-commander-controls">
+                            <input
+                                type="text"
+                                id="generate-commander-search"
+                                placeholder="Search your commanders by name..."
+                                autocomplete="off"
+                            />
+                            <div class="generate-colors" id="generate-commander-colors">
+                                <label><input type="checkbox" class="generate-commander-color" value="W" /> White</label>
+                                <label><input type="checkbox" class="generate-commander-color" value="U" /> Blue</label>
+                                <label><input type="checkbox" class="generate-commander-color" value="B" /> Black</label>
+                                <label><input type="checkbox" class="generate-commander-color" value="R" /> Red</label>
+                                <label><input type="checkbox" class="generate-commander-color" value="G" /> Green</label>
+                            </div>
+                            <span id="generate-commander-count" class="generator-count"></span>
+                        </div>
 
-                    <div id="generate-result" class="hidden"></div>
+                        <div id="generate-commander-gallery" class="generator-gallery"></div>
+                        <!-- Holds the chosen commander's card id. Hidden rather
+                             than removed: every read of the choice goes through
+                             one element, whether it was made by clicking art or
+                             restored when the page was reopened. -->
+                        <input type="hidden" id="generate-commander" />
+                    </section>
 
-                    <div id="generate-accept-row" class="hidden generate-accept-row">
-                        <input type="text" id="generate-deck-name" placeholder="Deck name" />
-                        <button id="generate-accept" class="btn btn-primary">Save as a new deck</button>
-                    </div>
+                    <section class="generator-step hidden" id="generate-colors-group">
+                        <div class="generator-step-head">
+                            <span class="generator-step-number">2</span>
+                            <div>
+                                <h3>Colours</h3>
+                                <p>Which colours the deck may play. Fewer colours means more
+                                   reliable mana; more colours means a wider choice of cards.</p>
+                            </div>
+                        </div>
+                        <div class="generate-colors">
+                            <label><input type="checkbox" class="generate-color" value="W" /> White</label>
+                            <label><input type="checkbox" class="generate-color" value="U" /> Blue</label>
+                            <label><input type="checkbox" class="generate-color" value="B" /> Black</label>
+                            <label><input type="checkbox" class="generate-color" value="R" /> Red</label>
+                            <label><input type="checkbox" class="generate-color" value="G" /> Green</label>
+                        </div>
+                    </section>
+
+                    <section class="generator-step">
+                        <div class="generator-step-head">
+                            <span class="generator-step-number">3</span>
+                            <div>
+                                <h3>Build around</h3>
+                                <p>The thing the deck is trying to do. Every option below was
+                                   measured against the cards you own in these colours, so what is
+                                   offered is what your collection can actually support.</p>
+                            </div>
+                        </div>
+                        <div id="generate-theme-list" class="generator-themes"></div>
+                        <!-- The chosen theme's key, written by the cards above. -->
+                        <input type="hidden" id="generate-theme" />
+                    </section>
+
+                    <section class="generator-step">
+                        <button id="generate-run" class="btn btn-primary generator-run">Generate</button>
+                        <div id="generate-result" class="hidden"></div>
+                        <div id="generate-accept-row" class="hidden generate-accept-row">
+                            <input type="text" id="generate-deck-name" placeholder="Deck name" />
+                            <button id="generate-accept" class="btn btn-primary">Save as a new deck</button>
+                        </div>
+                    </section>
                 </div>
             </div>
 

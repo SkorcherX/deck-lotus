@@ -1146,7 +1146,7 @@ export function exportInventory(userId, { shape = 'precise' } = {}) {
  * chose a printing with no non-foil copy for 32 of one collection's 538 cards.
  */
 const BEST_OWNED_COPY = (column) => `(
-  SELECT op2.${column}
+  SELECT ${column.includes('.') ? column : `op2.${column}`}
     FROM owned_printings op2
     JOIN printings p2 ON p2.id = op2.printing_id
    WHERE p2.card_id = c.id AND op2.user_id = ? AND op2.quantity > 0
@@ -1189,6 +1189,10 @@ export function getGeneratorPool(userId, { includeCommitted = true } = {}) {
       c.edhrec_rank,
       ${BEST_OWNED_COPY('printing_id')} AS printing_id,
       ${BEST_OWNED_COPY('is_foil')} AS is_foil,
+      -- The art of the same copy the deck would be built from, so the
+      -- commander gallery shows the printing you actually own rather than
+      -- whichever one the card table lists first.
+      ${BEST_OWNED_COPY('p2.image_url')} AS image_url,
       COALESCE((
         SELECT SUM(dc.quantity)
           FROM deck_cards dc
@@ -1208,10 +1212,10 @@ export function getGeneratorPool(userId, { includeCommitted = true } = {}) {
     )
     WHERE available > 0
   `,
-  // Four bindings, in the order the placeholders appear: the printing
-  // subquery, the finish subquery, the committed-elsewhere subquery, and the
-  // outer WHERE.
-  [userId, userId, userId, userId]);
+  // Five bindings, in the order the placeholders appear: the printing
+  // subquery, the finish subquery, the image subquery, the committed-elsewhere
+  // subquery, and the owned-by filter.
+  [userId, userId, userId, userId, userId]);
 }
 
 /**

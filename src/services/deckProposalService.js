@@ -55,6 +55,14 @@ export function commanderOptions(userId, { includeCommitted = true } = {}) {
       manaCost: card.mana_cost,
       available: card.available,
       committed: card.committed,
+      // For browsing by art. The image is of the copy actually owned, and the
+      // rules text travels with it because a commander is chosen for what it
+      // does — a gallery of pictures with no text is a poster, not a picker.
+      imageUrl: card.image_url || null,
+      oracleText: card.oracle_text || '',
+      power: card.power,
+      toughness: card.toughness,
+      cmc: card.cmc,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -91,6 +99,12 @@ export function themeOptions(userId, commanderCardId, {
     .map((theme) => ({
       key: theme.key,
       label: theme.label,
+      // What the theme means, in words rather than counts. See the note on
+      // THEMES: the numbers below are evidence, and evidence is only useful to
+      // somebody who already knows what is being claimed.
+      blurb: theme.blurb || '',
+      enablerName: theme.enablerName || 'enablers',
+      payoffName: theme.payoffName || 'payoffs',
       tribe: theme.tribe,
       enablers: theme.enablers,
       payoffs: theme.payoffs,

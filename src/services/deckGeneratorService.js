@@ -476,6 +476,12 @@ export function buildDeck(pool, {
       ? {
         key: theme.key || null,
         label: theme.label,
+        // The same wording the picker showed, repeated on the result: the
+        // proposal is read by somebody who may have let the generator choose
+        // the theme, and "built around blink" is not an explanation.
+        blurb: theme.blurb || '',
+        enablerName: theme.enablerName || 'enablers',
+        payoffName: theme.payoffName || 'payoffs',
         tribe: theme.tribe || null,
         // The evidence, per the rule that nothing built on these heuristics is
         // stated without it.

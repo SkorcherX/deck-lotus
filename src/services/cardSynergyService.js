@@ -88,10 +88,23 @@ export function withinColorIdentity(card, identity) {
  * collections for having both halves present; a theme that cannot reach
  * `MIN_VIABLE_STRENGTH` in any identity is a label, not a deck, and adding
  * more of those makes the ranking noisier without making it better.
+ *
+ * Alongside the two predicates each theme carries three strings that exist
+ * only to be read by a person: `blurb` says in plain English what a deck built
+ * this way is trying to do, and `enablerName`/`payoffName` name the two halves
+ * in that theme's own terms. "27 enablers, 20 payoffs" means nothing to
+ * somebody who has been playing for a week; "27 ways to make tokens, 20 cards
+ * that reward having them" is the same number saying something. They live
+ * beside the predicates on purpose — a theme whose text drifts from what its
+ * regexes match is worse than one with no text at all, and here the two are
+ * impossible to edit separately by accident.
  */
 export const THEMES = {
   aristocrats: {
     label: 'sacrifice and death triggers',
+    blurb: 'Your creatures are ammunition. You sacrifice them yourself — for value, to dodge removal, to trigger something — and a second set of cards turns each of those deaths into damage, life or cards. It grinds a long game down rather than racing.',
+    enablerName: 'ways to make or sacrifice creatures',
+    payoffName: 'cards that pay you when something dies',
     enabler: (card) => {
       const text = effectText(card);
       return /sacrifice (a|another) (creature|permanent|artifact)/.test(text)
@@ -113,6 +126,9 @@ export const THEMES = {
 
   counters: {
     label: '+1/+1 counters',
+    blurb: 'Creatures that grow. You spend cards putting +1/+1 counters on things, then play cards that care how many counters are out there, so a modest creature becomes the reason you win.',
+    enablerName: 'ways to put counters on creatures',
+    payoffName: 'cards that reward counters',
     enabler: (card) => {
       const text = effectText(card);
       return /(put|with|enters with) (a|two|three|four|x|\d+) \+1\/\+1 counter/.test(text);
@@ -128,6 +144,9 @@ export const THEMES = {
 
   graveyard: {
     label: 'graveyard value',
+    blurb: 'Your graveyard is a second hand. You deliberately put cards into it — milling, discarding, cheap spells traded off early — and then spend the game buying them back or casting them from there.',
+    enablerName: 'ways to fill your graveyard',
+    payoffName: 'cards that use your graveyard',
     enabler: (card) => {
       const text = effectText(card);
       return /\bmill(s|ed)?\b/.test(text)
@@ -147,6 +166,9 @@ export const THEMES = {
 
   tokens: {
     label: 'token swarm',
+    blurb: 'Quantity over quality. You make lots of small creature tokens, then play the cards that make a wide board frightening — anthems, effects counting your creatures, ways to cash the whole team in at once.',
+    enablerName: 'ways to make tokens',
+    payoffName: 'cards that reward a wide board',
     enabler: (card) => /create[^.]{0,50}token/.test(effectText(card)),
     payoff: (card) => {
       const text = effectText(card);
@@ -160,6 +182,9 @@ export const THEMES = {
 
   spellslinger: {
     label: 'instants and sorceries matter',
+    blurb: 'You are the one casting spells all game. The deck is heavy on instants and sorceries, and the creatures are the ones that grow or draw or burn every time you cast one, so cheap spells stop being one-shot answers.',
+    enablerName: 'instants and sorceries',
+    payoffName: 'cards that trigger off casting them',
     // The enabler here is the card's own type rather than its text: a
     // spellslinger deck is enabled by simply containing instants and
     // sorceries, which is not true of any other theme in this list.
@@ -175,6 +200,9 @@ export const THEMES = {
 
   lifegain: {
     label: 'lifegain payoffs',
+    blurb: 'Gaining life is the trigger, not the point. On its own life does not win a game, so the deck pairs steady lifegain with cards that turn each gain into damage, creatures or cards.',
+    enablerName: 'ways to gain life',
+    payoffName: 'cards that pay you for gaining it',
     enabler: (card) => {
       const text = effectText(card);
       return /you gain \d+ life/.test(text)
@@ -191,6 +219,9 @@ export const THEMES = {
 
   artifacts: {
     label: 'artifacts matter',
+    blurb: 'A deck made of objects. Artifacts are colourless, so they stack up regardless of what you are playing, and the payoffs count them, cheapen them, or bring them back — the board builds itself into a machine.',
+    enablerName: 'artifacts and artifact makers',
+    payoffName: 'cards that count artifacts',
     enabler: (card) => isArtifact(card) || /create[^.]{0,40}artifact token/.test(effectText(card)),
     payoff: (card) => {
       const text = effectText(card);
@@ -203,6 +234,9 @@ export const THEMES = {
 
   enchantments: {
     label: 'enchantments matter',
+    blurb: 'Permanents that stay put. Enchantments are hard for most decks to remove, so the deck builds a board that is difficult to interact with and plays the cards that trigger whenever another one lands.',
+    enablerName: 'enchantments',
+    payoffName: 'cards that reward enchantments',
     enabler: (card) => /\benchantment\b/.test(typeOf(card)),
     payoff: (card) => {
       const text = effectText(card);
@@ -215,6 +249,9 @@ export const THEMES = {
 
   blink: {
     label: 'blink and enter-the-battlefield value',
+    blurb: 'You keep re-reading the same good cards. Creatures whose best line is the moment they enter play, paired with effects that exile and return them, so the same arrival trigger happens over and over.',
+    enablerName: 'ways to flicker your permanents',
+    payoffName: 'creatures worth re-entering play',
     enabler: (card) => {
       const text = effectText(card);
       return /exile[^.]{0,50}return (it|them|that card|those cards) to the battlefield/.test(text)
@@ -232,6 +269,9 @@ export const THEMES = {
 
   landfall: {
     label: 'lands matter',
+    blurb: 'Lands are the engine. You play extra lands, fetch them out of the library and return them to your hand, while payoff cards fire every time one comes down — so the most ordinary thing in Magic starts winning games.',
+    enablerName: 'ways to play extra lands',
+    payoffName: 'cards that trigger on lands',
     enabler: (card) => {
       const text = effectText(card);
       return /search your library for a[^.]{0,30}land card/.test(text)
@@ -279,6 +319,20 @@ export function tribeTheme(subtype) {
   return {
     key: `tribe:${name}`,
     label: `${name} tribal`,
+    // Written from the type rather than picked from a table: there are
+    // hundreds of creature types and any list of hand-written blurbs would be
+    // missing the one somebody's collection is deepest in. Nothing here
+    // pluralises the type — English does not agree with itself about Elves,
+    // Dwarves and Sphinxes, and "Elfs" in the first line of an explanation
+    // costs more trust than the phrasing saves.
+    blurb: `A deck of one creature type. You play as much ${name} as your `
+      + `collection holds and then the cards that specifically reward `
+      + `${name} — the ones that pump every one of them, or trigger when `
+      + `another arrives, or search your library for the next. The type is `
+      + `the deck's glue, so cards that would be unremarkable on their own `
+      + `get much better together.`,
+    enablerName: `${name} creatures you own`,
+    payoffName: `cards that name ${name}`,
     tribe: name,
     enabler: (card) => isCreature(card) && subtypesOf(card).includes(name),
     payoff: (card) => named.test(effectText(card)),
@@ -326,6 +380,12 @@ export function analyzeTheme(cards, theme) {
   return {
     key: theme.key || null,
     label: theme.label,
+    // Carried through rather than looked up again by the caller: a tribal
+    // theme is built on the fly and exists nowhere for a caller to look it up
+    // in, so the wording has to travel with the analysis or it is lost.
+    blurb: theme.blurb || '',
+    enablerName: theme.enablerName || 'enablers',
+    payoffName: theme.payoffName || 'payoffs',
     tribe: theme.tribe || null,
     enablers: enablers.length,
     payoffs: payoffs.length,

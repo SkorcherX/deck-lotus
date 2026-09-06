@@ -1,11 +1,22 @@
 /**
- * The deck generator's modal: pick a commander, pick what to build around,
- * look at what came back, and decide.
+ * The deck generator's page: pick a format, pick a commander by looking at it,
+ * pick what to build around, read what came back, and decide.
+ *
+ * ── Why this is a page ─────────────────────────────────────────────────────
+ *
+ * It began as a modal with two dropdowns, and both of them were asking for a
+ * judgement they gave no basis for. A commander is chosen by reading the card
+ * — a `<select>` of six hundred names is a list of strings, not a choice — and
+ * a theme called "blink (18 enablers / 11 payoffs)" is a measurement that only
+ * means something to a player who already knew what blink was. So the
+ * commanders are browsed as card art, and every theme carries a plain-English
+ * description of what a deck built that way is trying to do, with the counts
+ * named in that theme's own terms underneath.
  *
  * ── Why this shows so much ─────────────────────────────────────────────────
  *
  * Every card in the proposal was chosen by matching regular expressions
- * against English card text, and that will sometimes be wrong. A panel that
+ * against English card text, and that will sometimes be wrong. A page that
  * simply produced a deck would be asking to be trusted about a judgement it is
  * not entitled to. So the reason each card was picked travels with it, the
  * theme shows the counts behind it, and the gaps the collection could not fill
@@ -20,9 +31,12 @@
 
 import api from '../services/api.js';
 import { showToast, showError } from '../utils/ui.js';
+import { zoomButton } from '../utils/cardZoom.js';
 
 let proposal = null;
 let commanders = [];
+let themes = [];
+let wired = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -41,47 +55,69 @@ const isCommander = () => chosenFormat() === 'commander';
 const chosenColors = () => [...document.querySelectorAll('.generate-color:checked')]
   .map((box) => box.value).join('');
 
+/** The colours the commander gallery is being filtered down to. */
+const galleryColors = () => [...document.querySelectorAll('.generate-commander-color:checked')]
+  .map((box) => box.value);
+
 /**
  * Commander picks its colours from the commander; every other format has to be
- * told. Swapping which control is shown keeps the panel from asking for both.
+ * told. Swapping which section is shown keeps the page from asking for both.
  */
 function applyFormat() {
   $('generate-commander-group')?.classList.toggle('hidden', !isCommander());
   $('generate-colors-group')?.classList.toggle('hidden', isCommander());
 }
 
-/** Mana symbols as plain text — the panel is dense enough without pips. */
+/** Mana symbols as plain text — the page is dense enough without pips. */
 const cost = (manaCost) => (manaCost || '').replace(/[{}]/g, ' ').trim();
 
+const COLOR_WORDS = { W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' };
+
+/** "white and blue", for a colour identity string. */
+function colorPhrase(identity) {
+  const words = [...String(identity || '')].map((c) => COLOR_WORDS[c]).filter(Boolean);
+  if (words.length === 0) return 'colourless';
+  if (words.length === 1) return words[0];
+  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
+
 export function setupDeckGenerator() {
-  const openBtn = $('generate-deck-btn');
-  const modal = $('generate-deck-modal');
-  if (!openBtn || !modal) return;
-
-  const close = () => modal.classList.add('hidden');
-
-  openBtn.addEventListener('click', async () => {
-    modal.classList.remove('hidden');
-    resetResult();
-    applyFormat();
-    if (isCommander()) await loadCommanders();
-    else await loadThemes();
+  // The entry point from the deck list. Navigating rather than opening means
+  // the choices get a URL, so Back leaves the generator instead of leaving the
+  // app, and a half-made proposal survives a reload of the address bar.
+  $('generate-deck-btn')?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'deck-generator' } }));
   });
 
-  $('generate-deck-close')?.addEventListener('click', close);
-  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  window.addEventListener('page:deck-generator', onShow);
+}
 
-  // Changing either input invalidates whatever is on screen: leaving a
-  // proposal visible under a commander it was not built for is how somebody
-  // saves the wrong deck.
-  $('generate-commander')?.addEventListener('change', async () => {
-    resetResult();
-    await loadThemes();
-  });
+/**
+ * Wire the page the first time it is shown, and load what it needs every time.
+ *
+ * The listeners are attached once — the page is never rebuilt, only hidden —
+ * but the commander list is re-read on each visit, because the collection may
+ * have changed since the last one.
+ */
+async function onShow() {
+  if (!wired) {
+    wire();
+    wired = true;
+  }
 
+  applyFormat();
+  if (isCommander()) await loadCommanders();
+  else await loadThemes();
+}
+
+function wire() {
+  // Changing any input invalidates whatever is on screen: leaving a proposal
+  // visible under a commander it was not built for is how somebody saves the
+  // wrong deck.
   $('generate-include-committed')?.addEventListener('change', async () => {
     resetResult();
-    await loadCommanders();
+    if (isCommander()) await loadCommanders();
+    else await loadThemes();
   });
 
   $('generate-format')?.addEventListener('change', async () => {
@@ -91,6 +127,13 @@ export function setupDeckGenerator() {
     else await loadThemes();
   });
 
+  // Filtering the gallery is not choosing anything, so it redraws the tiles
+  // and touches nothing else.
+  $('generate-commander-search')?.addEventListener('input', renderCommanders);
+  document.querySelectorAll('.generate-commander-color').forEach((box) => {
+    box.addEventListener('change', renderCommanders);
+  });
+
   document.querySelectorAll('.generate-color').forEach((box) => {
     box.addEventListener('change', async () => {
       resetResult();
@@ -98,7 +141,36 @@ export function setupDeckGenerator() {
     });
   });
 
-  $('generate-theme')?.addEventListener('change', resetResult);
+  // One listener on the gallery rather than one per tile: the tiles are
+  // rewritten on every keystroke in the search box.
+  $('generate-commander-gallery')?.addEventListener('click', async (event) => {
+    const tile = event.target.closest('.generator-card');
+    // The zoom glass sits inside the tile and opens the full-size image; it is
+    // a look, not a choice, and cardZoom has already handled it.
+    if (!tile || event.target.closest('.card-zoom-btn')) return;
+
+    selectCommander(tile.dataset.cardId);
+    resetResult();
+    await loadThemes();
+  });
+
+  // Keyboard equivalent of the click above, which a real <button> would have
+  // given us for free. Space is included because that is what a button does.
+  $('generate-commander-gallery')?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const tile = event.target.closest('.generator-card');
+    if (!tile) return;
+    event.preventDefault();
+    tile.click();
+  });
+
+  $('generate-theme-list')?.addEventListener('click', (event) => {
+    const tile = event.target.closest('.generator-theme');
+    if (!tile) return;
+    selectTheme(tile.dataset.themeKey || '');
+    resetResult();
+  });
+
   $('generate-run')?.addEventListener('click', run);
   $('generate-accept')?.addEventListener('click', accept);
 }
@@ -108,67 +180,218 @@ function resetResult() {
   const result = $('generate-result');
   if (result) { result.innerHTML = ''; result.classList.add('hidden'); }
   $('generate-accept-row')?.classList.add('hidden');
+
+  // The name goes with the proposal it was suggested for. The dialog got away
+  // without this because closing it ended the session; a page does not close,
+  // so a name suggested for a commander deck sat there through a switch to
+  // Modern and would have been saved onto a deck with no commander in it.
+  const name = $('generate-deck-name');
+  if (name) name.value = '';
 }
 
-async function loadCommanders() {
-  const select = $('generate-commander');
-  if (!select) return;
+// --- Commanders ------------------------------------------------------------
 
-  select.innerHTML = '<option>Loading…</option>';
+async function loadCommanders() {
+  const gallery = $('generate-commander-gallery');
+  if (!gallery) return;
+
+  gallery.innerHTML = '<div class="generator-empty">Loading your commanders…</div>';
   try {
     const data = await api.getGeneratorCommanders(includeCommitted());
     commanders = data.commanders || [];
 
     if (commanders.length === 0) {
-      select.innerHTML = '<option value="">No commanders available</option>';
-      $('generate-theme').innerHTML = '';
+      gallery.innerHTML = `
+        <div class="generator-empty">
+          No legendary creatures in your collection to lead a deck. Add some to your
+          inventory, or switch the format above to a sixty-card one, which needs no
+          commander.
+        </div>`;
+      $('generate-theme-list').innerHTML = '';
       return;
     }
 
-    select.innerHTML = commanders.map((c) =>
-      `<option value="${c.cardId}">${escapeHtml(c.name)} — ${escapeHtml(c.colorIdentity || 'colourless')}</option>`
-    ).join('');
+    // A choice that survives the list being reloaded, but only if it is still
+    // in it — turning off "cards in my other decks" can take a commander away.
+    const chosen = $('generate-commander').value;
+    if (!commanders.some((c) => String(c.cardId) === String(chosen))) {
+      selectCommander(commanders[0].cardId);
+    }
 
+    renderCommanders();
     await loadThemes();
   } catch (error) {
     console.error('Failed to load commanders:', error);
-    select.innerHTML = '<option value="">Could not load commanders</option>';
+    gallery.innerHTML = '<div class="generator-empty">Could not load your commanders.</div>';
   }
 }
 
+/** The commanders left after the search box and the colour ticks. */
+function filteredCommanders() {
+  const needle = ($('generate-commander-search')?.value || '').trim().toLowerCase();
+  const colors = galleryColors();
+
+  return commanders.filter((c) => {
+    if (needle && !c.name.toLowerCase().includes(needle)) return false;
+    // Every ticked colour has to be in the identity, rather than any of them:
+    // ticking white and blue is a request for a deck that plays both, and an
+    // "any" reading buries the Azorius commanders under every mono-white one.
+    return colors.every((color) => String(c.colorIdentity || '').includes(color));
+  });
+}
+
+function selectCommander(cardId) {
+  const field = $('generate-commander');
+  if (field) field.value = cardId == null ? '' : String(cardId);
+  markSelectedCommander();
+}
+
+function markSelectedCommander() {
+  const chosen = $('generate-commander')?.value;
+  document.querySelectorAll('.generator-card').forEach((tile) => {
+    tile.classList.toggle('selected', tile.dataset.cardId === chosen);
+    tile.setAttribute('aria-pressed', tile.dataset.cardId === chosen ? 'true' : 'false');
+  });
+}
+
+function renderCommanders() {
+  const gallery = $('generate-commander-gallery');
+  if (!gallery) return;
+
+  const shown = filteredCommanders();
+  const count = $('generate-commander-count');
+  if (count) {
+    count.textContent = shown.length === commanders.length
+      ? `${commanders.length} commander${commanders.length === 1 ? '' : 's'} you own`
+      : `${shown.length} of ${commanders.length}`;
+  }
+
+  if (shown.length === 0) {
+    gallery.innerHTML = '<div class="generator-empty">No commander you own matches that.</div>';
+    return;
+  }
+
+  // A div with a button role rather than a <button>: the zoom glass is itself
+  // a button, and a button inside a button is invalid HTML — the parser closes
+  // the outer one early, which threw the name and the mana cost out of the
+  // tile and left the gallery reading as one card per row.
+  gallery.innerHTML = shown.map((c) => `
+    <div role="button" tabindex="0" class="generator-card" data-card-id="${c.cardId}"
+         aria-pressed="false" title="${escapeHtml(c.typeLine || '')}">
+      <div class="generator-card-art">
+        ${c.imageUrl
+          // Lazily, because a deep collection is several hundred images and
+          // the gallery is scrolled rather than read all at once.
+          ? `<img src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(c.name)}" loading="lazy" />`
+          : `<div class="generator-card-noart">${escapeHtml(c.name)}</div>`}
+        ${zoomButton(c.imageUrl, c.name)}
+      </div>
+      <div class="generator-card-name">${escapeHtml(c.name)}</div>
+      <div class="generator-card-meta">
+        ${escapeHtml(colorPhrase(c.colorIdentity))}
+        ${c.manaCost ? `&middot; ${escapeHtml(cost(c.manaCost))}` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  markSelectedCommander();
+}
+
+// --- Themes ----------------------------------------------------------------
+
+function selectTheme(key) {
+  const field = $('generate-theme');
+  if (field) field.value = key || '';
+  document.querySelectorAll('.generator-theme').forEach((tile) => {
+    const selected = (tile.dataset.themeKey || '') === (key || '');
+    tile.classList.toggle('selected', selected);
+    tile.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+}
+
 async function loadThemes() {
-  const select = $('generate-theme');
-  if (!select) return;
+  const list = $('generate-theme-list');
+  if (!list) return;
 
   const commanderCardId = isCommander() ? $('generate-commander')?.value : null;
   if (isCommander() && !commanderCardId) return;
 
-  select.innerHTML = '<option>Loading…</option>';
+  if (!isCommander() && !chosenColors()) {
+    list.innerHTML = '<div class="generator-empty">Pick at least one colour above.</div>';
+    return;
+  }
+
+  list.innerHTML = '<div class="generator-empty">Measuring your collection…</div>';
   try {
     const data = await api.getGeneratorThemes(commanderCardId, includeCommitted(), {
       identity: chosenColors(),
       format: chosenFormat(),
     });
-    const themes = data.themes || [];
-
-    // "Let it choose" first, then the themes with their evidence in the label.
-    // The numbers are the argument for the theme, so they belong where the
-    // choice is made rather than behind a tooltip.
-    const options = [`<option value="">Strongest theme in these colours</option>`];
-    for (const theme of themes) {
-      const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-      const strength = `${plural(theme.enablers, 'enabler')} / ${plural(theme.payoffs, 'payoff')}`;
-      const weak = theme.viable ? '' : ' — thin';
-      options.push(
-        `<option value="${escapeHtml(theme.key)}">${escapeHtml(theme.label)} (${strength})${weak}</option>`
-      );
-    }
-    select.innerHTML = options.join('');
+    themes = data.themes || [];
+    renderThemes();
   } catch (error) {
     console.error('Failed to load themes:', error);
-    select.innerHTML = '<option value="">Strongest theme in these colours</option>';
+    themes = [];
+    renderThemes();
   }
 }
+
+function renderThemes() {
+  const list = $('generate-theme-list');
+  if (!list) return;
+
+  // "Let it choose" first and always present: it is the answer for somebody
+  // who does not yet know which of these they want, which is most of the
+  // people this page was widened for.
+  const auto = `
+    <button type="button" class="generator-theme" data-theme-key="" aria-pressed="false">
+      <div class="generator-theme-head">
+        <span class="generator-theme-label">Let it choose for me</span>
+      </div>
+      <p class="generator-theme-blurb">
+        Builds around whichever of the themes below your collection supports best. A
+        reasonable first try if none of them mean much to you yet — the deck it
+        proposes will say which one it picked, and why.
+      </p>
+    </button>`;
+
+  const cards = themes.map((theme) => `
+      <button type="button" class="generator-theme" data-theme-key="${escapeHtml(theme.key)}"
+              aria-pressed="false">
+        <div class="generator-theme-head">
+          <span class="generator-theme-label">${escapeHtml(theme.label)}</span>
+          ${theme.viable
+            ? ''
+            // Named rather than hidden. A thin theme is still buildable and
+            // sometimes the only one in a young collection; what it must not do
+            // is look like the others.
+            : '<span class="generator-theme-thin" title="Buildable, but your collection is short of one half of it">thin</span>'}
+        </div>
+        <p class="generator-theme-blurb">${escapeHtml(theme.blurb || '')}</p>
+        <div class="generator-theme-counts">
+          <span><strong>${theme.enablers}</strong> ${escapeHtml(theme.enablerName)}</span>
+          <span><strong>${theme.payoffs}</strong> ${escapeHtml(theme.payoffName)}</span>
+        </div>
+        ${theme.examples && theme.examples.length ? `
+          <div class="generator-theme-examples">
+            e.g. ${theme.examples.slice(0, 4).map((n) => escapeHtml(n)).join(', ')}
+          </div>` : ''}
+      </button>`).join('');
+
+  list.innerHTML = auto + (cards || `
+    <div class="generator-empty">
+      Nothing in these colours is dense enough to build around yet. "Let it choose"
+      still works — it will assemble a deck out of your best cards without a theme.
+    </div>`);
+
+  // Whatever was chosen before, if it is still on offer. A theme that has gone
+  // (the colours moved) falls back to letting the generator choose rather than
+  // silently keeping a key nothing here shows.
+  const chosen = $('generate-theme')?.value || '';
+  selectTheme(themes.some((t) => t.key === chosen) ? chosen : '');
+}
+
+// --- Generating ------------------------------------------------------------
 
 async function run() {
   const commanderCardId = isCommander() ? $('generate-commander')?.value : null;
@@ -207,6 +430,8 @@ async function run() {
         || `${chosenFormat()} ${proposal.colorIdentity || ''}`.trim();
       name.value = `${lead}${themeLabel}`.slice(0, 80);
     }
+
+    $('generate-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     console.error('Generate failed:', error);
     showError(error.body?.error || error.message || 'Could not generate a deck');
@@ -242,8 +467,12 @@ function render(p) {
 
     ${p.theme ? `
       <div class="generate-theme-note">
-        Built around <strong>${escapeHtml(p.theme.label)}</strong> —
-        ${p.theme.enablers} enablers and ${p.theme.payoffs} payoffs in these colours.
+        <strong>Built around ${escapeHtml(p.theme.label)}.</strong>
+        ${escapeHtml(p.theme.blurb || '')}
+        <span class="generate-theme-evidence">
+          Your collection has ${p.theme.enablers} ${escapeHtml(p.theme.enablerName || 'enablers')}
+          and ${p.theme.payoffs} ${escapeHtml(p.theme.payoffName || 'payoffs')} in these colours.
+        </span>
       </div>
     ` : ''}
 
@@ -466,8 +695,12 @@ async function accept() {
       : '';
     showToast(`Saved as an idea — ${result.added} cards${missed}`, 'success');
 
-    $('generate-deck-modal')?.classList.add('hidden');
+    // Back to the deck list, where the new deck is. Staying here would leave a
+    // proposal on screen that has already been saved, and the obvious next
+    // press saves it a second time.
+    resetResult();
     window.dispatchEvent(new CustomEvent('decks:changed'));
+    window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'decks' } }));
   } catch (error) {
     console.error('Accept failed:', error);
     showError(error.body?.error || error.message || 'Could not save the deck');

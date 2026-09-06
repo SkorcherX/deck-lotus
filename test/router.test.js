@@ -33,6 +33,13 @@ describe('parsing a URL into a route', () => {
     assert.equal(typeof parsePath('/decks/42').deckId, 'number');
   });
 
+  test('the generator is a page under /decks, not a deck id', () => {
+    // Both halves matter: /decks/generate has to resolve to the generator, and
+    // it must not be mistaken for a deck the builder would then try to fetch.
+    assert.deepEqual(parsePath('/decks/generate'), { page: 'deck-generator' });
+    assert.equal(pathFor('deck-generator'), '/decks/generate');
+  });
+
   test('a trailing slash is the same page', () => {
     assert.deepEqual(parsePath('/inventory/'), { page: 'inventory' });
     assert.deepEqual(parsePath('/decks/42/'), { page: 'deck-builder', deckId: 42 });

@@ -247,3 +247,36 @@ describe('rankThemes', () => {
     assert.deepEqual(viableThemes(thin, { includeTribes: false }), []);
   });
 });
+
+/**
+ * The wording, which is the only part of a theme a new player reads.
+ *
+ * A theme with no blurb still ranks, still builds and still shows two numbers
+ * — it just tells the person choosing it nothing, which is the whole failure
+ * the generator page exists to fix. Cheap to forget when adding a theme, so it
+ * is checked rather than trusted.
+ */
+describe('every theme explains itself', () => {
+  test('each mechanical theme carries a description and names its two halves', () => {
+    for (const [key, theme] of Object.entries(THEMES)) {
+      assert.ok(theme.blurb && theme.blurb.length > 40, `${key} has no blurb`);
+      assert.ok(theme.enablerName, `${key} does not name its enablers`);
+      assert.ok(theme.payoffName, `${key} does not name its payoffs`);
+    }
+  });
+
+  test('a tribe names itself, and never invents a plural', () => {
+    const elves = tribeTheme('Elf');
+    assert.match(elves.blurb, /Elf/);
+    // "Elfs" in the first line of an explanation costs more than the phrasing
+    // saves, so nothing here pluralises the type.
+    assert.doesNotMatch(elves.blurb, /Elfs/);
+    assert.doesNotMatch(`${elves.enablerName} ${elves.payoffName}`, /Elfs/);
+  });
+
+  test('the wording survives the analysis, which is where a caller reads it', () => {
+    const analyzed = analyzeTheme([], tribeTheme('Elf'));
+    assert.equal(analyzed.blurb, tribeTheme('Elf').blurb);
+    assert.equal(analyzed.payoffName, 'cards that name Elf');
+  });
+});
