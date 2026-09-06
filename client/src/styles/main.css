@@ -9150,7 +9150,29 @@ body.maintenance-locked #app {
   margin-bottom: 1rem;
 }
 
-.generator-commander-controls input[type="text"] { flex: 1 1 16rem; }
+/* The search box and the mana swatches beside it are one row of controls, so
+   they are one height. 48px is the swatch's, set in .color-checkbox-box; the
+   box outside a .form-group inherits none of the app's field styling, which is
+   why the border, padding and radius are spelled out here rather than only the
+   height. */
+.generator-commander-controls input[type="text"] {
+  flex: 1 1 16rem;
+  height: 48px;
+  padding: 0 var(--space-3);
+  background-color: var(--bg-tertiary);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.generator-commander-controls input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
 
 .generator-count {
   font-size: 0.78rem;
