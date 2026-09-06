@@ -33,7 +33,21 @@ function selfReference(card) {
 export function effectText(card) {
   const self = selfReference(card);
   const raw = textOf(card);
-  return self ? raw.replace(self, 'this') : raw;
+  const named = self ? raw.replace(self, 'this') : raw;
+
+  // Reminder text goes too, and it is worth being precise about why. The
+  // parenthetical after a keyword is a definition of the keyword, not a thing
+  // the card does in the deck you are putting it in. Read literally it makes
+  // every cycling land a card-selection spell — "(Discard this card: Draw a
+  // card.)" — and every basic landcycler a ramp spell. Measured over the
+  // 34,656 cards with rules text, that was 202 of 1,518 selection matches and
+  // 129 of 1,048 ramp matches; removal was untouched, because removal never
+  // hides in reminder text.
+  //
+  // The cost is the handful of tokens whose abilities live only in reminders —
+  // Treasure and Powerstone — so the predicates that care name those tokens
+  // directly instead.
+  return named.replace(/\([^)]*\)/g, ' ');
 }
 
 const keywordsOf = (card) => {
@@ -117,7 +131,9 @@ export function isCreatureRemoval(card) {
   const text = effectText(card);
   return /(destroy|exile) target[^.]{0,40}creature/.test(text)
     || /(destroy|exile) target[^.]{0,40}(nonland )?permanent/.test(text)
-    || /target creature[^.]{0,30}gets -\d+\/-\d+/.test(text)
+    // The toughness has to actually come down. Fleeting Distraction's -1/-0 is
+    // a combat trick, and counting it as removal let it fill a removal slot.
+    || /target creature[^.]{0,30}gets -(\d+|x)\/-(?!0\b)(\d+|x)/.test(text)
     || /deals \d+ damage to (target creature|any target)/.test(text)
     || /target creature.{0,40}(fights|its controller sacrifices)/.test(text);
 }
@@ -127,7 +143,10 @@ export function isPermanentRemoval(card) {
   const text = effectText(card);
   return /(destroy|exile) target[^.]{0,40}(artifact|enchantment|planeswalker|nonland permanent|permanent)/.test(text)
     || /(destroy|exile) target[^.]{0,40}land\b/.test(text)
-    || /return target (nonland )?permanent[^.]{0,30}to (its owner's|their owner's) hand/.test(text);
+    || /return target (nonland )?permanent[^.]{0,30}to (its owner's|their owner's) hand/.test(text)
+    // Tucking answers a permanent as completely as destroying it, and answers
+    // the indestructible ones it cannot destroy — Chaos Warp is the staple.
+    || /shuffles? (it|target[^.]{0,30}permanent) into (their|its owner's|that player's) library/.test(text);
 }
 
 /**
@@ -224,9 +243,43 @@ export function isSelection(card) {
 /** Net extra cards — the thing Part 8 says is genuinely hard to come by. */
 export function isCardAdvantage(card) {
   const text = effectText(card);
-  if (/draw (two|three|four|\w+) cards/.test(text) && !/discard (two|three|\w+) cards/.test(text)) return true;
-  // A repeating trigger that draws is an engine even if it draws one at a time.
-  if (/(whenever|at the beginning of)[^.]{0,80}draw a card/.test(text)) return true;
+
+  // More than one card at once. The count was `\w+`, which matches any word at
+  // all — "draw no cards" and "draw those cards" counted the same as "draw
+  // three cards".
+  // `draws` as well as `draw`: Sign in Blood reads "target player draws two
+  // cards", and the missing s was enough to lose it.
+  const many = /draws? (two|three|four|five|six|seven|x|that many) cards?|draws? cards equal to/;
+  // "discards their hand, then draws seven" is a wheel: it refills a hand it
+  // emptied, and nobody is up a card.
+  const manyDiscard = /discards? (two|three|four|five|six|seven|x|that many|your hand|their hand)/;
+  if (many.test(text) && !manyDiscard.test(text)) return true;
+
+  // A recurring draw is an engine even at one card a turn, but only when it
+  // actually recurs. The old arm accepted any trigger within eighty characters
+  // of "draw a card", which made card advantage out of "whenever this creature
+  // becomes blocked, you may draw a card" — a conditional that fires when an
+  // opponent allows it. An upkeep or end-step trigger fires by itself.
+  if (/at the beginning of[^.]{0,60}draw a card/.test(text)) return true;
+
+  // Triggers broad enough to fire most turns in most decks. Enumerated rather
+  // than accepting any "whenever", because the difference between an engine
+  // and a lottery ticket is how often the trigger happens.
+  // The window is wide because the condition sits between the trigger and the
+  // draw: Guardian Project spends sixty characters on "if it doesn't have the
+  // same name as..." before it gets to drawing. `casts` covers the Rhystic
+  // Study family, where the trigger is an opponent's spell rather than yours.
+  if (/whenever[^.]{0,60}\b(you cast|casts|enters|dies|attacks|deals combat damage to a player)\b[^.]{0,120}draws? a card/.test(text)) return true;
+
+  // Deliberately not caught: Fact or Fiction and its family, which reveal a
+  // pile and take it without ever saying "draw". Every pattern loose enough to
+  // reach across its three sentences also matches "reveal the top four cards,
+  // put a creature card into your hand" — a tutor, which is one card for one
+  // card. Part 8's whole point is that selection and advantage are different
+  // things, and conflating them here would undo that everywhere the advisor
+  // counts them separately. A handful of missed cards is the cheaper error.
+
+  // Regrowth: a card back from the graveyard is a card gained.
   return /return[^.]{0,40}from your graveyard to your hand/.test(text);
 }
 
@@ -238,7 +291,39 @@ export function isTutor(card) {
 export function isRamp(card) {
   if (isLand(card)) return false;
   const text = effectText(card);
-  return /\badd \{/.test(text) || /search your library for a[^.]{0,30}land card/.test(text);
+
+  // Mana this card makes itself: rocks, dorks and rituals alike. Both the
+  // symbol form and the words, since Birds of Paradise and Arcane Signet say
+  // "add one mana of any color" and never print a symbol. "Spend this mana
+  // only to..." is the exception — a source that cannot cast the deck's
+  // spells is not acceleration.
+  if (/\badd \{|add one mana of any/.test(text)
+    && !/spend this mana only to\b/.test(text)) return true;
+
+  // Treasure and Powerstone are deliberately not counted. They tap for mana,
+  // so the case for including them is real, but 431 of the cards that make one
+  // are creatures that sometimes produce a Treasure off a conditional trigger
+  // — "whenever this attacks, roll a d20; on 1-9 create a Treasure" — and that
+  // is not a mana source. Separating those from the spells cast *for* their
+  // Treasures needs to know which clause the trigger governs, and clause
+  // splitting gets it wrong whenever the trigger and the effect are separate
+  // sentences, which is most of them. The rest of this function already offers
+  // the generator some 1,300 candidates, so the honest trade is to leave the
+  // ambiguous ones out rather than to guess at them.
+
+  // Putting a land onto the battlefield is ramp. Searching one to *hand* is
+  // fixing — it costs a card and a turn and accelerates nothing — which is
+  // what basic landcycling does, and it used to count here. The land is named
+  // by type as often as by the word "land": Farseek and Three Visits never say
+  // "land card" at all.
+  const LAND = '(land|forest|island|swamp|mountain|plains) card';
+  if (new RegExp(`search your library for[^.]{0,50}${LAND}[^.]{0,80}onto the battlefield`).test(text)) return true;
+  if (new RegExp(`put[^.]{0,30}${LAND}[^.]{0,40}from your hand onto the battlefield`).test(text)) return true;
+
+  // Extra land drops. "two additional lands" is the same effect as one.
+  if (/play (an|one|two|three) additional land/.test(text)) return true;
+
+  return false;
 }
 
 /** Fast mana: ramp cheap enough to deploy something the turn it lands. */
