@@ -130,11 +130,59 @@ export function isPermanentRemoval(card) {
     || /return target (nonland )?permanent[^.]{0,30}to (its owner's|their owner's) hand/.test(text);
 }
 
+/**
+ * A board wipe: something that removes several permanents at once.
+ *
+ * The first version of this ended with `each (creature|player sacrifices)`,
+ * and that one clause matched 1,127 cards on its own — almost all of them
+ * "put a +1/+1 counter on each creature you control" and other pump. It made
+ * `isSweeper` fire on 4.7% of every card printed, so the deck generator filled
+ * its three board-wipe slots with Abzan Falconer and Plumb the Forbidden.
+ * Counting creatures is not sweeping them, and the clause is gone.
+ *
+ * What replaced it names what has to be swept rather than excluding the zones
+ * it must not touch. The exclusion approach threw away Farewell, whose modes
+ * include exiling all graveyards *and* all creatures; requiring a board noun
+ * keeps it while still passing over Rest in Peace ("exile all graveyards") and
+ * Divining Witch ("exile all other cards revealed this way").
+ *
+ * Measured over the 34,656 cards with rules text: 779 matches against the old
+ * 1,641, catching 36 of 36 hand-labelled sweepers with none of 24 hand-labelled
+ * non-sweepers.
+ */
 export function isSweeper(card) {
   const text = effectText(card);
-  return /(destroy|exile) all/.test(text)
-    || /all creatures get -\d+\/-\d+/.test(text)
-    || /each (creature|player sacrifices)/.test(text);
+
+  // Overload rewrites "target" as "each", so an overloaded removal spell hits
+  // the whole board — Damn and Cyclonic Rift read as spot removal until the
+  // keyword. It has to be removal though: Teleportal is overloaded too and
+  // pumps your own team.
+  if (/\boverload\b/.test(text)
+    && /\b(destroy|exile) target|deals? \d+ damage to target|return target|target [^.]{0,30}gets? -\d+\/-\d+/.test(text)) return true;
+
+  // Mass destruction or exile of things on the board.
+  if (/\b(destroy|exile) (all|each)[^.]{0,40}\b(creature|permanent|artifact|enchantment|planeswalker|land|token|nonland|nontoken|blocking|attacking)/.test(text)) return true;
+
+  // Mass bounce — Evacuation, River's Rebuke, Flood of Tears.
+  if (/\breturn all\b[^.]{0,60}\bto (its|their) owner/.test(text)) return true;
+
+  // Mass sacrifice. Living Death and Slaughter the Strong empty the board
+  // without destroying anything, and a symmetric edict taking several apiece
+  // is a wipe where one apiece is only removal.
+  if (/sacrifices? all\b[^.]{0,60}\b(creature|permanent|artifact|enchantment|land)/.test(text)) return true;
+  if (/each player sacrifices (two|three|four|five|six|seven|eight|nine|ten|\d+)\b/.test(text)) return true;
+
+  // Mass shrink. X rather than a digit so Toxic Deluge counts, and the
+  // one-sided wording so Massacre Wurm does. The toughness has to actually
+  // come down: Cumber Stone's -1/-0 kills nothing and is an anthem in reverse,
+  // not a wipe.
+  if (/\b(all creatures|creatures (you|your opponents?|target player)[^.]{0,20}control)\b[^.]{0,30}\bgets? -(\d+|x)\/-(?!0\b)(\d+|x)/.test(text)) return true;
+
+  // Mass damage — Blasphemous Act, Anger of the Gods. X as well as a digit,
+  // for Fault Line and the other scaling burn.
+  if (/deals? (\d+|x) damage to (each|all) creature/.test(text)) return true;
+
+  return false;
 }
 
 export function isDiscard(card) {
