@@ -52,7 +52,9 @@ import {
 } from './cardSynergyService.js';
 
 import { isBasicLand } from './basicLands.js';
-import { getRoleTargets, getFormatProfile, colorSourcesWanted } from '../config/deckProfiles.js';
+import {
+  getRoleTargets, getFormatProfile, colorSourcesWanted, castingTurn,
+} from '../config/deckProfiles.js';
 
 const COLORS = ['W', 'U', 'B', 'R', 'G'];
 const COLOR_NAMES = { W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' };
@@ -122,7 +124,7 @@ export function landProduces(card) {
  * most sources wins — the same approach `colorRequirements` takes in
  * `deckAdvisorService`, for the same reason.
  */
-export function colorDemands(cards, deckSize = 100) {
+export function colorDemands(cards, deckSize = 100, format = 'commander') {
   const demands = {};
 
   for (const card of cards) {
@@ -131,9 +133,9 @@ export function colorDemands(cards, deckSize = 100) {
     if (hasAlternativeCost(card)) continue;
 
     const pips = costPips(card.mana_cost);
-    // Mana value stands in for the turn it is cast, capped at the last turn
-    // the Karsten tables describe.
-    const turn = Math.max(1, Math.min(5, Math.ceil(mvOf(card)) || 1));
+    // When the requirement has to be met by, which is not the mana value in
+    // a slow format. See castingTurn in deckProfiles.
+    const turn = castingTurn(mvOf(card), format);
 
     for (const [color, count] of Object.entries(pips)) {
       const wanted = colorSourcesWanted(turn, count, deckSize);
@@ -381,6 +383,7 @@ export function buildDeck(pool, {
     deckSize: size,
     colorIdentity,
     maxCopies,
+    format,
   });
 
   // --- Report --------------------------------------------------------------
@@ -474,8 +477,9 @@ function curveOf(cards) {
  */
 export function buildManaBase({
   spells, landPool, landCount, deckSize, colorIdentity, maxCopies = 1,
+  format = 'commander',
 }) {
-  const demands = colorDemands(spells, deckSize);
+  const demands = colorDemands(spells, deckSize, format);
   const wantedColors = Object.keys(demands);
   const shortfalls = [];
   const chosen = [];

@@ -25,7 +25,7 @@ import {
 } from './cardRoleService.js';
 
 import {
-  getFormatProfile, colorSourcesWanted, DECK_REQUIREMENTS, SYMMETRY_HAZARDS
+  getFormatProfile, colorSourcesWanted, castingTurn, DECK_REQUIREMENTS, SYMMETRY_HAZARDS
 } from '../config/deckProfiles.js';
 
 const OPENING_HAND = 7;
@@ -129,7 +129,7 @@ function suggestedLandCount(deckSize, averageSpellCost, selectionDensity) {
  * Per-colour mana requirements: the most demanding thing each colour is asked
  * to do, and whether the mana base can do it.
  */
-function colorRequirements(spellCopies, landCopies, deckSize) {
+function colorRequirements(spellCopies, landCopies, deckSize, format) {
   const byColor = new Map();
 
   for (const card of spellCopies) {
@@ -148,7 +148,7 @@ function colorRequirements(spellCopies, landCopies, deckSize) {
       // A discounted card is cast earlier than its printed cost but is rarely
       // the card you must have on curve, so it is treated as a later, softer
       // requirement than a card you actually intend to hard-cast.
-      const printedTurn = Math.max(1, Math.min(5, Math.ceil(mvOf(card)) || 1));
+      const printedTurn = castingTurn(mvOf(card), format);
       const turn = hasCostReduction(card) ? Math.min(printedTurn, 4) : printedTurn;
       const wanted = colorSourcesWanted(turn, count, deckSize);
       const currentWanted = colorSourcesWanted(entry.turn === 99 ? 5 : entry.turn, entry.pips, deckSize);
@@ -403,7 +403,7 @@ export function analyzeDeck(mainboard = [], sideboard = [], format = null) {
     // Colour targets are scaled to the deck as it stands rather than to the
     // finished size, so a half-built deck is asked "are you on pace?" instead
     // of being told it is short of a total it was never going to have yet.
-    colors: colorRequirements(spellCopies, landCopies, Math.max(mainboardSize, 20)),
+    colors: colorRequirements(spellCopies, landCopies, Math.max(mainboardSize, 20), format),
     expensiveUnexcused,
     requirements
   };
