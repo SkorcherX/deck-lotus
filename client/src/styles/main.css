@@ -1722,6 +1722,19 @@ select option {
   transform: translateY(-2px);
 }
 
+/* Which target the list below is for. Without it the preview is a wall of
+   text with nothing saying which site it was written for. */
+.export-format-btn.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.export-intro {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: -0.75rem 0 1.25rem;
+}
+
 .export-format-btn h3 {
   font-size: 1.125rem;
   margin-bottom: 0.5rem;
