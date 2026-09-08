@@ -1715,6 +1715,10 @@ select option {
   cursor: pointer;
   transition: all 0.2s;
   text-align: left;
+  /* A <button> resets its text to the platform's buttontext, which is black
+     on a dark tile. Stated here rather than on the heading alone, so anything
+     else put inside the tile starts from the theme's colour too. */
+  color: var(--text);
 }
 
 .export-format-btn:hover {
