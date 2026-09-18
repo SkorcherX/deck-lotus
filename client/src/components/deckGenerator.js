@@ -121,6 +121,36 @@ const cost = (manaCost) => (manaCost || '').replace(/[{}]/g, ' ').trim();
 
 const COLOR_WORDS = { W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' };
 
+// The pull checklist's group order: WUBRG, then multicolour, then colourless,
+// with lands broken out separately since they are already their own list.
+const PULL_GROUPS = [
+  { key: 'W', label: 'White' },
+  { key: 'U', label: 'Blue' },
+  { key: 'B', label: 'Black' },
+  { key: 'R', label: 'Red' },
+  { key: 'G', label: 'Green' },
+  { key: 'gold', label: 'Multicolour' },
+  { key: 'colorless', label: 'Colourless' },
+];
+
+/** Which pull group a card's colour identity belongs to. */
+function pullGroupKey(colorIdentity) {
+  const colors = String(colorIdentity || '').replace(/[^WUBRG]/g, '');
+  if (colors.length === 0) return 'colorless';
+  if (colors.length > 1) return 'gold';
+  return colors;
+}
+
+/**
+ * Which card was found, kept only for the life of this proposal. A pull
+ * checklist is a physical-search aid, not deck data — nothing here is sent
+ * anywhere, and a fresh Generate starts it empty again.
+ */
+let pulled = new Set();
+
+/** A stable key for a proposal row, since neither name nor printing alone is unique. */
+const pullKey = (c) => `${c.printingId ?? 'basic'}:${c.name}:${c.isFoil ? 'f' : 'n'}`;
+
 /** "white and blue", for a colour identity string. */
 function colorPhrase(identity) {
   const words = [...String(identity || '')].map((c) => COLOR_WORDS[c]).filter(Boolean);
@@ -277,6 +307,7 @@ function wire() {
 
 function resetResult() {
   proposal = null;
+  pulled = new Set();
   const result = $('generate-result');
   if (result) { result.innerHTML = ''; result.classList.add('hidden'); }
   $('generate-accept-row')?.classList.add('hidden');
@@ -551,6 +582,7 @@ async function run() {
     });
 
     proposal = data.proposal;
+    pulled = new Set();
     render(proposal);
 
     // Named after what it was built from, because a list of decks called
@@ -711,6 +743,8 @@ function render(p) {
       </div>
     </details>
 
+    ${renderPullChecklist(p)}
+
     <div class="generate-pool">
       Chosen from ${p.pool.cards} cards${p.pool.includeCommitted
         ? ', including cards currently in your other decks'
@@ -724,6 +758,98 @@ function render(p) {
   // Bound after the panel is written, because the button only exists when the
   // proposal actually came up short on a role.
   $('generate-find-gaps')?.addEventListener('click', findGaps);
+  wirePullChecklist();
+}
+
+/**
+ * The physical pull list: every card in the proposal, grouped by colour and
+ * alphabetised within it, with art so it can be matched against a box of
+ * cards rather than a spreadsheet. Lands come last as their own group,
+ * because they are usually stored apart from spells.
+ *
+ * Ticking a row is a "found it" mark for this session only — it never
+ * touches the deck or the collection, which is why `pulled` lives only in
+ * memory and is cleared on every fresh Generate.
+ */
+function renderPullChecklist(p) {
+  const rows = [
+    ...p.mainboard.map((c) => ({ ...c, group: pullGroupKey(c.colorIdentity) })),
+    ...p.lands.map((l) => ({ ...l, group: 'land' })),
+  ];
+  if (rows.length === 0) return '';
+
+  const groups = [...PULL_GROUPS, { key: 'land', label: 'Lands' }]
+    .map((g) => ({ ...g, rows: rows.filter((r) => r.group === g.key) }))
+    .filter((g) => g.rows.length > 0);
+
+  groups.forEach((g) => g.rows.sort((a, b) => a.name.localeCompare(b.name)));
+
+  const totalCopies = rows.reduce((sum, r) => sum + (r.quantity || 1), 0);
+  const foundCopies = rows.reduce(
+    (sum, r) => sum + (pulled.has(pullKey(r)) ? (r.quantity || 1) : 0), 0,
+  );
+
+  const row = (c) => {
+    const key = pullKey(c);
+    const found = pulled.has(key);
+    return `
+      <li class="pull-row${found ? ' pull-row-found' : ''}">
+        <label>
+          <input type="checkbox" class="pull-check" data-pull-key="${escapeHtml(key)}" ${found ? 'checked' : ''} />
+          <span class="pull-row-art">
+            ${c.imageUrl
+              ? `<img src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(c.name)}" loading="lazy" />`
+              : ''}
+          </span>
+          <span class="pull-row-qty">${c.quantity || 1}&times;</span>
+          <span class="pull-row-name">${escapeHtml(c.name)}</span>
+          <span class="pull-row-cost">${escapeHtml(cost(c.manaCost))}</span>
+        </label>
+      </li>`;
+  };
+
+  return `
+    <details class="generate-list pull-checklist" open>
+      <summary>
+        Pull checklist &mdash; <span id="pull-progress">${foundCopies} / ${totalCopies}</span> found
+      </summary>
+      <div class="generate-note">
+        Tick a card off as you find it in your storage. This is just for finding the
+        cards physically — it does not change the deck or your collection.
+      </div>
+      ${groups.map((g) => `
+        <div class="pull-group">
+          <div class="pull-group-head">${escapeHtml(g.label)} (${g.rows.length})</div>
+          <ul class="pull-group-list">${g.rows.map(row).join('')}</ul>
+        </div>
+      `).join('')}
+    </details>`;
+}
+
+function wirePullChecklist() {
+  const list = $('generate-result');
+  if (!list) return;
+
+  list.querySelectorAll('.pull-check').forEach((box) => {
+    box.addEventListener('change', () => {
+      const key = box.dataset.pullKey;
+      if (box.checked) pulled.add(key);
+      else pulled.delete(key);
+      box.closest('.pull-row')?.classList.toggle('pull-row-found', box.checked);
+      updatePullProgress();
+    });
+  });
+}
+
+function updatePullProgress() {
+  if (!proposal) return;
+  const rows = [...proposal.mainboard, ...proposal.lands];
+  const total = rows.reduce((sum, r) => sum + (r.quantity || 1), 0);
+  const found = rows.reduce(
+    (sum, r) => sum + (pulled.has(pullKey(r)) ? (r.quantity || 1) : 0), 0,
+  );
+  const progress = $('pull-progress');
+  if (progress) progress.textContent = `${found} / ${total}`;
 }
 
 /**

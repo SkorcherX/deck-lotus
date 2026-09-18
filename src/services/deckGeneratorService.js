@@ -532,6 +532,8 @@ function groupByName(cards, reasons) {
       // the wrong one claims a copy that does not exist.
       isFoil: Boolean(card.is_foil),
       manaCost: card.mana_cost || null,
+      colorIdentity: String(card.color_identity || '').replace(/[^WUBRG]/g, ''),
+      imageUrl: card.image_url || null,
       cmc: mvOf(card),
       typeLine: card.type_line || null,
       quantity: 1,
