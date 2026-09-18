@@ -2922,27 +2922,11 @@
                         >&times;</span
                     >
                     <h2 style="margin-bottom: 1.5rem">Export Deck</h2>
-                    <div class="export-options">
-                        <button
-                            class="export-format-btn"
-                            data-format="moxfield"
-                        >
-                            <h3>Moxfield</h3>
-                            <p>Format: 1 Card Name (SET) #</p>
-                        </button>
-                        <button class="export-format-btn" data-format="arena">
-                            <h3>Arena</h3>
-                            <p>Format: 1 Card Name</p>
-                        </button>
-                        <button class="export-format-btn" data-format="mtgo">
-                            <h3>MTGO</h3>
-                            <p>Format: 1 Card Name</p>
-                        </button>
-                        <button class="export-format-btn" data-format="text">
-                            <h3>Plain Text</h3>
-                            <p>Format: 1 Card Name</p>
-                        </button>
-                    </div>
+                    <p class="export-intro">
+                        Pick the site you are pasting into — each one wants a
+                        slightly different list.
+                    </p>
+                    <div class="export-options" id="export-format-list"></div>
                     <div id="export-preview" class="export-preview hidden">
                         <div
                             style="
@@ -2952,13 +2936,23 @@
                                 margin-bottom: 0.5rem;
                             "
                         >
-                            <h4>Deck List:</h4>
-                            <button
-                                class="btn btn-primary btn-sm"
-                                id="copy-export"
-                            >
-                                Copy to Clipboard
-                            </button>
+                            <h4 id="export-preview-title">Deck List:</h4>
+                            <div style="display: flex; gap: 0.5rem">
+                                <button
+                                    class="btn btn-secondary btn-sm"
+                                    id="download-export"
+                                >
+                                    <i class="ph ph-download-simple"></i>
+                                    Save as .txt
+                                </button>
+                                <button
+                                    class="btn btn-primary btn-sm"
+                                    id="copy-export"
+                                >
+                                    <i class="ph ph-copy"></i>
+                                    Copy to Clipboard
+                                </button>
+                            </div>
                         </div>
                         <textarea
                             id="export-text"

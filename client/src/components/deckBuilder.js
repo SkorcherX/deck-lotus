@@ -13,6 +13,7 @@ import {
 import { setupDeckRecord, renderDeckRecordLabel } from './deckRecord.js';
 import { renderDisruptionBanner } from './trades.js';
 import { zoomButton } from '../utils/cardZoom.js';
+import { EXPORT_FORMATS, formatDeckExport, exportFilename } from '../utils/deckExport.js';
 
 // Mana Pool's /search page 404s, but /card/{slug} goes straight to the
 // card's page — same slugging Mana Pool itself uses.
@@ -346,6 +347,7 @@ export function setupDeckBuilder() {
       showToast('Add some cards first', 'warning');
       return;
     }
+    renderExportFormats();
     document.getElementById('export-deck-modal').classList.remove('hidden');
     document.getElementById('export-preview').classList.add('hidden');
   });
@@ -355,14 +357,11 @@ export function setupDeckBuilder() {
     document.getElementById('export-deck-modal').classList.add('hidden');
   });
 
-  // Export format buttons
-  document.querySelectorAll('.export-format-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const format = btn.dataset.format;
-      const exportText = generateExport(format);
-      document.getElementById('export-text').value = exportText;
-      document.getElementById('export-preview').classList.remove('hidden');
-    });
+  // Export format buttons. Delegated, because the list is rendered from
+  // EXPORT_FORMATS each time the modal opens rather than written into the page.
+  document.getElementById('export-format-list').addEventListener('click', (event) => {
+    const btn = event.target.closest('.export-format-btn');
+    if (btn) showExportPreview(btn.dataset.format);
   });
 
   // Copy export
@@ -373,6 +372,13 @@ export function setupDeckBuilder() {
     }).catch(() => {
       showToast('Failed to copy', 'error');
     });
+  });
+
+  // Save the same text as a file. A phone with no clipboard worth the name and
+  // a site that only takes an upload are both reasons the copy button is not
+  // enough on its own.
+  document.getElementById('download-export').addEventListener('click', () => {
+    downloadExport();
   });
 
   // Back to decks. Routed rather than swapping the two pages' classes
@@ -1818,46 +1824,57 @@ function exportToManapool() {
   }
 }
 
-function generateExport(format) {
-  const mainboard = currentDeck.cards.filter(isMainboardCard);
-  const sideboard = currentDeck.cards.filter(isSideboardCard);
+// Which target the preview is currently showing, so Save and Copy hand over
+// the same list the buttons above them are highlighting.
+let exportFormat = null;
 
-  let text = '';
+function renderExportFormats() {
+  const list = document.getElementById('export-format-list');
+  list.innerHTML = EXPORT_FORMATS.map((format) => `
+    <button class="export-format-btn" data-format="${format.id}">
+      <h3>${format.label}</h3>
+      <p>${format.hint}</p>
+    </button>
+  `).join('');
+  exportFormat = null;
+}
 
-  switch (format) {
-    case 'moxfield':
-      // Format: 1 Card Name (SET) collector_number *F* (for foil)
-      text = mainboard.map(c => {
-        let line = `${c.quantity} ${c.name} (${c.set_code.toUpperCase()}) ${c.collector_number || ''}`;
-        if (c.finishes && c.finishes.includes('foil')) line += ' *F*';
-        return line.trim();
-      }).join('\n');
-      if (sideboard.length > 0) {
-        text += '\n\n';
-        text += sideboard.map(c => {
-          let line = `${c.quantity} ${c.name} (${c.set_code.toUpperCase()}) ${c.collector_number || ''}`;
-          if (c.finishes && c.finishes.includes('foil')) line += ' *F*';
-          return line.trim();
-        }).join('\n');
-      }
-      break;
+function showExportPreview(format) {
+  exportFormat = format;
 
-    case 'arena':
-    case 'mtgo':
-    case 'text':
-      // Simple format: quantity name
-      text = 'Deck\n' + mainboard.map(c => `${c.quantity} ${c.name}`).join('\n');
-      if (sideboard.length > 0) {
-        text += '\n\n' + sideboard.map(c => `${c.quantity} ${c.name}`).join('\n');
-      }
-      if (currentDeck.cards.find(c => c.is_commander)) {
-        const commander = currentDeck.cards.find(c => c.is_commander);
-        text = `Commander\n1 ${commander.name}\n\n` + text;
-      }
-      break;
-  }
+  document.querySelectorAll('#export-format-list .export-format-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.format === format);
+  });
 
-  return text;
+  const label = EXPORT_FORMATS.find((f) => f.id === format)?.label || 'Deck list';
+  document.getElementById('export-preview-title').textContent = `${label} list:`;
+  document.getElementById('export-text').value = formatDeckExport(currentDeck, format);
+  document.getElementById('export-preview').classList.remove('hidden');
+}
+
+/**
+ * Hand the exported list over as a .txt file.
+ *
+ * Built from the textarea rather than re-run, so what gets saved is the text
+ * that was on screen when the button was pressed.
+ */
+function downloadExport() {
+  if (!exportFormat) return;
+
+  const text = document.getElementById('export-text').value;
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = exportFilename(currentDeck, exportFormat);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoked on the next tick: revoking it in the same one races the download
+  // in Safari and saves an empty file.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+
+  showToast(`Saved ${link.download}`, 'success', 2000);
 }
 
 let lastMouseX = 0;

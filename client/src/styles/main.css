@@ -1715,11 +1715,28 @@ select option {
   cursor: pointer;
   transition: all 0.2s;
   text-align: left;
+  /* A <button> resets its text to the platform's buttontext, which is black
+     on a dark tile. Stated here rather than on the heading alone, so anything
+     else put inside the tile starts from the theme's colour too. */
+  color: var(--text);
 }
 
 .export-format-btn:hover {
   border-color: var(--primary);
   transform: translateY(-2px);
+}
+
+/* Which target the list below is for. Without it the preview is a wall of
+   text with nothing saying which site it was written for. */
+.export-format-btn.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.export-intro {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: -0.75rem 0 1.25rem;
 }
 
 .export-format-btn h3 {
