@@ -1,9 +1,12 @@
 services:
   deck-lotus:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: deck-lotus:latest
+    # Pulls the image GitHub Actions publishes on every push to main — no
+    # build tools needed. To build from source instead, comment out the
+    # `image:` line and uncomment `build:` (requires Docker buildx).
+    image: ghcr.io/skorcherx/deck-lotus:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     container_name: deck-lotus
     restart: unless-stopped
     ports:

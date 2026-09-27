@@ -116,7 +116,16 @@ EOF
 docker compose up -d
 ```
 
-App runs at `http://localhost:3000`. Generate a secure JWT secret with:
+App runs at `http://localhost:3000`.
+
+**The first start takes a while.** Before the server opens port 3000 it
+downloads and imports the full MTGJSON card database, and the decompress and
+import steps print little while they run. Expect 10–30 minutes depending on
+the machine; it is finished when the log shows `Deck Lotus server running on
+port 3000`. Follow it with `docker logs -f deck-lotus`, and don't restart the
+container mid-import, or it starts over. Later restarts skip this.
+
+Generate a secure JWT secret with:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
@@ -179,6 +188,8 @@ cd deck-lotus
 cp .env.example .env
 # Edit .env — set JWT_SECRET at minimum
 
+# In docker-compose.yml, comment out the `image:` line and uncomment the
+# `build:` block (building needs Docker buildx), then:
 docker compose up -d --build
 ```
 
@@ -626,7 +637,7 @@ The Dockerfile uses a three-stage build to keep the final image small (~150 MB):
 3. **Final image** — Alpine Node.js with runtime files only
 
 ```bash
-# Build and run locally
+# Build and run locally (after switching docker-compose.yml from `image:` to `build:`)
 docker compose up -d --build
 
 # Force a card data reimport (preserves user decks)
