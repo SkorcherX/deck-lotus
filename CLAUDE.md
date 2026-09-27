@@ -293,8 +293,12 @@ taken on GitHub — only do it when explicitly asked.
   `syncService.js`, so removing them is a separate, deliberate job. The
   `scan` audit source label is kept so historical rows still read correctly.
 - The analytics page (`src/services/analyticsService.js`, `/api/analytics/*`)
-  is the caller's own collection only; `req.user.id` is the scope and nothing
-  is read from the query. Its activity timeline reads `audit_log`, not
+  takes a scope of user ids decided by `resolveScope` in
+  `src/routes/analytics.js`: a regular user always gets their own, whatever
+  the query says; an admin may pass `userIds` for another user or a household
+  combined. In a combined scope a trade or loan between two members never left
+  the group, so it is not counted as cards in, out or lent out — it shows as
+  `withinGroup`. A new analytics query must take the scope, not a single id. Its activity timeline reads `audit_log`, not
   `owned_printings.created_at` — the audit log is the only record of removals,
   and until this feature `import-mtgjson.js` reset `created_at` to sync day on
   every restore. Value history lives in `collection_value_snapshots`, one row

@@ -8167,3 +8167,24 @@ body.maintenance-locked #app {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* Admin: whose analytics are shown */
+.analytics-scope {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.analytics-scope > label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4rem;
+}
+
+.analytics-scope .analytics-note { margin: 0.5rem 0 0; }
+.analytics-scope .analytics-note:empty { display: none; }

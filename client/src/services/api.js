@@ -1006,9 +1006,13 @@ class ApiClient {
     return this.request(`/audit/filters${query}`);
   }
 
-  /** One section of the analytics page: summary, timeline, sets, colors, value-history. */
-  async getAnalytics(section) {
-    return this.request(`/analytics/${section}`);
+  /**
+   * One section of the analytics page. `userIds` is admin-only — the server
+   * ignores it for anyone else and answers with their own collection.
+   */
+  async getAnalytics(section, userIds = null) {
+    const query = userIds?.length ? `?userIds=${userIds.join(',')}` : '';
+    return this.request(`/analytics/${section}${query}`);
   }
 }
 

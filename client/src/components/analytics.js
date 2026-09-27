@@ -20,8 +20,17 @@ const el = (id) => document.getElementById(id);
 const money = (n) => '$' + (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const count = (n) => (n || 0).toLocaleString();
 
+// Admin scope. null is "just me" — the normal path, no userIds sent. Otherwise
+// the ids being viewed: one other person, or a household combined.
+let currentUserId = null;
+let allUsers = [];
+let scopeUserIds = null;
+
 export function setupAnalytics() {
-  window.addEventListener('page:analytics', load);
+  window.addEventListener('page:analytics', async () => {
+    await setupAdminScope();
+    load();
+  });
   document.addEventListener('theme:changed', () => { if (data) renderCharts(); });
 
   document.querySelectorAll('[data-analytics-toggle]').forEach((btn) => {
@@ -40,7 +49,85 @@ export function setupAnalytics() {
   });
 }
 
+/**
+ * The admin's "Viewing analytics for" checklist, the same control the
+ * Inventory page uses: Everyone first, then one box per user. Tick one person
+ * to see theirs alone, or several to see them as one combined collection.
+ * Non-admins never see it, and the server would ignore their choice anyway.
+ */
+async function setupAdminScope() {
+  const row = el('analytics-admin-scope');
+  const checklist = el('analytics-user-checklist');
+
+  try {
+    const profile = await api.getProfile();
+    currentUserId = profile.user.id;
+    if (!profile.user.is_admin) {
+      row.classList.add('hidden');
+      scopeUserIds = null;
+      return;
+    }
+
+    ({ users: allUsers } = await api.getAllUsers());
+    row.classList.remove('hidden');
+
+    // Keep the selection across visits; start from "me" the first time.
+    const selected = new Set(scopeUserIds || [currentUserId]);
+    checklist.innerHTML = `
+      <label class="inventory-user-checkbox inventory-user-all">
+        <input type="checkbox" id="analytics-user-all" /> Everyone
+      </label>
+      ${allUsers.map((u) => `
+        <label class="inventory-user-checkbox">
+          <input type="checkbox" value="${u.id}" ${selected.has(u.id) ? 'checked' : ''} />
+          ${escapeHtml(u.username)}${u.id === currentUserId ? ' (me)' : ''}
+        </label>`).join('')}`;
+    syncScopeControls();
+
+    if (!checklist.dataset.wired) {
+      checklist.dataset.wired = 'true';
+      checklist.addEventListener('change', (e) => {
+        const boxes = [...checklist.querySelectorAll('input[value]')];
+        if (e.target.id === 'analytics-user-all') {
+          // Unticking Everyone falls back to your own, the one selection never empty.
+          boxes.forEach((cb) => { cb.checked = e.target.checked || Number(cb.value) === currentUserId; });
+        }
+        let checked = boxes.filter((cb) => cb.checked).map((cb) => Number(cb.value));
+        if (checked.length === 0) {
+          e.target.checked = true;
+          checked = [Number(e.target.value)];
+        }
+        scopeUserIds = checked.length === 1 && checked[0] === currentUserId ? null : checked;
+        syncScopeControls();
+        load();
+      });
+    }
+  } catch (error) {
+    console.error('Failed to load analytics user scope:', error);
+    row.classList.add('hidden');
+    scopeUserIds = null;
+  }
+}
+
+function syncScopeControls() {
+  const boxes = [...el('analytics-user-checklist').querySelectorAll('input[value]')];
+  const checked = boxes.filter((cb) => cb.checked);
+  const all = el('analytics-user-all');
+  all.checked = checked.length === boxes.length;
+  all.indeterminate = checked.length > 0 && checked.length < boxes.length;
+
+  const names = checked.map((cb) => allUsers.find((u) => u.id === Number(cb.value))?.username).filter(Boolean);
+  el('analytics-scope-note').textContent = names.length > 1
+    ? `Combined collection of ${names.join(', ')}. Cards traded or lent between them stay inside the group, so they don't count as coming in, going out or lent out.`
+    : '';
+}
+
+let loadSeq = 0;
+
 async function load() {
+  // Ticking boxes quickly starts overlapping loads; only the newest may render,
+  // or a slow earlier answer could paint one scope under another's name.
+  const seq = ++loadSeq;
   const status = el('analytics-status');
   status.textContent = 'Loading…';
   status.classList.remove('hidden');
@@ -48,18 +135,19 @@ async function load() {
     const [
       summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily, deckUse, tradesLoans,
     ] = await Promise.all([
-      api.getAnalytics('summary'),
-      api.getAnalytics('timeline'),
-      api.getAnalytics('sets'),
-      api.getAnalytics('colors'),
-      api.getAnalytics('value-history'),
-      api.getAnalytics('composition'),
-      api.getAnalytics('top-cards'),
-      api.getAnalytics('set-completion'),
-      api.getAnalytics('daily'),
-      api.getAnalytics('deck-use'),
-      api.getAnalytics('trades-loans'),
+      api.getAnalytics('summary', scopeUserIds),
+      api.getAnalytics('timeline', scopeUserIds),
+      api.getAnalytics('sets', scopeUserIds),
+      api.getAnalytics('colors', scopeUserIds),
+      api.getAnalytics('value-history', scopeUserIds),
+      api.getAnalytics('composition', scopeUserIds),
+      api.getAnalytics('top-cards', scopeUserIds),
+      api.getAnalytics('set-completion', scopeUserIds),
+      api.getAnalytics('daily', scopeUserIds),
+      api.getAnalytics('deck-use', scopeUserIds),
+      api.getAnalytics('trades-loans', scopeUserIds),
     ]);
+    if (seq !== loadSeq) return;
     data = {
       summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily, deckUse, tradesLoans,
     };
@@ -74,6 +162,7 @@ async function load() {
     renderTradesLoans();
     renderCharts();
   } catch (error) {
+    if (seq !== loadSeq) return;
     status.textContent = `Could not load analytics: ${error.message}`;
   }
 }
@@ -243,6 +332,12 @@ function renderTradesLoans() {
     ['Loans made', count(loans.made)],
     ['Loans taken', count(loans.taken)],
   ];
+  if (scopeUserIds && scopeUserIds.length > 1) {
+    stats.push(
+      ['Trades within the group', count(trades.withinGroup)],
+      ['Loans within the group', count(loans.withinGroup)],
+    );
+  }
   el('analytics-trades-loans').innerHTML = stats.map(([label, value]) => `
     <div><b>${value}</b><span>${label}</span></div>`).join('');
 }

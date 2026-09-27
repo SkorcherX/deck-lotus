@@ -186,8 +186,8 @@ describe('analytics', () => {
     db.run(`INSERT INTO trades (from_user_id, to_user_id, status) VALUES (?, ?, 'pending')`, [partnerId, userId]);
 
     const tl = analytics.getTradesAndLoans(userId);
-    assert.deepEqual(tl.trades, { accepted: 1, open: 1, closed: 0, cardsIn: 3, cardsOut: 2 });
-    assert.deepEqual(tl.loans, { lentNow: 1, borrowedNow: 0, made: 2, taken: 0 });
+    assert.deepEqual(tl.trades, { accepted: 1, open: 1, closed: 0, cardsIn: 3, cardsOut: 2, withinGroup: 0 });
+    assert.deepEqual(tl.loans, { lentNow: 1, borrowedNow: 0, made: 2, taken: 0, withinGroup: 0 });
 
     // The partner sees the same trade from the other side.
     const theirs = analytics.getTradesAndLoans(partnerId);
@@ -196,11 +196,61 @@ describe('analytics', () => {
     assert.equal(theirs.loans.borrowedNow, 1);
   });
 
+  test('a household scope counts trades and loans between its members as staying inside', () => {
+    const partnerId = db.get(`SELECT id FROM users WHERE username='p'`).id;
+    const household = [userId, partnerId];
+
+    const tl = analytics.getTradesAndLoans(household);
+    assert.equal(tl.trades.cardsIn, 0, 'nothing came from outside the household');
+    assert.equal(tl.trades.cardsOut, 0);
+    assert.equal(tl.trades.withinGroup, 1);
+    assert.equal(tl.loans.lentNow, 0, 'a loan to a housemate is not lent out of the household');
+    assert.equal(tl.loans.withinGroup, 2);
+
+    assert.equal(analytics.getDeckUse(household).lent, 0);
+  });
+
+  test('a household scope adds collections together and counts shared cards once', () => {
+    const partnerId = db.get(`SELECT id FROM users WHERE username='p'`).id;
+    const bolt = db.get(`SELECT p.id FROM printings p JOIN cards c ON c.id = p.card_id WHERE c.name = 'Bolt'`).id;
+    db.run(`INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil) VALUES (?, ?, 2, 0)`, [partnerId, bolt]);
+
+    const mine = analytics.getSummary(userId);
+    const both = analytics.getSummary([userId, partnerId]);
+    assert.equal(both.totalCards, mine.totalCards + 2);
+    assert.equal(both.uniqueCards, mine.uniqueCards, 'Bolt is one card however many people own it');
+
+    // Top cards group across people: one Bolt row, not one per owner.
+    const bolts = analytics.getTopCards([userId, partnerId], 50).filter((r) => r.name === 'Bolt' && !r.isFoil);
+    assert.equal(bolts.length, 1);
+    assert.equal(bolts[0].quantity, 6);
+  });
+
   test('a snapshot is one row per user per day, replaced on a rerun', () => {
     analytics.recordValueSnapshots();
     analytics.recordValueSnapshots();
     const rows = analytics.getValueHistory(userId);
     assert.equal(rows.length, 1);
     assert.equal(rows[0].value, 130);
+  });
+});
+
+describe('analytics scope', async () => {
+  const { resolveScope } = await import('../../src/routes/analytics.js');
+
+  test('a regular user always gets their own collection, whatever they ask for', () => {
+    const req = { user: { id: userId, is_admin: 0 }, query: { userIds: '1,2,3' } };
+    assert.deepEqual(resolveScope(req), [userId]);
+  });
+
+  test('an admin can pick users, and ids that are not users are dropped', () => {
+    const partnerId = db.get(`SELECT id FROM users WHERE username='p'`).id;
+    const req = { user: { id: userId, is_admin: 1 }, query: { userIds: `${partnerId},${userId},9999,abc,${partnerId}` } };
+    assert.deepEqual(resolveScope(req), [partnerId, userId]);
+  });
+
+  test('an admin asking for nothing valid sees their own', () => {
+    const req = { user: { id: userId, is_admin: true }, query: { userIds: '9999' } };
+    assert.deepEqual(resolveScope(req), [userId]);
   });
 });
