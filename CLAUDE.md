@@ -303,3 +303,8 @@ taken on GitHub — only do it when explicitly asked.
   printing or card id, so the import never touches it; `backupService`
   carries it. Charts take colours from `token()`/`tokenRgba()` and rebuild on
   `theme:changed` — Chart.js paints to a canvas, where `var()` is not a colour.
+  Deck use (`getDeckUse`) splits copies exactly as the Inventory page's
+  `available` does (owned − in decks − lent out) and leaves basic lands out;
+  if one changes, change the other, or the two pages disagree about what is
+  idle. Trade and loan stats count from the caller's side only — totals, never
+  the partner's cards or decks.

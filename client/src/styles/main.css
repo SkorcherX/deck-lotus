@@ -8074,3 +8074,96 @@ body.maintenance-locked #app {
   .analytics-progress-row { grid-template-columns: minmax(0, 1fr) auto; }
   .analytics-progress { grid-column: 1 / -1; grid-row: 2; }
 }
+
+.analytics-kpi-value small {
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: 0.2rem;
+}
+
+.analytics-kpi-value.up { color: var(--success); }
+.analytics-kpi-value.down { color: var(--danger); }
+
+/* Deck use: two proportional bars, same three segments */
+.analytics-split {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.analytics-split-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.analytics-split-bar {
+  display: flex;
+  gap: 2px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+
+.analytics-split-bar > div { min-width: 2px; }
+
+.seg-decks { background: var(--primary); }
+.seg-lent { background: var(--warning); }
+.seg-idle { background: var(--text-muted); }
+
+.analytics-split-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  margin: 0.75rem 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.analytics-split-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 0.35rem;
+  vertical-align: baseline;
+}
+
+.analytics-split-legend b,
+.analytics-facts b { color: var(--text); }
+
+.analytics-facts {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Trades & loans */
+.analytics-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.analytics-stat-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.analytics-stat-grid b {
+  font-size: 1.25rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-stat-grid span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

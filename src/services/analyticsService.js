@@ -13,7 +13,12 @@
 import db from '../db/connection.js';
 import { OWNED_COPY_PRICE } from './inventoryService.js';
 import { isBasicLand } from './basicLands.js';
-import { summariseColors, summariseComposition, fillMonths, round2 } from './analyticsMath.js';
+import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
+import {
+  summariseColors, summariseComposition, summariseDeckUse, fillMonths, round2,
+} from './analyticsMath.js';
+
+const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
 
 export function getSummary(userId) {
   const totals = db.get(`
@@ -218,6 +223,104 @@ export function getDailyActivity(userId) {
      GROUP BY date(created_at)
      ORDER BY date
   `, [userId]);
+}
+
+/**
+ * How much of the collection is doing something: in decks, lent out, or idle.
+ * Counted per card (any printing), against the caller's own decks and loans,
+ * the same way the Inventory page's In Decks and Lent Out columns count — see
+ * analyticsMath.summariseDeckUse for the split.
+ */
+export function getDeckUse(userId) {
+  const rows = db.all(`
+    SELECT c.name, c.type_line, c.supertypes,
+           SUM(op.quantity) AS owned,
+           SUM(op.quantity * COALESCE(${OWNED_COPY_PRICE}, 0)) AS value,
+           (SELECT COALESCE(SUM(dc.quantity), 0)
+              FROM deck_cards dc
+              JOIN printings dp ON dp.id = dc.printing_id
+              JOIN decks d ON d.id = dc.deck_id
+             WHERE d.user_id = ? AND dp.card_id = c.id) AS in_decks,
+           (SELECT COALESCE(SUM(cl.quantity), 0)
+              FROM card_loans cl
+              JOIN printings lp ON lp.uuid = cl.printing_uuid
+             WHERE cl.lender_user_id = ? AND lp.card_id = c.id
+               AND cl.status IN ${LIVE_LOANS}) AS lent
+      FROM owned_printings op
+      JOIN printings p ON p.id = op.printing_id
+      JOIN cards c ON c.id = p.card_id
+     WHERE op.user_id = ? AND op.quantity > 0
+     GROUP BY c.id
+  `, [userId, userId, userId]);
+
+  return summariseDeckUse(rows.map((r) => ({
+    name: r.name,
+    owned: r.owned,
+    inDecks: r.in_decks,
+    lent: r.lent,
+    value: r.value,
+    isBasic: isBasicLand(r),
+  })));
+}
+
+/**
+ * Trade and loan activity, from the caller's side only: counts and card
+ * totals, never the partner's collection or decks.
+ *
+ * Trade item `direction` is relative to the proposer (`from_user_id`), so a
+ * 'give' leaves the caller's collection when they proposed and enters it when
+ * they received the proposal. Declined items never moved and are excluded.
+ */
+export function getTradesAndLoans(userId) {
+  const trades = db.all(`
+    SELECT status, COUNT(*) AS count
+      FROM trades
+     WHERE from_user_id = ? OR to_user_id = ?
+     GROUP BY status
+  `, [userId, userId]);
+
+  const moved = db.get(`
+    SELECT
+      COALESCE(SUM(CASE WHEN (t.from_user_id = ? AND ti.direction = 'receive')
+                          OR (t.to_user_id = ? AND ti.direction = 'give')
+                        THEN ti.quantity ELSE 0 END), 0) AS cards_in,
+      COALESCE(SUM(CASE WHEN (t.from_user_id = ? AND ti.direction = 'give')
+                          OR (t.to_user_id = ? AND ti.direction = 'receive')
+                        THEN ti.quantity ELSE 0 END), 0) AS cards_out
+      FROM trades t
+      JOIN trade_items ti ON ti.trade_id = t.id
+     WHERE t.status = 'accepted' AND ti.declined = 0
+       AND (t.from_user_id = ? OR t.to_user_id = ?)
+  `, [userId, userId, userId, userId, userId, userId]);
+
+  const loans = db.get(`
+    SELECT
+      COALESCE(SUM(CASE WHEN lender_user_id = ? AND status IN ${LIVE_LOANS} THEN quantity END), 0) AS lent_now,
+      COALESCE(SUM(CASE WHEN borrower_user_id = ? AND status IN ${LIVE_LOANS} THEN quantity END), 0) AS borrowed_now,
+      COUNT(CASE WHEN lender_user_id = ? AND status NOT IN ('declined', 'cancelled', 'requested') THEN 1 END) AS loans_made,
+      COUNT(CASE WHEN borrower_user_id = ? AND status NOT IN ('declined', 'cancelled', 'requested') THEN 1 END) AS loans_taken
+      FROM card_loans
+     WHERE lender_user_id = ? OR borrower_user_id = ?
+  `, [userId, userId, userId, userId, userId, userId]);
+
+  const byStatus = Object.fromEntries(trades.map((t) => [t.status, t.count]));
+  return {
+    trades: {
+      accepted: byStatus.accepted || 0,
+      open: (byStatus.pending || 0) + (byStatus.awaiting_counter || 0),
+      closed: Object.entries(byStatus)
+        .filter(([s]) => !['accepted', 'pending', 'awaiting_counter'].includes(s))
+        .reduce((sum, [, n]) => sum + n, 0),
+      cardsIn: moved.cards_in,
+      cardsOut: moved.cards_out,
+    },
+    loans: {
+      lentNow: loans.lent_now,
+      borrowedNow: loans.borrowed_now,
+      made: loans.loans_made,
+      taken: loans.loans_taken,
+    },
+  };
 }
 
 export function getValueHistory(userId) {

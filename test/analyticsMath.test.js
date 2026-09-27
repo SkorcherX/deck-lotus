@@ -87,3 +87,26 @@ test('summariseComposition keeps lands off the curve but in types and rarity', (
   assert.equal(out.rarities.find((b) => b.key === 'rare').copies, 2);
   assert.equal(out.types.length, 9);
 });
+
+import { summariseDeckUse } from '../src/services/analyticsMath.js';
+
+test('deck use splits copies the way the Inventory page counts available', () => {
+  const out = summariseDeckUse([
+    // 6 owned, 2 in decks, 1 lent: 3 idle, of which 2 are past a playset (4 − 2 − 1 = 1 kept).
+    { name: 'Bolt', owned: 6, inDecks: 2, lent: 1, value: 6 },
+    // Listed by more decks than owned: all in decks, nothing idle.
+    { name: 'Ring', owned: 1, inDecks: 3, lent: 0, value: 2 },
+    // In no deck.
+    { name: 'Rock', owned: 2, inDecks: 0, lent: 0, value: 10 },
+    // Basics are ignored entirely.
+    { name: 'Island', owned: 40, inDecks: 0, lent: 0, value: 4, isBasic: true },
+  ]);
+  assert.equal(out.copies, 9);
+  assert.equal(out.inDecks, 3);
+  assert.equal(out.lent, 1);
+  assert.equal(out.idle, 5);
+  assert.equal(out.spare, 2);
+  assert.equal(out.cardsInNoDeck, 1);
+  assert.equal(out.idleValue, 13);
+  assert.deepEqual(out.topIdle.map((c) => c.name), ['Rock', 'Bolt']);
+});

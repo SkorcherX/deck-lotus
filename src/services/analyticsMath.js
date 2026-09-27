@@ -164,3 +164,56 @@ export function summariseComposition(rows) {
   const out = (map) => [...map].map(([key, b]) => ({ key, copies: b.copies, value: round2(b.value) }));
   return { types: out(types), rarities: out(rarities), curve: out(curve) };
 }
+
+/**
+ * Split each card's owned copies into in decks / lent out / idle, and total
+ * them. Rows are per card: { name, owned, inDecks, lent, value, isBasic },
+ * where `value` is what all owned copies are worth together.
+ *
+ * The split follows the Inventory page's `available` (owned − in decks − lent
+ * out), so the two pages agree. A card listed by more decks than there are
+ * copies is simply fully in decks — the shortfall is the shopping list's
+ * business, not this page's. Basic lands are left out altogether: nobody
+ * tracks them, and 60 idle Islands would otherwise read as dead weight.
+ *
+ * `spare` is idle copies beyond a playset of four, the usual trade fodder.
+ */
+export function summariseDeckUse(rows, { playset = 4, topIdle = 10 } = {}) {
+  const totals = {
+    copies: 0, inDecks: 0, lent: 0, idle: 0, spare: 0,
+    value: 0, inDecksValue: 0, lentValue: 0, idleValue: 0, spareValue: 0,
+    cardsInNoDeck: 0,
+  };
+  const idleCards = [];
+
+  for (const row of rows) {
+    if (row.isBasic || !row.owned) continue;
+    const perCopy = (row.value || 0) / row.owned;
+    const inDecks = Math.min(row.owned, row.inDecks || 0);
+    const lent = Math.min(row.owned - inDecks, row.lent || 0);
+    const idle = row.owned - inDecks - lent;
+    const spare = Math.max(0, idle - Math.max(0, playset - inDecks - lent));
+
+    totals.copies += row.owned;
+    totals.inDecks += inDecks;
+    totals.lent += lent;
+    totals.idle += idle;
+    totals.spare += spare;
+    totals.value += row.value || 0;
+    totals.inDecksValue += inDecks * perCopy;
+    totals.lentValue += lent * perCopy;
+    totals.idleValue += idle * perCopy;
+    totals.spareValue += spare * perCopy;
+    if (!row.inDecks) totals.cardsInNoDeck++;
+
+    if (idle > 0 && perCopy > 0) {
+      idleCards.push({ name: row.name, idle, perCopy: round2(perCopy), total: round2(idle * perCopy) });
+    }
+  }
+
+  for (const k of ['value', 'inDecksValue', 'lentValue', 'idleValue', 'spareValue']) {
+    totals[k] = round2(totals[k]);
+  }
+  idleCards.sort((a, b) => b.total - a.total);
+  return { ...totals, topIdle: idleCards.slice(0, topIdle) };
+}

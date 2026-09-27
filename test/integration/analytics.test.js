@@ -144,6 +144,58 @@ describe('analytics', () => {
     assert.ok(days.every((d) => d.added || d.removed));
   });
 
+  test('deck use counts in decks, lent out and idle, and ignores basics', () => {
+    db.run(`INSERT INTO users (username, email, password_hash) VALUES ('p','p@example.test','h')`);
+    const partnerId = db.get(`SELECT id FROM users WHERE username='p'`).id;
+    const printing = (name) => db.get(
+      `SELECT p.id, p.uuid FROM printings p JOIN cards c ON c.id = p.card_id WHERE c.name = ?`, [name]
+    );
+
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?, 'D', 'commander', 'ready')`, [userId]);
+    const deckId = db.get(`SELECT id FROM decks WHERE name = 'D'`).id;
+    // Bolt: 5 owned (4 normal + 1 foil); a deck lists 2, one copy is lent out.
+    db.run(`INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_foil, board_type)
+            VALUES (?, ?, 2, 0, 0, 'mainboard')`, [deckId, printing('Bolt').id]);
+    // Island in a deck changes nothing: basics are out of the count entirely.
+    db.run(`INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_foil, board_type)
+            VALUES (?, ?, 10, 0, 0, 'mainboard')`, [deckId, printing('Island').id]);
+    db.run(`INSERT INTO card_loans (lender_user_id, borrower_user_id, printing_uuid, is_foil, quantity, card_name, status)
+            VALUES (?, ?, ?, 0, 1, 'Bolt', 'active')`, [userId, partnerId, printing('Bolt').uuid]);
+    // A returned loan is history, not a copy that is out.
+    db.run(`INSERT INTO card_loans (lender_user_id, borrower_user_id, printing_uuid, is_foil, quantity, card_name, status)
+            VALUES (?, ?, ?, 0, 1, 'Dual', 'returned')`, [userId, partnerId, printing('Dual').uuid]);
+
+    const use = analytics.getDeckUse(userId);
+    assert.equal(use.copies, 11, '21 owned less 10 Islands');
+    assert.equal(use.inDecks, 2);
+    assert.equal(use.lent, 1);
+    assert.equal(use.idle, 8);
+    assert.equal(use.cardsInNoDeck, 3);
+    assert.equal(use.topIdle[0].name, 'Dual');
+
+    // Trades: the caller proposed, gave 2 and received 3 — one received item declined.
+    db.run(`INSERT INTO trades (from_user_id, to_user_id, status) VALUES (?, ?, 'accepted')`, [userId, partnerId]);
+    const tradeId = db.get(`SELECT MAX(id) AS id FROM trades`).id;
+    db.run(`INSERT INTO trade_items (trade_id, printing_id, is_foil, quantity, direction, declined) VALUES (?, ?, 0, 2, 'give', 0)`,
+      [tradeId, printing('Rock').id]);
+    db.run(`INSERT INTO trade_items (trade_id, printing_id, is_foil, quantity, direction, declined) VALUES (?, ?, 0, 3, 'receive', 0)`,
+      [tradeId, printing('Charm').id]);
+    db.run(`INSERT INTO trade_items (trade_id, printing_id, is_foil, quantity, direction, declined) VALUES (?, ?, 0, 9, 'receive', 1)`,
+      [tradeId, printing('Dual').id]);
+    // And one the partner proposed, still open.
+    db.run(`INSERT INTO trades (from_user_id, to_user_id, status) VALUES (?, ?, 'pending')`, [partnerId, userId]);
+
+    const tl = analytics.getTradesAndLoans(userId);
+    assert.deepEqual(tl.trades, { accepted: 1, open: 1, closed: 0, cardsIn: 3, cardsOut: 2 });
+    assert.deepEqual(tl.loans, { lentNow: 1, borrowedNow: 0, made: 2, taken: 0 });
+
+    // The partner sees the same trade from the other side.
+    const theirs = analytics.getTradesAndLoans(partnerId);
+    assert.equal(theirs.trades.cardsIn, 2);
+    assert.equal(theirs.trades.cardsOut, 3);
+    assert.equal(theirs.loans.borrowedNow, 1);
+  });
+
   test('a snapshot is one row per user per day, replaced on a rerun', () => {
     analytics.recordValueSnapshots();
     analytics.recordValueSnapshots();

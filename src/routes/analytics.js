@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 import {
   getSummary, getTimeline, getSets, getColors, getValueHistory,
   getComposition, getTopCards, getSetCompletion, getDailyActivity,
+  getDeckUse, getTradesAndLoans,
 } from '../services/analyticsService.js';
 
 const router = express.Router();
@@ -25,5 +26,7 @@ router.get('/composition', authenticate, section(getComposition));
 router.get('/top-cards', authenticate, section((id) => getTopCards(id)));
 router.get('/set-completion', authenticate, section(getSetCompletion));
 router.get('/daily', authenticate, section(getDailyActivity));
+router.get('/deck-use', authenticate, section(getDeckUse));
+router.get('/trades-loans', authenticate, section(getTradesAndLoans));
 
 export default router;

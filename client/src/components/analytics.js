@@ -45,7 +45,9 @@ async function load() {
   status.textContent = 'Loading…';
   status.classList.remove('hidden');
   try {
-    const [summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily] = await Promise.all([
+    const [
+      summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily, deckUse, tradesLoans,
+    ] = await Promise.all([
       api.getAnalytics('summary'),
       api.getAnalytics('timeline'),
       api.getAnalytics('sets'),
@@ -55,8 +57,12 @@ async function load() {
       api.getAnalytics('top-cards'),
       api.getAnalytics('set-completion'),
       api.getAnalytics('daily'),
+      api.getAnalytics('deck-use'),
+      api.getAnalytics('trades-loans'),
     ]);
-    data = { summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily };
+    data = {
+      summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily, deckUse, tradesLoans,
+    };
     status.classList.add('hidden');
     renderSummary();
     renderSetsTable();
@@ -64,6 +70,8 @@ async function load() {
     renderCalendar();
     renderTopCards();
     renderCompletion();
+    renderDeckUse();
+    renderTradesLoans();
     renderCharts();
   } catch (error) {
     status.textContent = `Could not load analytics: ${error.message}`;
@@ -135,11 +143,108 @@ function renderSummary() {
     ['Foils', count(s.foilCards)],
     ['Added, last 30 days', count(s.addedLast30Days)],
   ];
-  el('analytics-kpis').innerHTML = tiles.map(([label, value]) => `
+  const change = valueChange(data.valueHistory, 30);
+  if (change) {
+    const sign = change.amount > 0 ? '+' : change.amount < 0 ? '−' : '';
+    tiles.push([
+      `Value change, ${change.days} days`,
+      `${sign}${money(Math.abs(change.amount))}`,
+      change.amount > 0 ? 'up' : change.amount < 0 ? 'down' : '',
+      change.percent == null ? '' : `${sign}${Math.abs(change.percent).toFixed(1)}%`,
+    ]);
+  }
+  el('analytics-kpis').innerHTML = tiles.map(([label, value, trend = '', sub = '']) => `
     <div class="analytics-kpi">
-      <div class="analytics-kpi-value">${value}</div>
+      <div class="analytics-kpi-value ${trend}">${value}${sub ? ` <small>${sub}</small>` : ''}</div>
       <div class="analytics-kpi-label">${label}</div>
     </div>`).join('');
+}
+
+/**
+ * Latest snapshot against the one closest to `days` ago, or the oldest if
+ * history is shorter than that. Null until there are two snapshots. Note the
+ * change includes cards added or removed, not only price movement.
+ */
+function valueChange(points, days) {
+  if (points.length < 2) return null;
+  const last = points[points.length - 1];
+  const cutoff = new Date(new Date(last.date + 'T00:00:00Z').getTime() - days * DAY_MS).toISOString().slice(0, 10);
+  const base = [...points].reverse().find((p) => p.date <= cutoff) || points[0];
+  const span = Math.round((new Date(last.date) - new Date(base.date)) / DAY_MS);
+  return {
+    days: span,
+    amount: last.value - base.value,
+    percent: base.value ? ((last.value - base.value) / base.value) * 100 : null,
+  };
+}
+
+// ---- Deck use ---------------------------------------------------------------
+//
+// HTML bars rather than a chart: three segments of one whole, and as DOM they
+// take var() colours directly.
+
+function renderDeckUse() {
+  const u = data.deckUse;
+  if (!u.copies) {
+    el('analytics-deck-use').innerHTML = '<p class="analytics-empty">No cards yet.</p>';
+    el('analytics-idle').innerHTML = '<p class="analytics-empty">No cards yet.</p>';
+    return;
+  }
+
+  const bar = (label, parts, total, fmt) => `
+    <div class="analytics-split">
+      <div class="analytics-split-label">${label}</div>
+      <div class="analytics-split-bar">
+        ${parts.map(([key, n]) => (n > 0
+          ? `<div class="seg-${key}" style="flex-grow: ${n}" title="${fmt(n)} (${((n / total) * 100).toFixed(1)}%)"></div>`
+          : '')).join('')}
+      </div>
+    </div>`;
+
+  const pct = (n, total) => (total ? `${((n / total) * 100).toFixed(0)}%` : '0%');
+
+  el('analytics-deck-use').innerHTML = `
+    ${bar('Cards', [['decks', u.inDecks], ['lent', u.lent], ['idle', u.idle]], u.copies, count)}
+    ${bar('Value', [['decks', u.inDecksValue], ['lent', u.lentValue], ['idle', u.idleValue]], u.value || 1, money)}
+    <div class="analytics-split-legend">
+      <span><i class="seg-decks"></i>In decks <b>${count(u.inDecks)}</b> · ${money(u.inDecksValue)} · ${pct(u.inDecks, u.copies)}</span>
+      <span><i class="seg-lent"></i>Lent out <b>${count(u.lent)}</b> · ${money(u.lentValue)}</span>
+      <span><i class="seg-idle"></i>Not in a deck <b>${count(u.idle)}</b> · ${money(u.idleValue)} · ${pct(u.idle, u.copies)}</span>
+    </div>
+    <ul class="analytics-facts">
+      <li><b>${count(u.cardsInNoDeck)}</b> different cards aren't in any of your decks.</li>
+      <li><b>${count(u.spare)}</b> spare copies beyond a playset of four, worth ${money(u.spareValue)} — likely trade material.</li>
+    </ul>`;
+
+  el('analytics-idle').innerHTML = u.topIdle.length ? `
+    <table class="analytics-table analytics-top">
+      <tbody>${u.topIdle.map((r, i) => `
+        <tr>
+          <td class="rank">${i + 1}</td>
+          <td><span class="analytics-top-name">${escapeHtml(r.name)}</span></td>
+          <td class="num">${money(r.perCopy)}</td>
+          <td class="num analytics-top-total">${r.idle > 1 ? `×${r.idle} = ${money(r.total)}` : ''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : '<p class="analytics-empty">Every priced card is in a deck.</p>';
+}
+
+// ---- Trades & loans ---------------------------------------------------------
+
+function renderTradesLoans() {
+  const { trades, loans } = data.tradesLoans;
+  const stats = [
+    ['Trades completed', count(trades.accepted)],
+    ['Trades open', count(trades.open)],
+    ['Cards received in trades', count(trades.cardsIn)],
+    ['Cards given in trades', count(trades.cardsOut)],
+    ['Copies lent out now', count(loans.lentNow)],
+    ['Copies borrowed now', count(loans.borrowedNow)],
+    ['Loans made', count(loans.made)],
+    ['Loans taken', count(loans.taken)],
+  ];
+  el('analytics-trades-loans').innerHTML = stats.map(([label, value]) => `
+    <div><b>${value}</b><span>${label}</span></div>`).join('');
 }
 
 // ---- Activity timeline ------------------------------------------------------
