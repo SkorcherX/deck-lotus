@@ -89,7 +89,7 @@ export function getSharedInventory(ownerId, filters = {}) {
 
   return {
     ...result,
-    cards: result.cards.map(({ total_in_decks, available, printings, ...card }) => ({
+    cards: result.cards.map(({ total_in_decks, available, total_lent_out, lent_to, printings, ...card }) => ({
       ...card,
       printings: (printings || []).map(({ user_id, owned_printing_id, ...printing }) => printing)
     }))

@@ -784,7 +784,7 @@ function loadItems(tradeId) {
 function withoutDeckUsage(result) {
   return {
     ...result,
-    cards: result.cards.map(({ total_in_decks, available, ...card }) => card)
+    cards: result.cards.map(({ total_in_decks, available, total_lent_out, lent_to, ...card }) => card)
   };
 }
 

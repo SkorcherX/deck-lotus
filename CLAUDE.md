@@ -278,3 +278,6 @@ taken on GitHub — only do it when explicitly asked.
   `deck_card_disruptions` rows for the borrower (with `loan_id` set, not
   `trade_id`), charged only for the real card-level shortfall and never more
   than the loan's quantity — the same acknowledge-to-resolve flow as trades.
+  On the lender's inventory, live loans show as `total_lent_out` / `lent_to`
+  and come off `available`; `availability: 'lent_out'` filters to them.
+  `browsePartnerInventory` and the collection share strip both fields.

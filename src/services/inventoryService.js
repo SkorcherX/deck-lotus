@@ -9,6 +9,9 @@ import { colorFilterSql } from '../utils/colorFilter.js';
 import { isBasicLandSql } from './basicLands.js';
 import { deckPrioritySql, DECK_PRIORITY } from './deckPriority.js';
 import { recordInventoryChange } from './auditService.js';
+import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
+
+const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
 
 // Price of one owned copy, honouring its finish. Foil copies are worth their
 // foil price; where a printing has no foil price synced we fall back to the
@@ -54,6 +57,17 @@ const inDecksTotalSql = (scopeClause) => `(
   WHERE d.user_id ${scopeClause} AND p.card_id = c.id
 )`;
 
+// Copies of a card the scope owns but has lent out on a live loan. Still
+// owned — a loan never touches owned_printings — but not in the box, so it
+// comes off `available` alongside what decks hold. See loanService.js.
+const lentOutTotalSql = (scopeClause) => `(
+  SELECT COALESCE(SUM(cl.quantity), 0)
+  FROM card_loans cl
+  JOIN printings p ON p.uuid = cl.printing_uuid
+  WHERE cl.lender_user_id ${scopeClause} AND p.card_id = c.id
+    AND cl.status IN ${LIVE_LOANS}
+)`;
+
 /**
  * Builds a `= ?` or `IN (?,?,...)` clause plus matching params for a user
  * scope that may be a single id (regular per-user routes) or an array of ids
@@ -82,7 +96,7 @@ export function getInventory(userIds, filters = {}) {
     type,
     sets = [],
     sort = 'name',
-    availability = 'all', // 'all', 'available', 'in_decks'
+    availability = 'all', // 'all', 'available', 'in_decks', 'lent_out'
     commander = 'all', // 'all', 'eligible'
     page = 1,
     limit = 50
@@ -109,6 +123,7 @@ export function getInventory(userIds, filters = {}) {
       (SELECT p.image_url FROM printings p WHERE p.card_id = c.id AND p.image_url IS NOT NULL LIMIT 1) as image_url,
       ${ownedTotalSql(scope.clause)} as total_owned,
       ${inDecksTotalSql(scope.clause)} as total_in_decks,
+      ${lentOutTotalSql(scope.clause)} as total_lent_out,
       (
         SELECT MAX(NULLIF(${OWNED_COPY_PRICE}, 0))
         FROM owned_printings op
@@ -141,9 +156,11 @@ export function getInventory(userIds, filters = {}) {
   `;
 
   // Params for the subqueries — order matches the SELECT above:
-  // total_owned, total_in_decks, max_price, added_at, then the WHERE ... IN
+  // total_owned, total_in_decks, total_lent_out, max_price, added_at, then
+  // the WHERE ... IN
   params.push(
-    ...scope.params, ...scope.params, ...scope.params, ...scope.params, ...scope.params
+    ...scope.params, ...scope.params, ...scope.params, ...scope.params, ...scope.params,
+    ...scope.params
   );
 
   // Count query
@@ -225,11 +242,18 @@ export function getInventory(userIds, filters = {}) {
   // that was already cut to `limit`, leaving short pages and a total that
   // disagrees with what is on screen.
   if (availability === 'available') {
-    const clause = ` AND (${ownedTotalSql(scope.clause)} - ${inDecksTotalSql(scope.clause)}) > 0`;
+    const clause = ` AND (${ownedTotalSql(scope.clause)} - ${inDecksTotalSql(scope.clause)}` +
+      ` - ${lentOutTotalSql(scope.clause)}) > 0`;
     sql += clause;
     countSql += clause;
-    params.push(...scope.params, ...scope.params);
-    countParams.push(...scope.params, ...scope.params);
+    params.push(...scope.params, ...scope.params, ...scope.params);
+    countParams.push(...scope.params, ...scope.params, ...scope.params);
+  } else if (availability === 'lent_out') {
+    const clause = ` AND ${lentOutTotalSql(scope.clause)} > 0`;
+    sql += clause;
+    countSql += clause;
+    params.push(...scope.params);
+    countParams.push(...scope.params);
   } else if (availability === 'in_decks') {
     const clause = ` AND ${inDecksTotalSql(scope.clause)} > 0`;
     sql += clause;
@@ -315,6 +339,21 @@ export function getInventory(userIds, filters = {}) {
     // just an opaque combined total.
     const owners = isMultiUser ? summarizeOwners(printings, usernamesById) : undefined;
 
+    // Who has the lent copies, for the badge's tooltip. Only queried for the
+    // cards that have any out, which on most pages is none of them.
+    const lentTo = card.total_lent_out > 0
+      ? db.all(`
+          SELECT u.username, SUM(cl.quantity) AS quantity
+          FROM card_loans cl
+          JOIN printings p ON p.uuid = cl.printing_uuid
+          JOIN users u ON u.id = cl.borrower_user_id
+          WHERE cl.lender_user_id ${scope.clause} AND p.card_id = ?
+            AND cl.status IN ${LIVE_LOANS}
+          GROUP BY u.id
+          ORDER BY u.username COLLATE NOCASE
+        `, [...scope.params, card.card_id])
+      : [];
+
     return {
       ...card,
       ...(owners ? { owners } : {}),
@@ -329,7 +368,8 @@ export function getInventory(userIds, filters = {}) {
       // copies represents the row; ties fall to the printings query's own
       // ordering, so the choice is stable between requests.
       image_url: representativeImage(printings) || card.image_url,
-      available: card.total_owned - card.total_in_decks,
+      available: card.total_owned - card.total_in_decks - card.total_lent_out,
+      lent_to: lentTo,
       printings
     };
   });
@@ -449,14 +489,22 @@ export function getInventoryStats(userIds) {
     ORDER BY total_cards DESC
   `, scope.params);
 
+  const lentOut = db.get(`
+    SELECT COALESCE(SUM(quantity), 0) as count
+    FROM card_loans
+    WHERE lender_user_id ${scope.clause} AND status IN ${LIVE_LOANS}
+  `, scope.params);
+
   const totalOwned = totalCopies?.count || 0;
   const totalInDecks = inDecks?.count || 0;
+  const totalLentOut = lentOut?.count || 0;
 
   return {
     uniqueCards: uniqueCards?.count || 0,
     totalCopies: totalOwned,
     inDecks: totalInDecks,
-    available: totalOwned - totalInDecks,
+    lentOut: totalLentOut,
+    available: totalOwned - totalInDecks - totalLentOut,
     estimatedValue: estimatedValue?.total || 0,
     typeBreakdown: typeBreakdown || []
   };

@@ -22,7 +22,8 @@ const { default: db } = await import('../../src/db/connection.js');
 const loans = await import('../../src/services/loanService.js');
 const { getDeckReadiness } = await import('../../src/services/deckReadinessService.js');
 const { getShoppingList } = await import('../../src/services/shoppingService.js');
-const { createTrade, getDisruptions } = await import('../../src/services/tradeService.js');
+const { createTrade, getDisruptions, browsePartnerInventory } = await import('../../src/services/tradeService.js');
+const { getInventory, getInventoryStats } = await import('../../src/services/inventoryService.js');
 
 let lender, borrower, printingId, lenderDeck, borrowerDeck;
 
@@ -87,6 +88,24 @@ test('a loan moves the card between decks without touching either collection', (
   assert.deepEqual(borrowed[0].decks.map((d) => d.name), ['Borrower Deck']);
   // The lender must not learn which of the borrower's decks hold it.
   assert.deepEqual(loans.listLoans(lender).lent[0].decks, []);
+});
+
+test("the lender's inventory shows the lent copy and can filter to it", () => {
+  const all = getInventory(lender, {});
+  const [card] = all.cards;
+  assert.equal(card.total_owned, 1, 'still owned');
+  assert.equal(card.total_lent_out, 1);
+  assert.equal(card.available, -1, 'one deck slot and one lent copy against one owned');
+  assert.deepEqual(card.lent_to.map((l) => l.username), ['borrower']);
+
+  assert.equal(getInventory(lender, { availability: 'lent_out' }).pagination.totalCards, 1);
+  assert.equal(getInventory(lender, { availability: 'available' }).pagination.totalCards, 0);
+  assert.equal(getInventoryStats(lender).lentOut, 1);
+
+  // Browsing someone's collection must not say who they lent what to.
+  const browsed = browsePartnerInventory(borrower, lender, {}).cards[0];
+  assert.equal(browsed.total_lent_out, undefined);
+  assert.equal(browsed.lent_to, undefined);
 });
 
 test('a lent card can be neither lent twice nor traded away', () => {

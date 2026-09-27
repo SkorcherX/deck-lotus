@@ -1533,6 +1533,25 @@ function hasActiveFilters() {
   );
 }
 
+/**
+ * "Lent 2" beside a card that is out on loan, naming who has it on hover.
+ * Empty for everything else — and always empty on a partner's or shared
+ * collection, where the server strips the loan fields.
+ */
+function lentBadge(card) {
+  if (!card.total_lent_out) return '';
+
+  const who = (card.lent_to || [])
+    .map((l) => `${l.username}${l.quantity > 1 ? ` (${l.quantity})` : ''}`)
+    .join(', ');
+  const title = `Lent out${who ? ` to ${who}` : ''}`.replace(/"/g, '&quot;');
+
+  return `<span class="lent-badge" title="${title}"
+            style="display:inline-flex;align-items:center;gap:0.2rem;font-size:0.75rem;padding:0.05rem 0.4rem;border-radius:999px;background:var(--bg-tertiary);color:var(--warning);">
+            <i class="ph ph-hand-arrow-up"></i> ${card.total_lent_out}
+          </span>`;
+}
+
 function renderStats(stats) {
   const container = document.getElementById('inventory-stats');
   if (!container) return;
@@ -1566,6 +1585,15 @@ function renderStats(stats) {
         <div class="stat-label">Available</div>
       </div>
     </div>
+    ${stats.lentOut > 0 ? `
+      <div class="inventory-stat" title="Still yours — out with someone on loan">
+        <i class="ph ph-hand-arrow-up"></i>
+        <div>
+          <div class="stat-value">${stats.lentOut.toLocaleString()}</div>
+          <div class="stat-label">Lent Out</div>
+        </div>
+      </div>
+    ` : ''}
     <div class="inventory-stat">
       <i class="ph ph-currency-dollar"></i>
       <div>
@@ -1729,6 +1757,7 @@ function renderGridView(container, cards, append = false) {
             <span class="inventory-available ${card.available <= 0 ? 'none-available' : ''}" title="Available">
               <i class="ph ph-check-circle"></i> ${card.available}
             </span>
+            ${lentBadge(card)}
           </div>
           ${showPrices ? `
             <div class="inventory-card-price ${price ? '' : 'no-price'}" title="${price ? price.tooltip.replace(/"/g, '&quot;') : 'No synced price available'}">
@@ -1852,6 +1881,7 @@ function renderListView(container, cards, append = false) {
           <span class="list-col-name">
             ${zoomButton(card.image_url, card.name, { className: 'inline-glass' })}
             <span class="list-col-name-text">${card.name}</span>
+            ${lentBadge(card)}
             ${foilCount > 0 ? `<span class="foil-badge" title="${foilCount} foil ${foilCount === 1 ? 'copy' : 'copies'} owned"><i class="ph ph-sparkle"></i> ${foilCount}</span>` : ''}
             ${card.owners && card.owners.length > 0 ? `<span class="owners-badge" title="${getOwnersTooltip(card).replace(/"/g, '&quot;')}"><i class="ph ph-users"></i> ${card.owners.length}</span>` : ''}
           </span>
