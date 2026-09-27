@@ -274,4 +274,7 @@ taken on GitHub — only do it when explicitly asked.
   `printing_uuid` with no FK, same reason as `audit_log`, so the MTGJSON
   import needs no backup/restore for it; `backupService` does carry it. Only
   the borrower sees which of their decks list a borrowed card — the lender
-  never does, per the partner-browse rule above.
+  never does, per the partner-browse rule above. Returning a loan writes
+  `deck_card_disruptions` rows for the borrower (with `loan_id` set, not
+  `trade_id`), charged only for the real card-level shortfall and never more
+  than the loan's quantity — the same acknowledge-to-resolve flow as trades.

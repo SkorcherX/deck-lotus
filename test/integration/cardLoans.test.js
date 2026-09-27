@@ -22,7 +22,7 @@ const { default: db } = await import('../../src/db/connection.js');
 const loans = await import('../../src/services/loanService.js');
 const { getDeckReadiness } = await import('../../src/services/deckReadinessService.js');
 const { getShoppingList } = await import('../../src/services/shoppingService.js');
-const { createTrade } = await import('../../src/services/tradeService.js');
+const { createTrade, getDisruptions } = await import('../../src/services/tradeService.js');
 
 let lender, borrower, printingId, lenderDeck, borrowerDeck;
 
@@ -108,6 +108,14 @@ test('asking for it back and returning it restores both sides', () => {
 
   loans.markReturned(loan.id, borrower);
   assert.equal(missing(borrower, borrowerDeck), 1);
+
+  // The borrower's deck is told, the same way a trade tells it.
+  const [disruption] = getDisruptions(borrower);
+  assert.equal(disruption.deckId, borrowerDeck);
+  assert.equal(disruption.loanId, loan.id);
+  assert.equal(disruption.returnedTo, 'lender');
+  assert.equal(disruption.quantity, 1);
+  assert.equal(getDisruptions(lender).length, 0);
   assert.equal(missing(lender, lenderDeck), 0);
   assert.equal(owned(lender), 1);
   assert.throws(() => loans.markReturned(loan.id, lender), /already returned/);

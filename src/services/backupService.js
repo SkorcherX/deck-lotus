@@ -267,7 +267,7 @@ export function createBackup(userId = null) {
     // unacknowledged one is the whole point of the row, so losing it in a
     // restore loses a decision somebody still has to make.
     backup.data.deck_card_disruptions = db.prepare(`
-      SELECT dcd.id, dcd.deck_id, dcd.trade_id, dcd.is_foil, dcd.board_type,
+      SELECT dcd.id, dcd.deck_id, dcd.trade_id, dcd.loan_id, dcd.is_foil, dcd.board_type,
              dcd.quantity, dcd.card_name, dcd.created_at, dcd.acknowledged_at,
              dcd.resolution,
              p.uuid as printing_uuid
@@ -691,6 +691,8 @@ export function restoreBackup(backupData, options = {}) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
+    const restoredLoanIds = [];
+
     restoreRows('card_loans', (backupData.data.card_loans || []).filter(
       (l) => restoredUserIds.includes(l.lender_user_id) || restoredUserIds.includes(l.borrower_user_id)
     ), (loan) => {
@@ -703,16 +705,17 @@ export function restoreBackup(backupData, options = {}) {
         loan.is_foil ? 1 : 0, loan.quantity, loan.card_name, loan.status, loan.note,
         loan.created_at, loan.lent_at, loan.return_requested_at, loan.resolved_at
       );
+      restoredLoanIds.push(loan.id);
     }, (l) => `Loan ${l.id}`);
 
     // ---- Disruptions -----------------------------------------------------
     //
     // Restored after both decks and trades, because the row points at each.
     const insertDisruption = db.prepare(`
-      INSERT OR REPLACE INTO deck_card_disruptions (id, deck_id, trade_id, printing_id, is_foil,
-                                                    board_type, quantity, card_name, created_at,
-                                                    acknowledged_at, resolution)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO deck_card_disruptions (id, deck_id, trade_id, loan_id, printing_id,
+                                                    is_foil, board_type, quantity, card_name,
+                                                    created_at, acknowledged_at, resolution)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     restoreRows('deck_card_disruptions', (backupData.data.deck_card_disruptions || []).filter(inDeck), (row) => {
@@ -726,6 +729,7 @@ export function restoreBackup(backupData, options = {}) {
         // The trade may have been skipped above; the disruption still matters
         // without it, so it is kept and merely loses its link.
         restoredTradeIds.includes(row.trade_id) ? row.trade_id : null,
+        restoredLoanIds.includes(row.loan_id) ? row.loan_id : null,
         printingId, row.is_foil ? 1 : 0, row.board_type, row.quantity, row.card_name,
         row.created_at, row.acknowledged_at, row.resolution
       );

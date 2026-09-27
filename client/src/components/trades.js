@@ -875,7 +875,9 @@ export function renderDisruptionBanner(container, disruptions, onResolved) {
     <div style="padding:0.85rem 1rem;border-radius:8px;background:var(--bg-tertiary);border-left:3px solid var(--warning);">
       <div style="font-weight:600;margin-bottom:0.5rem;">
         <i class="ph ph-arrows-left-right"></i>
-        ${disruptions.length === 1 ? 'A card in this deck was traded away' : 'Cards in this deck were traded away'}
+        ${disruptions.every((d) => d.loanId)
+          ? (disruptions.length === 1 ? 'A borrowed card went back to its owner' : 'Borrowed cards went back to their owners')
+          : disruptions.length === 1 ? 'A card in this deck was traded away' : 'Cards in this deck were traded away'}
       </div>
       <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.6rem;">
         The deck still lists ${disruptions.length === 1 ? 'it' : 'them'}. Drop
@@ -887,7 +889,7 @@ export function renderDisruptionBanner(container, disruptions, onResolved) {
           <div style="flex:1;min-width:180px;font-size:0.9rem;">
             <strong>${disruption.quantity}x ${escapeHtml(disruption.cardName)}</strong>${finishLabel(disruption.isFoil)}
             <span style="color:var(--text-secondary);">
-              from the ${disruption.boardType === 'mainboard' ? 'main deck' : disruption.boardType}${disruption.tradedTo ? ` — traded to ${escapeHtml(disruption.tradedTo)}` : ''}
+              from the ${disruption.boardType === 'mainboard' ? 'main deck' : disruption.boardType}${disruption.tradedTo ? ` — traded to ${escapeHtml(disruption.tradedTo)}` : ''}${disruption.returnedTo ? ` — borrowed card returned to ${escapeHtml(disruption.returnedTo)}` : ''}
             </span>
           </div>
           <button class="btn btn-primary btn-sm disruption-resolve" data-id="${disruption.id}" data-resolution="removed">

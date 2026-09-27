@@ -1062,13 +1062,16 @@ export function getDisruptions(userId, deckId = null) {
             t.resolved_at AS traded_at,
             t.from_user_id AS trade_from_user_id,
             fu.username AS from_username, tu.username AS to_username,
-            p.set_code, p.collector_number, p.image_url
+            p.set_code, p.collector_number, p.image_url,
+            lu.username AS loan_lender
        FROM deck_card_disruptions dcd
        JOIN decks d ON d.id = dcd.deck_id
        LEFT JOIN trades t ON t.id = dcd.trade_id
        LEFT JOIN users fu ON fu.id = t.from_user_id
        LEFT JOIN users tu ON tu.id = t.to_user_id
        LEFT JOIN printings p ON p.id = dcd.printing_id
+       LEFT JOIN card_loans cl ON cl.id = dcd.loan_id
+       LEFT JOIN users lu ON lu.id = cl.lender_user_id
       WHERE d.user_id = ? AND dcd.acknowledged_at IS NULL ${clause}
       ORDER BY dcd.created_at DESC, dcd.id`,
     params
@@ -1090,7 +1093,12 @@ export function getDisruptions(userId, deckId = null) {
     collectorNumber: row.collector_number,
     imageUrl: row.image_url,
     // Whoever ended up with the card: the other participant in the trade.
-    tradedTo: row.trade_from_user_id === userId ? row.to_username : row.from_username
+    tradedTo: row.trade_id == null
+      ? null
+      : row.trade_from_user_id === userId ? row.to_username : row.from_username,
+    // Set instead of tradeId when a borrowed card went home to its owner.
+    loanId: row.loan_id,
+    returnedTo: row.loan_lender || null
   }));
 }
 

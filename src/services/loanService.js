@@ -1,6 +1,6 @@
 import db from '../db/connection.js';
 import { recordAudit, describeCounterparty, AUDIT_ACTIONS } from './auditService.js';
-import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
+import { LIVE_LOAN_STATUSES, loanNetSql } from './loanHoldings.js';
 
 /**
  * Lending cards between users of the same instance.
@@ -151,7 +151,7 @@ function loanFor(loanId, userId, role) {
   return loan;
 }
 
-function transition(loan, userId, from, to, action, extraSql = '') {
+function transition(loan, userId, from, to, action, extraSql = '', after = null) {
   if (!from.includes(loan.status)) {
     throw new Error(`This loan is already ${loan.status.replace('_', ' ')}`);
   }
@@ -159,6 +159,7 @@ function transition(loan, userId, from, to, action, extraSql = '') {
   db.transaction(() => {
     db.run(`UPDATE card_loans SET status = ? ${extraSql} WHERE id = ?`, [to, loan.id]);
     logLoanEvent({ ...loan, status: to }, userId, action);
+    if (after) after();
   });
 
   return getLoan(loan.id, userId);
@@ -209,7 +210,73 @@ export function requestReturn(loanId, userId) {
 export function markReturned(loanId, userId) {
   const loan = loanFor(loanId, userId, 'either');
   return transition(loan, userId, LIVE_LOAN_STATUSES, 'returned', AUDIT_ACTIONS.LOAN_RETURN,
-    ', resolved_at = CURRENT_TIMESTAMP');
+    ', resolved_at = CURRENT_TIMESTAMP', () => recordReturnDisruptions(loan));
+}
+
+/** Boards, in the order a shortfall eats them — same order as trades. */
+const BOARD_ORDER = { maybeboard: 0, sideboard: 1, mainboard: 2 };
+const BOARD = `COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END)`;
+
+/**
+ * The borrower's decks left short now the card has gone home, written as
+ * deck_card_disruptions exactly as a trade would. Run inside the return's
+ * transaction, after the status change, so the held count already excludes
+ * this loan.
+ *
+ * Card level, like readiness: another printing the borrower owns fills the
+ * slot, so only the true shortfall is charged — and never more than the loan
+ * itself took away. Charged least-recently-updated deck first, maybeboard
+ * before sideboard before mainboard, the rule allocateShortfall uses for
+ * trades. Basic lands are never lent in any sense that matters, but the loan
+ * rules do not exempt them, so neither does this.
+ */
+function recordReturnDisruptions(loan) {
+  const card = db.get(`SELECT card_id FROM printings WHERE uuid = ?`, [loan.printing_uuid]);
+  if (!card) return;
+
+  const userId = loan.borrower_user_id;
+
+  const held = db.get(
+    `SELECT MAX(0,
+        (SELECT COALESCE(SUM(op.quantity), 0) FROM owned_printings op
+           JOIN printings op_p ON op_p.id = op.printing_id
+          WHERE op.user_id = u.id AND op_p.card_id = ?)
+        + ${loanNetSql('u.id', '?')}) AS n
+       FROM users u WHERE u.id = ?`,
+    [card.card_id, card.card_id, card.card_id, userId]
+  ).n;
+
+  const rows = db.all(
+    `SELECT dc.printing_id, dc.is_foil, dc.quantity, ${BOARD} AS board_type,
+            d.id AS deck_id, d.updated_at
+       FROM deck_cards dc
+       JOIN decks d ON d.id = dc.deck_id
+       JOIN printings p ON p.id = dc.printing_id
+      WHERE d.user_id = ? AND p.card_id = ?`,
+    [userId, card.card_id]
+  );
+
+  const committed = rows.reduce((sum, r) => sum + r.quantity, 0);
+  let left = Math.min(loan.quantity, Math.max(0, committed - held));
+  if (left === 0) return;
+
+  rows.sort((a, b) => {
+    if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? -1 : 1;
+    return BOARD_ORDER[a.board_type] - BOARD_ORDER[b.board_type];
+  });
+
+  for (const row of rows) {
+    if (left <= 0) break;
+    const take = Math.min(left, row.quantity);
+    left -= take;
+
+    db.run(
+      `INSERT INTO deck_card_disruptions
+         (deck_id, loan_id, printing_id, is_foil, board_type, quantity, card_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [row.deck_id, loan.id, row.printing_id, row.is_foil, row.board_type, take, loan.card_name]
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
