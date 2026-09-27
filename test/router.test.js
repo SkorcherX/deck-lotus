@@ -74,7 +74,7 @@ describe('parsing a URL into a route', () => {
 
 describe('building a URL from a route', () => {
   test('round trips every page', () => {
-    for (const page of ['decks', 'cards', 'inventory', 'shopping', 'scan', 'trades', 'trade-shop', 'price-monitoring', 'settings', 'audit']) {
+    for (const page of ['decks', 'cards', 'inventory', 'shopping', 'trades', 'trade-shop', 'price-monitoring', 'settings', 'audit']) {
       assert.deepEqual(parsePath(pathFor(page)), { page }, `${page} did not survive the round trip`);
     }
   });

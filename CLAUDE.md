@@ -281,3 +281,14 @@ taken on GitHub — only do it when explicitly asked.
   On the lender's inventory, live loans show as `total_lent_out` / `lent_to`
   and come off `available`; `availability: 'lent_out'` filters to them.
   `browsePartnerInventory` and the collection share strip both fields.
+- The in-browser card scanner is gone — the Android companion app
+  (`deck-lotus-android`) replaced it. The **server** half stays and is not
+  dead code: the phone calls `POST /api/scan/resolve`, `/api/scan/shortfall`
+  and `/api/scan/commit`, plus `/api/inventory/bulk-add`, and its bundled
+  `card-hashes.bin` / `card-identities.db` are built here by
+  `scripts/build-card-hashes.mjs`, `pack-card-hashes.mjs` and
+  `build_android_db.mjs`. `GET /api/scan/resolve`, `/hash-index`,
+  `/identity` and `POST /api/scan/printings` were only ever called by the
+  browser scanner; they are wired into the hash-index refresh in
+  `syncService.js`, so removing them is a separate, deliberate job. The
+  `scan` audit source label is kept so historical rows still read correctly.

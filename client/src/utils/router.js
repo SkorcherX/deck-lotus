@@ -29,7 +29,6 @@ export const ROUTES = [
   ['cards', '/cards'],
   ['inventory', '/inventory'],
   ['shopping', '/shopping'],
-  ['scan', '/scan'],
   ['trades', '/trades'],
   // The trade shop is a page for history's sake but not a linkable one: see
   // the note on parsePath below.

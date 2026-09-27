@@ -9,8 +9,6 @@ import { setupAudit } from './components/audit.js';
 import { setupShopping } from './components/shopping.js';
 import { setupInventory } from './components/inventory.js';
 import { setupMaintenanceWatch, stopMaintenanceWatch, fetchMaintenanceStatus } from './components/maintenance.js';
-import { setupScan } from './components/scan.js';
-import { setupScanSession } from './components/scanSession.js';
 import { setupSharedDeck, loadSharedDeck } from './components/sharedDeck.js';
 import { setupCollectionShare, loadSharedCollection } from './components/sharedCollection.js';
 import { parsePath, setRoute, onPopState, isExternalPath, DEFAULT_PAGE } from './utils/router.js';
@@ -217,9 +215,6 @@ class App {
       case 'inventory':
         window.dispatchEvent(new CustomEvent('page:inventory'));
         break;
-      case 'scan':
-        window.dispatchEvent(new CustomEvent('page:scan'));
-        break;
       case 'trades':
         window.dispatchEvent(new CustomEvent('page:trades'));
         break;
@@ -335,8 +330,6 @@ class App {
     setupCards();
     setupShopping();
     setupInventory();
-    setupScan();
-    setupScanSession();
     setupSettings();
     setupAudit();
     setupPriceMonitoring();
