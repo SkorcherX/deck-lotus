@@ -3034,6 +3034,21 @@ button.btn-icon.active {
 }
 .confirm-phrase-input:focus { outline: none; border-color: var(--danger); }
 
+/* The named cards on a removal confirmation. */
+.confirm-card-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 12rem;
+  overflow-y: auto;
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md, 6px);
+  text-align: left;
+  color: var(--text-primary);
+}
+.confirm-card-count { color: var(--text-muted); }
+
 @media (prefers-reduced-motion: reduce) {
   .drawer, .drawer-panel, .popover, .toast { animation: none; }
 }
@@ -7598,6 +7613,31 @@ body.maintenance-locked #app {
   padding-bottom: var(--space-3);
   font-size: var(--text-sm);
   color: var(--text-muted);
+}
+
+.audit-recover-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.audit-recover-bar #audit-recover-count { margin-right: auto; color: var(--text-secondary); }
+.audit-recover-hint { font-size: var(--text-sm); color: var(--text-muted); margin-bottom: var(--space-3); }
+.audit-recover-check { accent-color: var(--primary); cursor: pointer; }
+.audit-batch-select {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .audit-list {

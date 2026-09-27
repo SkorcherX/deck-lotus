@@ -1706,3 +1706,64 @@ export function clearCollection(userId, context = {}) {
 
   return { ...summary, batchId, removedRows: rows.length };
 }
+
+/**
+ * Take every copy of the chosen cards out of the collection, in every
+ * printing and finish — the "Remove" on the inventory page's select mode.
+ *
+ * Done here in one transaction, rather than as a loop of quantity-zero calls
+ * from the browser, for two reasons. The loop set each printing without its
+ * finish, so a card owned in foil and non-foil lost one row and kept the
+ * other. And one removal is one mistake to undo: the rows share a `batchId`,
+ * which is what lets the audit page hand them back as a single paste.
+ */
+export function removeCardsFromCollection(userId, cardIds, context = {}) {
+  const ids = [...new Set(cardIds.map((id) => parseInt(id, 10)).filter(Number.isInteger))];
+
+  const batchId = context.batchId
+    || `remove-selected-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const source = context.source || 'bulk_remove';
+
+  if (ids.length === 0) {
+    return { removedCards: 0, removedCopies: 0, batchId };
+  }
+
+  const rows = db.all(
+    `SELECT op.id, op.printing_id, op.is_foil, op.quantity, p.card_id
+       FROM owned_printings op
+       JOIN printings p ON p.id = op.printing_id
+      WHERE op.user_id = ? AND p.card_id IN (${ids.map(() => '?').join(',')})`,
+    [userId, ...ids]
+  );
+
+  let removedCopies = 0;
+
+  db.transaction(() => {
+    for (const row of rows) {
+      db.run(`DELETE FROM owned_printings WHERE id = ?`, [row.id]);
+      removedCopies += row.quantity;
+
+      recordInventoryChange({
+        userId,
+        actorUserId: context.actorUserId ?? userId,
+        printingId: row.printing_id,
+        isFoil: !!row.is_foil,
+        before: row.quantity,
+        after: 0,
+        source,
+        detail: { batchId, reason: 'remove_selected' },
+      });
+    }
+
+    db.run(
+      `DELETE FROM owned_cards WHERE user_id = ? AND card_id IN (${ids.map(() => '?').join(',')})`,
+      [userId, ...ids]
+    );
+  });
+
+  return {
+    removedCards: new Set(rows.map((row) => row.card_id)).size,
+    removedCopies,
+    batchId,
+  };
+}

@@ -862,6 +862,13 @@ class ApiClient {
     });
   }
 
+  async removeCardsFromCollection(cardIds, confirm) {
+    return this.request('/inventory/remove-cards', {
+      method: 'POST',
+      body: JSON.stringify({ cardIds, confirm }),
+    });
+  }
+
   async bulkRemoveFromInventory(items) {
     return this.request('/inventory/bulk-remove', {
       method: 'POST',

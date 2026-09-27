@@ -2667,12 +2667,48 @@
                     <span id="audit-count" class="audit-count"></span>
                 </div>
 
+                <!--
+                  Recovery: tick removals, get them back as a Bulk Add paste.
+                  Hidden until something is ticked so the page reads as a log
+                  first.
+                -->
+                <div id="audit-recover-bar" class="audit-recover-bar hidden">
+                    <span id="audit-recover-count"></span>
+                    <button id="audit-recover-page" class="btn btn-sm btn-secondary">Select removals on this page</button>
+                    <button id="audit-recover-clear" class="btn btn-sm btn-secondary">Clear</button>
+                    <button id="audit-recover-copy" class="btn btn-sm btn-primary">
+                        <i class="ph ph-clipboard-text"></i> Copy as import list
+                    </button>
+                </div>
+                <p class="audit-recover-hint">
+                    Removed cards can be put back: tick the removals below, then
+                    <strong>Copy as import list</strong> and paste the result into Bulk Add.
+                </p>
+
                 <div id="audit-list" class="audit-list"></div>
 
                 <div id="audit-pager" class="audit-pager hidden">
                     <button id="audit-prev" class="btn btn-secondary">Previous</button>
                     <span id="audit-page-label"></span>
                     <button id="audit-next" class="btn btn-secondary">Next</button>
+                </div>
+            </div>
+
+            <div id="audit-recover-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 700px">
+                    <span class="modal-close" id="audit-recover-modal-close">&times;</span>
+                    <h2 style="margin-bottom: 1rem">Import list</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                        Moxfield format, one printing and finish per line. Paste it into
+                        <strong>Inventory &rarr; Bulk Add</strong> to put these cards back.
+                    </p>
+                    <textarea id="audit-recover-text" rows="12" readonly
+                        style="font-family: monospace; font-size: 0.875rem; width: 100%;"></textarea>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button id="audit-recover-copy-text" class="btn btn-primary" style="flex: 1">
+                            <i class="ph ph-copy"></i> Copy
+                        </button>
+                    </div>
                 </div>
             </div>
 

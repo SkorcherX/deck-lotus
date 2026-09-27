@@ -12,6 +12,7 @@ import {
   getOwnedSets,
   exportInventory,
   clearCollection,
+  removeCardsFromCollection,
   summarizeCollectionForClear,
 } from '../services/inventoryService.js';
 import { addOwnedPrintingQuantity } from '../services/cardService.js';
@@ -211,6 +212,32 @@ router.post('/bulk-remove-resolve', authenticate, (req, res, next) => {
     }
 
     res.json({ items: resolveBulkRemoveItems(req.user.id, items) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/remove-cards
+ * Take every copy of the chosen cards out. Body: { cardIds, confirm: "CONFIRM" }
+ *
+ * The typed word is checked here as well as in the dialog, for the reason
+ * DELETE /collection checks its own: the request has to carry the
+ * confirmation to mean what the dialog claimed it meant.
+ */
+router.post('/remove-cards', authenticate, (req, res, next) => {
+  try {
+    const { cardIds, confirm } = req.body || {};
+
+    if (!Array.isArray(cardIds) || cardIds.length === 0) {
+      return res.status(400).json({ error: 'cardIds array is required' });
+    }
+
+    if (String(confirm ?? '').trim() !== 'CONFIRM') {
+      return res.status(400).json({ error: 'Type CONFIRM to remove these cards' });
+    }
+
+    res.json({ success: true, ...removeCardsFromCollection(req.user.id, cardIds, { source: 'bulk_remove' }) });
   } catch (error) {
     next(error);
   }

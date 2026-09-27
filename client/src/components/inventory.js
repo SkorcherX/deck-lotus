@@ -850,29 +850,42 @@ function setupBulkActions() {
     removeSelectedBtn.addEventListener('click', async () => {
       if (selectedCards.size === 0) return;
 
+      const cardIds = [...selectedCards];
+      const chosen = cardIds
+        .map((id) => inventoryData.cards.find((c) => c.card_id === id))
+        .filter(Boolean);
+      const copiesOf = (card) => (card.printings || []).reduce((sum, p) => sum + (p.quantity || 0), 0);
+      const copies = chosen.reduce((sum, card) => sum + copiesOf(card), 0);
+
+      // Spans rather than a list: the dialog puts the message in a <p>.
+      // Named, not counted: "Remove 3 cards?" does not tell anyone the third
+      // one was the dual land they meant to leave unticked.
+      const shown = chosen.slice(0, 12);
+      const list = `
+        <span class="confirm-card-list">
+          ${shown.map((card) => `<span>${escapeHtml(card.name)} <span class="confirm-card-count">&times;${copiesOf(card)}</span></span>`).join('')}
+          ${chosen.length > shown.length ? `<span>&hellip;and ${chosen.length - shown.length} more</span>` : ''}
+        </span>`;
+
       const ok = await confirmDialog({
-        title: 'Remove cards?',
-        message: `Remove ${selectedCards.size} card(s) from your inventory?`,
+        title: `Remove ${cardIds.length} card${cardIds.length === 1 ? '' : 's'}?`,
+        message: `Every copy of ${cardIds.length === 1 ? 'this card' : 'these cards'}, in every printing and finish`
+          + `${copies ? ` (${copies} ${copies === 1 ? 'copy' : 'copies'})` : ''}, comes out of your collection.`
+          + list
+          + 'To put them back, select the entries on the Audit Log page and use <em>Copy as import list</em>.',
         confirmText: 'Remove',
         danger: true,
+        requireText: 'CONFIRM',
       });
       if (!ok) return;
 
       try {
         showLoading();
-        // For each selected card, set all owned printings to 0
-        for (const cardId of selectedCards) {
-          const card = inventoryData.cards.find(c => c.card_id === cardId);
-          if (card && card.printings) {
-            for (const printing of card.printings) {
-              await api.setOwnedPrintingQuantity(printing.printing_id, 0);
-            }
-          }
-        }
+        const result = await api.removeCardsFromCollection(cardIds, 'CONFIRM');
         selectedCards.clear();
         await loadInventoryData();
         hideLoading();
-        showToast('Cards removed from inventory', 'success');
+        showToast(`Removed ${result.removedCopies} ${result.removedCopies === 1 ? 'copy' : 'copies'} of ${result.removedCards} card${result.removedCards === 1 ? '' : 's'}`, 'success');
       } catch (error) {
         hideLoading();
         showError('Failed to remove cards: ' + error.message);

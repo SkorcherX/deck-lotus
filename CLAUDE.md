@@ -254,3 +254,12 @@ taken on GitHub — only do it when explicitly asked.
   that morning.
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.
+- Removing selected cards from the inventory page goes through
+  `removeCardsFromCollection` (`POST /api/inventory/remove-cards`), which
+  requires `confirm: "CONFIRM"` server-side and stamps one `batchId` on every
+  row it deletes. The way back is the audit page: tick removals (or "Select
+  whole batch", which filters on `detail.batchId`) and "Copy as import list"
+  builds Moxfield lines via `src/shared/auditRecovery.js` for Bulk Add. Trade
+  removals are excluded on purpose — re-adding them would double-count a card
+  the partner now holds. `test/integration/removeAndRecover.test.js` pins the
+  round trip, foils included.

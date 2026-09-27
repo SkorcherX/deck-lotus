@@ -43,13 +43,14 @@ function resolveScope(req) {
  */
 router.get('/', authenticate, (req, res, next) => {
   try {
-    const { action, entityType, source, search, from, to, page = 1, limit = 50 } = req.query;
+    const { action, entityType, source, search, batchId, from, to, page = 1, limit = 50 } = req.query;
 
     const result = listAuditEntries(resolveScope(req), {
       action: action || null,
       entityType: entityType || null,
       source: source || null,
       search: search || null,
+      batchId: batchId || null,
       from: from || null,
       to: to || null,
       page,

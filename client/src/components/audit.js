@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { showToast, debounce } from '../utils/ui.js';
+import { isRecoverable, buildImportList } from '../../../src/shared/auditRecovery.js';
 
 /**
  * The audit log page.
@@ -29,6 +30,13 @@ let state = {
 
 let pagination = { page: 1, pages: 0, total: 0 };
 let loaded = false;
+
+// Removals ticked for recovery, by audit id. Kept across pages and filter
+// changes on purpose: a bad removal is found by searching for it, and a
+// selection that emptied every time the search box changed could only ever
+// recover what fitted on one screen.
+const recoverSelection = new Map();
+let pageEntries = [];
 
 export function setupAudit() {
   window.addEventListener('page:audit', () => {
@@ -84,6 +92,8 @@ export function setupAudit() {
       load();
     });
   }
+
+  setupRecovery();
 
   const prev = el('audit-prev');
   if (prev) {
@@ -203,12 +213,16 @@ function render(entries) {
         was added — changes made before that were not recorded.
       </div>
     `;
+    pageEntries = [];
     renderPager();
+    renderRecoverBar();
     return;
   }
 
+  pageEntries = entries;
   list.innerHTML = entries.map(renderEntry).join('');
   renderPager();
+  renderRecoverBar();
 }
 
 function renderEntry(entry) {
@@ -217,9 +231,17 @@ function renderEntry(entry) {
     ? entry.created_at
     : when.toLocaleString();
 
+  const recoverable = isRecoverable(entry);
+  const batchId = entry.detail?.batchId;
+
   return `
     <div class="audit-entry audit-${escapeHtml(entry.entity_type)}">
       <div class="audit-entry-main">
+        ${recoverable ? `
+          <input type="checkbox" class="audit-recover-check" data-audit-id="${entry.id}"
+                 title="Include in the import list" aria-label="Include in the import list"
+                 ${recoverSelection.has(entry.id) ? 'checked' : ''}>
+        ` : ''}
         <span class="audit-badge audit-badge-${escapeHtml(entry.entity_type)}">${escapeHtml(describeAction(entry.action))}</span>
         <span class="audit-subject">${subjectOf(entry)}</span>
         ${quantityOf(entry)}
@@ -228,6 +250,12 @@ function renderEntry(entry) {
         <span>${escapeHtml(stamp)}</span>
         <span>${escapeHtml(describeSource(entry.source))}</span>
         ${actorOf(entry)}
+        ${recoverable && batchId ? `
+          <button type="button" class="audit-batch-select" data-batch-id="${escapeHtml(batchId)}"
+                  title="Tick every removal from this same operation, on any page">
+            Select whole batch
+          </button>
+        ` : ''}
       </div>
       ${enteredAs(entry)}
     </div>
@@ -335,6 +363,124 @@ function enteredAs(entry) {
       ${mismatch ? `→ matched <code>${escapeHtml(resolved)}</code>` : ''}
     </div>
   `;
+}
+
+function setupRecovery() {
+  const list = el('audit-list');
+  const modal = el('audit-recover-modal');
+
+  if (list) {
+    list.addEventListener('change', (e) => {
+      const box = e.target.closest('.audit-recover-check');
+      if (!box) return;
+
+      const id = Number(box.dataset.auditId);
+      const entry = pageEntries.find((row) => row.id === id);
+
+      if (box.checked && entry) recoverSelection.set(id, entry);
+      else recoverSelection.delete(id);
+
+      renderRecoverBar();
+    });
+
+    list.addEventListener('click', async (e) => {
+      const button = e.target.closest('.audit-batch-select');
+      if (!button) return;
+
+      button.disabled = true;
+      try {
+        await selectBatch(button.dataset.batchId);
+      } catch (error) {
+        showToast('Could not load that batch: ' + error.message, 'error');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  el('audit-recover-page')?.addEventListener('click', () => {
+    for (const entry of pageEntries) {
+      if (isRecoverable(entry)) recoverSelection.set(entry.id, entry);
+    }
+    syncChecks();
+  });
+
+  el('audit-recover-clear')?.addEventListener('click', () => {
+    recoverSelection.clear();
+    syncChecks();
+  });
+
+  el('audit-recover-copy')?.addEventListener('click', () => {
+    const text = buildImportList([...recoverSelection.values()]);
+    if (!text) return;
+
+    el('audit-recover-text').value = text;
+    modal?.classList.remove('hidden');
+  });
+
+  el('audit-recover-modal-close')?.addEventListener('click', () => modal?.classList.add('hidden'));
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  });
+
+  el('audit-recover-copy-text')?.addEventListener('click', async () => {
+    const area = el('audit-recover-text');
+    try {
+      await navigator.clipboard.writeText(area.value);
+      showToast('Copied — paste it into Bulk Add on the Inventory page', 'success');
+    } catch {
+      // Clipboard access needs a secure context, which a plain-http LAN
+      // address is not.
+      area.select();
+      showToast('Text selected — press Ctrl+C to copy', 'info');
+    }
+  });
+}
+
+/**
+ * Tick every removal sharing a batch id, across however many pages it spans.
+ * Passes the page's user filter along; the server still decides the scope.
+ */
+async function selectBatch(batchId) {
+  let page = 1;
+  let pages = 1;
+
+  do {
+    const result = await api.getAuditLog({ batchId, userId: state.userId, page, limit: 200 });
+    for (const entry of result.entries) {
+      if (isRecoverable(entry)) recoverSelection.set(entry.id, entry);
+    }
+    pages = result.pagination.pages;
+    page += 1;
+  } while (page <= pages);
+
+  syncChecks();
+}
+
+function syncChecks() {
+  document.querySelectorAll('.audit-recover-check').forEach((box) => {
+    box.checked = recoverSelection.has(Number(box.dataset.auditId));
+  });
+  renderRecoverBar();
+}
+
+function renderRecoverBar() {
+  const bar = el('audit-recover-bar');
+  const count = el('audit-recover-count');
+  if (!bar) return;
+
+  const entries = [...recoverSelection.values()];
+  const copies = entries.reduce((sum, entry) => sum + -entry.quantity_delta, 0);
+
+  bar.classList.toggle('hidden', entries.length === 0 && !pageEntries.some(isRecoverable));
+  if (count) {
+    count.textContent = entries.length === 0
+      ? 'Nothing selected to restore'
+      : `${entries.length} removal${entries.length === 1 ? '' : 's'} selected · ${copies} ${copies === 1 ? 'copy' : 'copies'}`;
+  }
+
+  const copyBtn = el('audit-recover-copy');
+  if (copyBtn) copyBtn.disabled = entries.length === 0;
 }
 
 function renderPager() {

@@ -325,6 +325,7 @@ export function listAuditEntries(userIds, filters = {}) {
     entityType = null,
     source = null,
     search = null,
+    batchId = null,
     from = null,
     to = null,
     page = 1,
@@ -363,6 +364,13 @@ export function listAuditEntries(userIds, filters = {}) {
     // more confusing of the two failures.
     where.push('(a.card_name LIKE ? OR c.name LIKE ? OR a.set_code LIKE ? OR a.deck_name LIKE ? OR a.collector_number = ?)');
     params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, search);
+  }
+
+  if (batchId) {
+    // One bulk operation as a unit — how a removal is pulled back out whole
+    // when it spans more than one page of history.
+    where.push("json_extract(a.detail, '$.batchId') = ?");
+    params.push(batchId);
   }
 
   if (from) {
