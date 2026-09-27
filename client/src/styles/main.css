@@ -1,3 +1,6 @@
+/* Every set symbol, not just the avatar presets: see the file for how to update it. */
+@import './keyrune-glyphs.css';
+
 /* Planewalker — MTG-themed display font, used sparingly for page/section
    titles and card names only. Never for body copy, buttons, inputs, tables,
    or other dense/small UI text — a fantasy display face like this is hard to
@@ -17,7 +20,7 @@
   letter-spacing: 0.02em;
 }
 
-/* Keyrune set-symbol webfont (SIL OFL 1.1) — used for avatar presets.
+/* Keyrune set-symbol webfont (SIL OFL 1.1) — avatar presets and set icons.
    See client/src/assets/fonts/KEYRUNE-LICENSE.md for attribution. */
 @font-face {
   font-family: 'Keyrune';
@@ -36,20 +39,6 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-
-/* Avatar preset glyphs — a curated dozen recognizable expansion symbols */
-.ss-khm::before { content: "\e974"; }
-.ss-thb::before { content: "\e961"; }
-.ss-war::before { content: "\e95a"; }
-.ss-znr::before { content: "\e963"; }
-.ss-dom::before { content: "\e93f"; }
-.ss-grn::before { content: "\e94b"; }
-.ss-iko::before { content: "\e962"; }
-.ss-afr::before { content: "\e972"; }
-.ss-neo::before { content: "\e98c"; }
-.ss-one::before { content: "\e9a1"; }
-.ss-ltr::before { content: "\e9af"; }
-.ss-mkm::before { content: "\e9c9"; }
 
 :root {
   /* Brand / accent */
