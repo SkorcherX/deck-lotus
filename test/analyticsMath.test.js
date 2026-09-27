@@ -55,3 +55,35 @@ test('foldTopN folds the tail into Other and sums it', () => {
   assert.equal(out[2].value, 3);
   assert.ok(out[2].isOther);
 });
+
+import {
+  primaryType, rarityBucket, curveBucket, summariseComposition,
+} from '../src/services/analyticsMath.js';
+
+test('primaryType files multi-typed cards the way the deck builder does', () => {
+  assert.equal(primaryType('Artifact Creature — Golem'), 'Creature');
+  assert.equal(primaryType('Legendary Enchantment Artifact'), 'Enchantment');
+  assert.equal(primaryType('Basic Land — Forest'), 'Land');
+  assert.equal(primaryType('Kindred Instant — Elf'), 'Instant');
+  assert.equal(primaryType(null), 'Other');
+});
+
+test('rarity and curve buckets', () => {
+  assert.equal(rarityBucket('Mythic'), 'mythic');
+  assert.equal(rarityBucket('bonus'), 'special');
+  assert.equal(curveBucket(0), '0');
+  assert.equal(curveBucket(3.5), '3');
+  assert.equal(curveBucket(12), '7+');
+});
+
+test('summariseComposition keeps lands off the curve but in types and rarity', () => {
+  const out = summariseComposition([
+    { typeLine: 'Land', rarity: 'rare', cmc: 0, copies: 2, value: 40 },
+    { typeLine: 'Instant', rarity: 'common', cmc: 1, copies: 4, value: 1 },
+  ]);
+  assert.equal(out.curve.find((b) => b.key === '0').copies, 0);
+  assert.equal(out.curve.find((b) => b.key === '1').copies, 4);
+  assert.equal(out.types.find((b) => b.key === 'Land').value, 40);
+  assert.equal(out.rarities.find((b) => b.key === 'rare').copies, 2);
+  assert.equal(out.types.length, 9);
+});

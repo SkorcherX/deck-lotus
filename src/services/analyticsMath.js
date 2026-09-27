@@ -108,3 +108,59 @@ export function foldTopN(items, n, field, sumFields = [field]) {
 export function round2(n) {
   return Math.round((n || 0) * 100) / 100;
 }
+
+/**
+ * Card-type buckets, in the deck builder's order (deckBuilder.js groups by
+ * type the same way), so a card is filed under the same heading on both
+ * pages. First match wins: an Artifact Creature is a Creature.
+ */
+export const TYPE_ORDER = ['Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Land'];
+
+export function primaryType(typeLine) {
+  const line = typeLine || '';
+  return TYPE_ORDER.find((t) => line.includes(t)) || 'Other';
+}
+
+/** Rarity buckets. MTGJSON's 'special' and 'bonus' are few enough to share one. */
+export const RARITY_ORDER = ['common', 'uncommon', 'rare', 'mythic', 'special'];
+
+export function rarityBucket(rarity) {
+  const r = String(rarity || '').toLowerCase();
+  return RARITY_ORDER.includes(r) ? r : 'special';
+}
+
+/** Mana value buckets 0–6 and 7+. Lands are left out by the caller. */
+export const CURVE_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+'];
+
+export function curveBucket(cmc) {
+  const n = Math.max(0, Math.floor(Number(cmc) || 0));
+  return n >= 7 ? '7+' : String(n);
+}
+
+/**
+ * Fold per-card rows ({ typeLine, rarity, cmc, copies, value }) into the three
+ * composition breakdowns. Every bucket is present, zero or not, so bars keep
+ * their positions between collections.
+ */
+export function summariseComposition(rows) {
+  const init = (keys) => new Map(keys.map((k) => [k, { copies: 0, value: 0 }]));
+  const types = init([...TYPE_ORDER, 'Other']);
+  const rarities = init(RARITY_ORDER);
+  const curve = init(CURVE_BUCKETS);
+
+  for (const row of rows) {
+    const add = (map, key) => {
+      const b = map.get(key);
+      b.copies += row.copies || 0;
+      b.value += row.value || 0;
+    };
+    const type = primaryType(row.typeLine);
+    add(types, type);
+    add(rarities, rarityBucket(row.rarity));
+    // A land has no place on a curve: it is the thing the curve is paid with.
+    if (type !== 'Land') add(curve, curveBucket(row.cmc));
+  }
+
+  const out = (map) => [...map].map(([key, b]) => ({ key, copies: b.copies, value: round2(b.value) }));
+  return { types: out(types), rarities: out(rarities), curve: out(curve) };
+}

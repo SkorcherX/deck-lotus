@@ -110,6 +110,40 @@ describe('analytics', () => {
     assert.equal(t.bySource.find((r) => r.source === 'card_page').removed, 2);
   });
 
+  test('composition keeps lands off the curve and buckets rarity', () => {
+    const c = analytics.getComposition(userId);
+    const type = (k) => c.types.find((b) => b.key === k);
+    assert.equal(type('Instant').copies, 7);
+    assert.equal(type('Land').copies, 11);
+    assert.equal(type('Artifact').copies, 3);
+    const curveTotal = c.curve.reduce((s, b) => s + b.copies, 0);
+    assert.equal(curveTotal, 10, 'lands are not on the curve');
+  });
+
+  test('top cards rank by the price of one copy and skip unpriced ones', () => {
+    const top = analytics.getTopCards(userId);
+    assert.equal(top[0].name, 'Dual');
+    assert.equal(top[1].name, 'Charm');
+    assert.equal(top[1].total, 20);
+    assert.ok(!top.some((r) => r.name === 'Rock'));
+  });
+
+  test('set completion counts cards owned over cards printed', () => {
+    addCard('Unowned', { typeLine: 'Instant', set: 'BBB' });
+    const bbb = analytics.getSetCompletion(userId).find((s) => s.code === 'BBB');
+    assert.equal(bbb.owned, 2);
+    assert.equal(bbb.total, 3);
+    assert.equal(bbb.percent, 66.67);
+  });
+
+  test('daily activity is only the days something happened', () => {
+    audit(4, new Date().toISOString().slice(0, 10) + ' 09:00:00');
+    const days = analytics.getDailyActivity(userId);
+    const today = days.find((d) => d.date === new Date().toISOString().slice(0, 10));
+    assert.equal(today.added, 4);
+    assert.ok(days.every((d) => d.added || d.removed));
+  });
+
   test('a snapshot is one row per user per day, replaced on a rerun', () => {
     analytics.recordValueSnapshots();
     analytics.recordValueSnapshots();

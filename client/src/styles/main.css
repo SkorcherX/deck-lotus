@@ -7955,3 +7955,133 @@ body.maintenance-locked #app {
   text-transform: uppercase;
   margin-left: 0.25rem;
 }
+
+/* The composition toggle sits in its own row above the three charts it drives. */
+.analytics-composition-head {
+  background: transparent;
+  border: none;
+  padding: 0.5rem 0 0;
+}
+
+.analytics-composition-head .analytics-panel-head { margin-bottom: 0; }
+
+.analytics-h4-note {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* Daily activity calendar */
+.analytics-calendar-wrap { overflow-x: auto; padding-bottom: 0.25rem; }
+
+/* Cells stretch to the panel on desktop; below ~560px they bottom out at 8px
+   and the grid scrolls sideways instead of shrinking into specks. */
+.analytics-calendar-months,
+.analytics-calendar {
+  display: grid;
+  grid-template-columns: repeat(53, minmax(8px, 1fr));
+  gap: 3px;
+  min-width: 560px;
+}
+
+.analytics-calendar-months {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  height: 1rem;
+}
+
+.analytics-calendar-months span { white-space: nowrap; }
+
+.analytics-calendar {
+  grid-template-rows: repeat(7, auto);
+  grid-auto-flow: column;
+}
+
+.analytics-calendar i { display: block; aspect-ratio: 1; border-radius: 2px; background: var(--bg-tertiary); }
+
+.analytics-calendar-legend i {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+}
+
+.analytics-calendar i.future { background: transparent; }
+.analytics-calendar i[data-level="1"], .analytics-calendar-legend i[data-level="1"] { background: rgb(var(--success-rgb) / 0.3); }
+.analytics-calendar i[data-level="2"], .analytics-calendar-legend i[data-level="2"] { background: rgb(var(--success-rgb) / 0.5); }
+.analytics-calendar i[data-level="3"], .analytics-calendar-legend i[data-level="3"] { background: rgb(var(--success-rgb) / 0.75); }
+.analytics-calendar i[data-level="4"], .analytics-calendar-legend i[data-level="4"] { background: rgb(var(--success-rgb) / 1); }
+.analytics-calendar i.removed-only, .analytics-calendar-legend i.removed-only { background: rgb(var(--danger-rgb) / 0.6); }
+
+.analytics-calendar-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 0.6rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.analytics-calendar-legend span { margin: 0 0.3rem; }
+.analytics-calendar-legend .removed-only { margin-left: 1rem; }
+
+/* Most valuable cards */
+.analytics-top td { vertical-align: middle; }
+.analytics-top .rank { color: var(--text-muted); width: 1.5rem; }
+.analytics-top-name { color: var(--text); }
+.analytics-top-total { color: var(--text-muted); font-size: 0.75rem; }
+
+.analytics-foil {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-full);
+  background: rgb(var(--warning-rgb) / 0.18);
+  color: var(--warning);
+}
+
+/* Set completion */
+.analytics-progress-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+}
+
+.analytics-progress-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-progress {
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.analytics-progress div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
+.analytics-progress-num {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.analytics-progress-num b { color: var(--text); margin-left: 0.3rem; }
+
+@media (max-width: 600px) {
+  .analytics-progress-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .analytics-progress { grid-column: 1 / -1; grid-row: 2; }
+}

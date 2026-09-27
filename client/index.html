@@ -2212,6 +2212,17 @@
                         </details>
                     </section>
 
+                    <section class="analytics-panel analytics-wide">
+                        <h4>Daily activity, last 12 months</h4>
+                        <div id="analytics-calendar" class="analytics-calendar-wrap"></div>
+                        <div class="analytics-calendar-legend">
+                            <span>Less</span>
+                            <i data-level="0"></i><i data-level="1"></i><i data-level="2"></i><i data-level="3"></i><i data-level="4"></i>
+                            <span>More</span>
+                            <i class="removed-only"></i><span>Removals only</span>
+                        </div>
+                    </section>
+
                     <section class="analytics-panel">
                         <h4>Collection value over time</h4>
                         <div class="analytics-chart" style="height: 240px;"><canvas id="analytics-value"></canvas></div>
@@ -2232,6 +2243,39 @@
                         <p id="analytics-colors-empty" class="analytics-empty hidden">No cards yet.</p>
                     </section>
 
+                    <section class="analytics-panel analytics-wide analytics-composition-head">
+                        <div class="analytics-panel-head">
+                            <h4>Composition</h4>
+                            <div class="analytics-toggle" role="group" aria-label="Measure composition by">
+                                <button type="button" class="active" aria-pressed="true" data-analytics-toggle="compositionBy:copies">Cards</button>
+                                <button type="button" aria-pressed="false" data-analytics-toggle="compositionBy:value">Value</button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="analytics-panel">
+                        <h4>Card types</h4>
+                        <div class="analytics-chart" style="height: 260px;"><canvas id="analytics-types"></canvas></div>
+                        <p id="analytics-types-empty" class="analytics-empty hidden">No cards yet.</p>
+                    </section>
+
+                    <section class="analytics-panel">
+                        <h4>Mana curve <span class="analytics-h4-note">(lands excluded)</span></h4>
+                        <div class="analytics-chart" style="height: 260px;"><canvas id="analytics-curve"></canvas></div>
+                        <p id="analytics-curve-empty" class="analytics-empty hidden">No nonland cards yet.</p>
+                    </section>
+
+                    <section class="analytics-panel">
+                        <h4>Rarity</h4>
+                        <div class="analytics-chart" style="height: 240px;"><canvas id="analytics-rarity"></canvas></div>
+                        <p id="analytics-rarity-empty" class="analytics-empty hidden">No cards yet.</p>
+                    </section>
+
+                    <section class="analytics-panel">
+                        <h4>Most valuable cards</h4>
+                        <div id="analytics-top-cards"></div>
+                    </section>
+
                     <section class="analytics-panel analytics-wide">
                         <div class="analytics-panel-head">
                             <h4>Sets</h4>
@@ -2245,6 +2289,16 @@
                         <details class="analytics-details">
                             <summary>All sets <span id="analytics-sets-count"></span></summary>
                             <div id="analytics-sets-table" class="analytics-table-wrap"></div>
+                        </details>
+                    </section>
+
+                    <section class="analytics-panel analytics-wide">
+                        <h4>Set completion</h4>
+                        <p class="analytics-note">Different cards you own from each set, out of all the cards printed in it. Alternate printings of a card you already have don't count again.</p>
+                        <div id="analytics-completion"></div>
+                        <details class="analytics-details" id="analytics-completion-more-wrap">
+                            <summary>All sets</summary>
+                            <div id="analytics-completion-more" class="analytics-table-wrap"></div>
                         </details>
                     </section>
                 </div>

@@ -13,7 +13,7 @@
 import db from '../db/connection.js';
 import { OWNED_COPY_PRICE } from './inventoryService.js';
 import { isBasicLand } from './basicLands.js';
-import { summariseColors, fillMonths, round2 } from './analyticsMath.js';
+import { summariseColors, summariseComposition, fillMonths, round2 } from './analyticsMath.js';
 
 export function getSummary(userId) {
   const totals = db.get(`
@@ -127,6 +127,97 @@ export function getColors(userId) {
     copies: r.copies,
     value: r.value,
   })));
+}
+
+/** Card types, rarity and mana curve — see analyticsMath.summariseComposition. */
+export function getComposition(userId) {
+  const rows = db.all(`
+    SELECT c.type_line, c.cmc, p.rarity,
+           SUM(op.quantity) AS copies,
+           SUM(op.quantity * COALESCE(${OWNED_COPY_PRICE}, 0)) AS value
+      FROM owned_printings op
+      JOIN printings p ON p.id = op.printing_id
+      JOIN cards c ON c.id = p.card_id
+     WHERE op.user_id = ? AND op.quantity > 0
+     GROUP BY p.id
+  `, [userId]);
+
+  return summariseComposition(rows.map((r) => ({
+    typeLine: r.type_line, rarity: r.rarity, cmc: r.cmc, copies: r.copies, value: r.value,
+  })));
+}
+
+/**
+ * The most valuable owned rows, ranked by the price of one copy. Foil and
+ * non-foil copies of a printing are separate rows, as they are priced.
+ */
+export function getTopCards(userId, limit = 10) {
+  const rows = db.all(`
+    SELECT * FROM (
+      SELECT c.name, p.set_code AS setCode, p.collector_number AS collectorNumber,
+             p.image_url AS imageUrl, op.is_foil AS isFoil, op.quantity,
+             ${OWNED_COPY_PRICE} AS price
+        FROM owned_printings op
+        JOIN printings p ON p.id = op.printing_id
+        JOIN cards c ON c.id = p.card_id
+       WHERE op.user_id = ? AND op.quantity > 0
+    )
+     WHERE price IS NOT NULL
+     ORDER BY price DESC
+     LIMIT ?
+  `, [userId, limit]);
+
+  return rows.map((r) => ({
+    ...r,
+    isFoil: r.isFoil === 1,
+    price: round2(r.price),
+    total: round2(r.price * r.quantity),
+  }));
+}
+
+/**
+ * How much of each set the user has: distinct cards owned from it over
+ * distinct cards printed in it. By card, not printing — a borderless variant
+ * of a card already owned does not move the number, which is what "have I got
+ * the set" means to most people.
+ */
+export function getSetCompletion(userId) {
+  const rows = db.all(`
+    WITH mine AS (
+      SELECT p.set_code, COUNT(DISTINCT p.card_id) AS owned
+        FROM owned_printings op
+        JOIN printings p ON p.id = op.printing_id
+       WHERE op.user_id = ? AND op.quantity > 0
+       GROUP BY p.set_code
+    )
+    SELECT m.set_code AS code, COALESCE(s.name, m.set_code) AS name,
+           s.release_date AS releaseDate, s.keyrune_code AS keyrune,
+           m.owned,
+           (SELECT COUNT(DISTINCT p2.card_id) FROM printings p2 WHERE p2.set_code = m.set_code) AS total
+      FROM mine m
+      LEFT JOIN sets s ON s.code = m.set_code
+  `, [userId]);
+
+  return rows
+    .map((r) => ({ ...r, percent: r.total ? round2((r.owned / r.total) * 100) : 0 }))
+    .sort((a, b) => b.percent - a.percent || b.owned - a.owned);
+}
+
+/**
+ * Cards in and out per day for the last year, for the calendar. Only days with
+ * activity are returned; the client lays out the empty ones.
+ */
+export function getDailyActivity(userId) {
+  return db.all(`
+    SELECT date(created_at) AS date,
+           SUM(CASE WHEN quantity_delta > 0 THEN quantity_delta ELSE 0 END) AS added,
+           SUM(CASE WHEN quantity_delta < 0 THEN -quantity_delta ELSE 0 END) AS removed
+      FROM audit_log
+     WHERE user_id = ? AND entity_type = 'inventory' AND quantity_delta IS NOT NULL
+       AND created_at >= date('now', '-371 days')
+     GROUP BY date(created_at)
+     ORDER BY date
+  `, [userId]);
 }
 
 export function getValueHistory(userId) {

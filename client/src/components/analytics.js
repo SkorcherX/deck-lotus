@@ -8,13 +8,13 @@
  * them instead of leaving the old palette behind.
  */
 import api from '../services/api.js';
-import { token, tokenRgba, manaColor } from '../utils/theme.js';
+import { token, tokenRgba, manaColor, cmcColor } from '../utils/theme.js';
 
 const TOP_SETS = 15;
 
 let data = null;
 const charts = {};
-const view = { setsBy: 'value', colorsBy: 'copies' };
+const view = { setsBy: 'value', colorsBy: 'copies', compositionBy: 'copies' };
 
 const el = (id) => document.getElementById(id);
 const money = (n) => '$' + (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -35,6 +35,7 @@ export function setupAnalytics() {
       if (!data) return;
       if (key === 'setsBy') { renderSetsChart(); renderSetsTable(); }
       if (key === 'colorsBy') renderColorsChart();
+      if (key === 'compositionBy') renderCompositionCharts();
     });
   });
 }
@@ -44,18 +45,25 @@ async function load() {
   status.textContent = 'Loading…';
   status.classList.remove('hidden');
   try {
-    const [summary, timeline, sets, colors, valueHistory] = await Promise.all([
+    const [summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily] = await Promise.all([
       api.getAnalytics('summary'),
       api.getAnalytics('timeline'),
       api.getAnalytics('sets'),
       api.getAnalytics('colors'),
       api.getAnalytics('value-history'),
+      api.getAnalytics('composition'),
+      api.getAnalytics('top-cards'),
+      api.getAnalytics('set-completion'),
+      api.getAnalytics('daily'),
     ]);
-    data = { summary, timeline, sets, colors, valueHistory };
+    data = { summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily };
     status.classList.add('hidden');
     renderSummary();
     renderSetsTable();
     renderSources();
+    renderCalendar();
+    renderTopCards();
+    renderCompletion();
     renderCharts();
   } catch (error) {
     status.textContent = `Could not load analytics: ${error.message}`;
@@ -68,6 +76,7 @@ function renderCharts() {
   renderValueChart();
   renderSetsChart();
   renderColorsChart();
+  renderCompositionCharts();
 }
 
 // ---- Shared chart styling ---------------------------------------------------
@@ -347,6 +356,205 @@ function renderColorsChart() {
       },
     },
   });
+}
+
+// ---- Daily activity calendar ------------------------------------------------
+//
+// Plain HTML cells rather than a chart: it is a grid of squares, and as DOM it
+// takes its colours straight from var() with no canvas bridge to keep in step.
+// Days are UTC, matching SQLite's date() over the audit log's UTC stamps.
+
+const DAY_MS = 86400000;
+
+function renderCalendar() {
+  const byDate = new Map(data.daily.map((d) => [d.date, d]));
+  const max = Math.max(1, ...data.daily.map((d) => d.added));
+
+  // 53 weeks ending with the current one, each column Sunday..Saturday.
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const start = new Date(today.getTime() - (52 * 7 + today.getUTCDay()) * DAY_MS);
+
+  const cells = [];
+  const monthLabels = [];
+  let lastMonth = -1;
+  for (let week = 0; week < 53; week++) {
+    const first = new Date(start.getTime() + week * 7 * DAY_MS);
+    if (first.getUTCMonth() !== lastMonth) {
+      monthLabels.push(`<span style="grid-column: ${week + 1}">${first.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' })}</span>`);
+      lastMonth = first.getUTCMonth();
+    }
+    for (let dow = 0; dow < 7; dow++) {
+      const d = new Date(first.getTime() + dow * DAY_MS);
+      if (d > today) { cells.push('<i class="future"></i>'); continue; }
+      const row = byDate.get(d.toISOString().slice(0, 10));
+      const label = d.toLocaleDateString(undefined, { dateStyle: 'medium', timeZone: 'UTC' });
+      if (!row) {
+        cells.push(`<i data-level="0" title="${label}: no changes"></i>`);
+        continue;
+      }
+      const title = `${label}: +${row.added} added, −${row.removed} removed`;
+      if (!row.added) {
+        cells.push(`<i class="removed-only" title="${title}"></i>`);
+        continue;
+      }
+      // Scaled to the busiest day, in four steps.
+      const level = Math.min(4, Math.max(1, Math.ceil((row.added / max) * 4)));
+      cells.push(`<i data-level="${level}" title="${title}"></i>`);
+    }
+  }
+
+  el('analytics-calendar').innerHTML = `
+    <div class="analytics-calendar-months">${monthLabels.join('')}</div>
+    <div class="analytics-calendar">${cells.join('')}</div>`;
+}
+
+// ---- Composition: types, curve, rarity -------------------------------------
+
+function renderCompositionCharts() {
+  if (!window.Chart || !data) return;
+  const field = view.compositionBy;
+  const fmt = (v) => (field === 'value' ? money(v) : count(v));
+  const { types, curve, rarities } = data.composition;
+
+  // Types: horizontal bars, empty types dropped so the chart isn't half blank.
+  const typeRows = types.filter((t) => t.copies > 0);
+  if (!showEmpty('types', 'analytics-types', 'analytics-types-empty', typeRows.length === 0)) {
+    const opts = baseOptions({ indexAxis: 'y' });
+    opts.plugins.legend.display = false;
+    opts.scales.y.grid.display = false;
+    opts.scales.x.ticks.callback = fmt;
+    opts.plugins.tooltip.callbacks = {
+      label: (ctx) => `${count(typeRows[ctx.dataIndex].copies)} cards · ${money(typeRows[ctx.dataIndex].value)}`,
+    };
+    draw('types', 'analytics-types', {
+      type: 'bar',
+      data: {
+        labels: typeRows.map((t) => t.key),
+        datasets: [{ data: typeRows.map((t) => t[field]), backgroundColor: tokenRgba('--primary-rgb', 0.85), borderRadius: 3, maxBarThickness: 28 }],
+      },
+      options: opts,
+    });
+  }
+
+  // Curve: every bucket kept, zeros included — a gap at 5 is information.
+  const curveEmpty = curve.every((b) => b.copies === 0);
+  if (!showEmpty('curve', 'analytics-curve', 'analytics-curve-empty', curveEmpty)) {
+    const opts = baseOptions();
+    opts.plugins.legend.display = false;
+    opts.scales.x.grid.display = false;
+    opts.scales.y.ticks.callback = fmt;
+    opts.plugins.tooltip.callbacks = {
+      title: (items) => `Mana value ${items[0].label}`,
+      label: (ctx) => `${count(curve[ctx.dataIndex].copies)} cards · ${money(curve[ctx.dataIndex].value)}`,
+    };
+    draw('curve', 'analytics-curve', {
+      type: 'bar',
+      data: {
+        labels: curve.map((b) => b.key),
+        // The theme's own --cmc-N ramp, the same colours the deck builder's curve uses.
+        datasets: [{ data: curve.map((b) => b[field]), backgroundColor: curve.map((b) => cmcColor(b.key === '7+' ? 7 : b.key)), borderRadius: 3 }],
+      },
+      options: opts,
+    });
+  }
+
+  const rarityRows = rarities.filter((r) => r[field] > 0);
+  if (!showEmpty('rarity', 'analytics-rarity', 'analytics-rarity-empty', rarityRows.length === 0)) {
+    const total = rarityRows.reduce((s, r) => s + r[field], 0) || 1;
+    draw('rarity', 'analytics-rarity', {
+      type: 'doughnut',
+      data: {
+        labels: rarityRows.map((r) => RARITY_LABELS[r.key]),
+        datasets: [{
+          data: rarityRows.map((r) => r[field]),
+          backgroundColor: rarityRows.map((r) => rarityColor(r.key)),
+          borderColor: token('--bg-secondary'),
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '58%',
+        plugins: {
+          legend: { position: 'right', labels: { color: token('--text-secondary'), boxWidth: 12, font: { size: 11 } } },
+          tooltip: {
+            ...tooltipStyle(),
+            callbacks: {
+              label: (ctx) => {
+                const r = rarityRows[ctx.dataIndex];
+                return `${RARITY_LABELS[r.key]}: ${count(r.copies)} cards · ${money(r.value)} (${((r[field] / total) * 100).toFixed(1)}%)`;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+}
+
+const RARITY_LABELS = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', mythic: 'Mythic', special: 'Special' };
+
+// Roughly the set-symbol colours people already read rarity by, from theme tokens.
+function rarityColor(key) {
+  return {
+    common: token('--text-muted'),
+    uncommon: token('--mana-u'),
+    rare: token('--warning'),
+    mythic: token('--mana-r'),
+    special: tokenRgba('--primary-rgb', 0.85),
+  }[key];
+}
+
+// ---- Most valuable cards ----------------------------------------------------
+
+function renderTopCards() {
+  const rows = data.topCards;
+  el('analytics-top-cards').innerHTML = rows.length ? `
+    <table class="analytics-table analytics-top">
+      <tbody>${rows.map((r, i) => `
+        <tr>
+          <td class="rank">${i + 1}</td>
+          <td>
+            <span class="analytics-top-name">${escapeHtml(r.name)}</span>${r.isFoil ? ' <span class="analytics-foil">Foil</span>' : ''}
+            <span class="analytics-set-code">${escapeHtml(r.setCode)} ${escapeHtml(r.collectorNumber || '')}</span>
+          </td>
+          <td class="num">${money(r.price)}</td>
+          <td class="num analytics-top-total">${r.quantity > 1 ? `×${r.quantity} = ${money(r.total)}` : ''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : '<p class="analytics-empty">No priced cards yet.</p>';
+}
+
+// ---- Set completion ---------------------------------------------------------
+
+const COMPLETION_SHOWN = 12;
+
+function completionRow(r) {
+  return `
+    <div class="analytics-progress-row">
+      <div class="analytics-progress-label">
+        ${r.keyrune ? `<i class="ss ss-${escapeHtml(r.keyrune.toLowerCase())}"></i> ` : ''}${escapeHtml(r.name)}
+        <span class="analytics-set-code">${escapeHtml(r.code)}</span>
+      </div>
+      <div class="analytics-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${r.percent}">
+        <div style="width: ${Math.min(100, r.percent)}%"></div>
+      </div>
+      <div class="analytics-progress-num">${count(r.owned)} / ${count(r.total)} <b>${r.percent.toFixed(1)}%</b></div>
+    </div>`;
+}
+
+function renderCompletion() {
+  const rows = data.completion;
+  el('analytics-completion').innerHTML = rows.length
+    ? rows.slice(0, COMPLETION_SHOWN).map(completionRow).join('')
+    : '<p class="analytics-empty">No cards yet.</p>';
+  const rest = rows.slice(COMPLETION_SHOWN);
+  const more = el('analytics-completion-more-wrap');
+  more.classList.toggle('hidden', rest.length === 0);
+  more.querySelector('summary').textContent = `${rest.length} more sets`;
+  el('analytics-completion-more').innerHTML = rest.map(completionRow).join('');
 }
 
 function escapeHtml(value) {
