@@ -263,3 +263,15 @@ taken on GitHub — only do it when explicitly asked.
   removals are excluded on purpose — re-adding them would double-count a card
   the partner now holds. `test/integration/removeAndRecover.test.js` pins the
   round trip, foils included.
+- A loan (`card_loans`, `src/services/loanService.js`) moves possession, never
+  ownership: the lender's `owned_printings` row is not touched, so the card
+  stays in their collection and the household total is unchanged. While a
+  loan is `active` or `return_requested`, `loanNetSql` in `loanHoldings.js`
+  adds the copy to the borrower's held count and removes it from the
+  lender's — readiness and shopping both wrap their owned count in it, and
+  any new "can this deck be played" count must too. A lent copy is also not
+  tradeable (`tradeableCopies` in `tradeService.js`). The printing is held by
+  `printing_uuid` with no FK, same reason as `audit_log`, so the MTGJSON
+  import needs no backup/restore for it; `backupService` does carry it. Only
+  the borrower sees which of their decks list a borrowed card — the lender
+  never does, per the partner-browse rule above.

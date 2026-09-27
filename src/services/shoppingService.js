@@ -4,6 +4,7 @@ import { groupIntoSets } from './shoppingMerge.js';
 import { buildBulkList, flattenShoppingSets } from './bulkBin.js';
 import { isBasicLandSql } from './basicLands.js';
 import { deckPrioritySql } from './deckPriority.js';
+import { loanNetSql } from './loanHoldings.js';
 
 /**
  * The shopping list has two halves.
@@ -191,7 +192,7 @@ export function getShoppingList(userId, deckIds, { includeContested = false } = 
         COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) as board_type,
         ${PRICE_FOR('dc.is_foil = 1')} as price,
         ${CARD_NEEDED_IN(placeholders)} as card_needed,
-        ${CARD_OWNED} as card_owned,
+        MAX(0, ${CARD_OWNED} + ${loanNetSql('d.user_id', 'c.id')}) as card_owned,
         ${CARD_ELSEWHERE_NOT_IN(placeholders)} as card_elsewhere
       FROM deck_cards dc
       JOIN decks d ON dc.deck_id = d.id

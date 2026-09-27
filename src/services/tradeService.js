@@ -3,6 +3,7 @@ import { setOwnedPrintingQuantity } from './cardService.js';
 import { getInventory, getInventoryStats } from './inventoryService.js';
 import { recordTradeEvent, describeCounterparty, AUDIT_ACTIONS } from './auditService.js';
 import { isBasicLandSql } from './basicLands.js';
+import { lentOutCopies } from './loanService.js';
 
 /**
  * Card trades between users of the same instance.
@@ -478,15 +479,27 @@ export function counterTrade(tradeId, userId, items, note = null, declinedItemId
   return getTradeById(tradeId, userId);
 }
 
-/** Refuse to build a trade out of cards somebody does not have. */
-function assertHasCopies(userId, item) {
+/**
+ * Copies of a printing that are actually in this user's hands to trade:
+ * owned, minus any out on loan. A lent card is still theirs, but it is in
+ * somebody else's deck box, and trading it away would hand over a card
+ * neither person is holding.
+ */
+function tradeableCopies(userId, printingId, isFoil) {
   const row = db.get(
-    `SELECT quantity FROM owned_printings
-      WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-    [userId, item.printingId, item.isFoil ? 1 : 0]
+    `SELECT op.quantity, p.uuid FROM owned_printings op
+       JOIN printings p ON p.id = op.printing_id
+      WHERE op.user_id = ? AND op.printing_id = ? AND op.is_foil = ?`,
+    [userId, printingId, isFoil ? 1 : 0]
   );
 
-  const owned = row?.quantity || 0;
+  if (!row) return 0;
+  return Math.max(0, row.quantity - lentOutCopies(userId, row.uuid, isFoil));
+}
+
+/** Refuse to build a trade out of cards somebody does not have. */
+function assertHasCopies(userId, item) {
+  const owned = tradeableCopies(userId, item.printingId, item.isFoil);
 
   if (owned < item.quantity) {
     const detail = describePrintings([item.printingId]).get(item.printingId);
@@ -513,7 +526,7 @@ function takeCopies(userId, printingId, isFoil, quantity, context = {}) {
 
   const have = row?.quantity || 0;
 
-  if (have < quantity) {
+  if (tradeableCopies(userId, printingId, isFoil) < quantity) {
     const detail = describePrintings([printingId]).get(printingId);
     const name = detail ? detail.card_name : `printing ${printingId}`;
     throw new Error(`${name}: only ${have} copies left, the trade needs ${quantity}`);

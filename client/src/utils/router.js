@@ -34,6 +34,7 @@ export const ROUTES = [
   // The trade shop is a page for history's sake but not a linkable one: see
   // the note on parsePath below.
   ['trade-shop', '/trades/shop'],
+  ['loans', '/loans'],
   ['price-monitoring', '/price-monitoring'],
   ['settings', '/settings'],
   ['audit', '/audit'],

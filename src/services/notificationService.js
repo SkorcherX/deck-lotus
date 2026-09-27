@@ -141,3 +141,23 @@ export async function sendTradeAccepted(trade) {
     tags: 'white_check_mark,card_index',
   });
 }
+
+/** Somebody wants to borrow cards out of your collection. */
+export async function sendLoanRequested(borrowerName, loans) {
+  await push({
+    title: `${borrowerName} wants to borrow cards`,
+    message:
+      `${borrowerName} asked to borrow ${summarise(loans)}.` +
+      ' The cards stay in your collection — approve it on the Loans page once you hand them over.',
+    tags: 'handshake,card_index',
+  });
+}
+
+/** An owner wants their card back. */
+export async function sendLoanReturnRequested(loan) {
+  await push({
+    title: `${loan.lenderUsername} wants a card back`,
+    message: `${loan.lenderUsername} has asked for ${loan.quantity}x ${loan.cardName} to be returned.`,
+    tags: 'leftwards_arrow_with_hook,card_index',
+  });
+}

@@ -513,6 +513,12 @@ const ACTION_LABELS = {
   'trade.decline': 'Trade declined',
   'trade.cancel': 'Trade cancelled',
   'trade.counter': 'Counter-offer sent',
+  'loan.request': 'Loan requested',
+  'loan.approve': 'Card lent',
+  'loan.decline': 'Loan declined',
+  'loan.cancel': 'Loan request cancelled',
+  'loan.return_request': 'Return requested',
+  'loan.return': 'Loan returned',
 };
 
 const SOURCE_LABELS = {

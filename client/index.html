@@ -154,6 +154,11 @@
                             <span class="nav-text">Trades</span>
                             <span id="trade-pending-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:var(--success-bright);color:var(--on-accent);"></span>
                         </a>
+                        <a href="#" data-page="loans" class="nav-link" title="Loaned &amp; Borrowed">
+                            <i class="ph ph-hand-arrow-up nav-icon"></i>
+                            <span class="nav-text">Loans</span>
+                            <span id="loan-action-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:var(--success-bright);color:var(--on-accent);"></span>
+                        </a>
                         <a href="#" data-page="scan" class="nav-link" title="Scan Cards">
                             <i class="ph ph-camera nav-icon"></i>
                             <span class="nav-text">Scan</span>
@@ -2407,6 +2412,16 @@
 
                     <div id="trade-cart-warnings" style="margin-top: 1rem;"></div>
 
+                    <label id="trade-cart-borrow-row" class="hidden" style="display:flex;align-items:flex-start;gap:0.5rem;margin-top:1rem;font-size:0.9rem;cursor:pointer;">
+                        <input type="checkbox" id="trade-cart-borrow" style="margin-top:0.2rem;" />
+                        <span>
+                            <strong>Borrow these instead of trading</strong><br />
+                            <span style="color:var(--text-secondary);font-size:0.82rem;">
+                                The cards stay in their collection and count toward your decks until you give them back.
+                            </span>
+                        </span>
+                    </label>
+
                     <div class="form-group" style="margin-top: 1rem;">
                         <label for="trade-cart-note">Note (optional)</label>
                         <input type="text" id="trade-cart-note" placeholder="e.g. swapping at Sunday game night" style="width: 100%;" />
@@ -2417,6 +2432,29 @@
                         <button id="trade-cart-keep-shopping" class="btn btn-secondary">Keep shopping</button>
                     </div>
                 </div>
+            </div>
+
+            <div id="loans-page" class="page hidden">
+                <div class="page-header">
+                    <h2>Loaned &amp; Borrowed</h2>
+                    <div class="page-header-actions">
+                        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.875rem;">
+                            <input type="checkbox" id="loans-show-closed" /> Show returned &amp; closed
+                        </label>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
+                    A loan never changes who owns a card. It stays in the lender's collection and
+                    counts toward the borrower's decks until it comes back. To borrow, shop someone's
+                    collection from Trades and tick "Borrow these instead of trading".
+                </div>
+
+                <h3 style="font-size:1rem;margin:0 0 0.5rem;">Borrowed from others</h3>
+                <div id="loans-borrowed" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1.5rem;"></div>
+
+                <h3 style="font-size:1rem;margin:0 0 0.5rem;">Lent to others</h3>
+                <div id="loans-lent" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
             </div>
 
             <div id="trades-page" class="page hidden">

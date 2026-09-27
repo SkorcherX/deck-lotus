@@ -1080,6 +1080,27 @@ class ApiClient {
     });
   }
 
+  // Card loans
+  async getLoans() {
+    return this.request('/loans');
+  }
+
+  async getLoanActionCount() {
+    return this.request('/loans/action-count');
+  }
+
+  async requestLoans(lenderId, items, note = null) {
+    return this.request('/loans/request', {
+      method: 'POST',
+      body: JSON.stringify({ lenderId, items, note }),
+    });
+  }
+
+  /** action: approve | decline | cancel | request-return | returned */
+  async loanAction(id, action) {
+    return this.request(`/loans/${id}/${action}`, { method: 'POST' });
+  }
+
   // Deck match record
   async getDeckGames(deckId) {
     return this.request(`/decks/${deckId}/games`);

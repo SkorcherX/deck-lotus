@@ -215,6 +215,15 @@ export function createBackup(userId = null) {
 
   const tradeIds = backup.data.trades.map(t => t.id);
 
+  // Loans, both ends, for the same reason as trades. Already keyed by
+  // printing uuid in the table itself, so nothing needs translating.
+  backup.data.card_loans = db.prepare(`
+    SELECT id, lender_user_id, borrower_user_id, printing_uuid, is_foil, quantity,
+           card_name, status, note, created_at, lent_at, return_requested_at, resolved_at
+    FROM card_loans
+    WHERE lender_user_id IN (${userIdsStr}) OR borrower_user_id IN (${userIdsStr})
+  `).all();
+
   backup.data.trade_items = tradeIds.length
     ? db.prepare(`
         SELECT ti.id, ti.trade_id, ti.is_foil, ti.quantity, ti.direction, ti.declined,
@@ -317,6 +326,7 @@ export function restoreBackup(backupData, options = {}) {
     audit_log: 0,
     trades: 0,
     trade_items: 0,
+    card_loans: 0,
     decks: 0,
     deck_cards: 0,
     deck_shares: 0,
@@ -348,6 +358,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM price_watches WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM audit_log WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM trades WHERE from_user_id = ? OR to_user_id = ?').run(userId, userId);
+      db.prepare('DELETE FROM card_loans WHERE lender_user_id = ? OR borrower_user_id = ?').run(userId, userId);
       db.prepare('DELETE FROM deck_games WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM deck_card_disruptions WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
       db.prepare('DELETE FROM deck_cards WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
@@ -362,6 +373,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM decks').run();
       db.prepare('DELETE FROM trade_items').run();
       db.prepare('DELETE FROM trades').run();
+      db.prepare('DELETE FROM card_loans').run();
       db.prepare('DELETE FROM api_keys').run();
       db.prepare('DELETE FROM owned_cards').run();
       db.prepare('DELETE FROM owned_printings').run();
@@ -668,6 +680,30 @@ export function restoreBackup(backupData, options = {}) {
         item.quantity, item.direction, item.declined ?? 0
       );
     }, () => 'Trade item');
+
+    // ---- Loans -----------------------------------------------------------
+    //
+    // No printing lookup: card_loans holds the uuid itself (migration 041).
+    const insertLoan = db.prepare(`
+      INSERT OR REPLACE INTO card_loans (id, lender_user_id, borrower_user_id, printing_uuid,
+                                         is_foil, quantity, card_name, status, note, created_at,
+                                         lent_at, return_requested_at, resolved_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    restoreRows('card_loans', (backupData.data.card_loans || []).filter(
+      (l) => restoredUserIds.includes(l.lender_user_id) || restoredUserIds.includes(l.borrower_user_id)
+    ), (loan) => {
+      if (!haveUser(loan.lender_user_id) || !haveUser(loan.borrower_user_id)) {
+        results.errors.push(`Loan ${loan.id} skipped: the other party is not in this restore`);
+        return false;
+      }
+      insertLoan.run(
+        loan.id, loan.lender_user_id, loan.borrower_user_id, loan.printing_uuid,
+        loan.is_foil ? 1 : 0, loan.quantity, loan.card_name, loan.status, loan.note,
+        loan.created_at, loan.lent_at, loan.return_requested_at, loan.resolved_at
+      );
+    }, (l) => `Loan ${l.id}`);
 
     // ---- Disruptions -----------------------------------------------------
     //

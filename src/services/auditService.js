@@ -38,6 +38,12 @@ export const AUDIT_ACTIONS = {
   TRADE_DECLINE: 'trade.decline',
   TRADE_CANCEL: 'trade.cancel',
   TRADE_COUNTER: 'trade.counter',
+  LOAN_REQUEST: 'loan.request',
+  LOAN_APPROVE: 'loan.approve',
+  LOAN_DECLINE: 'loan.decline',
+  LOAN_CANCEL: 'loan.cancel',
+  LOAN_RETURN_REQUEST: 'loan.return_request',
+  LOAN_RETURN: 'loan.return',
 };
 
 export const AUDIT_SOURCES = [
@@ -53,6 +59,8 @@ export const AUDIT_SOURCES = [
   // or a heuristic did is the first thing worth knowing.
   'deck_generator',
   'trade',
+  // A card lent or borrowed. Never moves owned_printings — see loanService.js.
+  'loan',
   'scan',
   // The in-browser scanner and the Android companion app are kept apart on
   // purpose. They resolve cards by different means — the web scanner asks

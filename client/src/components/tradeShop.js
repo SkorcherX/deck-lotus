@@ -416,8 +416,13 @@ function renderCart() {
     : `Picked from ${escapeHtml(state.partner.username)}'s collection.
        They will choose what they want from yours before anything is agreed.`;
 
+  // Borrowing only makes sense when starting fresh: a counter-offer is the
+  // second half of a swap, and half a trade cannot be half a loan.
+  const borrowing = state.mode !== 'counter' && document.getElementById('trade-cart-borrow').checked;
+  document.getElementById('trade-cart-borrow-row').classList.toggle('hidden', state.mode === 'counter');
+
   document.getElementById('trade-cart-send').textContent =
-    state.mode === 'counter' ? 'Send counter-offer' : 'Send request';
+    state.mode === 'counter' ? 'Send counter-offer' : borrowing ? 'Ask to borrow' : 'Send request';
 
   if (!items.length) {
     container.innerHTML = '<div style="color:var(--text-secondary);padding:1rem 0;">Nothing picked yet.</div>';
@@ -568,6 +573,25 @@ async function sendCart() {
   }
 
   const note = document.getElementById('trade-cart-note').value || null;
+  const borrowing = state.mode !== 'counter' && document.getElementById('trade-cart-borrow').checked;
+
+  if (borrowing) {
+    try {
+      showLoading();
+      await api.requestLoans(state.partner.id, items, note);
+      hideLoading();
+      closeModal('trade-cart-modal');
+      showToast(`Asked ${state.partner.username} to lend you ${items.length === 1 ? 'that card' : 'those cards'}`, 'success');
+      window.dispatchEvent(new CustomEvent('loans:changed'));
+      state.partner = null;
+      window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'loans', replace: true } }));
+      if (state.onDone) state.onDone();
+    } catch (error) {
+      hideLoading();
+      showToast(error.message, 'error');
+    }
+    return;
+  }
 
   try {
     showLoading();
@@ -641,6 +665,7 @@ export function openTradeShop({
   document.getElementById('trade-shop-type').value = 'all';
   document.getElementById('trade-shop-commander').value = 'all';
   document.getElementById('trade-cart-note').value = '';
+  document.getElementById('trade-cart-borrow').checked = false;
   document.querySelectorAll('#trade-shop-colors input[type="checkbox"]').forEach((box) => {
     box.checked = false;
   });
@@ -716,6 +741,8 @@ export function setupTradeShop() {
   });
 
   document.getElementById('trade-cart-send').addEventListener('click', sendCart);
+  // Re-rendered so the send button says which of the two it is about to do.
+  document.getElementById('trade-cart-borrow').addEventListener('change', renderCart);
 
   document.getElementById('trade-shop-printing-close').addEventListener('click', () => {
     closeModal('trade-shop-printing-modal');

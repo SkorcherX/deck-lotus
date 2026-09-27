@@ -2,6 +2,7 @@ import db from '../db/connection.js';
 import { assessDecks, describeState, stateRank } from './deckReadiness.js';
 import { isBasicLandSql } from './basicLands.js';
 import { deckPrioritySql } from './deckPriority.js';
+import { loanNetSql } from './loanHoldings.js';
 
 /**
  * The database half of deck readiness. The arithmetic lives in
@@ -40,6 +41,11 @@ const OWNED_TOTAL = `(
    WHERE op.user_id = ? AND op_p.card_id = c.id
 )`;
 
+// What is actually in hand: owned, plus copies borrowed, minus copies lent
+// out. Keyed on d.user_id rather than a bound `?` so the parameter order
+// below does not move. See loanHoldings.js.
+const HELD_TOTAL = `MAX(0, ${OWNED_TOTAL} + ${loanNetSql('d.user_id', 'c.id')})`;
+
 // Copies this user's *other* decks have claimed. Two conditions carry this.
 //
 // `d2.id != d.id` stops a deck competing with itself, without which every
@@ -74,7 +80,7 @@ function claimRows(userId, deckId = null) {
       c.id as card_id,
       c.name,
       SUM(dc.quantity) as needed,
-      ${OWNED_TOTAL} as owned,
+      ${HELD_TOTAL} as owned,
       ${ELSEWHERE_TOTAL} as elsewhere
     FROM deck_cards dc
     JOIN decks d ON dc.deck_id = d.id

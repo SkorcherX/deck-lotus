@@ -17,6 +17,7 @@ import { parsePath, setRoute, onPopState, isExternalPath, DEFAULT_PAGE } from '.
 import { setupPriceMonitoring } from './components/priceMonitoring.js';
 import { setupTrades, refreshTradeBadge } from './components/trades.js';
 import { setupTradeShop } from './components/tradeShop.js';
+import { setupLoans, refreshLoanBadge } from './components/loans.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
 import { initTheme, currentTheme, applyTheme } from './utils/theme.js';
@@ -116,6 +117,9 @@ class App {
     // and refreshed whenever a trade is answered.
     refreshTradeBadge();
     window.addEventListener('trades:changed', refreshTradeBadge);
+    // Same idea for loans: a request to lend, or an owner asking for a card back.
+    refreshLoanBadge();
+    window.addEventListener('loans:changed', refreshLoanBadge);
 
     // Whatever the URL asked for — a bookmark, a refresh, a link someone
     // pasted — rather than always the deck list. 'replace' because this is
@@ -218,6 +222,9 @@ class App {
         break;
       case 'trades':
         window.dispatchEvent(new CustomEvent('page:trades'));
+        break;
+      case 'loans':
+        window.dispatchEvent(new CustomEvent('page:loans'));
         break;
       case 'price-monitoring':
         window.dispatchEvent(new CustomEvent('page:price-monitoring'));
@@ -335,6 +342,7 @@ class App {
     setupPriceMonitoring();
     setupTrades();
     setupTradeShop();
+    setupLoans();
     setupSharedDeck();
     setupCollectionShare();
   }
