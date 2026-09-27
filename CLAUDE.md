@@ -81,6 +81,15 @@ taken on GitHub — only do it when explicitly asked.
   caller's own decks — returning the partner's shortfalls let a shopper probe
   one card at a time to learn what they had built. Any new field on the
   partner-browse or preview paths has to be checked against this.
+- A collection can also be shared with someone who has no account, through
+  `/collection/:token` (`collection_shares`, one link per user;
+  `src/services/collectionShareService.js`). It follows the partner-browse rule
+  above — no `total_in_decks`, no `available`, availability forced to `all` —
+  and additionally strips per-printing `user_id`/`owned_printing_id`. Its
+  public router (`/api/collection-share/public/...`) is GET-only on purpose:
+  read-only is structural, not a flag, so never mount a write there.
+  Regenerating the link replaces the token in place, which is how an owner
+  cuts off whoever had the old one.
 - Answering a shopping request is per-card: `trade_items.declined` marks the
   ones the owner would rather keep. Declined rows are never deleted — the
   person who asked has to be able to see what was turned down — so anything

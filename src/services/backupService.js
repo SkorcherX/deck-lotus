@@ -166,6 +166,14 @@ export function createBackup(userId = null) {
     WHERE user_id IN (${userIdsStr})
   `).all();
 
+  // The read-only collection link. Kept so a restore does not silently break
+  // a link the owner already handed to somebody.
+  backup.data.collection_shares = db.prepare(`
+    SELECT id, user_id, share_token, created_at
+    FROM collection_shares
+    WHERE user_id IN (${userIdsStr})
+  `).all();
+
   backup.data.price_watches = db.prepare(`
     SELECT id, user_id, card_name, max_price, condition, notes, is_active,
            expires_at, last_checked, last_price, last_notified, created_at,
@@ -304,6 +312,7 @@ export function restoreBackup(backupData, options = {}) {
     owned_printings: 0,
     shopping_list_items: 0,
     found_cards: 0,
+    collection_shares: 0,
     price_watches: 0,
     audit_log: 0,
     trades: 0,
@@ -335,6 +344,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM owned_printings WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM shopping_list_items WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM found_cards WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM collection_shares WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM price_watches WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM audit_log WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM trades WHERE from_user_id = ? OR to_user_id = ?').run(userId, userId);
@@ -357,6 +367,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM owned_printings').run();
       db.prepare('DELETE FROM shopping_list_items').run();
       db.prepare('DELETE FROM found_cards').run();
+      db.prepare('DELETE FROM collection_shares').run();
       db.prepare('DELETE FROM price_watches').run();
       db.prepare('DELETE FROM audit_log').run();
       db.prepare('DELETE FROM users').run();
@@ -505,6 +516,17 @@ export function restoreBackup(backupData, options = {}) {
       }
       insertFound.run(row.id, row.user_id, cardId, row.card_name, row.quantity, row.created_at);
     }, (r) => `Found card ${r.card_name}`);
+
+    // One link per user, and the token is unique across users, so REPLACE on
+    // either key leaves at most one row per user and per token.
+    const insertCollectionShare = db.prepare(`
+      INSERT OR REPLACE INTO collection_shares (id, user_id, share_token, created_at)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    restoreRows('collection_shares', (backupData.data.collection_shares || []).filter(mine), (row) => {
+      insertCollectionShare.run(row.id, row.user_id, row.share_token, row.created_at);
+    }, (r) => `Collection share for user ${r.user_id}`);
 
     const insertWatch = db.prepare(`
       INSERT OR REPLACE INTO price_watches (id, user_id, card_name, max_price, condition, notes,

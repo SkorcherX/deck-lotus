@@ -12,6 +12,7 @@ import { setupMaintenanceWatch, stopMaintenanceWatch, fetchMaintenanceStatus } f
 import { setupScan } from './components/scan.js';
 import { setupScanSession } from './components/scanSession.js';
 import { setupSharedDeck, loadSharedDeck } from './components/sharedDeck.js';
+import { setupCollectionShare, loadSharedCollection } from './components/sharedCollection.js';
 import { parsePath, setRoute, onPopState, isExternalPath, DEFAULT_PAGE } from './utils/router.js';
 import { setupPriceMonitoring } from './components/priceMonitoring.js';
 import { setupTrades, refreshTradeBadge } from './components/trades.js';
@@ -44,6 +45,13 @@ class App {
     if (path.startsWith('/share/')) {
       const token = path.split('/share/')[1];
       await loadSharedDeck(token);
+      return;
+    }
+
+    // A shared collection: public and read-only, same bootstrap as a deck.
+    if (path.startsWith('/collection/')) {
+      const token = path.split('/collection/')[1].replace(/\/+$/, '');
+      await loadSharedCollection(token);
       return;
     }
 
@@ -328,6 +336,7 @@ class App {
     setupTrades();
     setupTradeShop();
     setupSharedDeck();
+    setupCollectionShare();
   }
 }
 

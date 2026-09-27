@@ -979,6 +979,44 @@ class ApiClient {
     return this.request(`/trades/partners/${userId}/inventory${query ? `?${query}` : ''}`);
   }
 
+  // A read-only link to your own collection
+  async getCollectionShare() {
+    return this.request('/collection-share');
+  }
+
+  async createCollectionShare() {
+    return this.request('/collection-share', { method: 'POST' });
+  }
+
+  async regenerateCollectionShare() {
+    return this.request('/collection-share/regenerate', { method: 'POST' });
+  }
+
+  async deleteCollectionShare() {
+    return this.request('/collection-share', { method: 'DELETE' });
+  }
+
+  // Someone else's collection, opened from that link (no account needed)
+  async getSharedCollection(token) {
+    return this.request(`/collection-share/public/${encodeURIComponent(token)}`);
+  }
+
+  async getSharedCollectionInventory(token, params = {}) {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, value]) => value !== '' && value != null)
+    ).toString();
+
+    return this.request(`/collection-share/public/${encodeURIComponent(token)}/inventory${query ? `?${query}` : ''}`);
+  }
+
+  async getSharedCollectionStats(token) {
+    return this.request(`/collection-share/public/${encodeURIComponent(token)}/stats`);
+  }
+
+  async getSharedCollectionSets(token) {
+    return this.request(`/collection-share/public/${encodeURIComponent(token)}/sets`);
+  }
+
   async getPartnerStats(userId) {
     return this.request(`/trades/partners/${userId}/stats`);
   }

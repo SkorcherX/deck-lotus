@@ -67,6 +67,7 @@ describe('parsing a URL into a route', () => {
     // A public page reached by people with no account. Routing it would put
     // it behind the auth check.
     assert.equal(isExternalPath('/share/abc123'), true);
+    assert.equal(isExternalPath('/collection/abc123'), true);
     assert.equal(isExternalPath('/decks'), false);
   });
 });

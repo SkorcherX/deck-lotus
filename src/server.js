@@ -23,6 +23,7 @@ import manapoolRoutes from './routes/manapool.js';
 import tradeRoutes from './routes/trades.js';
 import systemRoutes from './routes/system.js';
 import auditRoutes from './routes/audit.js';
+import collectionShareRoutes from './routes/collectionShare.js';
 import { setupDailySync } from './services/syncService.js';
 import { setupPriceMonitoringSchedule } from './services/priceMonitoringService.js';
 import { initScheduledBackups } from './services/backupService.js';
@@ -105,6 +106,7 @@ app.use('/api/scan', scanRoutes);
 app.use('/api/trades', tradeRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/collection-share', collectionShareRoutes);
 
 // SPA catch-all route (MUST be last)
 //

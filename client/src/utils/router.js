@@ -49,10 +49,11 @@ export const DEFAULT_PAGE = ROUTES[0][0];
  *
  * A shared deck is a public page with its own bootstrap in main.js, reached by
  * people who are not logged in and may not have an account. Treating it as an
- * app route would put it behind the auth check.
+ * app route would put it behind the auth check. A shared collection
+ * (/collection/:token) is the same kind of page for the same reason.
  */
 export function isExternalPath(pathname) {
-  return pathname.startsWith('/share/');
+  return pathname.startsWith('/share/') || pathname.startsWith('/collection/');
 }
 
 /**

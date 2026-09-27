@@ -34,7 +34,7 @@ function wipeUserData() {
   for (const table of [
     'deck_card_disruptions', 'deck_games', 'deck_cards', 'deck_shares', 'decks',
     'trade_items', 'trades', 'api_keys', 'owned_cards', 'owned_printings',
-    'shopping_list_items', 'found_cards', 'price_watches', 'audit_log',
+    'shopping_list_items', 'found_cards', 'collection_shares', 'price_watches', 'audit_log',
   ]) {
     db.run(`DELETE FROM ${table}`);
   }
@@ -97,6 +97,9 @@ before(async () => {
 
   db.run(`INSERT INTO found_cards (user_id, card_id, card_name, quantity) VALUES (?,?,?,2)`,
     [userId, printings['Sol Ring'].cardId, 'Sol Ring']);
+
+  db.run(`INSERT INTO collection_shares (user_id, share_token) VALUES (?, ?)`,
+    [userId, 'a'.repeat(32)]);
 
   db.run(`INSERT INTO deck_games (deck_id, user_id, result, played_at) VALUES (?,?,'win','2026-08-01')`,
     [deckId, userId]);
@@ -189,6 +192,17 @@ describe('backup and restore round trip', () => {
 
     assert.equal(db.get(`SELECT card_name, quantity FROM found_cards`).quantity, 2);
     assert.equal(db.get(`SELECT COUNT(*) c FROM price_watches`).c, 1);
+  });
+
+  test('a shared collection link survives, so a link already handed out keeps working', () => {
+    const backup = createBackup();
+    wipeUserData();
+    restoreBackup(backup, { overwrite: false });
+
+    assert.deepEqual(
+      db.get(`SELECT user_id, share_token FROM collection_shares`),
+      { user_id: userId, share_token: 'a'.repeat(32) }
+    );
   });
 
   test('match records come back as a log, so the derived total still holds', () => {

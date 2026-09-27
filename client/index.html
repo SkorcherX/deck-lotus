@@ -1099,6 +1099,10 @@
                             <i class="ph ph-export btn-icon"></i>
                             <span class="btn-text">Export</span>
                         </button>
+                        <button id="inventory-share-btn" class="btn btn-secondary" title="A read-only link to your collection, for someone without an account">
+                            <i class="ph ph-share-network btn-icon"></i>
+                            <span class="btn-text">Share</span>
+                        </button>
                     </div>
                 </div>
 
@@ -2212,6 +2216,174 @@
                     <button id="trade-shop-prev" class="btn btn-secondary" disabled>Previous</button>
                     <span id="trade-shop-page-info" style="font-weight: 600">Page 1 of 1</span>
                     <button id="trade-shop-next" class="btn btn-secondary" disabled>Next</button>
+                </div>
+            </div>
+
+            <div id="shared-coll-page" class="page hidden">
+                <div class="page-header">
+                    <h2 id="shared-coll-title">Collection</h2>
+                    <div class="page-header-actions">
+                        <a href="/" id="shared-coll-home" class="btn btn-secondary">
+                            <i class="ph ph-sign-in btn-icon"></i>
+                            <span class="btn-text">Deck Lotus</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div id="shared-coll-brief" style="margin-bottom: 1rem;"></div>
+
+                <div id="shared-coll-stats" class="inventory-stats"></div>
+
+                <div class="inventory-filters">
+                    <div class="inventory-filter-row">
+                        <div class="filter-group">
+                            <label>Search</label>
+                            <input type="text" id="shared-coll-search" placeholder="Filter by name..." class="filter-input" />
+                        </div>
+                        <div class="filter-group">
+                            <label>Sort By</label>
+                            <select id="shared-coll-sort" class="filter-select">
+                                <option value="name">Name</option>
+                                <option value="quantity">Quantity</option>
+                                <option value="cmc">Mana Value</option>
+                                <option value="color">Color</option>
+                                <option value="type">Type</option>
+                                <option value="price_desc">Price: High to Low</option>
+                                <option value="price_asc">Price: Low to High</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Card Type</label>
+                            <select id="shared-coll-type" class="filter-select">
+                                <option value="all">All Types</option>
+                                <option value="Creature">Creature</option>
+                                <option value="Instant">Instant</option>
+                                <option value="Sorcery">Sorcery</option>
+                                <option value="Enchantment">Enchantment</option>
+                                <option value="Artifact">Artifact</option>
+                                <option value="Planeswalker">Planeswalker</option>
+                                <option value="Land">Land</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Set</label>
+                            <select id="shared-coll-set" class="filter-select">
+                                <option value="">All Sets</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Commander</label>
+                            <select id="shared-coll-commander" class="filter-select">
+                                <option value="all">All Cards</option>
+                                <option value="eligible">Commander Eligible</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Colors</label>
+                            <div id="shared-coll-colors" class="color-filter-group">
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="W" />
+                                    <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="U" />
+                                    <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="B" />
+                                    <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="R" />
+                                    <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="G" />
+                                    <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
+                                </label>
+                                <label class="color-checkbox">
+                                    <input type="checkbox" value="C" />
+                                    <span class="color-checkbox-box"><i class="ms ms-c ms-cost"></i></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label>Prices</label>
+                            <div class="view-toggle">
+                                <button id="shared-coll-price-toggle" class="btn-icon" title="Show prices" aria-pressed="false">
+                                    <i class="ph ph-currency-dollar"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label>View</label>
+                            <div class="view-toggle">
+                                <button id="shared-coll-grid-view-btn" class="btn-icon active" title="Grid view">
+                                    <i class="ph ph-squares-four"></i>
+                                </button>
+                                <button id="shared-coll-list-view-btn" class="btn-icon" title="List view">
+                                    <i class="ph ph-list"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="shared-coll-pagination-top" class="pagination">
+                    <button id="shared-coll-prev-top" class="btn btn-secondary" disabled>Previous</button>
+                    <span id="shared-coll-page-info-top" style="font-weight: 600">Page 1 of 1</span>
+                    <button id="shared-coll-next-top" class="btn btn-secondary" disabled>Next</button>
+                </div>
+
+                <div id="shared-coll-grid" class="inventory-grid"></div>
+
+                <div id="shared-coll-pagination" class="pagination">
+                    <button id="shared-coll-prev" class="btn btn-secondary" disabled>Previous</button>
+                    <span id="shared-coll-page-info" style="font-weight: 600">Page 1 of 1</span>
+                    <button id="shared-coll-next" class="btn btn-secondary" disabled>Next</button>
+                </div>
+            </div>
+
+            <!-- A shared collection: one card's owned printings, for viewers
+                 with no account (the full card detail needs one) -->
+            <div id="shared-coll-card-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 560px">
+                    <span class="modal-close" id="shared-coll-card-close">&times;</span>
+                    <h2 id="shared-coll-card-title" style="margin-bottom: 1rem;"></h2>
+                    <div id="shared-coll-card-body"></div>
+                </div>
+            </div>
+
+            <!-- Managing the read-only link to your own collection -->
+            <div id="collection-share-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 560px">
+                    <span class="modal-close" id="collection-share-close">&times;</span>
+                    <h2 style="margin-bottom: 0.5rem;">Share your collection</h2>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                        Anyone with this link can search and filter your collection without an account.
+                        They cannot change anything, and they do not see your decks or which cards are in them.
+                    </p>
+                    <div id="collection-share-off">
+                        <button id="collection-share-create" class="btn btn-primary">
+                            <i class="ph ph-link btn-icon"></i> Create link
+                        </button>
+                    </div>
+                    <div id="collection-share-on" class="hidden">
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                            <input type="text" id="collection-share-url" class="filter-input" readonly style="flex: 1;" />
+                            <button id="collection-share-copy" class="btn btn-primary">
+                                <i class="ph ph-copy btn-icon"></i> Copy
+                            </button>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button id="collection-share-regenerate" class="btn btn-secondary" title="Make a new link; the old one stops working">
+                                <i class="ph ph-arrows-clockwise btn-icon"></i> New link
+                            </button>
+                            <button id="collection-share-stop" class="btn btn-secondary">
+                                <i class="ph ph-link-break btn-icon"></i> Stop sharing
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
