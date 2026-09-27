@@ -24,6 +24,7 @@ import tradeRoutes from './routes/trades.js';
 import loanRoutes from './routes/loans.js';
 import systemRoutes from './routes/system.js';
 import auditRoutes from './routes/audit.js';
+import analyticsRoutes from './routes/analytics.js';
 import collectionShareRoutes from './routes/collectionShare.js';
 import { setupDailySync } from './services/syncService.js';
 import { setupPriceMonitoringSchedule } from './services/priceMonitoringService.js';
@@ -108,6 +109,7 @@ app.use('/api/trades', tradeRoutes);
 app.use('/api/loans', loanRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api/collection-share', collectionShareRoutes);
 
 // SPA catch-all route (MUST be last)

@@ -6,6 +6,7 @@ import { setupDeckBuilder } from './components/deckBuilder.js';
 import { setupCards } from './components/cards.js';
 import { setupSettings } from './components/settings.js';
 import { setupAudit } from './components/audit.js';
+import { setupAnalytics } from './components/analytics.js';
 import { setupShopping } from './components/shopping.js';
 import { setupInventory } from './components/inventory.js';
 import { setupMaintenanceWatch, stopMaintenanceWatch, fetchMaintenanceStatus } from './components/maintenance.js';
@@ -230,6 +231,9 @@ class App {
       case 'audit':
         window.dispatchEvent(new CustomEvent('page:audit'));
         break;
+      case 'analytics':
+        window.dispatchEvent(new CustomEvent('page:analytics'));
+        break;
     }
   }
 
@@ -332,6 +336,7 @@ class App {
     setupInventory();
     setupSettings();
     setupAudit();
+    setupAnalytics();
     setupPriceMonitoring();
     setupTrades();
     setupTradeShop();

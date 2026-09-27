@@ -292,3 +292,14 @@ taken on GitHub — only do it when explicitly asked.
   browser scanner; they are wired into the hash-index refresh in
   `syncService.js`, so removing them is a separate, deliberate job. The
   `scan` audit source label is kept so historical rows still read correctly.
+- The analytics page (`src/services/analyticsService.js`, `/api/analytics/*`)
+  is the caller's own collection only; `req.user.id` is the scope and nothing
+  is read from the query. Its activity timeline reads `audit_log`, not
+  `owned_printings.created_at` — the audit log is the only record of removals,
+  and until this feature `import-mtgjson.js` reset `created_at` to sync day on
+  every restore. Value history lives in `collection_value_snapshots`, one row
+  per user per day, written by `recordValueSnapshots` at the end of
+  `runPriceSync` because prices keep no history of their own. It holds no
+  printing or card id, so the import never touches it; `backupService`
+  carries it. Charts take colours from `token()`/`tokenRgba()` and rebuild on
+  `theme:changed` — Chart.js paints to a canvas, where `var()` is not a colour.

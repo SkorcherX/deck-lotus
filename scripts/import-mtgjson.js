@@ -752,7 +752,8 @@ async function main() {
       // a user's foil and non-foil copies onto the same key on restore, and the
       // INSERT OR IGNORE would discard the second one.
       const ownedPrintingsBackup = targetDb.prepare(`
-        SELECT op.user_id, op.quantity, op.is_foil, p.uuid as printing_uuid
+        SELECT op.user_id, op.quantity, op.is_foil, op.created_at, op.updated_at,
+               p.uuid as printing_uuid
         FROM owned_printings op
         JOIN printings p ON op.printing_id = p.id
       `).all();
@@ -1020,8 +1021,9 @@ async function main() {
       const backup = targetDb._ownedPrintingsBackup;
 
       const insertOwnedPrinting = targetDb.prepare(`
-        INSERT OR IGNORE INTO owned_printings (user_id, printing_id, quantity, is_foil)
-        VALUES (?, ?, ?, ?)
+        INSERT OR IGNORE INTO owned_printings
+          (user_id, printing_id, quantity, is_foil, created_at, updated_at)
+        VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
       `);
 
       const getPrintingIdByUuid = targetDb.prepare(`
@@ -1040,7 +1042,11 @@ async function main() {
                 entry.user_id,
                 printing.id,
                 entry.quantity,
-                entry.is_foil ?? 0
+                entry.is_foil ?? 0,
+                // Carried through so "when did this enter the collection"
+                // survives the weekly rebuild instead of resetting to sync day.
+                entry.created_at ?? null,
+                entry.updated_at ?? null
               );
               restored++;
             } catch (e) {

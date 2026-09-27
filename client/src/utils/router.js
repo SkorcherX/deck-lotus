@@ -37,6 +37,7 @@ export const ROUTES = [
   ['price-monitoring', '/price-monitoring'],
   ['settings', '/settings'],
   ['audit', '/audit'],
+  ['analytics', '/analytics'],
 ];
 
 const PATH_BY_PAGE = new Map(ROUTES);

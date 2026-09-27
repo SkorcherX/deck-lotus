@@ -17,7 +17,7 @@ const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
 // foil price; where a printing has no foil price synced we fall back to the
 // normal price rather than treating the copy as unpriced.
 // Expects `op` (owned_printings) and `p` (printings) to be in scope.
-const OWNED_COPY_PRICE = `
+export const OWNED_COPY_PRICE = `
   COALESCE(
     (SELECT price FROM prices
       WHERE printing_uuid = p.uuid AND provider = 'tcgplayer'

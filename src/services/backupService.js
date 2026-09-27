@@ -204,6 +204,14 @@ export function createBackup(userId = null) {
     WHERE user_id IN (${userIdsStr})
   `).all();
 
+  // Daily collection value history. Holds no printing or card id, so it
+  // travels as-is.
+  backup.data.collection_value_snapshots = db.prepare(`
+    SELECT id, user_id, snapshot_date, total_value, total_cards, unique_cards, created_at
+    FROM collection_value_snapshots
+    WHERE user_id IN (${userIdsStr})
+  `).all();
+
   // Trades have two sides. Both are captured whichever user is being backed
   // up, because a trade restored with only one end is not a trade.
   backup.data.trades = db.prepare(`
@@ -324,6 +332,7 @@ export function restoreBackup(backupData, options = {}) {
     collection_shares: 0,
     price_watches: 0,
     audit_log: 0,
+    collection_value_snapshots: 0,
     trades: 0,
     trade_items: 0,
     card_loans: 0,
@@ -357,6 +366,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM collection_shares WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM price_watches WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM audit_log WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM collection_value_snapshots WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM trades WHERE from_user_id = ? OR to_user_id = ?').run(userId, userId);
       db.prepare('DELETE FROM card_loans WHERE lender_user_id = ? OR borrower_user_id = ?').run(userId, userId);
       db.prepare('DELETE FROM deck_games WHERE user_id = ?').run(userId);
@@ -382,6 +392,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM collection_shares').run();
       db.prepare('DELETE FROM price_watches').run();
       db.prepare('DELETE FROM audit_log').run();
+      db.prepare('DELETE FROM collection_value_snapshots').run();
       db.prepare('DELETE FROM users').run();
     }
 
@@ -760,6 +771,20 @@ export function restoreBackup(backupData, options = {}) {
         row.deck_id, row.deck_name, row.trade_id, row.detail, row.created_at
       );
     }, () => 'Audit entry');
+
+    const insertSnapshot = db.prepare(`
+      INSERT OR REPLACE INTO collection_value_snapshots (id, user_id, snapshot_date, total_value,
+                                                         total_cards, unique_cards, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    restoreRows('collection_value_snapshots',
+      (backupData.data.collection_value_snapshots || []).filter(mine), (row) => {
+        insertSnapshot.run(
+          row.id, row.user_id, row.snapshot_date, row.total_value,
+          row.total_cards, row.unique_cards, row.created_at
+        );
+      }, () => 'Value snapshot');
   });
 
   restore();

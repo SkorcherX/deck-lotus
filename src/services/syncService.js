@@ -226,6 +226,16 @@ export async function runPriceSync({ trigger = 'scheduled' } = {}) {
       console.error('Could not invalidate the scan identity table:', error.message);
     }
 
+    // Prices only move here, so this is when a day's collection value is
+    // known. A failure is logged and swallowed: the refresh itself succeeded.
+    try {
+      const { recordValueSnapshots } = await import('./analyticsService.js');
+      const written = recordValueSnapshots();
+      console.log(`Recorded collection value for ${written} user(s)`);
+    } catch (error) {
+      console.error('Could not record collection value snapshots:', error.message);
+    }
+
     console.log('Prices refreshed successfully');
     return { success: true, lastPriceRun };
   } catch (error) {

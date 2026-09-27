@@ -1005,6 +1005,11 @@ class ApiClient {
     const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
     return this.request(`/audit/filters${query}`);
   }
+
+  /** One section of the analytics page: summary, timeline, sets, colors, value-history. */
+  async getAnalytics(section) {
+    return this.request(`/analytics/${section}`);
+  }
 }
 
 export default new ApiClient();

@@ -163,6 +163,10 @@
                             <i class="ph ph-bell-ringing nav-icon"></i>
                             <span class="nav-text">Price Watch</span>
                         </a>
+                        <a href="#" data-page="analytics" class="nav-link" title="Analytics">
+                            <i class="ph ph-chart-bar nav-icon"></i>
+                            <span class="nav-text">Analytics</span>
+                        </a>
                         <a href="#" data-page="audit" class="nav-link" title="Audit Log">
                             <i class="ph ph-scroll nav-icon"></i>
                             <span class="nav-text">Audit Log</span>
@@ -2183,6 +2187,66 @@
                         <canvas id="pm-history-chart"></canvas>
                     </div>
                     <div id="pm-history-list" style="max-height: 300px; overflow-y: auto;"></div>
+                </div>
+            </div>
+
+            <!-- Analytics Page -->
+            <div id="analytics-page" class="page hidden">
+                <div class="page-header">
+                    <h2>Analytics</h2>
+                    <p class="page-subtitle">What your collection is made of, what it is worth, and when it changed.</p>
+                </div>
+                <p id="analytics-status" class="analytics-status hidden"></p>
+
+                <div id="analytics-kpis" class="analytics-kpis"></div>
+
+                <div class="analytics-grid">
+                    <section class="analytics-panel analytics-wide">
+                        <h4>Activity by month</h4>
+                        <p id="analytics-tracking-since" class="analytics-note"></p>
+                        <div class="analytics-chart" style="height: 260px;"><canvas id="analytics-timeline"></canvas></div>
+                        <p id="analytics-timeline-empty" class="analytics-empty hidden">No collection changes recorded yet.</p>
+                        <details class="analytics-details">
+                            <summary>Where changes came from</summary>
+                            <div id="analytics-sources"></div>
+                        </details>
+                    </section>
+
+                    <section class="analytics-panel">
+                        <h4>Collection value over time</h4>
+                        <div class="analytics-chart" style="height: 240px;"><canvas id="analytics-value"></canvas></div>
+                        <p id="analytics-value-empty" class="analytics-empty hidden">
+                            Value is recorded once a day, after the nightly price refresh. The chart appears after two days of history.
+                        </p>
+                    </section>
+
+                    <section class="analytics-panel">
+                        <div class="analytics-panel-head">
+                            <h4>Colors</h4>
+                            <div class="analytics-toggle" role="group" aria-label="Measure colors by">
+                                <button type="button" class="active" aria-pressed="true" data-analytics-toggle="colorsBy:copies">Cards</button>
+                                <button type="button" aria-pressed="false" data-analytics-toggle="colorsBy:value">Value</button>
+                            </div>
+                        </div>
+                        <div class="analytics-chart" style="height: 240px;"><canvas id="analytics-colors"></canvas></div>
+                        <p id="analytics-colors-empty" class="analytics-empty hidden">No cards yet.</p>
+                    </section>
+
+                    <section class="analytics-panel analytics-wide">
+                        <div class="analytics-panel-head">
+                            <h4>Sets</h4>
+                            <div class="analytics-toggle" role="group" aria-label="Measure sets by">
+                                <button type="button" class="active" aria-pressed="true" data-analytics-toggle="setsBy:value">Value</button>
+                                <button type="button" aria-pressed="false" data-analytics-toggle="setsBy:copies">Cards</button>
+                            </div>
+                        </div>
+                        <div class="analytics-chart"><canvas id="analytics-sets"></canvas></div>
+                        <p id="analytics-sets-empty" class="analytics-empty hidden">No cards yet.</p>
+                        <details class="analytics-details">
+                            <summary>All sets <span id="analytics-sets-count"></span></summary>
+                            <div id="analytics-sets-table" class="analytics-table-wrap"></div>
+                        </details>
+                    </section>
                 </div>
             </div>
 

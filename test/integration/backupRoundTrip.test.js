@@ -35,6 +35,7 @@ function wipeUserData() {
     'deck_card_disruptions', 'deck_games', 'deck_cards', 'deck_shares', 'decks',
     'trade_items', 'trades', 'api_keys', 'owned_cards', 'owned_printings',
     'shopping_list_items', 'found_cards', 'collection_shares', 'price_watches', 'audit_log',
+    'collection_value_snapshots',
   ]) {
     db.run(`DELETE FROM ${table}`);
   }
@@ -124,6 +125,9 @@ before(async () => {
      VALUES (?,?,'inventory','inventory.add','api',?,?,1,0,2,2)`,
     [userId, userId, printings['Counterspell'].uuid, 'Counterspell']
   );
+
+  db.run(`INSERT INTO collection_value_snapshots (user_id, snapshot_date, total_value, total_cards, unique_cards)
+          VALUES (?,'2026-09-01',123.45,6,1)`, [userId]);
 
   db.run(`INSERT INTO api_keys (user_id, key_hash, name) VALUES (?,'khash','laptop')`, [userId]);
   db.run(`INSERT INTO price_watches (user_id, card_name, max_price, condition, is_active)
@@ -239,6 +243,16 @@ describe('backup and restore round trip', () => {
     assert.equal(entry.printing_uuid, printings['Counterspell'].uuid);
     assert.equal(entry.card_name, 'Counterspell');
     assert.equal(entry.quantity_delta, 2);
+  });
+
+  test('collection value history comes back, since prices keep no history of their own', () => {
+    const backup = createBackup();
+    wipeUserData();
+    restoreBackup(backup, { overwrite: false });
+
+    const row = db.get(`SELECT snapshot_date, total_value FROM collection_value_snapshots WHERE user_id = ?`, [userId]);
+    assert.equal(row.snapshot_date, '2026-09-01');
+    assert.equal(row.total_value, 123.45);
   });
 
   test('a legacy audit row keeps the printing_id that is its only handle', () => {
