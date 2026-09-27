@@ -1011,8 +1011,9 @@ class ApiClient {
    * ignores it for anyone else and answers with their own collection.
    */
   async getAnalytics(section, userIds = null) {
-    const query = userIds?.length ? `?userIds=${userIds.join(',')}` : '';
-    return this.request(`/analytics/${section}${query}`);
+    if (!userIds?.length) return this.request(`/analytics/${section}`);
+    const sep = section.includes('?') ? '&' : '?';
+    return this.request(`/analytics/${section}${sep}userIds=${userIds.join(',')}`);
   }
 }
 

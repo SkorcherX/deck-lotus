@@ -217,3 +217,35 @@ export function summariseDeckUse(rows, { playset = 4, topIdle = 10 } = {}) {
   idleCards.sort((a, b) => b.total - a.total);
   return { ...totals, topIdle: idleCards.slice(0, topIdle) };
 }
+
+/**
+ * Rank price moves on held cards. Rows: { name, setCode, collectorNumber,
+ * isFoil, quantity, then, now }, one per printing and finish.
+ *
+ * Ranked by what the move did to the collection (change per copy × copies
+ * held), not by percent: a penny card doubling is +100% and means nothing,
+ * while a $40 card slipping 10% is the thing worth knowing. Moves under
+ * `minChange` per copy are dropped as noise.
+ */
+export function rankMovers(rows, { limit = 10, minChange = 0.05 } = {}) {
+  const moves = rows
+    .filter((r) => r.then != null && r.now != null && Math.abs(r.now - r.then) >= minChange)
+    .map((r) => ({
+      name: r.name,
+      setCode: r.setCode,
+      collectorNumber: r.collectorNumber,
+      isFoil: !!r.isFoil,
+      quantity: r.quantity,
+      then: round2(r.then),
+      now: round2(r.now),
+      change: round2(r.now - r.then),
+      percent: r.then > 0 ? round2(((r.now - r.then) / r.then) * 100) : null,
+      totalChange: round2((r.now - r.then) * r.quantity),
+    }));
+
+  return {
+    gainers: moves.filter((m) => m.totalChange > 0).sort((a, b) => b.totalChange - a.totalChange).slice(0, limit),
+    losers: moves.filter((m) => m.totalChange < 0).sort((a, b) => a.totalChange - b.totalChange).slice(0, limit),
+    netChange: round2(moves.reduce((s, m) => s + m.totalChange, 0)),
+  };
+}

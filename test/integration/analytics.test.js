@@ -226,12 +226,53 @@ describe('analytics', () => {
     assert.equal(bolts[0].quantity, 6);
   });
 
+  test('price movers compare held printings against the history baseline', () => {
+    assert.equal(analytics.getPriceMovers(userId).since, null, 'no history, no movers');
+
+    const recorded = analytics.recordPriceHistory();
+    assert.ok(recorded > 0);
+    const untracked = db.get(`
+      SELECT COUNT(*) AS n FROM price_history ph
+       WHERE ph.printing_uuid NOT IN (
+         SELECT p.uuid FROM owned_printings op JOIN printings p ON p.id = op.printing_id)`).n;
+    assert.equal(untracked, 0, 'only printings someone owns are tracked');
+
+    // Pretend that was eight days ago, then move the market.
+    db.run(`UPDATE price_history SET snapshot_date = date('now', '-8 days')`);
+    const setPrice = (name, type, price) => db.run(
+      `UPDATE prices SET price = ? WHERE provider = 'tcgplayer' AND price_type = ?
+         AND printing_uuid = (SELECT p.uuid FROM printings p JOIN cards c ON c.id = p.card_id WHERE c.name = ?)`,
+      [price, type, name]
+    );
+    setPrice('Dual', 'normal', 90);    // 1 held: −10
+    setPrice('Charm', 'normal', 12);   // 2 foils with no foil price, priced at normal: +4
+    setPrice('Bolt', 'foil', 6);       // 1 foil: +1
+
+    const m = analytics.getPriceMovers(userId, 7);
+    assert.equal(m.since, db.get(`SELECT date('now', '-8 days') AS d`).d);
+    assert.deepEqual(m.gainers.map((g) => [g.name, g.isFoil, g.totalChange]), [['Charm', true, 4], ['Bolt', true, 1]]);
+    assert.deepEqual(m.losers.map((l) => [l.name, l.totalChange]), [['Dual', -10]]);
+    assert.equal(m.netChange, -5);
+
+    // The household holds the partner's two non-foil Bolts too, which did not move.
+    const partnerId = db.get(`SELECT id FROM users WHERE username='p'`).id;
+    assert.equal(analytics.getPriceMovers([userId, partnerId]).netChange, -5);
+  });
+
+  test('price history past the retention window is pruned', () => {
+    db.run(`INSERT INTO price_history (printing_uuid, price_type, snapshot_date, price)
+            VALUES ('uuid-Bolt', 'normal', date('now', '-500 days'), 1)`);
+    analytics.recordPriceHistory();
+    const old = db.get(`SELECT COUNT(*) AS n FROM price_history WHERE snapshot_date < date('now', '-400 days')`).n;
+    assert.equal(old, 0);
+  });
+
   test('a snapshot is one row per user per day, replaced on a rerun', () => {
     analytics.recordValueSnapshots();
     analytics.recordValueSnapshots();
     const rows = analytics.getValueHistory(userId);
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].value, 130);
+    assert.equal(rows[0].value, analytics.getSummary(userId).totalValue);
   });
 });
 

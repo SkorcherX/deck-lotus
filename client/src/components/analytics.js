@@ -14,7 +14,7 @@ const TOP_SETS = 15;
 
 let data = null;
 const charts = {};
-const view = { setsBy: 'value', colorsBy: 'copies', compositionBy: 'copies' };
+const view = { setsBy: 'value', colorsBy: 'copies', compositionBy: 'copies', moversDays: '7' };
 
 const el = (id) => document.getElementById(id);
 const money = (n) => '$' + (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -45,6 +45,7 @@ export function setupAnalytics() {
       if (key === 'setsBy') { renderSetsChart(); renderSetsTable(); }
       if (key === 'colorsBy') renderColorsChart();
       if (key === 'compositionBy') renderCompositionCharts();
+      if (key === 'moversDays') loadMovers();
     });
   });
 }
@@ -134,6 +135,7 @@ async function load() {
   try {
     const [
       summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily, deckUse, tradesLoans,
+      movers,
     ] = await Promise.all([
       api.getAnalytics('summary', scopeUserIds),
       api.getAnalytics('timeline', scopeUserIds),
@@ -146,10 +148,12 @@ async function load() {
       api.getAnalytics('daily', scopeUserIds),
       api.getAnalytics('deck-use', scopeUserIds),
       api.getAnalytics('trades-loans', scopeUserIds),
+      api.getAnalytics(`movers?days=${view.moversDays}`, scopeUserIds),
     ]);
     if (seq !== loadSeq) return;
     data = {
       summary, timeline, sets, colors, valueHistory, composition, topCards, completion, daily, deckUse, tradesLoans,
+      movers,
     };
     status.classList.add('hidden');
     renderSummary();
@@ -160,6 +164,7 @@ async function load() {
     renderCompletion();
     renderDeckUse();
     renderTradesLoans();
+    renderMovers();
     renderCharts();
   } catch (error) {
     if (seq !== loadSeq) return;
@@ -316,6 +321,61 @@ function renderDeckUse() {
         </tr>`).join('')}
       </tbody>
     </table>` : '<p class="analytics-empty">Every priced card is in a deck.</p>';
+}
+
+// ---- Price movers -----------------------------------------------------------
+
+/** Refetch just the movers when the period changes; the rest of the page stands. */
+async function loadMovers() {
+  if (!data) return;
+  const seq = loadSeq;
+  try {
+    const movers = await api.getAnalytics(`movers?days=${view.moversDays}`, scopeUserIds);
+    if (seq !== loadSeq) return; // the scope changed underneath; that load will render its own
+    data.movers = movers;
+    renderMovers();
+  } catch (error) {
+    el('analytics-movers-note').textContent = `Could not load price movers: ${error.message}`;
+  }
+}
+
+function renderMovers() {
+  const m = data.movers;
+  const note = el('analytics-movers-note');
+  const out = el('analytics-movers');
+
+  if (!m.since) {
+    note.textContent = '';
+    out.innerHTML = `<p class="analytics-empty">Prices are recorded each night after the price refresh.
+      Movers appear once there are two days of history.</p>`;
+    return;
+  }
+
+  const since = new Date(m.since + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${money(Math.abs(n))}`;
+  const spanDays = Math.round((Date.now() - new Date(m.since + 'T00:00:00Z')) / DAY_MS);
+  note.innerHTML = `Since ${since}${spanDays < m.days ? ` (only ${spanDays} days of history so far)` : ''}.
+    Net change on your cards: <b class="${m.netChange >= 0 ? 'up' : 'down'}">${signed(m.netChange)}</b>.
+    Ranked by what the move did to your collection, so a card you hold four of counts four times.`;
+
+  const table = (rows, empty) => (rows.length ? `
+    <table class="analytics-table analytics-top">
+      <tbody>${rows.map((r) => `
+        <tr>
+          <td>
+            <span class="analytics-top-name">${escapeHtml(r.name)}</span>${r.isFoil ? ' <span class="analytics-foil">Foil</span>' : ''}
+            <span class="analytics-set-code">${escapeHtml(r.setCode)} ${escapeHtml(r.collectorNumber || '')}</span>
+          </td>
+          <td class="num analytics-top-total">${money(r.then)} → ${money(r.now)}</td>
+          <td class="num ${r.change > 0 ? 'up' : 'down'}">${r.percent == null ? '' : `${r.percent > 0 ? '+' : ''}${r.percent.toFixed(0)}%`}</td>
+          <td class="num ${r.change > 0 ? 'up' : 'down'}">${signed(r.totalChange)}${r.quantity > 1 ? `<small> ×${r.quantity}</small>` : ''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : `<p class="analytics-empty">${empty}</p>`);
+
+  out.innerHTML = `
+    <div><h5>Gainers</h5>${table(m.gainers, 'Nothing went up.')}</div>
+    <div><h5>Losers</h5>${table(m.losers, 'Nothing went down.')}</div>`;
 }
 
 // ---- Trades & loans ---------------------------------------------------------

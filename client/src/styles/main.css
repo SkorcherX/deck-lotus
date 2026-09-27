@@ -8188,3 +8188,29 @@ body.maintenance-locked #app {
 
 .analytics-scope .analytics-note { margin: 0.5rem 0 0; }
 .analytics-scope .analytics-note:empty { display: none; }
+
+/* Price movers: gainers and losers side by side */
+.analytics-movers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .analytics-movers { grid-template-columns: minmax(0, 1fr); }
+}
+
+.analytics-movers h5 {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.analytics-movers .up,
+.analytics-note .up { color: var(--success); }
+.analytics-movers .down,
+.analytics-note .down { color: var(--danger); }
+.analytics-movers small { color: var(--text-muted); margin-left: 0.2rem; }
+.analytics-movers td.num { white-space: nowrap; }

@@ -312,3 +312,13 @@ taken on GitHub — only do it when explicitly asked.
   if one changes, change the other, or the two pages disagree about what is
   idle. Trade and loan stats count from the caller's side only — totals, never
   the partner's cards or decks.
+- Price history (`price_history`, migration 044) is recorded by
+  `recordPriceHistory` after each daily price refresh, for **owned printings
+  only** (anyone's, both finishes, TCGplayer) — tracking every printing would
+  be ~300k rows a day for cards nobody holds. So a printing's history starts
+  the day someone adds it, and "biggest movers" can only ever speak about held
+  cards. Keyed by `printing_uuid` with no FK (the weekly import clears
+  `printings`), pruned past `PRICE_HISTORY_DAYS`. It is market data, not user
+  data, so `backupService` deliberately does not carry it. Movers are priced
+  the way `OWNED_COPY_PRICE` prices a copy — foil falls back to normal — and
+  compared against the same price type on the baseline day.

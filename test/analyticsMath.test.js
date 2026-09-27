@@ -110,3 +110,21 @@ test('deck use splits copies the way the Inventory page counts available', () =>
   assert.equal(out.idleValue, 13);
   assert.deepEqual(out.topIdle.map((c) => c.name), ['Rock', 'Bolt']);
 });
+
+import { rankMovers } from '../src/services/analyticsMath.js';
+
+test('movers rank by effect on the collection, not percent, and drop noise', () => {
+  const out = rankMovers([
+    { name: 'Penny', quantity: 1, then: 0.10, now: 0.20 },   // +100% but +$0.10
+    { name: 'Staple', quantity: 4, then: 5, now: 6 },        // +$4 held
+    { name: 'Chase', quantity: 1, then: 40, now: 36 },       // −$4
+    { name: 'Flat', quantity: 9, then: 1, now: 1.02 },       // under minChange
+    { name: 'New', quantity: 1, then: null, now: 3 },        // no history yet
+  ]);
+  assert.deepEqual(out.gainers.map((m) => m.name), ['Staple', 'Penny']);
+  assert.equal(out.gainers[0].totalChange, 4);
+  assert.equal(out.gainers[1].percent, 100);
+  assert.deepEqual(out.losers.map((m) => m.name), ['Chase']);
+  assert.equal(out.losers[0].percent, -10);
+  assert.equal(out.netChange, 0.1);
+});

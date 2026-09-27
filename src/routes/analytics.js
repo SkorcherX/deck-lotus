@@ -4,7 +4,7 @@ import db from '../db/connection.js';
 import {
   getSummary, getTimeline, getSets, getColors, getValueHistory,
   getComposition, getTopCards, getSetCompletion, getDailyActivity,
-  getDeckUse, getTradesAndLoans,
+  getDeckUse, getTradesAndLoans, getPriceMovers,
 } from '../services/analyticsService.js';
 
 const router = express.Router();
@@ -53,5 +53,12 @@ router.get('/set-completion', authenticate, section(getSetCompletion));
 router.get('/daily', authenticate, section(getDailyActivity));
 router.get('/deck-use', authenticate, section(getDeckUse));
 router.get('/trades-loans', authenticate, section(getTradesAndLoans));
+router.get('/movers', authenticate, (req, res, next) => {
+  try {
+    res.json(getPriceMovers(resolveScope(req), req.query.days));
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;

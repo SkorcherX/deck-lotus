@@ -18,7 +18,7 @@ import { OWNED_COPY_PRICE } from './inventoryService.js';
 import { isBasicLand } from './basicLands.js';
 import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
 import {
-  summariseColors, summariseComposition, summariseDeckUse, fillMonths, round2,
+  summariseColors, summariseComposition, summariseDeckUse, fillMonths, rankMovers, round2,
 } from './analyticsMath.js';
 
 const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
@@ -390,6 +390,88 @@ export function getValueHistory(userIds) {
      GROUP BY snapshot_date
      ORDER BY snapshot_date
   `, s.ids).map((r) => ({ ...r, value: round2(r.value) }));
+}
+
+/** How long price history is kept. A year of movers, plus slack for a 30-day lookback. */
+export const PRICE_HISTORY_DAYS = 400;
+
+/**
+ * Record today's TCGplayer prices for every printing anyone owns, both
+ * finishes, and drop rows past PRICE_HISTORY_DAYS. Called after the daily
+ * price refresh, next to recordValueSnapshots. Same-day reruns replace.
+ */
+export function recordPriceHistory() {
+  const written = db.run(`
+    INSERT OR REPLACE INTO price_history (printing_uuid, price_type, snapshot_date, price)
+    SELECT pr.printing_uuid, pr.price_type, date('now'), pr.price
+      FROM prices pr
+     WHERE pr.provider = 'tcgplayer'
+       AND pr.price_type IN ('normal', 'foil')
+       AND pr.price IS NOT NULL
+       AND pr.printing_uuid IN (
+         SELECT DISTINCT p.uuid
+           FROM owned_printings op
+           JOIN printings p ON p.id = op.printing_id
+          WHERE op.quantity > 0
+       )
+  `).changes;
+
+  db.run(`DELETE FROM price_history WHERE snapshot_date < date('now', ?)`, [`-${PRICE_HISTORY_DAYS} days`]);
+  return written;
+}
+
+/**
+ * Biggest price moves on what the scope holds, over roughly `days` days.
+ *
+ * The baseline is the newest history day on or before `days` ago. If history
+ * is younger than that, the oldest day there is stands in, and `since` says
+ * which day it was so the page can say "since Sep 20" rather than claim a
+ * week. Each held printing is priced the way OWNED_COPY_PRICE prices it — a
+ * foil at its foil price, falling back to normal where no foil price exists —
+ * and compared against the same price type on the baseline day.
+ */
+export function getPriceMovers(userIds, days = 7) {
+  const s = scopeOf(userIds);
+  const lookback = [7, 30, 90].includes(Number(days)) ? Number(days) : 7;
+
+  const base = db.get(`
+    SELECT COALESCE(
+      (SELECT MAX(snapshot_date) FROM price_history WHERE snapshot_date <= date('now', ?)),
+      (SELECT MIN(snapshot_date) FROM price_history WHERE snapshot_date < date('now'))
+    ) AS day
+  `, [`-${lookback} days`]);
+
+  if (!base?.day) {
+    return { days: lookback, since: null, gainers: [], losers: [], netChange: 0 };
+  }
+
+  const rows = db.all(`
+    WITH held AS (
+      SELECT p.uuid, c.name, p.set_code AS setCode, p.collector_number AS collectorNumber,
+             op.is_foil AS isFoil, SUM(op.quantity) AS quantity,
+             CASE WHEN op.is_foil = 1 AND EXISTS (
+                    SELECT 1 FROM prices f
+                     WHERE f.printing_uuid = p.uuid AND f.provider = 'tcgplayer' AND f.price_type = 'foil')
+                  THEN 'foil' ELSE 'normal' END AS ptype
+        FROM owned_printings op
+        JOIN printings p ON p.id = op.printing_id
+        JOIN cards c ON c.id = p.card_id
+       WHERE op.user_id IN ${s.in} AND op.quantity > 0
+       GROUP BY p.id, op.is_foil
+    )
+    SELECT h.name, h.setCode, h.collectorNumber, h.isFoil, h.quantity,
+           (SELECT ph.price FROM price_history ph
+             WHERE ph.printing_uuid = h.uuid AND ph.price_type = h.ptype AND ph.snapshot_date = ?) AS then_price,
+           (SELECT pr.price FROM prices pr
+             WHERE pr.printing_uuid = h.uuid AND pr.provider = 'tcgplayer' AND pr.price_type = h.ptype) AS now_price
+      FROM held h
+  `, [...s.ids, base.day]);
+
+  return {
+    days: lookback,
+    since: base.day,
+    ...rankMovers(rows.map((r) => ({ ...r, then: r.then_price, now: r.now_price }))),
+  };
 }
 
 /**

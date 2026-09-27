@@ -236,6 +236,15 @@ export async function runPriceSync({ trigger = 'scheduled' } = {}) {
       console.error('Could not record collection value snapshots:', error.message);
     }
 
+    // Separately, so a failure in one never costs the other its day.
+    try {
+      const { recordPriceHistory } = await import('./analyticsService.js');
+      const written = recordPriceHistory();
+      console.log(`Recorded price history for ${written} owned printing price(s)`);
+    } catch (error) {
+      console.error('Could not record price history:', error.message);
+    }
+
     console.log('Prices refreshed successfully');
     return { success: true, lastPriceRun };
   } catch (error) {
