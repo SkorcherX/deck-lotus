@@ -133,6 +133,16 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 ---
 
+## Unraid
+
+An Unraid template lives at [`unraid/deck-lotus.xml`](unraid/deck-lotus.xml). On the server:
+
+```bash
+wget -O /boot/config/plugins/dockerMan/templates-user/my-deck-lotus.xml https://raw.githubusercontent.com/SkorcherX/deck-lotus/main/unraid/deck-lotus.xml
+```
+
+Then **Docker → Add Container**, pick `deck-lotus` from the template list, set JWT Secret and the admin password, and apply. Updates then work from the Docker tab. If Unraid reports "Configuration not found" on update, the container was created without a template (or renamed away from it); remove it and recreate it this way — data in `/mnt/user/appdata/deck-lotus` is kept.
+
 ## Test Environment
 
 Runs the real app against a scrubbed copy of a real database, on port 3100, so

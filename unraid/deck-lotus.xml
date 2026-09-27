@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>deck-lotus</Name>
+  <Repository>ghcr.io/skorcherx/deck-lotus:latest</Repository>
+  <Registry>https://github.com/SkorcherX/deck-lotus/pkgs/container/deck-lotus</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/SkorcherX/deck-lotus/issues</Support>
+  <Project>https://github.com/SkorcherX/deck-lotus</Project>
+  <Overview>Self-hosted Magic: The Gathering deck builder and collection manager. Card data comes from MTGJSON and is synced weekly; prices refresh daily.&#xD;
+&#xD;
+Before first start, set JWT Secret to a long random string and change the admin password. The first startup downloads and imports MTGJSON card data, which takes several minutes.</Overview>
+  <Category>Tools: MediaApp:Other</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/SkorcherX/deck-lotus/main/unraid/deck-lotus.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/SkorcherX/deck-lotus/main/client/public/decklotus.png</Icon>
+  <ExtraParams>--health-cmd="node -e \"require('http').get('http://localhost:3000/health', r =&gt; process.exit(r.statusCode === 200 ? 0 : 1))\"" --health-interval=30s --health-timeout=3s --health-retries=3 --health-start-period=60s</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Port the web interface listens on." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Data" Target="/app/data" Default="/mnt/user/appdata/deck-lotus" Mode="rw" Description="SQLite database, backups and card data. Keep this on a persistent share." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/deck-lotus</Config>
+  <Config Name="JWT Secret" Target="JWT_SECRET" Default="" Mode="" Description="REQUIRED. Long random string used to sign logins. Changing it signs everyone out. Generate one with: openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Admin Username" Target="ADMIN_USERNAME" Default="admin" Mode="" Description="Admin account created on first startup if none exists." Type="Variable" Display="always" Required="false" Mask="false">admin</Config>
+  <Config Name="Admin Email" Target="ADMIN_EMAIL" Default="admin@example.com" Mode="" Description="Email for the first-run admin account." Type="Variable" Display="always" Required="false" Mask="false">admin@example.com</Config>
+  <Config Name="Admin Password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Password for the first-run admin account. Only used when no admin exists yet. Leave blank to have one generated and printed to the container log." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Timezone" Target="SYNC_TIMEZONE" Default="America/Los_Angeles" Mode="" Description="IANA timezone for the weekly card sync, daily price refresh and backups (e.g. America/New_York). Without it schedules run in UTC." Type="Variable" Display="always" Required="false" Mask="false">America/Los_Angeles</Config>
+  <Config Name="Mana Pool Email" Target="MANAPOOL_USER_EMAIL" Default="" Mode="" Description="Optional. Mana Pool account email. Needs the API token too, or the integration stays off." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Mana Pool API Token" Target="MANAPOOL_API_TOKEN" Default="" Mode="" Description="Optional. From manapool.com/seller/settings/integrations. Needs the email too." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="ntfy URL" Target="NTFY_URL" Default="https://ntfy.sh" Mode="" Description="Optional. ntfy server for price-alert push notifications." Type="Variable" Display="advanced" Required="false" Mask="false">https://ntfy.sh</Config>
+  <Config Name="ntfy Topic" Target="NTFY_TOPIC" Default="" Mode="" Description="Optional. Unique ntfy topic name. Leave blank to disable push notifications." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Price Check Schedule" Target="PRICE_CHECK_SCHEDULE" Default="0 */6 * * *" Mode="" Description="Cron expression for price-watch checks." Type="Variable" Display="advanced" Required="false" Mask="false">0 */6 * * *</Config>
+  <Config Name="JWT Expires In" Target="JWT_EXPIRES_IN" Default="7d" Mode="" Description="Access token lifetime." Type="Variable" Display="advanced" Required="false" Mask="false">7d</Config>
+  <Config Name="JWT Refresh Expires In" Target="JWT_REFRESH_EXPIRES_IN" Default="30d" Mode="" Description="Refresh token lifetime." Type="Variable" Display="advanced" Required="false" Mask="false">30d</Config>
+  <Config Name="Force Reimport" Target="FORCE_REIMPORT" Default="false" Mode="" Description="Set to true to force a full MTGJSON reimport on next start. User data is preserved. Set back to false afterwards." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="TCGPlayer Client ID" Target="TCGPLAYER_CLIENT_ID" Default="" Mode="" Description="Optional legacy price fallback. Keys are no longer publicly issued." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="TCGPlayer Client Secret" Target="TCGPLAYER_CLIENT_SECRET" Default="" Mode="" Description="Optional legacy price fallback." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+</Container>
