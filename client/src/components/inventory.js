@@ -3,6 +3,7 @@ import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog, debounce } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
 import { zoomButton } from '../utils/cardZoom.js';
+import { IMPORT_SOURCES, getImportSource } from './importSources.js';
 
 // 54 = 9 rows of 6 at the grid's usual column count, so a full page ends on
 // a complete row instead of trailing off mid-row.
@@ -1090,21 +1091,100 @@ function setupExportModal() {
   });
 }
 
+/**
+ * Bulk Add takes either a pasted list or a platform's export file. The source
+ * picker decides which; file sources live in importSources.js, so supporting
+ * a new platform is an entry there, not another toolbar button.
+ */
 function setupBulkAddModal() {
   const bulkAddBtn = document.getElementById('inventory-bulk-add-btn');
   const modal = document.getElementById('bulk-add-modal');
   const closeBtn = document.getElementById('bulk-add-modal-close');
   const previewBtn = document.getElementById('bulk-add-preview-btn');
   const submitBtn = document.getElementById('bulk-add-submit-btn');
+  const sourceSelect = document.getElementById('bulk-add-source');
+  const fileBtn = document.getElementById('bulk-add-file-btn');
+  const fileInput = document.getElementById('bulk-add-file');
+  const hint = document.getElementById('bulk-add-source-hint');
+  const textGroup = document.getElementById('bulk-add-text-group');
+
+  // The file chosen for the current source, read once: { name, text }.
+  let pendingFile = null;
+
+  for (const source of IMPORT_SOURCES) {
+    sourceSelect?.add(new Option(source.label, source.id));
+  }
+
+  const currentSource = () => getImportSource(sourceSelect?.value);
+
+  function resetOutput() {
+    document.getElementById('bulk-add-preview').classList.add('hidden');
+    document.getElementById('bulk-add-result').classList.add('hidden');
+  }
+
+  function clearFile() {
+    pendingFile = null;
+    if (fileInput) fileInput.value = '';
+    const label = fileBtn?.querySelector('.btn-text');
+    if (label) label.textContent = 'Choose file';
+  }
+
+  function applySource() {
+    const source = currentSource();
+    clearFile();
+    fileBtn?.classList.toggle('hidden', !source);
+    textGroup?.classList.toggle('hidden', !!source);
+    hint?.classList.toggle('hidden', !source);
+    if (source) {
+      hint.textContent = source.hint;
+      fileInput.accept = source.accept;
+    }
+    resetOutput();
+  }
+
+  async function previewFile() {
+    const source = currentSource();
+    if (!pendingFile) {
+      showError('Choose a file to import first');
+      return;
+    }
+    try {
+      previewBtn.disabled = true;
+      previewBtn.textContent = 'Reading...';
+      const { lines } = source.summarize(await source.preview(pendingFile.text));
+      document.getElementById('bulk-add-preview-content').innerHTML =
+        `<div style="margin-bottom: 0.5rem;"><strong>${escapeHtml(pendingFile.name)}</strong></div>` +
+        lines.map((l) => `<div>${escapeHtml(l)}</div>`).join('');
+      document.getElementById('bulk-add-preview').classList.remove('hidden');
+    } catch (error) {
+      showError(`Could not read that file: ${error.message}`);
+    } finally {
+      previewBtn.disabled = false;
+      previewBtn.textContent = 'Preview';
+    }
+  }
 
   if (bulkAddBtn) {
     bulkAddBtn.addEventListener('click', () => {
       modal?.classList.remove('hidden');
       document.getElementById('bulk-add-text').value = '';
-      document.getElementById('bulk-add-preview').classList.add('hidden');
-      document.getElementById('bulk-add-result').classList.add('hidden');
+      if (sourceSelect) sourceSelect.value = '';
+      applySource();
     });
   }
+
+  sourceSelect?.addEventListener('change', applySource);
+  fileBtn?.addEventListener('click', () => fileInput.click());
+  fileInput?.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    pendingFile = { name: file.name, text: await file.text() };
+    fileBtn.querySelector('.btn-text').textContent = 'Choose another file';
+    resetOutput();
+    // A collection-sized file deserves a look before anything is written,
+    // so choosing one previews it straight away.
+    await previewFile();
+  });
 
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
@@ -1122,6 +1202,8 @@ function setupBulkAddModal() {
 
   if (previewBtn) {
     previewBtn.addEventListener('click', async () => {
+      if (currentSource()) return previewFile();
+
       const text = document.getElementById('bulk-add-text').value;
       const items = parseBulkAddText(text);
 
@@ -1149,19 +1231,34 @@ function setupBulkAddModal() {
 
   if (submitBtn) {
     submitBtn.addEventListener('click', async () => {
-      const text = document.getElementById('bulk-add-text').value;
-      const items = parseBulkAddText(text);
+      const source = currentSource();
+      let items = null;
 
-      if (items.length === 0) {
-        showError('No valid cards to add');
-        return;
+      if (source) {
+        if (!pendingFile) {
+          showError('Choose a file to import first');
+          return;
+        }
+      } else {
+        items = parseBulkAddText(document.getElementById('bulk-add-text').value);
+        if (items.length === 0) {
+          showError('No valid cards to add');
+          return;
+        }
       }
 
       try {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Adding...';
 
-        const result = await api.bulkAddToInventory(items);
+        const result = source
+          ? await source.commit(pendingFile.text)
+          : await api.bulkAddToInventory(items);
+        if (source) {
+          if (result.errors?.length) console.warn(`${source.label} import errors`, result.errors);
+          // Cleared so a second press cannot import the same file twice.
+          clearFile();
+        }
 
         const resultDiv = document.getElementById('bulk-add-result');
         resultDiv.classList.remove('hidden');

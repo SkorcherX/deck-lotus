@@ -18,7 +18,6 @@ import { setupTrades, refreshTradeBadge } from './components/trades.js';
 import { setupTradeShop } from './components/tradeShop.js';
 import { setupLoans, refreshLoanBadge } from './components/loans.js';
 import { setupSealed } from './components/sealed.js';
-import { setupCardCastleImport } from './components/cardCastleImport.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
 import { initTheme, currentTheme, applyTheme } from './utils/theme.js';
@@ -347,7 +346,6 @@ class App {
     setupTradeShop();
     setupLoans();
     setupSealed();
-    setupCardCastleImport();
     setupSharedDeck();
     setupCollectionShare();
   }
