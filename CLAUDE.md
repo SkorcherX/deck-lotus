@@ -322,3 +322,32 @@ taken on GitHub — only do it when explicitly asked.
   data, so `backupService` deliberately does not carry it. Movers are priced
   the way `OWNED_COPY_PRICE` prices a copy — foil falls back to normal — and
   compared against the same price type on the baseline day.
+- Card condition (TCGplayer scale: NM/LP/MP/HP/DMG, `src/shared/conditions.js`)
+  is **optional** and part of `owned_printings`' key (migration 045):
+  `UNIQUE(user_id, printing_id, is_foil, condition)`, with `''` meaning "not
+  recorded" (NOT NULL, because SQLite lets NULLs duplicate under UNIQUE).
+  `setOwnedPrintingQuantity` has two modes: pass `context.condition` (even
+  `''`) to set that one row; omit it and the quantity is the *total* across
+  conditions — growth lands unrecorded, shrinkage comes out in
+  `REMOVAL_ORDER` (unrecorded, then DMG→NM). Every pre-condition caller uses
+  the second mode, which is what keeps them behaving as before. A new query
+  that reads one `(printing, is_foil)` quantity must `SUM`, or it silently
+  reads one condition's row. Trades carry the grade across: `takeOwnedCopies`
+  reports which conditions left, and the receiver gets exactly those. Backup
+  and the MTGJSON restore carry `condition`.
+- Sealed product (migration 046, `sealedService.js`, `/api/sealed`):
+  `sealed_products` is MTGJSON's catalog, rebuilt every sync like `printings`,
+  so `owned_sealed.sealed_uuid` has no FK and may be NULL (a box the catalog
+  doesn't know is still owned). Lots, not products: two boxes at different
+  costs are two rows. Value = override → live price (`sealed_prices`, filled
+  from AllPricesToday when it carries the uuid; separate from `prices`, which
+  has an FK to printings) → the import's dated reference price. Unlinked lots
+  are re-matched on read (`linkUnmatched`), so an import made before the
+  catalog existed links itself after the next sync. Matching
+  (`src/shared/sealedMatch.js`) requires the product-kind tokens to agree
+  exactly — a Draft box never matches a Set box. `backupService` carries
+  `owned_sealed`.
+- CardCastle imports: singles via `POST /api/inventory/import-cardcastle`
+  (`cardCastleImport.js`, resolves Scryfall id → set name + number → name,
+  then goes through `bulkAddToInventory` with one batchId), sealed via
+  `POST /api/sealed/import`. Both accept the raw CSV (`src/shared/csv.js`).

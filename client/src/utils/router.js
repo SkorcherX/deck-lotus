@@ -34,6 +34,7 @@ export const ROUTES = [
   // the note on parsePath below.
   ['trade-shop', '/trades/shop'],
   ['loans', '/loans'],
+  ['sealed', '/sealed'],
   ['price-monitoring', '/price-monitoring'],
   ['settings', '/settings'],
   ['audit', '/audit'],

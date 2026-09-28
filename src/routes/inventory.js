@@ -16,6 +16,7 @@ import {
   summarizeCollectionForClear,
 } from '../services/inventoryService.js';
 import { addOwnedPrintingQuantity } from '../services/cardService.js';
+import { importCardCastleSingles } from '../services/cardCastleImport.js';
 import { AUDIT_SOURCES } from '../services/auditService.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -171,6 +172,22 @@ router.post('/bulk-add', authenticate, (req, res, next) => {
       source: auditSource(source, 'bulk_add'),
     });
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/import-cardcastle
+ * A CardCastle singles export, as `{ csv, dryRun }`. Condition and finish are
+ * kept. Not held to BULK_ITEM_LIMIT: a whole collection is the point, and the
+ * writes run inside one transaction. `dryRun` reports without writing.
+ */
+router.post('/import-cardcastle', authenticate, (req, res, next) => {
+  try {
+    const { csv, dryRun = false } = req.body || {};
+    if (!csv) return res.status(400).json({ error: 'csv is required' });
+    res.json(importCardCastleSingles(req.user.id, csv, { dryRun: !!dryRun, actorUserId: req.user.id }));
   } catch (error) {
     next(error);
   }
@@ -370,7 +387,7 @@ router.post('/bulk-resolve', authenticate, (req, res, next) => {
  */
 router.post('/quick-add', authenticate, (req, res, next) => {
   try {
-    const { printingId, quantity = 1, isFoil = false, source } = req.body;
+    const { printingId, quantity = 1, isFoil = false, source, condition } = req.body;
 
     if (!printingId) {
       return res.status(400).json({ error: 'printingId is required' });
@@ -385,6 +402,7 @@ router.post('/quick-add', authenticate, (req, res, next) => {
 
     const result = addOwnedPrintingQuantity(req.user.id, printingId, quantity, isFoil, {
       source: auditSource(source, 'quick_add'),
+      condition,
     });
     res.json(result);
   } catch (error) {

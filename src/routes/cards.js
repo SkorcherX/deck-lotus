@@ -14,6 +14,7 @@ import {
   getCardOwnershipStatus,
   getCardOwnedPrintings,
   setOwnedPrintingQuantity,
+  changeOwnedCondition,
   getCardOwnershipAndUsage,
 } from '../services/cardService.js';
 import { authenticate } from '../middleware/auth.js';
@@ -267,6 +268,9 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
     const printingId = parseInt(req.params.printingId);
     const userId = req.user.id;
     const { quantity, isFoil = false, expectedQuantity } = req.body;
+    // Optional. Present (even as '') means "this condition's row"; absent
+    // means the total across conditions, which is what the page always sent.
+    const hasCondition = Object.prototype.hasOwnProperty.call(req.body, 'condition');
 
     if (quantity === undefined || quantity === null) {
       return res.status(400).json({ error: 'Quantity is required' });
@@ -275,6 +279,7 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
     const result = setOwnedPrintingQuantity(userId, printingId, parseInt(quantity), isFoil, {
       source: 'card_page',
       expectedQuantity,
+      ...(hasCondition ? { condition: req.body.condition ?? '' } : {}),
     });
     res.json(result);
   } catch (error) {
@@ -283,6 +288,21 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
     if (error.statusCode === 409) {
       return res.status(409).json({ error: error.message, currentQuantity: error.currentQuantity });
     }
+    next(error);
+  }
+});
+
+/**
+ * POST /api/cards/printings/:printingId/condition
+ * Regrade one row: every copy of this printing and finish held at `from`
+ * moves to `to`, merging with a row already there. '' is "not recorded".
+ */
+router.post('/printings/:printingId/condition', authenticate, (req, res, next) => {
+  try {
+    const { isFoil = false, from = '', to = '' } = req.body || {};
+    res.json(changeOwnedCondition(req.user.id, parseInt(req.params.printingId, 10), !!isFoil, from, to));
+  } catch (error) {
+    if (/condition|Nothing to/i.test(error.message)) return res.status(400).json({ error: error.message });
     next(error);
   }
 });

@@ -6,6 +6,7 @@ import { pipeline } from 'stream/promises';
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { normalizeSealedName } from '../src/shared/sealedMatch.js';
 import { normalizeForSearch } from '../src/utils/cardNameMatch.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -116,6 +117,64 @@ async function decompressBz2(source, dest) {
 /**
  * Import cards from MTGJSON database
  */
+/**
+ * MTGJSON's sealed product catalog, into `sealed_products`.
+ *
+ * Rebuilt from scratch every run, like printings, and safe to be: owned
+ * sealed lots hold the uuid with no foreign key (migration 046). The column
+ * set of MTGJSON's sealedProducts table has moved between releases, so it is
+ * read by what is actually there rather than a fixed SELECT, and a source or
+ * target without the table is skipped rather than failing the sync.
+ */
+function importSealedProducts(srcDb, targetDb) {
+  const hasTable = (db, name) => !!db.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`
+  ).get(name);
+
+  if (!hasTable(targetDb, 'sealed_products')) return;
+  if (!hasTable(srcDb, 'sealedProducts')) {
+    console.log('Source has no sealedProducts table — sealed catalog left as it was');
+    return;
+  }
+
+  const cols = new Set(srcDb.prepare(`SELECT name FROM pragma_table_info('sealedProducts')`).all().map((r) => r.name));
+  const col = (name, alias = name) => (cols.has(name) ? `sp."${name}"` : 'NULL') + ` AS ${alias}`;
+
+  // tcgplayerProductId lives on the product in some releases and in a
+  // separate identifiers table in others.
+  const identifiers = hasTable(srcDb, 'sealedProductIdentifiers')
+    && srcDb.prepare(`SELECT 1 FROM pragma_table_info('sealedProductIdentifiers') WHERE name = 'tcgplayerProductId'`).get();
+  const tcgCol = cols.has('tcgplayerProductId')
+    ? 'sp.tcgplayerProductId'
+    : identifiers ? 'spi.tcgplayerProductId' : 'NULL';
+
+  const rows = srcDb.prepare(`
+    SELECT sp.uuid AS uuid, sp.name AS name, ${col('setCode')}, ${col('category')},
+           ${col('subtype')}, ${col('releaseDate')}, ${tcgCol} AS tcgplayerProductId
+      FROM sealedProducts sp
+      ${identifiers && !cols.has('tcgplayerProductId') ? 'LEFT JOIN sealedProductIdentifiers spi ON spi.uuid = sp.uuid' : ''}
+     WHERE sp.uuid IS NOT NULL AND sp.name IS NOT NULL
+  `).all();
+
+  const insert = targetDb.prepare(`
+    INSERT OR REPLACE INTO sealed_products
+      (uuid, name, name_normalized, set_code, category, subtype, release_date, tcgplayer_product_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  targetDb.transaction(() => {
+    targetDb.prepare('DELETE FROM sealed_products').run();
+    for (const r of rows) {
+      insert.run(
+        r.uuid, r.name, normalizeSealedName(r.name), r.setCode, r.category, r.subtype,
+        r.releaseDate, r.tcgplayerProductId == null ? null : String(r.tcgplayerProductId)
+      );
+    }
+  })();
+
+  console.log(`✓ Imported ${rows.length} sealed products`);
+}
+
 async function importCards(sourceDb, targetDb) {
   console.log('Importing cards...');
 
@@ -384,6 +443,8 @@ async function importCards(sourceDb, targetDb) {
   insertSetsMany(sourceSets);
   console.log(`✓ Imported ${sourceSets.length} sets`);
 
+  importSealedProducts(srcDb, targetDb);
+
   // Import purchase URLs
   console.log('Importing purchase URLs...');
   const purchaseUrls = srcDb.prepare(`
@@ -543,6 +604,22 @@ async function importPricing(targetDb, { pruneStale = false } = {}) {
   // Check which UUIDs exist in our printings table
   const checkUuid = targetDb.prepare(`SELECT 1 FROM printings WHERE uuid = ? LIMIT 1`);
 
+  // Sealed product uuids get their own table: `prices` has a foreign key to
+  // printings. Where the feed carries a sealed price it becomes that
+  // product's live value (see sealedService.js).
+  const hasSealed = !!targetDb.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sealed_prices'`
+  ).get();
+  const checkSealed = hasSealed
+    ? targetDb.prepare(`SELECT 1 FROM sealed_products WHERE uuid = ? LIMIT 1`)
+    : null;
+  const insertSealedPrice = hasSealed
+    ? targetDb.prepare(`
+        INSERT INTO sealed_prices (sealed_uuid, price, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(sealed_uuid) DO UPDATE SET price = excluded.price, updated_at = CURRENT_TIMESTAMP`)
+    : null;
+  let sealedPriced = 0;
+
   // Which providers this feed actually carried. Not decoration: on the day this
   // was written AllPricesToday had tcgplayer and cardkingdom and no cardmarket
   // at all, and a prune that did not ask would have deleted 158,000 cardmarket
@@ -555,6 +632,16 @@ async function importPricing(targetDb, { pruneStale = false } = {}) {
     for (const [uuid, prices] of entries) {
       // Skip if UUID doesn't exist in printings table
       if (!checkUuid.get(uuid)) {
+        if (checkSealed?.get(uuid)) {
+          const retail = prices.paper?.tcgplayer?.retail?.normal;
+          const dates = retail && typeof retail === 'object' ? Object.keys(retail).sort() : [];
+          const price = typeof retail === 'number' ? retail : dates.length ? retail[dates[dates.length - 1]] : null;
+          if (price) {
+            insertSealedPrice.run(uuid, price);
+            sealedPriced++;
+          }
+          continue;
+        }
         skipped++;
         continue;
       }
@@ -619,6 +706,9 @@ async function importPricing(targetDb, { pruneStale = false } = {}) {
     }
     if (skipped > 0) {
       console.log(`\nSkipped ${skipped} prices for UUIDs not in printings table`);
+    }
+    if (sealedPriced > 0) {
+      console.log(`Priced ${sealedPriced} sealed products`);
     }
   });
 
@@ -751,8 +841,15 @@ async function main() {
       // UNIQUE(user_id, printing_id, is_foil). Dropping it here would collapse
       // a user's foil and non-foil copies onto the same key on restore, and the
       // INSERT OR IGNORE would discard the second one.
+      // Condition is part of the key too (migration 045), for the same reason.
+      // Older databases have no column; they read as unrecorded.
+      const hasCondition = targetDb.prepare(
+        `SELECT 1 FROM pragma_table_info('owned_printings') WHERE name = 'condition'`
+      ).get();
       const ownedPrintingsBackup = targetDb.prepare(`
-        SELECT op.user_id, op.quantity, op.is_foil, op.created_at, op.updated_at,
+        SELECT op.user_id, op.quantity, op.is_foil,
+               ${hasCondition ? 'op.condition' : "'' AS condition"},
+               op.created_at, op.updated_at,
                p.uuid as printing_uuid
         FROM owned_printings op
         JOIN printings p ON op.printing_id = p.id
@@ -1020,10 +1117,13 @@ async function main() {
       console.log('\n🔄 Restoring owned printings data...');
       const backup = targetDb._ownedPrintingsBackup;
 
+      const restoreCondition = !!targetDb.prepare(
+        `SELECT 1 FROM pragma_table_info('owned_printings') WHERE name = 'condition'`
+      ).get();
       const insertOwnedPrinting = targetDb.prepare(`
         INSERT OR IGNORE INTO owned_printings
-          (user_id, printing_id, quantity, is_foil, created_at, updated_at)
-        VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+          (user_id, printing_id, quantity, is_foil, ${restoreCondition ? 'condition, ' : ''}created_at, updated_at)
+        VALUES (?, ?, ?, ?, ${restoreCondition ? '?, ' : ''}COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
       `);
 
       const getPrintingIdByUuid = targetDb.prepare(`
@@ -1043,6 +1143,7 @@ async function main() {
                 printing.id,
                 entry.quantity,
                 entry.is_foil ?? 0,
+                ...(restoreCondition ? [entry.condition ?? ''] : []),
                 // Carried through so "when did this enter the collection"
                 // survives the weekly rebuild instead of resetting to sync day.
                 entry.created_at ?? null,

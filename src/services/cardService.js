@@ -5,6 +5,7 @@ import {
   rankFuzzyCandidates
 } from '../utils/cardNameMatch.js';
 import { recordInventoryChange } from './auditService.js';
+import { normalizeCondition, REMOVAL_ORDER } from '../shared/conditions.js';
 
 // Ceiling on how many near-miss candidates the edit-distance pass considers,
 // per name table. Only reached when every chunk of the query is a common
@@ -686,7 +687,7 @@ export function toggleCardOwnership(userId, cardId, context = {}) {
   // ride so the audit log can say what the toggle actually threw away — "card
   // removed" is not enough to put four foils back.
   const ownedPrintings = db.all(
-    `SELECT op.id, op.printing_id, op.quantity, op.is_foil
+    `SELECT op.id, op.printing_id, op.quantity, op.is_foil, op.condition
      FROM owned_printings op
      JOIN printings p ON op.printing_id = p.id
      WHERE op.user_id = ? AND p.card_id = ?`,
@@ -736,6 +737,7 @@ export function toggleCardOwnership(userId, cardId, context = {}) {
         actorUserId: context.actorUserId ?? userId,
         printingId: owned.printing_id,
         isFoil: owned.is_foil === 1,
+        condition: owned.condition,
         before: owned.quantity,
         after: 0,
         source,
@@ -825,7 +827,7 @@ export function getCardOwnedPrintings(userId, cardId) {
      JOIN printings p ON op.printing_id = p.id
      LEFT JOIN sets s ON p.set_code = s.code
      WHERE op.user_id = ? AND p.card_id = ?
-     ORDER BY p.set_code, p.collector_number, op.is_foil`,
+     ORDER BY p.set_code, p.collector_number, op.is_foil, op.condition`,
     [userId, cardId]
   );
 }
@@ -843,7 +845,18 @@ export function getCardOwnedPrintings(userId, cardId) {
 // page, and both sides of an accepted trade — and the log is worth little if
 // it cannot tell those apart. Callers that omit it are recorded as 'api'.
 export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = false, context = {}) {
+  // Condition (src/shared/conditions.js) is optional and is part of the row's
+  // key. A caller that names one — `context.condition`, `''` included — sets
+  // that one row. A caller that does not, which is every path written before
+  // conditions existed, sets the *total* across conditions: growth lands on
+  // the unrecorded row, shrinkage comes out in REMOVAL_ORDER. That is what
+  // keeps trades, loans and the quantity box behaving exactly as they did.
+  if (context.condition === undefined) {
+    return setOwnedPrintingTotal(userId, printingId, quantity, isFoil, context);
+  }
+
   const foilFlag = isFoil ? 1 : 0;
+  const condition = normalizeCondition(context.condition, { strict: true });
   // Get the card_id for this printing
   const printing = db.get(
     `SELECT card_id FROM printings WHERE id = ?`,
@@ -859,25 +872,66 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = 
   // Read before anything moves: the audit row records what the quantity used
   // to be, which is the number you need when undoing a bad import by hand.
   const previous = db.get(
-    `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-    [userId, printingId, foilFlag]
+    `SELECT quantity FROM owned_printings
+      WHERE user_id = ? AND printing_id = ? AND is_foil = ? AND condition = ?`,
+    [userId, printingId, foilFlag, condition]
   )?.quantity || 0;
 
-  // Optimistic concurrency, for the callers that can say what they saw.
-  //
-  // This endpoint takes an absolute quantity, so two tabs that each read 4 and
-  // each add one both write 5 — the second write lands on a row that is no
-  // longer the one it was computed from, and the copy the first one added is
-  // gone. Both requests answered 200 and nothing anywhere said a write had
-  // been discarded, which is the part that makes it a data-loss bug rather
-  // than a race.
-  //
-  // `expectedQuantity` is what the caller believed the row held when it worked
-  // out the number it is sending. If the row has moved since, the write is
-  // refused with what it actually holds, and the caller can show that instead
-  // of silently overwriting it. Callers that cannot know — a bulk restore, a
-  // trade settling both sides inside its own transaction — simply omit it and
-  // get the previous behaviour.
+  assertExpected(previous, context);
+
+  const logChange = (after) => recordInventoryChange({
+    userId,
+    actorUserId: context.actorUserId ?? userId,
+    printingId,
+    isFoil,
+    condition,
+    before: previous,
+    after,
+    source: context.source || 'api',
+    tradeId: context.tradeId ?? null,
+    detail: context.detail ?? null,
+  });
+
+  if (quantity <= 0) {
+    db.run(
+      `DELETE FROM owned_printings
+        WHERE user_id = ? AND printing_id = ? AND is_foil = ? AND condition = ?`,
+      [userId, printingId, foilFlag, condition]
+    );
+
+    clearOwnedCardIfGone(userId, cardId);
+    logChange(0);
+
+    return { success: true, message: 'Printing removed from collection', quantity: 0, condition };
+  }
+
+  db.run(
+    `INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil, condition)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, printing_id, is_foil, condition)
+     DO UPDATE SET quantity = excluded.quantity, updated_at = CURRENT_TIMESTAMP`,
+    [userId, printingId, quantity, foilFlag, condition]
+  );
+
+  markOwnedCard(userId, cardId);
+  logChange(quantity);
+
+  return { success: true, quantity, condition };
+}
+
+// Optimistic concurrency, for the callers that can say what they saw.
+//
+// The setter takes an absolute quantity, so two tabs that each read 4 and each
+// add one both write 5 — the second write lands on a row that is no longer the
+// one it was computed from, and the copy the first one added is gone. Both
+// requests answered 200 and nothing anywhere said a write had been discarded,
+// which is the part that makes it a data-loss bug rather than a race.
+//
+// `expectedQuantity` is what the caller believed the row held when it worked
+// out the number it is sending. If the row has moved since, the write is
+// refused with what it actually holds. Callers that cannot know — a bulk
+// restore, a trade settling both sides inside its own transaction — omit it.
+function assertExpected(previous, context) {
   if (context.expectedQuantity !== undefined && context.expectedQuantity !== null) {
     const expected = Number(context.expectedQuantity);
 
@@ -890,78 +944,130 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = 
       throw error;
     }
   }
+}
 
-  const logChange = (after) => recordInventoryChange({
-    userId,
-    actorUserId: context.actorUserId ?? userId,
-    printingId,
-    isFoil,
-    before: previous,
-    after,
-    source: context.source || 'api',
-    tradeId: context.tradeId ?? null,
-    detail: context.detail ?? null,
-  });
-
-  if (quantity <= 0) {
-    // Remove if quantity is 0 or less
-    db.run(
-      `DELETE FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-      [userId, printingId, foilFlag]
-    );
-
-    // Check if any other printings of this card are still owned
-    const otherPrintings = db.get(
-      `SELECT COUNT(*) as count
-       FROM owned_printings op
-       JOIN printings p ON op.printing_id = p.id
-       WHERE op.user_id = ? AND p.card_id = ?`,
-      [userId, cardId]
-    );
-
-    if (otherPrintings.count === 0) {
-      // No more printings owned, remove from owned_cards
-      db.run(
-        `DELETE FROM owned_cards WHERE user_id = ? AND card_id = ?`,
-        [userId, cardId]
-      );
-    }
-
-    logChange(0);
-
-    return { success: true, message: 'Printing removed from collection' };
-  }
-
-  // Check if already exists
-  const existing = db.get(
-    `SELECT id FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-    [userId, printingId, foilFlag]
-  );
-
-  if (existing) {
-    // Update quantity
-    db.run(
-      `UPDATE owned_printings SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [quantity, existing.id]
-    );
-  } else {
-    // Insert new
-    db.run(
-      `INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil) VALUES (?, ?, ?, ?)`,
-      [userId, printingId, quantity, foilFlag]
-    );
-  }
-
-  // Ensure owned_cards is marked as owned
+// owned_cards is the legacy presence mirror: on while any printing is held,
+// off once none is, in any finish or condition.
+function markOwnedCard(userId, cardId) {
   db.run(
     `INSERT INTO owned_cards (user_id, card_id, quantity) VALUES (?, ?, 1)
      ON CONFLICT(user_id, card_id) DO UPDATE SET quantity = 1`,
     [userId, cardId]
   );
+}
 
-  logChange(quantity);
+function clearOwnedCardIfGone(userId, cardId) {
+  const other = db.get(
+    `SELECT COUNT(*) as count
+       FROM owned_printings op
+       JOIN printings p ON op.printing_id = p.id
+      WHERE op.user_id = ? AND p.card_id = ?`,
+    [userId, cardId]
+  );
 
-  return { success: true, quantity };
+  if (other.count === 0) {
+    db.run(`DELETE FROM owned_cards WHERE user_id = ? AND card_id = ?`, [userId, cardId]);
+  }
+}
+
+/**
+ * Regrade a row: move all of (printing, finish, `from`) to `to`, in one
+ * transaction so a failure cannot leave the copies in neither row.
+ */
+export function changeOwnedCondition(userId, printingId, isFoil, from, to, context = {}) {
+  const src = normalizeCondition(from, { strict: true });
+  const dest = normalizeCondition(to, { strict: true });
+  const have = db.get(
+    `SELECT quantity FROM owned_printings
+      WHERE user_id = ? AND printing_id = ? AND is_foil = ? AND condition = ?`,
+    [userId, printingId, isFoil ? 1 : 0, src]
+  )?.quantity || 0;
+
+  if (!have) throw new Error('Nothing to regrade: no copies held at that condition');
+  if (src === dest) return { success: true, quantity: have, condition: dest };
+
+  const ctx = { source: context.source || 'card_page', actorUserId: context.actorUserId, detail: { via: 'regrade', from: src, to: dest } };
+  return db.transaction(() => {
+    setOwnedPrintingQuantity(userId, printingId, 0, isFoil, { ...ctx, condition: src });
+    return addOwnedPrintingQuantity(userId, printingId, have, isFoil, { ...ctx, condition: dest });
+  });
+}
+
+/** Copies of one printing and finish, across every condition. */
+export function ownedPrintingTotal(userId, printingId, isFoil) {
+  return db.get(
+    `SELECT COALESCE(SUM(quantity), 0) AS total FROM owned_printings
+      WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+    [userId, printingId, isFoil ? 1 : 0]
+  )?.total || 0;
+}
+
+/**
+ * Take `quantity` copies of a printing and finish, across conditions, and say
+ * which conditions they came from — a trade hands exactly those to the other
+ * side, so a copy graded NM arrives graded NM. `context.condition`, when set,
+ * restricts the take to that one condition. Throws rather than taking fewer.
+ */
+export function takeOwnedCopies(userId, printingId, isFoil, quantity, context = {}) {
+  const rows = db.all(
+    `SELECT condition, quantity FROM owned_printings
+      WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+    [userId, printingId, isFoil ? 1 : 0]
+  );
+
+  const only = context.condition === undefined
+    ? null
+    : normalizeCondition(context.condition, { strict: true });
+  const byCondition = new Map(rows.map((r) => [r.condition, r.quantity]));
+  const order = only === null ? REMOVAL_ORDER : [only];
+  const available = order.reduce((n, c) => n + (byCondition.get(c) || 0), 0);
+
+  if (available < quantity) {
+    throw new Error(`Only ${available} ${available === 1 ? 'copy' : 'copies'} to take, ${quantity} asked for`);
+  }
+
+  const taken = [];
+  let left = quantity;
+  for (const condition of order) {
+    if (left <= 0) break;
+    const have = byCondition.get(condition) || 0;
+    if (!have) continue;
+    const n = Math.min(have, left);
+    setOwnedPrintingQuantity(userId, printingId, have - n, isFoil, {
+      ...context, condition, expectedQuantity: undefined,
+    });
+    taken.push({ condition, quantity: n });
+    left -= n;
+  }
+
+  return taken;
+}
+
+// The condition-unaware setter: `quantity` is the total across conditions.
+function setOwnedPrintingTotal(userId, printingId, quantity, isFoil, context) {
+  if (!db.get(`SELECT 1 FROM printings WHERE id = ?`, [printingId])) {
+    throw new Error('Printing not found');
+  }
+
+  const previous = ownedPrintingTotal(userId, printingId, isFoil);
+  assertExpected(previous, context);
+
+  const rest = { ...context, expectedQuantity: undefined };
+  const target = Math.max(0, quantity);
+
+  if (target > previous) {
+    addOwnedPrintingQuantity(userId, printingId, target - previous, isFoil, rest);
+    return { success: true, quantity: target };
+  }
+
+  if (target < previous) {
+    const taken = takeOwnedCopies(userId, printingId, isFoil, previous - target, rest);
+    return target === 0
+      ? { success: true, message: 'Printing removed from collection', quantity: 0, taken }
+      : { success: true, quantity: target, taken };
+  }
+
+  return { success: true, quantity: target };
 }
 
 /**
@@ -973,15 +1079,17 @@ export function setOwnedPrintingQuantity(userId, printingId, quantity, isFoil = 
  * turned five owned copies into one and said "Card added to inventory!" while
  * doing it. This is the path those callers want.
  *
- * The increment happens inside the UPDATE (`quantity = quantity + ?`), the way
- * bulkAddToInventory already does it, so two adds that arrive together both
- * land instead of one overwriting the other. Read-modify-write in JavaScript
- * would reintroduce exactly the loss this function exists to stop.
+ * The increment happens inside the upsert (`quantity = quantity + ...`), the
+ * way bulkAddToInventory does it, so two adds that arrive together both land
+ * instead of one overwriting the other. Read-modify-write in JavaScript would
+ * reintroduce exactly the loss this function exists to stop.
  *
  * Deliberately additive only: `delta` must be a positive whole number. Taking
  * copies away is `setOwnedPrintingQuantity`'s job, where the caller has to
  * name the number it expects to be left with — which is the check you want
  * standing between a stray click and a removed row.
+ *
+ * `context.condition` picks the row; without one the copies go on unrecorded.
  */
 export function addOwnedPrintingQuantity(userId, printingId, delta = 1, isFoil = false, context = {}) {
   if (!Number.isInteger(delta) || delta < 1) {
@@ -989,6 +1097,7 @@ export function addOwnedPrintingQuantity(userId, printingId, delta = 1, isFoil =
   }
 
   const foilFlag = isFoil ? 1 : 0;
+  const condition = normalizeCondition(context.condition, { strict: true });
 
   const printing = db.get(`SELECT card_id FROM printings WHERE id = ?`, [printingId]);
 
@@ -996,37 +1105,22 @@ export function addOwnedPrintingQuantity(userId, printingId, delta = 1, isFoil =
     throw new Error('Printing not found');
   }
 
-  const cardId = printing.card_id;
-
-  const existing = db.get(
-    `SELECT id, quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-    [userId, printingId, foilFlag]
-  );
-
-  if (existing) {
-    db.run(
-      `UPDATE owned_printings SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [delta, existing.id]
-    );
-  } else {
-    db.run(
-      `INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil) VALUES (?, ?, ?, ?)`,
-      [userId, printingId, delta, foilFlag]
-    );
-  }
-
-  // The legacy presence mirror, kept in step exactly as the setter does.
   db.run(
-    `INSERT INTO owned_cards (user_id, card_id, quantity) VALUES (?, ?, 1)
-     ON CONFLICT(user_id, card_id) DO UPDATE SET quantity = 1`,
-    [userId, cardId]
+    `INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil, condition)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, printing_id, is_foil, condition)
+     DO UPDATE SET quantity = quantity + excluded.quantity, updated_at = CURRENT_TIMESTAMP`,
+    [userId, printingId, delta, foilFlag, condition]
   );
+
+  markOwnedCard(userId, printing.card_id);
 
   // Read back rather than compute: the row is the authority on what it now
   // holds, and it is what the caller reports to the user.
   const quantity = db.get(
-    `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-    [userId, printingId, foilFlag]
+    `SELECT quantity FROM owned_printings
+      WHERE user_id = ? AND printing_id = ? AND is_foil = ? AND condition = ?`,
+    [userId, printingId, foilFlag, condition]
   )?.quantity ?? delta;
 
   recordInventoryChange({
@@ -1034,6 +1128,7 @@ export function addOwnedPrintingQuantity(userId, printingId, delta = 1, isFoil =
     actorUserId: context.actorUserId ?? userId,
     printingId,
     isFoil,
+    condition,
     before: quantity - delta,
     after: quantity,
     source: context.source || 'api',
@@ -1041,7 +1136,7 @@ export function addOwnedPrintingQuantity(userId, printingId, delta = 1, isFoil =
     detail: context.detail ?? null,
   });
 
-  return { success: true, quantity, added: delta };
+  return { success: true, quantity, added: delta, condition };
 }
 
 /**

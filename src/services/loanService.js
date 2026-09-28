@@ -37,7 +37,7 @@ function describePrinting(printingId) {
 /** Copies of one printing and finish a user owns and has not already lent. */
 export function lendableCopies(userId, printingUuid, isFoil) {
   const owned = db.get(
-    `SELECT op.quantity FROM owned_printings op
+    `SELECT SUM(op.quantity) AS quantity FROM owned_printings op
        JOIN printings p ON p.id = op.printing_id
       WHERE op.user_id = ? AND p.uuid = ? AND op.is_foil = ?`,
     [userId, printingUuid, isFoil ? 1 : 0]

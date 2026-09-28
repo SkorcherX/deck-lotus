@@ -10,6 +10,8 @@ import { isBasicLandSql } from './basicLands.js';
 import { deckPrioritySql, DECK_PRIORITY } from './deckPriority.js';
 import { recordInventoryChange } from './auditService.js';
 import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
+import { normalizeCondition } from '../shared/conditions.js';
+import { takeOwnedCopies } from './cardService.js';
 
 const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
 
@@ -320,6 +322,7 @@ export function getInventory(userIds, filters = {}) {
         op.user_id,
         op.quantity,
         op.is_foil,
+        op.condition,
         p.id as printing_id,
         p.set_code,
         p.collector_number,
@@ -331,7 +334,7 @@ export function getInventory(userIds, filters = {}) {
       JOIN printings p ON op.printing_id = p.id
       LEFT JOIN sets s ON p.set_code = s.code
       WHERE op.user_id ${scope.clause} AND p.card_id = ?
-      ORDER BY p.set_code, p.collector_number, op.is_foil
+      ORDER BY p.set_code, p.collector_number, op.is_foil, op.condition
     `, [...scope.params, card.card_id]);
 
     // Admin multi-user view: show whose collection each card's copies come
@@ -791,6 +794,9 @@ export function bulkAddToInventory(userId, items, context = {}) {
     try {
       const { quantity = 1, isFoil = false } = item;
       const foilFlag = isFoil ? 1 : 0;
+      // Optional; a line that says nothing lands on the unrecorded row, as
+      // every bulk add did before conditions existed.
+      const condition = normalizeCondition(item.condition, { strict: true });
 
       const resolved = resolveBulkItem(item);
 
@@ -809,8 +815,9 @@ export function bulkAddToInventory(userId, items, context = {}) {
 
       // Add or update owned_printings
       const existing = db.get(
-        `SELECT id, quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-        [userId, printing.id, foilFlag]
+        `SELECT id, quantity FROM owned_printings
+          WHERE user_id = ? AND printing_id = ? AND is_foil = ? AND condition = ?`,
+        [userId, printing.id, foilFlag, condition]
       );
 
       if (existing) {
@@ -820,8 +827,8 @@ export function bulkAddToInventory(userId, items, context = {}) {
         );
       } else {
         db.run(
-          `INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil) VALUES (?, ?, ?, ?)`,
-          [userId, printing.id, quantity, foilFlag]
+          `INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil, condition) VALUES (?, ?, ?, ?, ?)`,
+          [userId, printing.id, quantity, foilFlag, condition]
         );
       }
 
@@ -841,6 +848,7 @@ export function bulkAddToInventory(userId, items, context = {}) {
         actorUserId: context.actorUserId ?? userId,
         printingId: printing.id,
         isFoil,
+        condition,
         before: existing?.quantity || 0,
         after: (existing?.quantity || 0) + quantity,
         source,
@@ -873,7 +881,7 @@ export function bulkAddToInventory(userId, items, context = {}) {
  */
 function ownedQuantity(userId, printingId, isFoil) {
   return db.get(
-    `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
+    `SELECT SUM(quantity) AS quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
     [userId, printingId, isFoil ? 1 : 0]
   )?.quantity || 0;
 }
@@ -968,12 +976,18 @@ export function bulkRemoveFromInventory(userId, items, context = {}) {
 
       const { printing, cardId } = resolved;
 
-      const existing = db.get(
-        `SELECT id, quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-        [userId, printing.id, foilFlag]
-      );
+      // A line may name a condition; without one it takes across conditions,
+      // unrecorded copies first (REMOVAL_ORDER in shared/conditions.js).
+      const hasCondition = item.condition !== undefined && item.condition !== null && item.condition !== '';
+      const owned = hasCondition
+        ? (db.get(
+          `SELECT quantity FROM owned_printings
+            WHERE user_id = ? AND printing_id = ? AND is_foil = ? AND condition = ?`,
+          [userId, printing.id, foilFlag, normalizeCondition(item.condition, { strict: true })]
+        )?.quantity || 0)
+        : ownedQuantity(userId, printing.id, isFoil);
 
-      if (!existing || existing.quantity <= 0) {
+      if (owned <= 0) {
         results.failed++;
         results.errors.push({
           ...describe(item),
@@ -982,39 +996,13 @@ export function bulkRemoveFromInventory(userId, items, context = {}) {
         continue;
       }
 
-      const taken = Math.min(existing.quantity, quantity);
-      const after = existing.quantity - taken;
+      const taken = Math.min(owned, quantity);
 
-      if (after > 0) {
-        db.run(
-          `UPDATE owned_printings SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-          [after, existing.id]
-        );
-      } else {
-        db.run(`DELETE FROM owned_printings WHERE id = ?`, [existing.id]);
-
-        // owned_cards is a presence table: it only comes off once no printing
-        // of the card is left in any finish.
-        const remaining = db.get(
-          `SELECT COUNT(*) as count
-             FROM owned_printings op
-             JOIN printings p ON op.printing_id = p.id
-            WHERE op.user_id = ? AND p.card_id = ?`,
-          [userId, cardId]
-        );
-
-        if (remaining.count === 0) {
-          db.run(`DELETE FROM owned_cards WHERE user_id = ? AND card_id = ?`, [userId, cardId]);
-        }
-      }
-
-      recordInventoryChange({
-        userId,
+      // takeOwnedCopies writes through setOwnedPrintingQuantity, which keeps
+      // owned_cards in step and logs each condition's row with this batch.
+      takeOwnedCopies(userId, printing.id, isFoil, taken, {
+        ...(hasCondition ? { condition: item.condition } : {}),
         actorUserId: context.actorUserId ?? userId,
-        printingId: printing.id,
-        isFoil,
-        before: existing.quantity,
-        after,
         source,
         detail: {
           batchId,

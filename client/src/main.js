@@ -17,6 +17,8 @@ import { setupPriceMonitoring } from './components/priceMonitoring.js';
 import { setupTrades, refreshTradeBadge } from './components/trades.js';
 import { setupTradeShop } from './components/tradeShop.js';
 import { setupLoans, refreshLoanBadge } from './components/loans.js';
+import { setupSealed } from './components/sealed.js';
+import { setupCardCastleImport } from './components/cardCastleImport.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
 import { initTheme, currentTheme, applyTheme } from './utils/theme.js';
@@ -222,6 +224,9 @@ class App {
       case 'loans':
         window.dispatchEvent(new CustomEvent('page:loans'));
         break;
+      case 'sealed':
+        window.dispatchEvent(new CustomEvent('page:sealed'));
+        break;
       case 'price-monitoring':
         window.dispatchEvent(new CustomEvent('page:price-monitoring'));
         break;
@@ -341,6 +346,8 @@ class App {
     setupTrades();
     setupTradeShop();
     setupLoans();
+    setupSealed();
+    setupCardCastleImport();
     setupSharedDeck();
     setupCollectionShare();
   }

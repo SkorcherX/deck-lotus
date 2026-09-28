@@ -189,10 +189,24 @@ class ApiClient {
   // was showing and a row somebody else has changed since answers 409 instead
   // of quietly taking their copies with it. Omit it for a write that should
   // land regardless.
-  async setOwnedPrintingQuantity(printingId, quantity, isFoil = false, { expectedQuantity } = {}) {
+  //
+  // `condition` is optional: send it (even '') to set that condition's row,
+  // leave it out to set the total across conditions as before.
+  async setOwnedPrintingQuantity(printingId, quantity, isFoil = false, { expectedQuantity, condition } = {}) {
     return this.request(`/cards/printings/${printingId}/quantity`, {
       method: 'POST',
-      body: JSON.stringify({ quantity, isFoil, expectedQuantity }),
+      body: JSON.stringify({
+        quantity, isFoil, expectedQuantity,
+        ...(condition === undefined ? {} : { condition }),
+      }),
+    });
+  }
+
+  /** Move one row's copies from one condition to another ('' = not recorded). */
+  async changeOwnedCondition(printingId, isFoil, from, to) {
+    return this.request(`/cards/printings/${printingId}/condition`, {
+      method: 'POST',
+      body: JSON.stringify({ isFoil, from, to }),
     });
   }
 
@@ -615,6 +629,39 @@ class ApiClient {
 
   async exportInventory(shape = 'precise') {
     return this.request(`/inventory/export?shape=${encodeURIComponent(shape)}`);
+  }
+
+  /** A CardCastle singles export; `dryRun` reports without writing. */
+  async importCardCastleSingles(csv, dryRun = false) {
+    return this.request('/inventory/import-cardcastle', {
+      method: 'POST',
+      body: JSON.stringify({ csv, dryRun }),
+    });
+  }
+
+  // Sealed product
+  async getSealed() {
+    return this.request('/sealed');
+  }
+
+  async searchSealedCatalog(q) {
+    return this.request(`/sealed/catalog?q=${encodeURIComponent(q)}`);
+  }
+
+  async addSealed(item) {
+    return this.request('/sealed', { method: 'POST', body: JSON.stringify(item) });
+  }
+
+  async updateSealed(id, changes) {
+    return this.request(`/sealed/${id}`, { method: 'PUT', body: JSON.stringify(changes) });
+  }
+
+  async deleteSealed(id) {
+    return this.request(`/sealed/${id}`, { method: 'DELETE' });
+  }
+
+  async importSealedCsv(csv) {
+    return this.request('/sealed/import', { method: 'POST', body: JSON.stringify({ csv }) });
   }
 
   async bulkAddToInventory(items) {

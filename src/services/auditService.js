@@ -210,6 +210,7 @@ export function recordInventoryChange({
   source = 'api',
   tradeId = null,
   detail = null,
+  condition = '',
 }) {
   const from = before || 0;
   const to = after || 0;
@@ -233,7 +234,8 @@ export function recordInventoryChange({
     quantityAfter: to,
     quantityDelta: to - from,
     tradeId,
-    detail,
+    // Condition rides in `detail` rather than a column: most rows have none.
+    detail: condition ? { ...(detail || {}), condition } : detail,
     ...describePrinting(printingId),
   });
 }

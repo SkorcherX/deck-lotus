@@ -1,4 +1,5 @@
 import api from '../services/api.js';
+import { CONDITIONS, conditionLabel } from '../../../src/shared/conditions.js';
 import { showLoading, hideLoading, formatMana, formatOracleText, debounce, showModal, hideModal, showToast } from '../utils/ui.js';
 import { toggleOwnership, ownershipToggleAttrs, paintOwnershipToggle } from '../utils/ownershipToggle.js';
 import { zoomButton } from '../utils/cardZoom.js';
@@ -900,7 +901,7 @@ export async function showCardDetail(cardId) {
               ${ownership && ownership.ownedPrintings.length > 0 ? `
                 <div style="display: grid; gap: 0.5rem;">
                   ${ownership.ownedPrintings.map(op => `
-                    <div class="owned-printing-item" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px; display: flex; align-items: center; gap: 0.75rem; border: 1px solid var(--border-color);">
+                    <div class="owned-printing-item" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-condition="${op.condition || ''}" style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px; display: flex; align-items: center; gap: 0.75rem; border: 1px solid var(--border-color);">
                       <img src="${op.image_url}" alt="${op.set_code}" class="printing-preview" data-image-url="${op.image_url}" data-fallback="${op.image_url}" style="width: 50px; height: 70px; border-radius: 4px; object-fit: cover; flex-shrink: 0; cursor: pointer;" onerror="this.style.display='none'">
                       <div style="flex: 1; min-width: 0;">
                         <div style="cursor: pointer;" class="printing-preview" data-image-url="${op.image_url}" data-fallback="${op.image_url}">
@@ -908,23 +909,30 @@ export async function showCardDetail(cardId) {
                             ${op.set_code.toUpperCase()}
                             <span style="margin-left: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">#${op.collector_number || '?'}</span>
                             ${op.is_foil ? '<span class="foil-badge"><i class="ph ph-sparkle"></i> Foil</span>' : ''}
+                            ${op.condition ? `<span class="condition-badge condition-${op.condition.toLowerCase()}" title="${conditionLabel(op.condition)}">${op.condition}</span>` : ''}
                           </div>
                           <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
                             ${op.set_name || op.set_code.toUpperCase()}${op.rarity ? ` • ${op.rarity}` : ''}
                           </div>
                         </div>
-                        <button class="swap-printing-btn" data-printing-id="${op.printing_id}" data-quantity="${op.quantity}" data-is-foil="${op.is_foil ? 1 : 0}" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;" onmouseenter="this.style.borderColor='var(--primary)'; this.style.color='var(--text)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)';">
+                        <button class="swap-printing-btn" data-printing-id="${op.printing_id}" data-quantity="${op.quantity}" data-is-foil="${op.is_foil ? 1 : 0}" data-condition="${op.condition || ''}" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;" onmouseenter="this.style.borderColor='var(--primary)'; this.style.color='var(--text)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)';">
                           <i class="ph ph-swap"></i> Change Printing
                         </button>
-                        <button class="toggle-foil-btn" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-quantity="${op.quantity}" title="${op.is_foil ? 'Mark these copies as non-foil' : 'Mark these copies as foil'}" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;" onmouseenter="this.style.borderColor='var(--primary)'; this.style.color='var(--text)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)';">
+                        <button class="toggle-foil-btn" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-condition="${op.condition || ''}" data-quantity="${op.quantity}" title="${op.is_foil ? 'Mark these copies as non-foil' : 'Mark these copies as foil'}" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; gap: 0.25rem;" onmouseenter="this.style.borderColor='var(--primary)'; this.style.color='var(--text)';" onmouseleave="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)';">
                           <i class="ph ph-sparkle"></i> ${op.is_foil ? 'Mark as Non-Foil' : 'Mark as Foil'}
                         </button>
+                        <label style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--text-secondary);">
+                          Condition
+                          <select class="owned-condition-select" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-condition="${op.condition || ''}" title="TCGplayer condition — optional" style="font-size: 0.75rem; padding: 0.15rem 0.3rem; background: var(--bg-tertiary); color: var(--text); border: 1px solid var(--border-color); border-radius: 4px;">
+                            ${conditionOptions(op.condition || '')}
+                          </select>
+                        </label>
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.75rem;">
                         <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--bg-tertiary); border-radius: 6px; padding: 0.25rem;">
-                          <button class="owned-qty-decrease" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--danger)'" onmouseleave="this.style.color='var(--text)'">−</button>
-                          <span class="owned-qty-display" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" style="min-width: 2rem; text-align: center; font-weight: 600;">${op.quantity}</span>
-                          <button class="owned-qty-increase" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--success)'" onmouseleave="this.style.color='var(--text)'">+</button>
+                          <button class="owned-qty-decrease" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-condition="${op.condition || ''}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--danger)'" onmouseleave="this.style.color='var(--text)'">−</button>
+                          <span class="owned-qty-display" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-condition="${op.condition || ''}" style="min-width: 2rem; text-align: center; font-weight: 600;">${op.quantity}</span>
+                          <button class="owned-qty-increase" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-condition="${op.condition || ''}" data-current-qty="${op.quantity}" style="background: none; border: none; color: var(--text); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1.1rem; line-height: 1; transition: all 0.2s;" onmouseenter="this.style.color='var(--success)'" onmouseleave="this.style.color='var(--text)'">+</button>
                         </div>
                       </div>
                     </div>
@@ -1312,7 +1320,7 @@ export async function showCardDetail(cardId) {
         const printingId = parseInt(this.dataset.printingId);
         const currentQty = parseInt(this.dataset.currentQty);
         const isFoil = this.dataset.isFoil === '1';
-        await updateOwnedPrintingQuantity(printingId, currentQty + 1, cardId, isFoil, currentQty);
+        await updateOwnedPrintingQuantity(printingId, currentQty + 1, cardId, isFoil, currentQty, this.dataset.condition || '');
       });
     });
 
@@ -1323,7 +1331,7 @@ export async function showCardDetail(cardId) {
         const currentQty = parseInt(this.dataset.currentQty);
         const isFoil = this.dataset.isFoil === '1';
         if (currentQty > 0) {
-          await updateOwnedPrintingQuantity(printingId, currentQty - 1, cardId, isFoil, currentQty);
+          await updateOwnedPrintingQuantity(printingId, currentQty - 1, cardId, isFoil, currentQty, this.dataset.condition || '');
         }
       });
     });
@@ -1336,20 +1344,43 @@ export async function showCardDetail(cardId) {
         const printingId = parseInt(this.dataset.printingId);
         const quantity = parseInt(this.dataset.quantity);
         const wasFoil = this.dataset.isFoil === '1';
+        const condition = this.dataset.condition || '';
 
         try {
           const existingOther = (ownership?.ownedPrintings || []).find(
-            op => op.printing_id === printingId && !!op.is_foil === !wasFoil
+            op => op.printing_id === printingId && !!op.is_foil === !wasFoil && (op.condition || '') === condition
           );
           const merged = quantity + (existingOther?.quantity || 0);
 
-          await api.setOwnedPrintingQuantity(printingId, merged, !wasFoil);
-          await api.setOwnedPrintingQuantity(printingId, 0, wasFoil);
+          await api.setOwnedPrintingQuantity(printingId, merged, !wasFoil, { condition });
+          await api.setOwnedPrintingQuantity(printingId, 0, wasFoil, { condition });
 
           showToast(wasFoil ? 'Marked as non-foil' : 'Marked as foil', 'success');
           await showCardDetail(cardId);
         } catch (error) {
           showError('Failed to change finish: ' + error.message);
+        }
+      });
+    });
+
+    // Regrade a row: its copies move to the chosen condition, merging into a
+    // row that already has it. Blank means "not recorded".
+    document.querySelectorAll('.owned-condition-select').forEach(select => {
+      select.addEventListener('click', (e) => e.stopPropagation());
+      select.addEventListener('change', async function(e) {
+        e.stopPropagation();
+        try {
+          await api.changeOwnedCondition(
+            parseInt(this.dataset.printingId),
+            this.dataset.isFoil === '1',
+            this.dataset.condition || '',
+            this.value
+          );
+          showToast(this.value ? `Marked ${this.value}` : 'Condition cleared', 'success', 2000);
+          await showCardDetail(cardId);
+        } catch (error) {
+          showError('Failed to change condition: ' + error.message);
+          this.value = this.dataset.condition || '';
         }
       });
     });
@@ -1361,7 +1392,7 @@ export async function showCardDetail(cardId) {
         const fromPrintingId = parseInt(this.dataset.printingId);
         const quantity = parseInt(this.dataset.quantity);
         const isFoil = this.dataset.isFoil === '1';
-        await showSwapPrintingModal(card, fromPrintingId, quantity, cardId, ownership, isFoil);
+        await showSwapPrintingModal(card, fromPrintingId, quantity, cardId, ownership, isFoil, this.dataset.condition || '');
       });
     });
 
@@ -1596,10 +1627,10 @@ async function addPrintingToCollection(printingId, cardId) {
  * the write into a compare-and-set; a caller that genuinely means "set it to
  * this whatever it says" leaves it out.
  */
-async function updateOwnedPrintingQuantity(printingId, newQuantity, cardId, isFoil = false, expectedQuantity) {
+async function updateOwnedPrintingQuantity(printingId, newQuantity, cardId, isFoil = false, expectedQuantity, condition) {
   try {
     showLoading();
-    await api.setOwnedPrintingQuantity(printingId, newQuantity, isFoil, { expectedQuantity });
+    await api.setOwnedPrintingQuantity(printingId, newQuantity, isFoil, { expectedQuantity, condition });
 
     // Check if we need to update the browse grid checkbox
     // If quantity is 0, we might need to uncheck if this was the last printing
@@ -1643,7 +1674,7 @@ async function updateOwnedPrintingQuantity(printingId, newQuantity, cardId, isFo
 
 // isFoil identifies which of the two possible rows for fromPrintingId is being
 // swapped, and is carried over to the destination printing.
-async function showSwapPrintingModal(card, fromPrintingId, quantity, cardId, ownership, isFoil = false) {
+async function showSwapPrintingModal(card, fromPrintingId, quantity, cardId, ownership, isFoil = false, condition = '') {
   // Find the current printing info
   const currentPrinting = ownership.ownedPrintings.find(op => op.printing_id === fromPrintingId);
   if (!currentPrinting) return;
@@ -1721,13 +1752,13 @@ async function showSwapPrintingModal(card, fromPrintingId, quantity, cardId, own
       try {
         showLoading();
         // Remove from old printing — same finish, so the other finish is untouched
-        await api.setOwnedPrintingQuantity(fromPrintingId, 0, isFoil);
-        // Add to new printing, merging only with a row of the same finish
+        await api.setOwnedPrintingQuantity(fromPrintingId, 0, isFoil, { condition });
+        // Add to new printing, merging only with a row of the same finish and condition
         const existingOwned = ownership.ownedPrintings.find(
-          op => op.printing_id === toPrintingId && !!op.is_foil === isFoil
+          op => op.printing_id === toPrintingId && !!op.is_foil === isFoil && (op.condition || '') === condition
         );
         const newQuantity = (existingOwned ? existingOwned.quantity : 0) + quantity;
-        await api.setOwnedPrintingQuantity(toPrintingId, newQuantity, isFoil);
+        await api.setOwnedPrintingQuantity(toPrintingId, newQuantity, isFoil, { condition });
 
         showToast('Printing changed!', 'success', 2000);
         // Reload card detail
@@ -1929,4 +1960,11 @@ async function addCardToDeckFromBrowse(cardId, deckId, isSideboard) {
     hideLoading();
     showToast('Failed to add card', 'error');
   }
+}
+
+// Options for a condition <select>: blank ("not recorded") plus TCGplayer's scale.
+function conditionOptions(selected) {
+  return [`<option value=""${selected ? '' : ' selected'}>—</option>`]
+    .concat(CONDITIONS.map((c) => `<option value="${c.code}"${c.code === selected ? ' selected' : ''}>${c.code} · ${c.label}</option>`))
+    .join('');
 }

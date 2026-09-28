@@ -1,5 +1,5 @@
 import db from '../db/connection.js';
-import { setOwnedPrintingQuantity } from './cardService.js';
+import { takeOwnedCopies, addOwnedPrintingQuantity } from './cardService.js';
 import { getInventory, getInventoryStats } from './inventoryService.js';
 import { recordTradeEvent, describeCounterparty, AUDIT_ACTIONS } from './auditService.js';
 import { isBasicLandSql } from './basicLands.js';
@@ -81,7 +81,7 @@ function shortfallsFor(userId, printingKeys, deltas = new Map()) {
     const k = key(printingId, isFoil);
 
     const ownedRow = db.get(
-      `SELECT quantity FROM owned_printings
+      `SELECT SUM(quantity) AS quantity FROM owned_printings
         WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
       [userId, printingId, foilFlag]
     );
@@ -487,13 +487,13 @@ export function counterTrade(tradeId, userId, items, note = null, declinedItemId
  */
 function tradeableCopies(userId, printingId, isFoil) {
   const row = db.get(
-    `SELECT op.quantity, p.uuid FROM owned_printings op
+    `SELECT SUM(op.quantity) AS quantity, p.uuid FROM owned_printings op
        JOIN printings p ON p.id = op.printing_id
       WHERE op.user_id = ? AND op.printing_id = ? AND op.is_foil = ?`,
     [userId, printingId, isFoil ? 1 : 0]
   );
 
-  if (!row) return 0;
+  if (!row?.quantity) return 0;
   return Math.max(0, row.quantity - lentOutCopies(userId, row.uuid, isFoil));
 }
 
@@ -517,33 +517,28 @@ function assertHasCopies(userId, item) {
 // Accepting
 // ---------------------------------------------------------------------------
 
-/** Move copies out of a collection, deleting the row at zero. */
+/**
+ * Move copies out of a collection, deleting rows at zero, and return which
+ * conditions they came from (see REMOVAL_ORDER in shared/conditions.js) so the
+ * receiving side gets the same copies, graded the same.
+ */
 function takeCopies(userId, printingId, isFoil, quantity, context = {}) {
-  const row = db.get(
-    `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-    [userId, printingId, isFoil ? 1 : 0]
-  );
-
-  const have = row?.quantity || 0;
-
   if (tradeableCopies(userId, printingId, isFoil) < quantity) {
+    const have = tradeableCopies(userId, printingId, isFoil);
     const detail = describePrintings([printingId]).get(printingId);
     const name = detail ? detail.card_name : `printing ${printingId}`;
     throw new Error(`${name}: only ${have} copies left, the trade needs ${quantity}`);
   }
 
-  // Goes through setOwnedPrintingQuantity so the legacy owned_cards mirror
+  // Goes through the cardService choke point so the legacy owned_cards mirror
   // stays in step, including being cleared when the last printing goes.
-  setOwnedPrintingQuantity(userId, printingId, have - quantity, isFoil, context);
+  return takeOwnedCopies(userId, printingId, isFoil, quantity, context);
 }
 
-function addCopies(userId, printingId, isFoil, quantity, context = {}) {
-  const row = db.get(
-    `SELECT quantity FROM owned_printings WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
-    [userId, printingId, isFoil ? 1 : 0]
-  );
-
-  setOwnedPrintingQuantity(userId, printingId, (row?.quantity || 0) + quantity, isFoil, context);
+function addCopies(userId, printingId, isFoil, taken, context = {}) {
+  for (const { condition, quantity } of taken) {
+    addOwnedPrintingQuantity(userId, printingId, quantity, isFoil, { ...context, condition });
+  }
 }
 
 /**
@@ -597,14 +592,15 @@ export function acceptTrade(tradeId, userId) {
 
   db.transaction(() => {
     // Losing side first, for both parties.
+    const takenByItem = new Map();
     for (const item of items) {
       const giver = item.direction === 'give' ? trade.from_user_id : trade.to_user_id;
-      takeCopies(giver, item.printing_id, item.is_foil === 1, item.quantity, contextFor(giver));
+      takenByItem.set(item, takeCopies(giver, item.printing_id, item.is_foil === 1, item.quantity, contextFor(giver)));
     }
 
     for (const item of items) {
       const receiver = item.direction === 'give' ? trade.to_user_id : trade.from_user_id;
-      addCopies(receiver, item.printing_id, item.is_foil === 1, item.quantity, contextFor(receiver));
+      addCopies(receiver, item.printing_id, item.is_foil === 1, takenByItem.get(item), contextFor(receiver));
     }
 
     db.run(

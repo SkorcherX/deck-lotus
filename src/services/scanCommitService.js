@@ -224,7 +224,7 @@ export function ownershipShortfall(userId, items) {
     const [printingId, foilFlag] = key.split(':').map(Number);
 
     const owned = db.get(
-      `SELECT quantity FROM owned_printings
+      `SELECT SUM(quantity) AS quantity FROM owned_printings
        WHERE user_id = ? AND printing_id = ? AND is_foil = ?`,
       [userId, printingId, foilFlag]
     );

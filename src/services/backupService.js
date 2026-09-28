@@ -4,6 +4,7 @@ import path from 'path';
 import cron from 'node-cron';
 import { getSettings, updateSettings } from './settingsService.js';
 import { fileURLToPath } from 'url';
+import { normalizeCondition } from '../shared/conditions.js';
 import { dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -139,8 +140,9 @@ export function createBackup(userId = null) {
   // The actual collection. Foil copies are a separate row keyed on
   // UNIQUE(user_id, printing_id, is_foil), so is_foil has to travel with the
   // quantity or two rows restore as one.
+  // Condition (migration 045) is part of the same key, for the same reason.
   backup.data.owned_printings = db.prepare(`
-    SELECT op.id, op.user_id, op.quantity, op.is_foil, op.created_at, op.updated_at,
+    SELECT op.id, op.user_id, op.quantity, op.is_foil, op.condition, op.created_at, op.updated_at,
            p.uuid as printing_uuid
     FROM owned_printings op
     JOIN printings p ON op.printing_id = p.id
@@ -209,6 +211,16 @@ export function createBackup(userId = null) {
   backup.data.collection_value_snapshots = db.prepare(`
     SELECT id, user_id, snapshot_date, total_value, total_cards, unique_cards, created_at
     FROM collection_value_snapshots
+    WHERE user_id IN (${userIdsStr})
+  `).all();
+
+  // Sealed product lots. The catalog uuid survives the weekly rebuild and has
+  // no foreign key, so it travels as-is.
+  backup.data.owned_sealed = db.prepare(`
+    SELECT id, user_id, sealed_uuid, name, set_name, set_code, category, quantity,
+           cost_paid, reference_price, reference_price_date, price_override, notes,
+           acquired_at, created_at, updated_at
+    FROM owned_sealed
     WHERE user_id IN (${userIdsStr})
   `).all();
 
@@ -333,6 +345,7 @@ export function restoreBackup(backupData, options = {}) {
     price_watches: 0,
     audit_log: 0,
     collection_value_snapshots: 0,
+    owned_sealed: 0,
     trades: 0,
     trade_items: 0,
     card_loans: 0,
@@ -367,6 +380,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM price_watches WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM audit_log WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM collection_value_snapshots WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM owned_sealed WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM trades WHERE from_user_id = ? OR to_user_id = ?').run(userId, userId);
       db.prepare('DELETE FROM card_loans WHERE lender_user_id = ? OR borrower_user_id = ?').run(userId, userId);
       db.prepare('DELETE FROM deck_games WHERE user_id = ?').run(userId);
@@ -393,6 +407,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM price_watches').run();
       db.prepare('DELETE FROM audit_log').run();
       db.prepare('DELETE FROM collection_value_snapshots').run();
+      db.prepare('DELETE FROM owned_sealed').run();
       db.prepare('DELETE FROM users').run();
     }
 
@@ -490,8 +505,8 @@ export function restoreBackup(backupData, options = {}) {
     }, (r) => `Owned card ${r.card_name}`);
 
     const insertOwnedPrinting = db.prepare(`
-      INSERT OR REPLACE INTO owned_printings (user_id, printing_id, quantity, is_foil, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO owned_printings (user_id, printing_id, quantity, is_foil, condition, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     restoreRows('owned_printings', (backupData.data.owned_printings || []).filter(mine), (row) => {
@@ -502,6 +517,8 @@ export function restoreBackup(backupData, options = {}) {
       }
       insertOwnedPrinting.run(
         row.user_id, printingId, row.quantity, row.is_foil ? 1 : 0,
+        // Backups from before conditions existed carry none: unrecorded.
+        normalizeCondition(row.condition),
         row.created_at, row.updated_at
       );
     }, (r) => `Owned printing ${r.printing_uuid}`);
@@ -785,6 +802,21 @@ export function restoreBackup(backupData, options = {}) {
           row.total_cards, row.unique_cards, row.created_at
         );
       }, () => 'Value snapshot');
+
+    const insertSealed = db.prepare(`
+      INSERT OR REPLACE INTO owned_sealed (id, user_id, sealed_uuid, name, set_name, set_code,
+        category, quantity, cost_paid, reference_price, reference_price_date, price_override,
+        notes, acquired_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    restoreRows('owned_sealed', (backupData.data.owned_sealed || []).filter(mine), (row) => {
+      insertSealed.run(
+        row.id, row.user_id, row.sealed_uuid, row.name, row.set_name, row.set_code,
+        row.category, row.quantity, row.cost_paid, row.reference_price, row.reference_price_date,
+        row.price_override, row.notes, row.acquired_at, row.created_at, row.updated_at
+      );
+    }, (r) => `Sealed ${r.name}`);
   });
 
   restore();
