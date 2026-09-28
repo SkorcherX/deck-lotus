@@ -28,6 +28,7 @@ let filters = {
   sort: 'name',
   availability: 'all',
   commander: 'all',
+  condition: 'all',
 };
 let showPrices = localStorage.getItem('inventoryShowPrices') === 'true';
 // Endless scroll replaces the pager: pages are appended as the reader reaches
@@ -121,6 +122,16 @@ function setupFilterListeners() {
   if (availabilitySelect) {
     availabilitySelect.addEventListener('change', (e) => {
       filters.availability = e.target.value;
+      currentPage = 1;
+      loadInventoryData();
+    });
+  }
+
+  // Condition (TCGplayer scale; 'unrecorded' is copies with none)
+  const conditionSelect = document.getElementById('inventory-condition');
+  if (conditionSelect) {
+    conditionSelect.addEventListener('change', (e) => {
+      filters.condition = e.target.value;
       currentPage = 1;
       loadInventoryData();
     });
@@ -1025,6 +1036,7 @@ function setupExportModal() {
   const copyBtn = document.getElementById('inventory-export-copy');
   const downloadBtn = document.getElementById('inventory-export-download');
   const shapeInputs = [...document.querySelectorAll('input[name="inventory-export-shape"]')];
+  const conditionSelect = document.getElementById('inventory-export-condition');
 
   if (!openBtn || !modal) return;
 
@@ -1034,7 +1046,7 @@ function setupExportModal() {
     textarea.value = 'Loading...';
     summary.textContent = '';
     try {
-      const result = await api.exportInventory(selectedShape());
+      const result = await api.exportInventory(selectedShape(), conditionSelect?.value || 'all');
       textarea.value = result.text;
       summary.textContent = `${result.cards} cards, ${result.copies} copies, ${result.lines} lines`;
     } catch (error) {
@@ -1057,6 +1069,7 @@ function setupExportModal() {
   });
 
   shapeInputs.forEach((input) => input.addEventListener('change', load));
+  conditionSelect?.addEventListener('change', load);
 
   copyBtn?.addEventListener('click', () => {
     if (!textarea.value) return;
@@ -1368,12 +1381,15 @@ function parseBulkAddText(text) {
     .split(/\r?\n/)
     .map((line) => parseCardLine(line))
     .filter((parsed) => parsed && (parsed.name || (parsed.setCode && parsed.collectorNumber)))
-    .map(({ name, setCode, collectorNumber, quantity, isFoil }) => ({
+    .map(({ name, setCode, collectorNumber, quantity, isFoil, condition }) => ({
       cardName: name,
       setCode,
       collectorNumber,
       quantity,
       isFoil,
+      // Only sent when the line named one, so an unmarked line keeps meaning
+      // what it always did — unrecorded on add, any condition on remove.
+      ...(condition ? { condition } : {}),
     }));
 }
 
@@ -1529,7 +1545,8 @@ function hasActiveFilters() {
     filters.colors.length > 0 ||
     (filters.type && filters.type !== 'all') ||
     filters.availability !== 'all' ||
-    filters.commander !== 'all'
+    filters.commander !== 'all' ||
+    filters.condition !== 'all'
   );
 }
 

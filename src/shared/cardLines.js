@@ -26,12 +26,15 @@
  *   4 Lightning Bolt [M21]         TCGplayer
  *   1 FDN 1                        set and collector number, no name at all
  *   ... *F*  or  ... (F)           foil, marker anywhere on the line
+ *   ... *NM* *LP* *MP* *HP* *DMG*  condition (TCGplayer scale), likewise;
+ *                                  what the inventory export writes
  *   // comment                     dropped
  */
 
 /**
  * @returns {{quantity: number, name: string|null, setCode: string|null,
- *            collectorNumber: string|null, isFoil: boolean} | null}
+ *            collectorNumber: string|null, isFoil: boolean,
+ *            condition: string} | null}   condition '' when the line has none
  *   Null for a line that carries no card — blank, or a comment.
  */
 export function parseCardLine(line) {
@@ -47,6 +50,12 @@ export function parseCardLine(line) {
   // mistaken for a set code by the Moxfield branch below.
   const isFoil = /\*F\*/i.test(rest) || /\(F\)/i.test(rest);
   rest = rest.replace(/\*F\*/gi, '').replace(/\(F\)/gi, '').trim();
+
+  // Condition, same treatment and for the same reason. Asterisked so it can
+  // never be read as a TCGplayer "[SET]" or a Moxfield "(SET)".
+  const conditionMatch = rest.match(/\*(NM|LP|MP|HP|DMG)\*/i);
+  const condition = conditionMatch ? conditionMatch[1].toUpperCase() : '';
+  rest = rest.replace(/\*(NM|LP|MP|HP|DMG)\*/gi, '').replace(/\s{2,}/g, ' ').trim();
 
   // Leading quantity. A line with no count means one copy.
   const quantityMatch = rest.match(/^(\d+)\s*x?\s+(.+)$/i);
@@ -69,6 +78,7 @@ export function parseCardLine(line) {
       setCode: setNumber[1].toUpperCase(),
       collectorNumber: setNumber[2],
       isFoil,
+      condition,
     };
   }
 
@@ -84,6 +94,7 @@ export function parseCardLine(line) {
       setCode: moxfield[2].toUpperCase(),
       collectorNumber: moxfield[3] || null,
       isFoil,
+      condition,
     };
   }
 
@@ -96,8 +107,9 @@ export function parseCardLine(line) {
       setCode: tcg[2].toUpperCase(),
       collectorNumber: null,
       isFoil,
+      condition,
     };
   }
 
-  return { quantity, name: remainder, setCode: null, collectorNumber: null, isFoil };
+  return { quantity, name: remainder, setCode: null, collectorNumber: null, isFoil, condition };
 }

@@ -351,3 +351,10 @@ taken on GitHub — only do it when explicitly asked.
   (`cardCastleImport.js`, resolves Scryfall id → set name + number → name,
   then goes through `bulkAddToInventory` with one batchId), sealed via
   `POST /api/sealed/import`. Both accept the raw CSV (`src/shared/csv.js`).
+- Condition travels in card lists as an asterisked marker — `*NM*`, `*LP*`,
+  `*MP*`, `*HP*`, `*DMG*` — parsed anywhere on the line by `parseCardLine`,
+  like `*F*`. The precise inventory export writes it, so an export pasted into
+  Bulk Add restores conditions; asterisks keep it from being read as a
+  `[SET]` or `(SET)`. The simple export is summed per card and finish and
+  deliberately carries none. Inventory and export both take a `condition`
+  filter: `all`, `unrecorded` (the `''` rows) or a code.

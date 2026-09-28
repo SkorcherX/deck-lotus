@@ -581,6 +581,7 @@ class ApiClient {
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
+    if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
 
@@ -607,6 +608,7 @@ class ApiClient {
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
+    if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
 
@@ -627,8 +629,8 @@ class ApiClient {
     return this.request('/inventory/sets');
   }
 
-  async exportInventory(shape = 'precise') {
-    return this.request(`/inventory/export?shape=${encodeURIComponent(shape)}`);
+  async exportInventory(shape = 'precise', condition = 'all') {
+    return this.request(`/inventory/export?shape=${encodeURIComponent(shape)}&condition=${encodeURIComponent(condition)}`);
   }
 
   /** A CardCastle singles export; `dryRun` reports without writing. */

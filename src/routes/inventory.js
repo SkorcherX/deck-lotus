@@ -18,7 +18,17 @@ import {
 import { addOwnedPrintingQuantity } from '../services/cardService.js';
 import { importCardCastleSingles } from '../services/cardCastleImport.js';
 import { AUDIT_SOURCES } from '../services/auditService.js';
+import { normalizeCondition } from '../shared/conditions.js';
 import { authenticate } from '../middleware/auth.js';
+
+// 'all', 'unrecorded', or a condition code; anything else reads as 'all'
+// rather than an error, the way an unknown sort does.
+function normalizeConditionFilter(value) {
+  if (!value || value === 'all') return 'all';
+  if (value === 'unrecorded') return 'unrecorded';
+  const code = normalizeCondition(value);
+  return code || 'all';
+}
 
 const router = express.Router();
 
@@ -59,6 +69,7 @@ router.get('/', authenticate, (req, res, next) => {
       sort,
       availability,
       commander,
+      condition,
       page = 1,
       limit = 50
     } = req.query;
@@ -73,6 +84,7 @@ router.get('/', authenticate, (req, res, next) => {
       sort: sort || 'name',
       availability: availability || 'all',
       commander: commander || 'all',
+      condition: normalizeConditionFilter(condition),
       page: parseInt(page),
       limit: parseInt(limit)
     };
@@ -144,7 +156,7 @@ router.get('/sets', authenticate, (req, res, next) => {
 router.get('/export', authenticate, (req, res, next) => {
   try {
     const shape = req.query.shape === 'simple' ? 'simple' : 'precise';
-    res.json(exportInventory(req.user.id, { shape }));
+    res.json(exportInventory(req.user.id, { shape, condition: normalizeConditionFilter(req.query.condition) }));
   } catch (error) {
     next(error);
   }

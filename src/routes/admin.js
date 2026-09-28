@@ -17,7 +17,17 @@ import { getAllUsers, updateUser, deleteUser, resetUserPassword } from '../servi
 import { getSettings, updateSettings } from '../services/settingsService.js';
 import { getInventory, getInventoryStats } from '../services/inventoryService.js';
 import { authenticate } from '../middleware/auth.js';
+import { normalizeCondition } from '../shared/conditions.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
+
+// 'all', 'unrecorded', or a condition code; anything else reads as 'all'
+// rather than an error, the way an unknown sort does.
+function normalizeConditionFilter(value) {
+  if (!value || value === 'all') return 'all';
+  if (value === 'unrecorded') return 'unrecorded';
+  const code = normalizeCondition(value);
+  return code || 'all';
+}
 
 const router = express.Router();
 
@@ -448,6 +458,7 @@ router.get('/inventory', authenticate, requireAdmin, (req, res, next) => {
       sort,
       availability,
       commander,
+      condition,
       page = 1,
       limit = 50
     } = req.query;
@@ -462,6 +473,7 @@ router.get('/inventory', authenticate, requireAdmin, (req, res, next) => {
       sort: sort || 'name',
       availability: availability || 'all',
       commander: commander || 'all',
+      condition: normalizeConditionFilter(condition),
       page: parseInt(page),
       limit: parseInt(limit)
     };

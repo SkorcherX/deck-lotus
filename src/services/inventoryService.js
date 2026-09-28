@@ -100,6 +100,7 @@ export function getInventory(userIds, filters = {}) {
     sort = 'name',
     availability = 'all', // 'all', 'available', 'in_decks', 'lent_out'
     commander = 'all', // 'all', 'eligible'
+    condition = 'all', // 'all', 'unrecorded', or a code: NM, LP, MP, HP, DMG
     page = 1,
     limit = 50
   } = filters;
@@ -237,6 +238,22 @@ export function getInventory(userIds, filters = {}) {
     )`;
     params.push(...scope.params, ...setsArray);
     countParams.push(...scope.params, ...setsArray);
+  }
+
+  // Condition filter: cards with at least one copy held at that condition.
+  // 'unrecorded' is the '' rows — what everything was before conditions.
+  if (condition !== 'all') {
+    const code = condition === 'unrecorded' ? '' : condition;
+    const clause = ` AND c.id IN (
+      SELECT p3.card_id
+      FROM owned_printings op3
+      JOIN printings p3 ON op3.printing_id = p3.id
+      WHERE op3.user_id ${scope.clause} AND op3.condition = ?
+    )`;
+    sql += clause;
+    countSql += clause;
+    params.push(...scope.params, code);
+    countParams.push(...scope.params, code);
   }
 
   // Availability filter. This has to be part of the query rather than a pass
@@ -1059,22 +1076,28 @@ export function bulkRemoveFromInventory(userId, items, context = {}) {
  * the unique key of `owned_printings`, so folding a foil in with its non-foil
  * would not merely lose a detail — it would re-import as the wrong rows.
  */
-export function exportInventory(userId, { shape = 'precise' } = {}) {
+export function exportInventory(userId, { shape = 'precise', condition = 'all' } = {}) {
   const rows = db.all(`
     SELECT
       c.name,
       p.set_code,
       p.collector_number,
       op.is_foil,
+      op.condition,
       op.quantity
     FROM owned_printings op
     JOIN printings p ON op.printing_id = p.id
     JOIN cards c ON p.card_id = c.id
     WHERE op.user_id = ? AND op.quantity > 0
-    ORDER BY c.name COLLATE NOCASE, p.set_code, p.collector_number
-  `, [userId]);
+      ${condition === 'all' ? '' : 'AND op.condition = ?'}
+    ORDER BY c.name COLLATE NOCASE, p.set_code, p.collector_number, op.is_foil, op.condition
+  `, condition === 'all' ? [userId] : [userId, condition === 'unrecorded' ? '' : condition]);
 
   const foilMark = (isFoil) => (isFoil ? ' *F*' : '');
+  // Precise lines name the condition (see cardLines.js), so the export pastes
+  // back into Bulk Add without losing it. Simple lines are summed per card
+  // and finish, where a single condition would be a claim they cannot make.
+  const conditionMark = (code) => (code ? ` *${code}*` : '');
   let lines;
 
   if (shape === 'simple') {
@@ -1094,7 +1117,7 @@ export function exportInventory(userId, { shape = 'precise' } = {}) {
       // recorded without one still has to come out re-importable.
       const set = `(${String(row.set_code).toUpperCase()})`;
       const collector = row.collector_number ? ` ${row.collector_number}` : '';
-      return `${row.quantity} ${row.name} ${set}${collector}${foilMark(row.is_foil)}`;
+      return `${row.quantity} ${row.name} ${set}${collector}${foilMark(row.is_foil)}${conditionMark(row.condition)}`;
     });
   }
 
@@ -1106,7 +1129,7 @@ export function exportInventory(userId, { shape = 'precise' } = {}) {
   // otherwise undated and unlabelled.
   const header = [
     `// Deck Lotus collection export - ${new Date().toISOString().slice(0, 10)}`,
-    `// ${cards} cards, ${copies} copies, ${shape} format`,
+    `// ${cards} cards, ${copies} copies, ${shape} format${condition === 'all' ? '' : `, condition ${condition}`}`,
   ];
 
   return {

@@ -1223,6 +1223,18 @@
                             </select>
                         </div>
                         <div class="filter-group">
+                            <label>Condition</label>
+                            <select id="inventory-condition" class="filter-select" title="TCGplayer condition">
+                                <option value="all">Any Condition</option>
+                                <option value="NM">Near Mint</option>
+                                <option value="LP">Lightly Played</option>
+                                <option value="MP">Moderately Played</option>
+                                <option value="HP">Heavily Played</option>
+                                <option value="DMG">Damaged</option>
+                                <option value="unrecorded">Not recorded</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
                             <label>Commander</label>
                             <select id="inventory-commander" class="filter-select">
                                 <option value="all">All Cards</option>
@@ -1590,14 +1602,26 @@
                     <div class="form-group">
                         <label style="display: flex; align-items: baseline; gap: 0.5rem; font-weight: normal;">
                             <input type="radio" name="inventory-export-shape" value="precise" style="width: auto; flex: none;" checked />
-                            <span><strong>With printings</strong> &mdash; "4 Lightning Bolt (M21) 137".
-                            Restores the exact printings you own.</span>
+                            <span><strong>With printings</strong> &mdash; "4 Lightning Bolt (M21) 137 *NM*".
+                            Restores the exact printings you own, with their condition.</span>
                         </label>
                         <label style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.5rem; font-weight: normal;">
                             <input type="radio" name="inventory-export-shape" value="simple" style="width: auto; flex: none;" />
                             <span><strong>Names only</strong> &mdash; "4 Lightning Bolt". Portable to
-                            other sites; loses which printing.</span>
+                            other sites; loses which printing and condition.</span>
                         </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="inventory-export-condition">Only copies in condition</label>
+                        <select id="inventory-export-condition" class="filter-select">
+                            <option value="all">Any condition</option>
+                            <option value="NM">Near Mint</option>
+                            <option value="LP">Lightly Played</option>
+                            <option value="MP">Moderately Played</option>
+                            <option value="HP">Heavily Played</option>
+                            <option value="DMG">Damaged</option>
+                            <option value="unrecorded">Not recorded</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label for="inventory-export-text">Card List</label>

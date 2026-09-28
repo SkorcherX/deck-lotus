@@ -170,3 +170,23 @@ test('CardCastle sealed rows match the catalog and keep cost and reference price
   assert.equal(overridden.value_source, 'override');
   assert.equal(overridden.name, 'Kamigawa: Neon Dynasty Draft Booster Box');
 });
+
+test('export marks condition, and the marker parses back', async () => {
+  const { exportInventory, getInventory } = await import('../../src/services/inventoryService.js');
+  const { parseCardLine } = await import('../../src/shared/cardLines.js');
+
+  const { text } = exportInventory(bob);
+  const line = text.split('\n').find((l) => l.includes('Rhonas'));
+  assert.equal(line, '2 Rhonas the Indomitable (AKH) 28 *F* *NM*');
+  assert.deepEqual(parseCardLine(line), {
+    quantity: 2, name: 'Rhonas the Indomitable', setCode: 'AKH', collectorNumber: '28', isFoil: true, condition: 'NM',
+  });
+  assert.equal(parseCardLine('4 Lightning Bolt [M21]').condition, '');
+
+  const lpOnly = exportInventory(bob, { condition: 'LP' });
+  assert.equal(lpOnly.copies, 1);
+
+  assert.equal(getInventory(bob, { condition: 'NM' }).cards.length, 1);
+  assert.equal(getInventory(bob, { condition: 'LP' }).cards[0].name, 'Armguard Familiar');
+  assert.equal(getInventory(bob, { condition: 'unrecorded' }).cards.length, 0);
+});
