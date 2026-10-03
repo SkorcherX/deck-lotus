@@ -700,6 +700,7 @@ class ApiClient {
     // A revision measures its themes against a pool that includes the deck's
     // own cards, so the id travels with the question.
     if (extra.reviseDeckId) params.set('reviseDeckId', extra.reviseDeckId);
+    if (extra.splash) params.set('splash', extra.splash);
     return this.request(`/decks/generate/themes?${params}`);
   }
 

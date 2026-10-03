@@ -70,6 +70,36 @@ const isCommander = () => chosenFormat() === 'commander';
 const chosenColors = () => [...document.querySelectorAll('.generate-color:checked')]
   .map((box) => box.value).join('');
 
+/**
+ * Colours ticked beyond the deck's own, when revising. The deck's colours are
+ * shown ticked and locked, so only the extras count as a splash.
+ */
+const splashColors = () => [...document.querySelectorAll('.generate-splash:checked:not(:disabled)')]
+  .map((box) => box.value).join('');
+
+/**
+ * Show the deck's colours as fixed and the rest as splash options. Hidden for
+ * a commander deck: its identity is a rule of the format, not a choice.
+ */
+function renderSplash() {
+  const group = $('generate-splash-group');
+  if (!group) return;
+  const deck = revisingDeck();
+  const show = isRevising() && deck && !deck.commanderName;
+  group.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  const own = deck.colorIdentity || '';
+  document.querySelectorAll('.generate-splash').forEach((box) => {
+    const locked = own.includes(box.value);
+    box.disabled = locked;
+    if (locked) box.checked = true;
+    else if (box.dataset.deckId !== String(deck.id)) box.checked = false;
+    box.dataset.deckId = String(deck.id);
+    box.closest('label').title = locked ? 'Already in this deck' : 'Splash this colour';
+  });
+}
+
 /** The colours the commander gallery is being filtered down to. */
 const galleryColors = () => [...document.querySelectorAll('.generate-commander-color:checked')]
   .map((box) => box.value);
@@ -95,6 +125,7 @@ function applyFormat() {
 
   $('generate-revise-group')?.classList.toggle('hidden', !revising);
   renderRevisionNote();
+  renderSplash();
 }
 
 /** What the chosen deck is, said back to the person who chose it. */
@@ -222,6 +253,7 @@ async function loadRevisableDecks() {
         ${escapeHtml(deck.name)} — ${escapeHtml(deck.format || 'no format')}, ${deck.cards} cards
       </option>`).join('');
     if (revisable.some((d) => String(d.id) === String(chosen))) select.value = chosen;
+    renderSplash();
   } catch (error) {
     console.error('Failed to load decks to revise:', error);
     select.innerHTML = '<option value="">Could not load your decks</option>';
@@ -254,7 +286,15 @@ function wire() {
   $('generate-revise-deck')?.addEventListener('change', async () => {
     resetResult();
     renderRevisionNote();
+    renderSplash();
     await loadThemes();
+  });
+
+  document.querySelectorAll('.generate-splash').forEach((box) => {
+    box.addEventListener('change', async () => {
+      resetResult();
+      await loadThemes();
+    });
   });
 
   // Filtering the gallery is not choosing anything, so it redraws the tiles
@@ -467,6 +507,7 @@ async function loadThemes() {
       identity: revising ? '' : chosenColors(),
       format: revising ? (revisingDeck()?.format || '') : chosenFormat(),
       reviseDeckId: revisingDeckId(),
+      splash: revising ? splashColors() : '',
     });
     themes = data.themes || [];
     renderThemes();
@@ -579,6 +620,7 @@ async function run() {
       includeCommitted: includeCommitted(),
       identity: revising ? null : (chosenColors() || null),
       reviseDeckId: revisingDeckId(),
+      splash: revising ? (splashColors() || null) : null,
     });
 
     proposal = data.proposal;

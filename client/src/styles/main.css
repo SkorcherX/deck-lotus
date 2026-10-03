@@ -8288,3 +8288,10 @@ body.maintenance-locked #app {
   text-align: center; padding: 2rem; color: var(--text-secondary);
   background: var(--bg-secondary); border: 1px dashed var(--border-color); border-radius: 8px;
 }
+
+/* Revise: the deck's own colours are fixed, so they read as settled rather
+   than as a choice that matches a splash. */
+.generate-splash:disabled + .color-checkbox-box {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

@@ -507,3 +507,18 @@ describe('revising a deck without a commander', () => {
     assert.ok(gy(themes).enablers < gy(full).enablers, 'green enablers should not be counted');
   });
 });
+
+describe('splashing a colour into a commanderless revision', () => {
+  test('the deck lists its own colours', () => {
+    const deck = revisableDecks(userId).find((d) => d.name === 'Dimir Mill');
+    assert.equal(deck.colorIdentity, 'B');
+  });
+
+  test('a splash lets that colour in, and only when asked', () => {
+    const deckId = db.get(`SELECT id FROM decks WHERE name = 'Dimir Mill'`).id;
+    const themes = (splash) => themeOptions(userId, null, { reviseDeckId: deckId, format: 'modern', splash })
+      .find((t) => t.key === 'graveyard');
+    assert.ok(themes('G').enablers > themes(null).enablers);
+    assert.equal(proposeDeck(userId, { reviseDeckId: deckId, format: null, splash: 'G' }).colorIdentity, 'BG');
+  });
+});

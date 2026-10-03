@@ -83,7 +83,7 @@ function commanderFrom(pool, commanderCardId) {
  */
 export function themeOptions(userId, commanderCardId, {
   includeCommitted = true, identity: chosenIdentity = null, format = 'commander',
-  reviseDeckId = null,
+  reviseDeckId = null, splash = null,
 } = {}) {
   // The same pool the proposal will be built from, revision included: a theme
   // measured without the deck's own cards is measured against a collection the
@@ -95,7 +95,7 @@ export function themeOptions(userId, commanderCardId, {
   const identity = commander
     ? String(commander.color_identity || '').replace(/[^WUBRG]/g, '')
     : (chosenIdentity
-      || (reviseDeckId == null ? null : deckIdentity(revisionTarget(userId, reviseDeckId).cards)));
+      || (reviseDeckId == null ? null : revisionIdentity(revisionTarget(userId, reviseDeckId).cards, splash)));
 
   const spells = pool.filter((card) => !/\bland\b/i.test(String(card.type_line || '')));
 
@@ -130,6 +130,22 @@ export function themeOptions(userId, commanderCardId, {
  * wants a second pass over.
  */
 export function revisableDecks(userId) {
+  // Each deck's colours, so the page can show which are already played and
+  // offer only the others as a splash.
+  const identities = new Map();
+  for (const row of db.all(
+    `SELECT DISTINCT dc.deck_id, c.color_identity
+       FROM deck_cards dc
+       JOIN decks d ON d.id = dc.deck_id
+       JOIN printings p ON dc.printing_id = p.id
+       JOIN cards c ON p.card_id = c.id
+      WHERE d.user_id = ?`,
+    [userId]
+  )) {
+    if (!identities.has(row.deck_id)) identities.set(row.deck_id, []);
+    identities.get(row.deck_id).push(row);
+  }
+
   return db.all(
     `SELECT
        d.id,
@@ -158,6 +174,7 @@ export function revisableDecks(userId) {
     status: row.status || null,
     cards: row.cards || 0,
     commanderName: row.commander_name || null,
+    colorIdentity: deckIdentity(identities.get(row.id)),
   }));
 }
 
@@ -193,6 +210,20 @@ export function deckIdentity(cards) {
   for (const row of cards) {
     for (const c of String(row.color_identity || '').toUpperCase().replace(/[^WUBRG]/g, '')) seen.add(c);
   }
+  return 'WUBRG'.split('').filter((c) => seen.has(c)).join('');
+}
+
+/**
+ * A revision's colours: the deck's own, plus any splash asked for.
+ *
+ * A splash only widens a commanderless deck. A commander's identity is a rule
+ * of the format, not a preference, so a splash cannot override it.
+ */
+function revisionIdentity(cards, splash) {
+  const own = deckIdentity(cards);
+  const extra = String(splash || '').toUpperCase().replace(/[^WUBRG]/g, '');
+  if (own == null && !extra) return null;
+  const seen = new Set(`${own || ''}${extra}`);
   return 'WUBRG'.split('').filter((c) => seen.has(c)).join('');
 }
 
@@ -294,6 +325,7 @@ export function proposeDeck(userId, {
   landCount = null,
   identity = null,
   reviseDeckId = null,
+  splash = null,
 } = {}) {
   const target = reviseDeckId == null ? null : revisionTarget(userId, reviseDeckId);
 
@@ -334,7 +366,7 @@ export function proposeDeck(userId, {
   // from.
   const proposal = buildDeck(pool, {
     commander, format, themeKey, landCount,
-    identity: commander ? null : (identity || (target ? deckIdentity(target.cards) : null)),
+    identity: commander ? null : (identity || (target ? revisionIdentity(target.cards, splash) : null)),
   });
 
   return {

@@ -141,6 +141,8 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
         identity: req.query.identity || null,
         format: req.query.format || 'commander',
         reviseDeckId: req.query.reviseDeckId ? Number(req.query.reviseDeckId) : null,
+        // Extra colours a commanderless revision may reach into.
+        splash: req.query.splash || null,
       }),
     });
   } catch (error) {
@@ -155,7 +157,7 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
 router.post('/generate', authenticate, (req, res, next) => {
   try {
     const {
-      commanderCardId, format, themeKey, includeCommitted, landCount, identity, reviseDeckId,
+      commanderCardId, format, themeKey, includeCommitted, landCount, identity, reviseDeckId, splash,
     } = req.body || {};
 
     res.json({
@@ -169,6 +171,7 @@ router.post('/generate', authenticate, (req, res, next) => {
         landCount: landCount == null ? null : Number(landCount),
         identity: identity || null,
         reviseDeckId: reviseDeckId == null ? null : Number(reviseDeckId),
+        splash: splash || null,
       }),
     });
   } catch (error) {
