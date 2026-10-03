@@ -428,6 +428,17 @@ describe('revising a deck', () => {
     assert.ok(Array.isArray(revision.added) && Array.isArray(revision.cut));
   });
 
+  test('swaps plus what is left over account for every add and every cut', () => {
+    // Pointed at a different theme so the revision actually changes things.
+    const revision = proposeDeck(userId, { reviseDeckId: deckId, themeKey: 'tribe:Zombie' }).revision;
+    const total = (rows) => rows.reduce((sum, r) => sum + r.quantity, 0);
+    const swapped = total(revision.swaps);
+
+    assert.equal(swapped + total(revision.unpairedAdded), total(revision.added));
+    assert.equal(swapped + total(revision.unpairedCut), total(revision.cut));
+    for (const swap of revision.swaps) assert.ok(swap.why.length > 0, `${swap.cut.name} → ${swap.add.name} has no reason`);
+  });
+
   test('revising the deck it was built from keeps nearly all of it', () => {
     // The pool has not changed since the deck was made from it, so the
     // proposal should land back on the same cards. This is what the in_deck

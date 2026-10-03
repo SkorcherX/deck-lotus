@@ -243,6 +243,9 @@ function pullGroupKey(colorIdentity) {
  */
 let pulled = new Set();
 
+/** Swaps (by index into proposal.revision.swaps) the person has unticked. */
+let rejected = new Set();
+
 /** A stable key for a proposal row, since neither name nor printing alone is unique. */
 const pullKey = (c) => `${c.printingId ?? 'basic'}:${c.name}:${c.isFoil ? 'f' : 'n'}`;
 
@@ -750,6 +753,7 @@ async function run() {
 
     proposal = data.proposal;
     pulled = new Set();
+    rejected = new Set();
     render(proposal);
 
     // Named after what it was built from, because a list of decks called
@@ -816,6 +820,7 @@ function renderRevision(revision) {
         ${escapeHtml(revision.deckName)} exactly as it is and creates a separate deck
         from this proposal, so nothing is lost if you disagree with it.
       </div>
+      ${revision.swaps ? renderSwaps(revision) : `
       <div class="generate-columns">
         <div>
           <div class="generate-head">Add (${revision.added.length})</div>
@@ -825,8 +830,67 @@ function renderRevision(revision) {
           <div class="generate-head">Cut (${revision.cut.length})</div>
           <ul>${list(revision.cut) || '<li>Nothing comes out.</li>'}</ul>
         </div>
-      </div>
+      </div>`}
     </div>`;
+}
+
+/**
+ * The revision as swaps, each one a decision of its own.
+ *
+ * A swap is ticked to take it. Unticking keeps the old card: the saved deck
+ * gets the cut card back in place of the one that would have replaced it.
+ * Nothing about the proposal itself changes, so the reasons and the list
+ * below stay what the generator actually said.
+ */
+function renderSwaps(revision) {
+  const line = (row) => `${row.quantity}&times; ${escapeHtml(row.name)}`;
+  const swaps = revision.swaps.map((swap, i) => `
+    <li class="generate-swap${rejected.has(i) ? ' is-rejected' : ''}">
+      <label>
+        <input type="checkbox" class="generate-swap-toggle" data-swap="${i}" ${rejected.has(i) ? '' : 'checked'} />
+        <span class="generate-swap-cards">
+          <span class="generate-swap-cut">${line(swap.cut)}</span>
+          <span class="generate-swap-arrow" aria-label="replaced by">&rarr;</span>
+          <span class="generate-swap-add">${escapeHtml(swap.add.name)}</span>
+        </span>
+      </label>
+      <div class="generate-swap-why">${swap.why.map(escapeHtml).join(' · ')}</div>
+    </li>`).join('');
+
+  const rest = (rows, label) => rows.length ? `
+    <div>
+      <div class="generate-head">${label} (${rows.length})</div>
+      <ul>${rows.map((row) => `<li>${line(row)}</li>`).join('')}</ul>
+    </div>` : '';
+
+  return `
+    ${revision.swaps.length ? `
+      <div class="generate-head">Swaps (${revision.swaps.length})</div>
+      <div class="generate-note">Untick a swap to keep the card it would replace.</div>
+      <ul class="generate-swaps">${swaps}</ul>` : ''}
+    <div class="generate-columns">
+      ${rest(revision.unpairedAdded || [], 'Also added')}
+      ${rest(revision.unpairedCut || [], 'Also cut')}
+    </div>`;
+}
+
+/**
+ * The cards to save: the proposal, with every unticked swap undone — the
+ * replacement taken back out, the original put back in its own printing.
+ */
+function cardsToSave(cards) {
+  const swaps = proposal?.revision?.swaps || [];
+  const out = cards.map((c) => ({ ...c }));
+  for (const i of rejected) {
+    const swap = swaps[i];
+    if (!swap) continue;
+    const row = out.find((c) => c.name === swap.add.name && c.quantity > 0);
+    if (row) row.quantity -= swap.quantity;
+    out.push({
+      name: swap.cut.name, printingId: swap.cut.printingId, isFoil: swap.cut.isFoil, quantity: swap.quantity,
+    });
+  }
+  return out.filter((c) => c.quantity > 0);
 }
 
 function render(p) {
@@ -938,6 +1002,7 @@ function render(p) {
   // proposal actually came up short on a role.
   $('generate-find-gaps')?.addEventListener('click', findGaps);
   wirePullChecklist();
+  wireSwaps();
 }
 
 /**
@@ -1003,6 +1068,17 @@ function renderPullChecklist(p) {
         </div>
       `).join('')}
     </details>`;
+}
+
+function wireSwaps() {
+  $('generate-result')?.querySelectorAll('.generate-swap-toggle').forEach((box) => {
+    box.addEventListener('change', () => {
+      const i = Number(box.dataset.swap);
+      if (box.checked) rejected.delete(i);
+      else rejected.add(i);
+      box.closest('.generate-swap')?.classList.toggle('is-rejected', !box.checked);
+    });
+  });
 }
 
 function wirePullChecklist() {
@@ -1169,7 +1245,7 @@ async function accept() {
       // of copies actually owned, rather than whatever printing a name lookup
       // happens to return first. The finish travels with the printing and
       // never on its own: they identify one row together.
-      cards: [
+      cards: cardsToSave([
         ...proposal.mainboard.map((c) => ({
           name: c.name, printingId: c.printingId, isFoil: c.isFoil, quantity: c.quantity,
         })),
@@ -1184,7 +1260,7 @@ async function accept() {
           isFoil: Boolean(l.isFoil),
           quantity: l.quantity,
         })),
-      ],
+      ]),
     });
 
     const missed = result.unresolved?.length

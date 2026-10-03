@@ -28,6 +28,7 @@ import {
   buildDeck, resolveTheme, isLegalIn, ROLE_PREDICATE_BY_CODE,
 } from './deckGeneratorService.js';
 import { rankThemes, withinColorIdentity, themeRole } from './cardSynergyService.js';
+import { pairSwaps } from './revisionSwaps.js';
 import { getGeneratorPool } from './inventoryService.js';
 import { findCard } from './importService.js';
 import { isBasicLandSql, isBasicLand } from './basicLands.js';
@@ -310,6 +311,13 @@ function revisionTarget(userId, deckId) {
        c.name,
        c.color_identity,
        c.type_line,
+       c.oracle_text,
+       c.subtypes,
+       c.keywords,
+       c.cmc,
+       c.mana_cost,
+       dc.printing_id,
+       dc.is_foil,
        dc.quantity,
        dc.is_commander,
        COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) AS board
@@ -358,7 +366,7 @@ function keptFrom(target, keepCardIds) {
  * The commander is not diffed either. It is chosen, not proposed — a revision
  * that swapped it would be a different deck.
  */
-function diffAgainstDeck(target, proposal) {
+function diffAgainstDeck(target, proposal, pool = []) {
   const before = new Map();
   for (const row of target.cards) {
     if (row.board !== 'mainboard' || row.is_commander) continue;
@@ -392,12 +400,34 @@ function diffAgainstDeck(target, proposal) {
 
   const byName = (a, b) => a.name.localeCompare(b.name);
 
+  // Card text for both sides, so the pairing can tell what job each card
+  // does. A cut card is read from the deck — it may no longer be owned, and
+  // then it is not in the pool — and an added card from the pool it came from.
+  const deckRow = new Map(target.cards.map((row) => [row.name, row]));
+  const poolRow = new Map(pool.map((row) => [row.name, row]));
+  const themes = [proposal.theme, proposal.secondaryTheme]
+    .filter((t) => t && t.key)
+    .map((t) => resolveTheme(t.key, pool))
+    .filter(Boolean);
+
+  const paired = pairSwaps(
+    cut.map((row) => ({ card: deckRow.get(row.name) || { name: row.name }, quantity: row.quantity })),
+    added.map((row) => ({ card: poolRow.get(row.name) || deckRow.get(row.name) || { name: row.name }, quantity: row.quantity })),
+    themes
+  );
+
   return {
     deckId: target.deck.id,
     deckName: target.deck.name,
     deckStatus: target.deck.status || null,
     added: added.sort(byName),
     cut: cut.sort(byName),
+    // The same changes, paired into swaps where one card takes over another's
+    // job, with what is left over listed on its own. `added` and `cut` above
+    // stay the full lists, so a reader of either never has to add them up.
+    swaps: paired.swaps,
+    unpairedAdded: paired.added.sort(byName),
+    unpairedCut: paired.cut.sort(byName),
     keptCount: kept.reduce((sum, row) => sum + row.quantity, 0),
     // Said outright rather than left to be inferred from three empty lists.
     unchanged: added.length === 0 && cut.length === 0,
@@ -469,7 +499,7 @@ export function proposeDeck(userId, {
     // What this would change about the deck it started from. Null when
     // nothing was being revised, so a caller can tell "built from scratch"
     // apart from "revised and changed nothing".
-    revision: target ? { ...diffAgainstDeck(target, proposal), kept: keep.map((k) => k.name) } : null,
+    revision: target ? { ...diffAgainstDeck(target, proposal, pool), kept: keep.map((k) => k.name) } : null,
     // What the pool actually was, because "no removal found" means something
     // very different at 271 cards than at 1,033. Without this the shortfalls
     // read as a fault in the collection rather than in what was available.

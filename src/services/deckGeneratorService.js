@@ -87,6 +87,9 @@ const ROLE_PREDICATES = [
  * that were supposed to agree would eventually disagree, and the symptom
  * would be a shopping suggestion the generator then declines to use.
  */
+/** Each role's plain-English name, by code. */
+export const ROLE_LABEL_BY_CODE = Object.fromEntries(ROLE_PREDICATES.map(([code, label]) => [code, label]));
+
 export const ROLE_PREDICATE_BY_CODE = Object.fromEntries(
   ROLE_PREDICATES.map(([code, , matches]) => [code, matches])
 );
