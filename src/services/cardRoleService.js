@@ -121,6 +121,57 @@ export function isTurnOnePlay(card) {
   return hasAlternativeCost(card) || mvOf(card) <= 1;
 }
 
+/**
+ * How a land enters: 'always' tapped, tapped 'early' in the game, tapped only
+ * 'conditional'ly, or null for a land that comes in ready.
+ *
+ * A land that enters tapped costs the turn it is played on, and the early
+ * turns are where that hurts — a one-drop that cannot be cast on turn one is
+ * a different deck. So the line is drawn at what a land does on turns one to
+ * three, read from 706 lands' wording:
+ *
+ *   always       "This land enters tapped." — gain lands, tri-lands, bounce
+ *                lands; and fetches that put the land in tapped (Evolving
+ *                Wilds), which cost the same turn one step later.
+ *   early        tapped exactly when it hurts: slow lands ("unless you control
+ *                two or more other lands"), "if you were the starting player",
+ *                and Fabled Passage-style fetches that only untap later.
+ *   conditional  usually untapped, by choice or by board: shocks and reveal
+ *                lands ("If you don't, it enters tapped"), check lands
+ *                ("unless you control a Swamp"), fast lands ("If you control
+ *                two or more other lands" — tapped late, not early), and
+ *                "unless you have two or more opponents".
+ *
+ * 'always' and 'early' are the slow ones the generator caps.
+ */
+export function entersTapped(card) {
+  if (!isLand(card)) return null;
+  const text = effectText(card);
+
+  // Fetch lands: the land they find is what enters tapped.
+  // "land" is optional, as in landProduces: a Landscape asks for a "basic
+  // Swamp, Forest, or Island card".
+  if (/search your library for[^.]*\bcards?\b[^.]*put (it|that card|them) onto the battlefield tapped/.test(text)) {
+    return /untap (it|that land)/.test(text) ? 'early' : 'always';
+  }
+
+  const clause = text.match(/[^.]*\benters(?: the battlefield)? tapped[^.]*/)?.[0];
+  if (!clause) return null;
+  // A trigger about something else entering tapped, not this land.
+  if (/\bwhenever\b/.test(clause)) return null;
+
+  if (/if you don't/.test(clause)) return 'conditional';
+  if (/\bunless\b/.test(clause)) {
+    return /unless you control (two|three|four) or more (other )?(basic )?lands/.test(clause) ? 'early' : 'conditional';
+  }
+  if (/\bif you were the starting player\b/.test(clause)) return 'early';
+  if (/\bif\b/.test(clause)) return 'conditional';
+  return 'always';
+}
+
+/** Tapped on the turns that matter — what the generator caps. */
+export const isSlowLand = (card) => ['always', 'early'].includes(entersTapped(card));
+
 // --- Role predicates -------------------------------------------------------
 
 /**

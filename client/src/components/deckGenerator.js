@@ -1246,6 +1246,7 @@ function render(p) {
               <li>
                 <span class="generate-card-cost">${l.quantity}&times;</span>
                 <span class="generate-card-name">${escapeHtml(l.name)}</span>
+                ${l.reason ? `<span class="generate-card-reason">${escapeHtml(l.reason)}</span>` : ''}
               </li>`).join('')}
           </ul>
         </div>

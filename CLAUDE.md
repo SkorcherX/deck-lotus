@@ -366,3 +366,14 @@ taken on GitHub — only do it when explicitly asked.
   "Fits this deck" (`deckFitThemes`) — an explicitly picked theme always
   overrides it. A plan with no theme and no kept cards is stored as NULL, so
   "has a plan" means somebody chose something. `backupService` carries it.
+- The generator's mana base (`buildManaBase`) caps lands that enter tapped
+  early at `MAX_SLOW_LANDS` (1, or 2 in Commander); kept lands count against
+  it but are never refused. `entersTapped` in `cardRoleService.js` sorts land
+  wording into `always` / `early` (slow lands, tapped fetches — both capped)
+  and `conditional` (shocks, check lands, fast lands — not capped). Lands are
+  scored on colours the deck wants, theme fit, and tapped-ness; a land making
+  no wanted colour gets in only by serving the theme. `landProduces` reads
+  every symbol in an "Add …" clause (duals), fetches as what they find, and
+  treats strings-attached rainbow mana — commander-identity outside
+  Commander, "spend this mana only", "could produce", paid filters — as no
+  colour at all.

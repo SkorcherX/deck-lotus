@@ -44,6 +44,7 @@
 import {
   isLand, isRamp, isCardAdvantage, isSelection,
   isCreatureRemoval, isPermanentRemoval, isSweeper, costPips, hasAlternativeCost,
+  entersTapped,
 } from './cardRoleService.js';
 
 import {
@@ -133,8 +134,10 @@ export function isLegalIn(card, format) {
  * says nothing else about mana — then from the text, which covers the rest.
  * The dual-land types are checked before the text because a fetchland's text
  * names lands it searches for rather than mana it makes.
+ *
+ * `format` matters for one family: lands tied to the commander's colours.
  */
-export function landProduces(card) {
+export function landProduces(card, format = null) {
   const produced = new Set();
   const typeLine = String(card.type_line || '');
 
@@ -144,14 +147,44 @@ export function landProduces(card) {
   if (produced.size > 0) return produced;
 
   const text = String(card.oracle_text || '');
-  // "{T}: Add {W}." and the many variants, including "Add one mana of any
-  // color", which is every colour at once.
+
+  // A fetch never says "Add", so it used to read as a colourless utility land
+  // and sort last. It makes whatever the land it finds makes: the basic types
+  // it names, or — for "a basic land card" — any colour the deck has basics of.
+  // "land" is optional: Polluted Delta asks for "an Island or Swamp card".
+  const fetch = text.match(/search your library for (?:an? |up to \w+ )?([^.]*?)\bcards?\b/i);
+  if (fetch) {
+    const named = fetch[1];
+    for (const [color, basic] of Object.entries(BASIC_FOR)) {
+      if (new RegExp(`\\b${basic}\\b`, 'i').test(named)) produced.add(color);
+    }
+    if (produced.size === 0 && /\bbasic\b/i.test(named)) for (const color of COLORS) produced.add(color);
+    if (produced.size > 0) return produced;
+  }
+
+  // "Add one mana of any color" is every colour at once — but only for the
+  // lands where it really is. Most of them come with strings, and reading them
+  // as rainbow sources ranked them above every real dual and put three Command
+  // Towers in a Modern deck:
+  //   - "in your commander's color identity" (Command Tower, Opal Palace,
+  //     Study Hall) is every colour in Commander and none anywhere else;
+  //   - "spend this mana only …" (Ancient Ziggurat, Unclaimed Territory) casts
+  //     some of the deck, not all of it;
+  //   - "could produce" (Exotic Orchard) depends on the opponent's lands;
+  //   - "{1}, {T}: Add …" (Cave of Temptation) is a filter, not a source.
+  // Those count as making nothing; a deck that wants one can keep it.
   if (/add one mana of any color|add one mana of any type/i.test(text)) {
+    const commanderOnly = /commander's color identity/i.test(text);
+    const strings = /spend this mana only|could produce|\{\d+\},\s*\{t\}[^.]*add one mana of any/i.test(text);
+    if (strings || (commanderOnly && format !== 'commander')) return produced;
     for (const color of COLORS) produced.add(color);
     return produced;
   }
-  for (const match of text.matchAll(/add[^.]{0,40}?\{([WUBRG])\}/gi)) {
-    produced.add(match[1].toUpperCase());
+  // Every symbol in each "Add …" clause, not just the first: a dual says
+  // "Add {U} or {B}", and reading one symbol per clause made every dual in
+  // the game look like a mono-coloured land.
+  for (const clause of text.matchAll(/\badd\b([^.]{0,60})/gi)) {
+    for (const symbol of clause[1].matchAll(/\{([WUBRG])\}/gi)) produced.add(symbol[1].toUpperCase());
   }
   return produced;
 }
@@ -538,6 +571,7 @@ export function buildDeck(pool, {
     maxCopies,
     format,
     keep: keptLands,
+    themes: [theme, secondary].filter(Boolean),
   });
 
   // --- Report --------------------------------------------------------------
@@ -605,7 +639,7 @@ export function buildDeck(pool, {
       curve: curveOf(chosen),
     },
     shortfalls: [...shortfalls, ...manaBase.shortfalls],
-    notes,
+    notes: [...notes, ...manaBase.notes],
   };
 }
 
@@ -658,11 +692,23 @@ function curveOf(cards) {
  * A land producing a colour the deck does not want is skipped: it is a
  * colourless land in this deck, and there is no reason to prefer it over a
  * basic that casts something.
+ *
+ * ── Tapped lands are capped, and the theme counts ─────────────────────────
+ *
+ * Ranking by colours alone put the land that enters tapped ahead of every
+ * untapped dual, because tri-lands and gain lands make more colours — so a
+ * collection with a few of them got a mana base that lost the first turns.
+ * Lands that are tapped early (see `entersTapped`) now cost points and are
+ * capped outright at MAX_SLOW_LANDS; a basic in their place casts the same
+ * spells on time. A land that serves the deck's theme gets points for it,
+ * and a land making no colour this deck uses is let in *only* for the theme:
+ * it takes a coloured source's slot, so it has to be doing something.
  */
 export function buildManaBase({
   spells, landPool, landCount, deckSize, colorIdentity, maxCopies = 1,
   format = 'commander',
   keep = [],
+  themes = [],
 }) {
   const demands = colorDemands(spells, deckSize, format);
   const wantedColors = Object.keys(demands);
@@ -670,18 +716,38 @@ export function buildManaBase({
   const chosen = [];
   const taken = new Map();
 
+  const notes = [];
+  const reasons = new Map();
+  const maxSlow = MAX_SLOW_LANDS[format] ?? MAX_SLOW_LANDS.default;
+
   const useful = (card) => {
-    const produces = landProduces(card);
+    const produces = landProduces(card, format);
     return [...produces].filter((color) => wantedColors.includes(color)).length;
+  };
+  const themed = (card) => themes.filter((theme) => themeRole(card, theme));
+
+  /**
+   * A land's worth to this deck. Colours dominate — the job of a land is
+   * casting the spells — but no single colour outweighs being tapped early,
+   * which is why a tapped dual loses to an untapped one and a tapped tri-land
+   * does not automatically win either.
+   */
+  const score = (card) => {
+    const tapped = entersTapped(card);
+    return useful(card) * 3
+      + themed(card).length * 2
+      - (tapped === 'always' || tapped === 'early' ? 4 : tapped === 'conditional' ? 0.5 : 0);
   };
 
   const ranked = [...landPool]
-    .filter((card) => useful(card) > 0 || landProduces(card).size === 0)
+    // Eligible by doing something for this deck; ordered by score. Being
+    // tapped lowers a land's place and counts toward the cap, but does not
+    // disqualify it — Field of the Dead is tapped and is still the point of a
+    // lands deck.
+    .filter((card) => useful(card) > 0 || themed(card).length > 0)
     .sort((a, b) => {
-      // Most useful colours first; a land that makes no colour at all (a
-      // utility land) sorts last but is still ahead of nothing.
-      const byUse = useful(b) - useful(a);
-      if (byUse !== 0) return byUse;
+      const byScore = score(b) - score(a);
+      if (byScore !== 0) return byScore;
       // Same tiebreak as the spells: when revising, a land already in the deck
       // beats an equally useful one that is not, so the diff does not fill up
       // with mana-base churn nobody asked for.
@@ -690,26 +756,61 @@ export function buildManaBase({
       return String(a.name).localeCompare(String(b.name));
     });
 
+  const why = (card) => {
+    const makes = [...landProduces(card, format)].filter((c) => wantedColors.includes(c));
+    const parts = [];
+    if (makes.length) parts.push(`makes ${makes.map((c) => COLOR_NAMES[c]).join(' and ')}`);
+    for (const theme of themed(card)) parts.push(`part of ${theme.shortLabel || theme.label}`);
+    const tapped = entersTapped(card);
+    if (tapped === 'always' || tapped === 'early') parts.push(tapped === 'always' ? 'enters tapped' : 'tapped early');
+    return parts.join(' · ') || 'kept';
+  };
+
   // Kept lands first, whatever colours they make: somebody keeping a land
   // that taps for nothing this deck casts has a reason the colour count
   // cannot see (a utility land, a graveyard land).
+  // Kept lands count toward the slow cap too — they were asked for, so they
+  // go in, but they use up the allowance before anything ranked does.
+  let slow = 0;
   for (const { card, quantity } of keep) {
     const limit = Math.min(maxCopies, card.available ?? 0, quantity);
     while ((taken.get(card.name) || 0) < limit && chosen.length < landCount) {
       chosen.push(card);
       taken.set(card.name, (taken.get(card.name) || 0) + 1);
+      if (['always', 'early'].includes(entersTapped(card))) slow += 1;
     }
+    reasons.set(card.name, `kept · ${why(card)}`);
   }
 
+  const leftOutSlow = new Set();
   for (const card of ranked) {
     if (chosen.length >= landCount) break;
     const limit = Math.min(maxCopies, card.available ?? 0);
-    if ((taken.get(card.name) || 0) >= limit) continue;
-    chosen.push(card);
-    taken.set(card.name, (taken.get(card.name) || 0) + 1);
+    const isSlow = ['always', 'early'].includes(entersTapped(card));
+    while ((taken.get(card.name) || 0) < limit && chosen.length < landCount) {
+      // Named only when no copy got in — a second copy stopped at the cap is
+      // not a land left out of the deck.
+      if (isSlow && slow >= maxSlow) {
+        if (!taken.has(card.name)) leftOutSlow.add(card.name);
+        break;
+      }
+      chosen.push(card);
+      taken.set(card.name, (taken.get(card.name) || 0) + 1);
+      if (isSlow) slow += 1;
+    }
+    if (taken.has(card.name) && !reasons.has(card.name)) reasons.set(card.name, why(card));
   }
 
-  const nonbasics = groupByName(chosen, new Map());
+  if (leftOutSlow.size > 0) {
+    const names = [...leftOutSlow];
+    notes.push(
+      `Left out ${names.length} land${names.length === 1 ? '' : 's'} that enter${names.length === 1 ? 's' : ''} tapped `
+      + `early (${names.slice(0, 4).join(', ')}${names.length > 4 ? '…' : ''}): at most ${maxSlow} in a ${format} deck, `
+      + 'because a land that cannot be used the turn it is played costs the early turns. Basics took their place.'
+    );
+  }
+
+  const nonbasics = groupByName(chosen, reasons);
 
   // Basics, split by each colour's share of the demand.
   const basicSlots = Math.max(0, landCount - chosen.length);
@@ -754,7 +855,7 @@ export function buildManaBase({
   for (const color of wantedColors) sources[color] = 0;
 
   for (const land of chosen) {
-    for (const color of landProduces(land)) {
+    for (const color of landProduces(land, format)) {
       if (sources[color] != null) sources[color] += 1;
     }
   }
@@ -785,5 +886,15 @@ export function buildManaBase({
     sources,
     demands,
     shortfalls,
+    notes,
+    slowLands: slow,
   };
 }
+
+/**
+ * How many lands that enter tapped early a generated deck may run. One in a
+ * 60-card deck, where games are decided in the first turns; two in Commander,
+ * which is slower and has more land slots to absorb one. Kept lands count
+ * against it but are never refused.
+ */
+export const MAX_SLOW_LANDS = { commander: 2, default: 1 };
