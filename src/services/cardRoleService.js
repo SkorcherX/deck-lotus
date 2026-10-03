@@ -123,6 +123,34 @@ export function isTurnOnePlay(card) {
 
 // --- Role predicates -------------------------------------------------------
 
+/**
+ * What an edict makes somebody else sacrifice, as the set of permanent types
+ * named — {'creature'} for Diabolic Edict, {'artifact', 'enchantment',
+ * 'creature'} for Pick Your Poison.
+ *
+ * An edict is removal the opponent aims: it gets around hexproof and
+ * indestructible and is the black removal spell, and none of it says "destroy
+ * target", so before this every one of them read as a card doing nothing —
+ * a revision called Pick Your Poison a card that "fills none of the roles".
+ *
+ * The subject is what makes it an edict. "Each opponent" and "target player"
+ * are; "you sacrifice" is a cost, and "whenever an opponent sacrifices" is a
+ * trigger, so neither is listed. One permanent apiece only: "each player
+ * sacrifices two creatures" is a sweeper and isSweeper already has it.
+ */
+const EDICT = /\b(?:target player|target opponent|each opponent|each other player|each player|that player|defending player|an opponent of your choice)\s+sacrifices\s+(?:a|an|one)\b([^.;•]{0,50})/g;
+const EDICT_NOUNS = ['creature', 'planeswalker', 'artifact', 'enchantment', 'battle', 'permanent', 'land'];
+
+export function edictTargets(card) {
+  const found = new Set();
+  for (const match of effectText(card).matchAll(EDICT)) {
+    for (const noun of EDICT_NOUNS) {
+      if (new RegExp(`\\b${noun}s?\\b`).test(match[1])) found.add(noun);
+    }
+  }
+  return found;
+}
+
 export function isPermission(card) {
   return /counter target/.test(effectText(card));
 }
@@ -135,7 +163,8 @@ export function isCreatureRemoval(card) {
     // a combat trick, and counting it as removal let it fill a removal slot.
     || /target creature[^.]{0,30}gets -(\d+|x)\/-(?!0\b)(\d+|x)/.test(text)
     || /deals \d+ damage to (target creature|any target)/.test(text)
-    || /target creature.{0,40}(fights|its controller sacrifices)/.test(text);
+    || /target creature.{0,40}(fights|its controller sacrifices)/.test(text)
+    || ['creature', 'permanent'].some((noun) => edictTargets(card).has(noun));
 }
 
 /** Removal that reaches past creatures — the Part 6 lesson about Prismatic Ending. */
@@ -146,7 +175,8 @@ export function isPermanentRemoval(card) {
     || /return target (nonland )?permanent[^.]{0,30}to (its owner's|their owner's) hand/.test(text)
     // Tucking answers a permanent as completely as destroying it, and answers
     // the indestructible ones it cannot destroy — Chaos Warp is the staple.
-    || /shuffles? (it|target[^.]{0,30}permanent) into (their|its owner's|that player's) library/.test(text);
+    || /shuffles? (it|target[^.]{0,30}permanent) into (their|its owner's|that player's) library/.test(text)
+    || ['artifact', 'enchantment', 'planeswalker', 'battle', 'permanent'].some((noun) => edictTargets(card).has(noun));
 }
 
 /**
@@ -396,6 +426,13 @@ export function answerTargets(card) {
   if (isGraveyardHate(card)) found.add('graveyard');
   if (isPermission(card)) found.add('stack');
 
+  // Edicts name what they take. "A permanent" reaches everything a player
+  // controls, so it counts for every type, the same as "target permanent".
+  const edict = edictTargets(card);
+  for (const type of ['creature', 'artifact', 'enchantment', 'planeswalker', 'land']) {
+    if (edict.has(type) || edict.has('permanent')) found.add(type);
+  }
+
   // "Target permanent" and "target nonland permanent" reach nearly everything,
   // so they cover the categories a creature-only removal suite misses.
   if (/(destroy|exile) target[^.]{0,20}(nonland )?permanent/.test(text)) {
@@ -440,7 +477,10 @@ export const ROLE_FILTERS = {
         OR oracle_text LIKE '%destroy target permanent%'
         OR oracle_text LIKE '%exile target permanent%'
         OR oracle_text LIKE '%destroy target nonland permanent%'
-        OR oracle_text LIKE '%exile target nonland permanent%')`
+        OR oracle_text LIKE '%exile target nonland permanent%'
+        OR oracle_text LIKE '%sacrifices an artifact%'
+        OR oracle_text LIKE '%sacrifices an enchantment%'
+        OR oracle_text LIKE '%sacrifices a planeswalker%')`
   },
   'graveyard-hate': {
     label: 'graveyard hate',
@@ -460,7 +500,9 @@ export const ROLE_FILTERS = {
     sql: `(oracle_text LIKE '%counter target%'
         OR oracle_text LIKE '%destroy target%'
         OR oracle_text LIKE '%exile target%'
-        OR oracle_text LIKE '%discards%')`
+        OR oracle_text LIKE '%discards%'
+        OR oracle_text LIKE '%opponent sacrifices a%'
+        OR oracle_text LIKE '%player sacrifices a%')`
   },
   'instant-sorcery': {
     label: 'instants and sorceries',

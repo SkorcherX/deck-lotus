@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 
 import {
   isRamp, isCardAdvantage, isSelection, isCreatureRemoval, isPermanentRemoval, effectText,
+  edictTargets, answerTargets,
 } from '../src/services/cardRoleService.js';
 
 const card = (name, oracle_text, type_line = 'Sorcery', cmc = 2) =>
@@ -161,5 +162,51 @@ describe('removal', () => {
   test('ramp and draw are not removal', () => {
     assert.equal(removes(card('Sol Ring', '{T}: Add {C}{C}.', 'Artifact')), false);
     assert.equal(removes(card('Divination', 'Draw two cards.')), false);
+  });
+});
+
+/**
+ * Edicts: removal the opponent aims. None of them say "destroy target", so
+ * every one used to read as a card doing nothing — a deck revision described
+ * Pick Your Poison as filling "none of the roles".
+ */
+describe('an edict is removal', () => {
+  const pickYourPoison = card('Pick Your Poison',
+    'Choose one —\n• Each opponent sacrifices an artifact of their choice.\n'
+    + '• Each opponent sacrifices an enchantment of their choice.\n'
+    + '• Each opponent sacrifices a creature with flying of their choice.', 'Sorcery', 1);
+  const sheoldredsEdict = card("Sheoldred's Edict",
+    'Choose one —\n• Each opponent sacrifices a nontoken creature of their choice.\n'
+    + '• Each opponent sacrifices a creature token of their choice.\n'
+    + '• Each opponent sacrifices a planeswalker of their choice.', 'Instant', 2);
+  const diabolicEdict = card('Diabolic Edict', 'Target player sacrifices a creature of their choice.', 'Instant', 2);
+
+  test('a creature edict is creature removal', () => {
+    assert.equal(isCreatureRemoval(diabolicEdict), true);
+    assert.deepEqual([...edictTargets(diabolicEdict)], ['creature']);
+  });
+
+  test('a modal edict counts for every type it names', () => {
+    assert.equal(isCreatureRemoval(pickYourPoison), true);
+    assert.equal(isPermanentRemoval(pickYourPoison), true);
+    assert.deepEqual([...answerTargets(pickYourPoison)].sort(), ['artifact', 'creature', 'enchantment']);
+    assert.ok(answerTargets(sheoldredsEdict).has('planeswalker'));
+  });
+
+  test('an artifact-only edict is not creature removal', () => {
+    const extract = card('Tear Asunder (edict)', 'Target opponent sacrifices an artifact of their choice.');
+    assert.equal(isCreatureRemoval(extract), false);
+    assert.equal(isPermanentRemoval(extract), true);
+  });
+
+  test('sacrificing your own is a cost, and an opponent sacrificing is a trigger', () => {
+    assert.equal(removes(card('Village Rites', 'As an additional cost to cast this spell, sacrifice a creature. Draw two cards.', 'Instant', 1)), false);
+    assert.equal(removes(card('Mayhem Devil', 'Whenever a player sacrifices a permanent, this deals 1 damage to any target.', 'Creature — Devil', 3)), true,
+      'still removal, but for its damage, not as an edict');
+    assert.equal(edictTargets(card('Tribute', 'Whenever an opponent sacrifices a creature, draw a card.')).size, 0);
+  });
+
+  test('two apiece is a sweeper, not an edict', () => {
+    assert.equal(edictTargets(card('Barter in Blood', 'Each player sacrifices two creatures of their choice.')).size, 0);
   });
 });
