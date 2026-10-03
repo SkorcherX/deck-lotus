@@ -170,7 +170,15 @@ async function loadKeepCards() {
       if (/\bBasic\b/.test(row.type_line || '') && /\bLand\b/.test(row.type_line || '')) continue;
       const seen = byCard.get(row.card_id);
       if (seen) seen.quantity += row.quantity;
-      else byCard.set(row.card_id, { cardId: row.card_id, name: row.name, quantity: row.quantity, typeLine: row.type_line || '' });
+      else {
+        byCard.set(row.card_id, {
+          cardId: row.card_id,
+          name: row.name,
+          quantity: row.quantity,
+          typeLine: row.type_line || '',
+          imageUrl: row.image_url || null,
+        });
+      }
     }
     keepCards = [...byCard.values()].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -245,27 +253,78 @@ async function savePlan() {
   }
 }
 
+/**
+ * The deck's cards as tiles, in a fixed alphabetical order.
+ *
+ * Ticking a card never moves it. It used to jump to the top of the list,
+ * which read as the card vanishing from under the pointer; now the tile stays
+ * put and lights up, and the "Keeping" chips above the grid are where the
+ * kept cards are gathered — always all of them, whatever the filter shows.
+ */
 function renderKeepCards() {
   const list = $('generate-keep-list');
   if (!list) return;
   const filter = ($('generate-keep-filter')?.value || '').trim().toLowerCase();
 
-  // Kept cards first, so what has been ticked stays in view while filtering.
-  const rows = keepCards
-    .filter((c) => kept.has(c.cardId) || !filter || c.name.toLowerCase().includes(filter)
-      || c.typeLine.toLowerCase().includes(filter))
-    .sort((a, b) => Number(kept.has(b.cardId)) - Number(kept.has(a.cardId)));
+  const rows = keepCards.filter((c) => !filter || c.name.toLowerCase().includes(filter)
+    || c.typeLine.toLowerCase().includes(filter));
 
   list.innerHTML = rows.length === 0
     ? '<div class="generator-empty">No cards to show.</div>'
     : rows.map((c) => `
-      <label class="generator-keep-row">
-        <input type="checkbox" class="generate-keep" value="${c.cardId}" ${kept.has(c.cardId) ? 'checked' : ''} />
-        <span>${c.quantity}&times; ${escapeHtml(c.name)}</span>
+      <label class="generator-keep-tile${kept.has(c.cardId) ? ' is-kept' : ''}" data-card-id="${c.cardId}"
+             title="${escapeHtml(c.typeLine)}">
+        <span class="generator-keep-art">
+          ${c.imageUrl
+            ? `<img src="${escapeHtml(c.imageUrl)}" alt="" loading="lazy" />`
+            : `<span class="generator-keep-noart">${escapeHtml(c.name)}</span>`}
+          <input type="checkbox" class="generate-keep" value="${c.cardId}"
+                 aria-label="Keep ${escapeHtml(c.name)}" ${kept.has(c.cardId) ? 'checked' : ''} />
+          ${/* After the checkbox, never before: a label forwards its clicks to the
+             first control inside it, and with the magnifier first a click on the
+             tile opened the enlarged card instead of ticking it. */ ''}
+          ${zoomButton(c.imageUrl, c.name)}
+          <span class="generator-keep-badge">Kept</span>
+        </span>
+        <span class="generator-keep-name">${c.quantity > 1 ? `${c.quantity}&times; ` : ''}${escapeHtml(c.name)}</span>
       </label>`).join('');
+
+  renderKeptSummary();
+}
+
+/** The kept cards, gathered above the grid, each one removable. */
+function renderKeptSummary() {
+  const chips = $('generate-keep-chips');
+  if (chips) {
+    const keptCards = keepCards.filter((c) => kept.has(c.cardId));
+    chips.innerHTML = keptCards.length === 0
+      ? '<span class="generator-note">Nothing kept yet — tick a card below.</span>'
+      : `<span class="generator-keep-chips-label">Keeping:</span>${keptCards.map((c) => `
+        <button type="button" class="generator-keep-chip" data-card-id="${c.cardId}"
+                title="Stop keeping ${escapeHtml(c.name)}">${escapeHtml(c.name)} <span aria-hidden="true">&times;</span></button>`).join('')}`;
+  }
 
   const head = $('generate-keep-group')?.querySelector('label');
   if (head) head.textContent = kept.size ? `Cards to keep (${kept.size})` : 'Cards to keep';
+}
+
+/**
+ * Tick or untick one card. Updates the one tile and the chips in place, so
+ * the grid does not re-render under the pointer or lose its scroll position.
+ */
+function setKept(cardId, on) {
+  if (on) kept.add(cardId); else kept.delete(cardId);
+
+  const tile = $('generate-keep-list')?.querySelector(`.generator-keep-tile[data-card-id="${cardId}"]`);
+  if (tile) {
+    tile.classList.toggle('is-kept', on);
+    const box = tile.querySelector('.generate-keep');
+    if (box) box.checked = on;
+  }
+  renderKeptSummary();
+  resetResult();
+  // Which themes the kept cards belong to has changed with them.
+  loadThemes();
 }
 
 /** What the chosen deck is, said back to the person who chose it. */
@@ -431,11 +490,13 @@ function wire() {
   $('generate-keep-list')?.addEventListener('change', (event) => {
     const box = event.target.closest('.generate-keep');
     if (!box) return;
-    if (box.checked) kept.add(Number(box.value)); else kept.delete(Number(box.value));
-    resetResult();
-    renderKeepCards();
-    // Which themes the kept cards belong to has changed with them.
-    loadThemes();
+    setKept(Number(box.value), box.checked);
+  });
+
+  $('generate-keep-chips')?.addEventListener('click', (event) => {
+    const chip = event.target.closest('.generator-keep-chip');
+    if (!chip) return;
+    setKept(Number(chip.dataset.cardId), false);
   });
 
   $('generate-revise-deck')?.addEventListener('change', async () => {
