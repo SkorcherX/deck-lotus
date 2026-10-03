@@ -99,6 +99,26 @@ export function withinColorIdentity(card, identity) {
  * regexes match is worse than one with no text at all, and here the two are
  * impossible to edit separately by accident.
  */
+/**
+ * Who a mill effect is aimed at. Opponent-only phrasings ("target opponent
+ * mills", "each opponent mills") are a win condition, not a way to fill your
+ * own graveyard; a bare "mill three cards" is you. "Target player" and "each
+ * player" can be either, and count as both.
+ */
+const OPPONENT_MILL = /(target opponent|each opponent|that player|defending player|an opponent|they)\s+(would\s+)?mills?\b[^.]*/g;
+const EITHER_MILL = /(target player|each player)\s+mills?\b/;
+
+export function millsOpponent(text) {
+  return new RegExp(OPPONENT_MILL.source).test(text) || EITHER_MILL.test(text);
+}
+
+export function millsYou(text) {
+  if (EITHER_MILL.test(text)) return true;
+  // What is left once the opponent-only phrasings are cut out: any mill still
+  // in the text is one the card's controller does to themselves.
+  return /\bmill(s|ed)?\b/.test(text.replace(OPPONENT_MILL, ' '));
+}
+
 export const THEMES = {
   aristocrats: {
     label: 'sacrifice and death triggers',
@@ -149,7 +169,7 @@ export const THEMES = {
     payoffName: 'cards that use your graveyard',
     enabler: (card) => {
       const text = effectText(card);
-      return /\bmill(s|ed)?\b/.test(text)
+      return millsYou(text)
         || /put[^.]{0,50}into your graveyard/.test(text)
         || /discard (a|your|two|three) card/.test(text)
         || /\b(surveil|dredge|self-mill)\b/.test(text);
@@ -160,7 +180,33 @@ export const THEMES = {
         || /from your graveyard to the battlefield/.test(text)
         || /for each[^.]{0,40}in your graveyard/.test(text)
         || /cards? in your graveyard/.test(text)
+        // Lhurgoyf and its kin count every graveyard, yours included, so they
+        // grow off self-mill exactly as a "your graveyard" card does.
+        || /(cards?|card types) (among cards )?in all graveyards/.test(text)
         || /\b(delve|escape|flashback|disturb|unearth|embalm|eternalize|threshold|delirium)\b/.test(text);
+    },
+  },
+
+  // Split from graveyard value, which used to count every mill card as one of
+  // its enablers. Milling an opponent is a way to win — they lose drawing from
+  // an empty library — and does nothing for a creature that counts your own
+  // graveyard, so a deck mixing the two was scored as one plan while half of
+  // it worked against the other half. "Target player mills" can be pointed
+  // either way and counts for both.
+  mill: {
+    label: 'milling your opponent',
+    blurb: "You win by emptying your opponent's library instead of their life total. Most of the deck puts their cards into their graveyard a few at a time; the rest rewards you for it, or makes sure they run out first.",
+    enablerName: 'ways to mill an opponent',
+    payoffName: "cards that reward an opponent's full graveyard",
+    enabler: (card) => millsOpponent(effectText(card)),
+    payoff: (card) => {
+      const text = effectText(card);
+      return /cards? in (an opponent's|target opponent's|that player's|their|your opponents'|each opponent's) graveyards?/.test(text)
+        || /library has (no|twenty or fewer|ten or fewer) cards/.test(text)
+        || /(if|whenever) (an opponent|a player|one or more opponents) would mill/.test(text)
+        || /whenever (an opponent|a player|one or more opponents) mills?/.test(text)
+        || /cards? (is|are) put into (an opponent's|a player's|their) graveyard from (their|a) library/.test(text)
+        || /from (an opponent's|their) graveyard/.test(text);
     },
   },
 

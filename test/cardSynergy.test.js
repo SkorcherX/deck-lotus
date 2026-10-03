@@ -280,3 +280,43 @@ describe('every theme explains itself', () => {
     assert.equal(analyzed.payoffName, 'cards that name Elf');
   });
 });
+
+/**
+ * Mill aimed at an opponent is a different plan from filling your own
+ * graveyard, and the two used to be one theme. A Dimir deck of Lhurgoyfs was
+ * scored as a graveyard deck on the strength of Maddening Cacophony, which
+ * puts nothing in the graveyard its creatures count.
+ */
+describe('self-mill and opponent mill are different themes', () => {
+  const sorcery = (name, oracle) => card(name, { type_line: 'Sorcery', subtypes: '', oracle_text: oracle });
+
+  const selfMill = sorcery("Stitcher's Supplier", "When Stitcher's Supplier enters the battlefield or dies, mill three cards.");
+  const opponentMill = sorcery('Maddening Cacophony', 'Each opponent mills eight cards.');
+  const eitherMill = sorcery('Thought Scour', 'Target player mills two cards. Draw a card.');
+  const bruvac = sorcery('Bruvac the Grandiloquent', 'If an opponent would mill one or more cards, they mill twice that many cards instead.');
+  const lhurgoyf = sorcery('Lhurgoyf', "Lhurgoyf's power is equal to the number of card types among cards in all graveyards.");
+  const aberration = sorcery('Consuming Aberration', "Consuming Aberration's power and toughness are each equal to the number of cards in your opponents' graveyards.");
+
+  test('milling yourself fills your graveyard; milling an opponent does not', () => {
+    assert.equal(THEMES.graveyard.enabler(selfMill), true);
+    assert.equal(THEMES.graveyard.enabler(opponentMill), false);
+    assert.equal(THEMES.graveyard.enabler(bruvac), false);
+    assert.equal(THEMES.mill.enabler(opponentMill), true);
+    assert.equal(THEMES.mill.enabler(selfMill), false);
+  });
+
+  test('"target player" can be pointed either way, so it counts for both', () => {
+    assert.equal(THEMES.graveyard.enabler(eitherMill), true);
+    assert.equal(THEMES.mill.enabler(eitherMill), true);
+  });
+
+  test('a creature counting all graveyards is a graveyard payoff', () => {
+    assert.equal(THEMES.graveyard.payoff(lhurgoyf), true);
+  });
+
+  test("a card counting the opponent's graveyard rewards milling them", () => {
+    assert.equal(THEMES.mill.payoff(aberration), true);
+    assert.equal(THEMES.mill.payoff(bruvac), true);
+    assert.equal(THEMES.graveyard.payoff(aberration), false);
+  });
+});
