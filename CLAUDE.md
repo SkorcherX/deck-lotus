@@ -358,3 +358,11 @@ taken on GitHub — only do it when explicitly asked.
   `[SET]` or `(SET)`. The simple export is summed per card and finish and
   deliberately carries none. Inventory and export both take a `condition`
   filter: `all`, `unrecorded` (the `''` rows) or a code.
+- A deck's plan (`decks.plan`, migration 047, `src/services/deckPlanService.js`)
+  is one JSON column: `{ themeKey, secondaryThemeKey, secondaryShare, keep }`.
+  Kept cards are stored by **name**, never `card_id`, for the backup rule
+  above; the revise page ticks whichever of them the deck still lists. The
+  plan pre-fills the revise page once per deck pick and is the default for
+  "Fits this deck" (`deckFitThemes`) — an explicitly picked theme always
+  overrides it. A plan with no theme and no kept cards is stored as NULL, so
+  "has a plan" means somebody chose something. `backupService` carries it.
