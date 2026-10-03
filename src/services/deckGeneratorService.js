@@ -250,6 +250,20 @@ function rankCandidates(cards, theme, secondary = null) {
   });
 }
 
+/**
+ * How much of the theme slots a second theme may take. Bounded on both sides:
+ * under a tenth it is a card or two and not a plan, and past half it is the
+ * main theme under another name — pick it as the main one instead.
+ */
+export const DEFAULT_SECONDARY_SHARE = 1 / 3;
+export const SECONDARY_SHARE_RANGE = [0.1, 0.5];
+
+export function clampShare(share) {
+  const n = Number(share);
+  if (!Number.isFinite(n)) return DEFAULT_SECONDARY_SHARE;
+  return Math.min(SECONDARY_SHARE_RANGE[1], Math.max(SECONDARY_SHARE_RANGE[0], n));
+}
+
 /** Resolve a theme key against the built-in themes and the pool's tribes. */
 export function resolveTheme(themeKey, pool) {
   if (!themeKey) return null;
@@ -279,6 +293,7 @@ export function buildDeck(pool, {
   deckSize = null,
   keep = [],
   secondaryThemeKey = null,
+  secondaryShare = DEFAULT_SECONDARY_SHARE,
 } = {}) {
   const targets = getRoleTargets(format);
   const profile = getFormatProfile(format);
@@ -472,11 +487,12 @@ export function buildDeck(pool, {
   };
 
   if (theme) {
-    // A second theme gets about a third of what the role quotas left. Enough
-    // to be a real plan, not so much that the deck stops being about the
-    // first. Whatever it cannot fill goes back to the main theme.
+    // A second theme gets its share of what the role quotas left — a third
+    // unless asked otherwise, which is enough to be a real plan without the
+    // deck stopping being about the first. Whatever it cannot fill goes back
+    // to the main theme.
     if (secondary) {
-      fillTheme(theme, Math.round(remaining() / 3));
+      fillTheme(theme, Math.round(remaining() * clampShare(secondaryShare)));
       fillTheme(secondary, 0);
     }
     fillTheme(theme, 0);
@@ -572,6 +588,11 @@ export function buildDeck(pool, {
         enablers: secondaryReport ? secondaryReport.enablers : null,
         payoffs: secondaryReport ? secondaryReport.payoffs : null,
         strength: secondaryReport ? secondaryReport.strength : null,
+        share: clampShare(secondaryShare),
+        // What it actually got, which can be less than its share when the
+        // collection runs out of its cards. Counted from the reasons, so cards
+        // that only landed there by filling out the deck are not claimed.
+        cards: chosen.filter((card) => String(reasons.get(card.name) || '').startsWith(`${secondary.label} (`)).length,
       }
       : null,
     mainboard: groupedSpells,

@@ -160,7 +160,7 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
 router.post('/generate', authenticate, (req, res, next) => {
   try {
     const {
-      commanderCardId, format, themeKey, secondaryThemeKey, includeCommitted, landCount, identity, reviseDeckId, splash, keepCardIds,
+      commanderCardId, format, themeKey, secondaryThemeKey, secondaryShare, includeCommitted, landCount, identity, reviseDeckId, splash, keepCardIds,
     } = req.body || {};
 
     res.json({
@@ -171,6 +171,8 @@ router.post('/generate', authenticate, (req, res, next) => {
         format: format || (reviseDeckId == null ? 'commander' : null),
         themeKey: themeKey || null,
         secondaryThemeKey: secondaryThemeKey || null,
+        // Clamped in the generator; absent means its default.
+        secondaryShare: secondaryShare == null ? undefined : Number(secondaryShare),
         includeCommitted: includeCommitted !== false,
         landCount: landCount == null ? null : Number(landCount),
         identity: identity || null,

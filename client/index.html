@@ -1645,6 +1645,15 @@
                         <!-- The chosen theme's key, written by the cards above. -->
                         <input type="hidden" id="generate-theme" />
                         <input type="hidden" id="generate-theme-secondary" />
+                        <div id="generate-share-group" class="generator-share hidden">
+                            <label for="generate-share">How much of the second theme</label>
+                            <div class="generator-share-row">
+                                <span class="generator-note">A touch</span>
+                                <input type="range" id="generate-share" min="10" max="50" step="5" value="35" />
+                                <span class="generator-note">Half</span>
+                            </div>
+                            <p class="generator-note" id="generate-share-note"></p>
+                        </div>
                     </section>
 
                     <section class="generator-step">

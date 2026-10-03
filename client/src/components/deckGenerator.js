@@ -421,6 +421,11 @@ function wire() {
     resetResult();
   });
 
+  $('generate-share')?.addEventListener('input', () => {
+    renderShareNote();
+    resetResult();
+  });
+
   $('generate-run')?.addEventListener('click', run);
   $('generate-accept')?.addEventListener('click', accept);
 }
@@ -551,6 +556,21 @@ function renderCommanders() {
 // --- Themes ----------------------------------------------------------------
 
 const mainTheme = () => $('generate-theme')?.value || '';
+
+/** The second theme's share of the theme slots, as a fraction. */
+const secondShare = () => Number($('generate-share')?.value || 35) / 100;
+
+/** Said in words, because "35%" of something unnamed means little. */
+function renderShareNote() {
+  const note = $('generate-share-note');
+  if (!note) return;
+  const pct = Math.round(secondShare() * 100);
+  const words = pct <= 15 ? 'a few cards of it'
+    : pct <= 25 ? 'about a fifth of the theme cards'
+      : pct <= 40 ? 'about a third of the theme cards'
+        : 'about as many as the main theme';
+  note.textContent = `${pct}% — ${words}. Whatever it cannot fill goes back to the main theme.`;
+}
 const secondTheme = () => $('generate-theme-secondary')?.value || '';
 
 /** Set both picks and redraw which tile is which. */
@@ -560,6 +580,9 @@ function selectThemes(main, second = '') {
   const s = m && second !== m ? (second || '') : '';
   if ($('generate-theme')) $('generate-theme').value = m;
   if ($('generate-theme-secondary')) $('generate-theme-secondary').value = s;
+  // Only a second theme has a share to set.
+  $('generate-share-group')?.classList.toggle('hidden', !s);
+  renderShareNote();
 
   document.querySelectorAll('.generator-theme').forEach((tile) => {
     const key = tile.dataset.themeKey || '';
@@ -744,6 +767,7 @@ async function run() {
       format: revising ? null : chosenFormat(),
       themeKey: $('generate-theme')?.value || null,
       secondaryThemeKey: secondTheme() || null,
+      secondaryShare: secondTheme() ? secondShare() : null,
       includeCommitted: includeCommitted(),
       identity: revising ? null : (chosenColors() || null),
       reviseDeckId: revisingDeckId(),
@@ -932,7 +956,9 @@ function render(p) {
 
     ${p.secondaryTheme ? `
       <div class="generate-theme-note">
-        <strong>With a share of ${escapeHtml(p.secondaryTheme.label)}.</strong>
+        <strong>With a share of ${escapeHtml(p.secondaryTheme.label)}</strong>
+        — ${p.secondaryTheme.cards ?? 0} cards picked for it
+        (asked for ${Math.round((p.secondaryTheme.share ?? 1 / 3) * 100)}% of the theme slots).<br>
         ${escapeHtml(p.secondaryTheme.blurb || '')}
         <span class="generate-theme-evidence">
           Your collection has ${p.secondaryTheme.enablers} ${escapeHtml(p.secondaryTheme.enablerName || 'enablers')}

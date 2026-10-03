@@ -7703,6 +7703,12 @@ body.maintenance-locked #app {
   color: var(--text-secondary);
 }
 
+/* The second theme's share. */
+.generator-share { margin-top: 0.75rem; }
+.generator-share-row { display: flex; align-items: center; gap: 0.6rem; }
+.generator-share-row .generator-note { margin: 0; white-space: nowrap; }
+.generator-share-row input[type="range"] { flex: 1; }
+
 /* "Fits this deck" in the builder's collection panel. */
 .inventory-panel-fit-bar {
   display: flex;

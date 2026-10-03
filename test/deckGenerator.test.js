@@ -18,7 +18,7 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  buildDeck, buildManaBase, colorDemands, landProduces, resolveTheme, isLegalIn,
+  buildDeck, buildManaBase, colorDemands, landProduces, resolveTheme, isLegalIn, clampShare,
 } from '../src/services/deckGeneratorService.js';
 import { colorSourcesWanted, castingTurn } from '../src/config/deckProfiles.js';
 
@@ -574,6 +574,25 @@ describe('a second theme', () => {
       commander, format: 'commander', themeKey: 'graveyard', secondaryThemeKey: 'mill',
     });
     assert.ok(deck.mainboard.some((c) => c.name === 'Both Ways'));
+  });
+
+  test('its share can be turned up or down, and is reported', () => {
+    const build = (secondaryShare) => buildDeck(pool(), {
+      commander, format: 'commander', themeKey: 'graveyard', secondaryThemeKey: 'mill', secondaryShare,
+    }).secondaryTheme;
+
+    const small = build(0.1);
+    const half = build(0.5);
+    assert.equal(small.share, 0.1);
+    assert.equal(half.share, 0.5);
+    assert.ok(half.cards > small.cards, `half (${half.cards}) should take more than a tenth (${small.cards})`);
+    assert.equal(build(undefined).share, 1 / 3, 'a third unless asked');
+  });
+
+  test('a share out of range is held to the range, not trusted', () => {
+    assert.equal(clampShare(0.9), 0.5);
+    assert.equal(clampShare(0), 0.1);
+    assert.equal(clampShare('nonsense'), 1 / 3);
   });
 
   test('the same theme twice, or a second with no first, is ignored', () => {

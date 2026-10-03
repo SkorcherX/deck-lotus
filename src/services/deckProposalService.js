@@ -444,6 +444,7 @@ export function proposeDeck(userId, {
   format = 'commander',
   themeKey = null,
   secondaryThemeKey = null,
+  secondaryShare = undefined,
   includeCommitted = true,
   landCount = null,
   identity = null,
@@ -490,7 +491,7 @@ export function proposeDeck(userId, {
   // outright when there is not — a 60-card format has nothing to infer them
   // from.
   const proposal = buildDeck(pool, {
-    commander, format, themeKey, secondaryThemeKey, landCount, keep,
+    commander, format, themeKey, secondaryThemeKey, secondaryShare, landCount, keep,
     identity: commander ? null : (identity || (target ? revisionIdentity(target.cards, splash) : null)),
   });
 
