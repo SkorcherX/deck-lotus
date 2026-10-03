@@ -39,6 +39,7 @@ import {
   suggestForGaps, addGapsToShoppingList,
 } from '../services/deckProposalService.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.js';
+import { saveDeckPlan } from '../services/deckPlanService.js';
 
 const router = express.Router();
 
@@ -282,6 +283,24 @@ router.get('/:id', authenticate, (req, res, next) => {
  * PUT /api/decks/:id
  * Update deck
  */
+/**
+ * PUT /api/decks/:id/plan
+ * Save what the deck is built around: { themeKey, secondaryThemeKey,
+ * secondaryShare, keep: [card names] }, or { plan: null } to clear it.
+ */
+router.put('/:id/plan', authenticate, (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const plan = 'plan' in body && body.plan === null ? null : body;
+    res.json({ plan: saveDeckPlan(req.user.id, parseInt(req.params.id, 10), plan) });
+  } catch (error) {
+    if (/not one of yours/i.test(error.message)) {
+      return res.status(404).json({ error: 'Deck not found' });
+    }
+    next(error);
+  }
+});
+
 router.put('/:id', authenticate, (req, res, next) => {
   try {
     const deckId = parseInt(req.params.id);

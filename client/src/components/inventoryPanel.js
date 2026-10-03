@@ -498,6 +498,8 @@ function renderFitBar() {
   if (!info) return;
 
   const [main, second] = info.themes;
+  const source = el('inventory-panel-fit-source');
+  if (source) source.textContent = info.fromPlan ? "Ranked by this deck's plan:" : 'Ranked for';
   // A theme the deck does not lean on can still have been picked by name, so
   // the in-use ones are always offered even if they are not in the options.
   const offered = [...info.options];

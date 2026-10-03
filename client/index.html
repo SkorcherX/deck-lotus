@@ -651,7 +651,7 @@
                             </div>
 
                             <div id="inventory-panel-fit-bar" class="inventory-panel-fit-bar hidden">
-                                <span>Ranked for</span>
+                                <span id="inventory-panel-fit-source">Ranked for</span>
                                 <select id="inventory-panel-fit-main" aria-label="Main theme"></select>
                                 <span>and</span>
                                 <select id="inventory-panel-fit-second" aria-label="Second theme"></select>
@@ -1653,6 +1653,12 @@
                                 <span class="generator-note">Half</span>
                             </div>
                             <p class="generator-note" id="generate-share-note"></p>
+                        </div>
+                        <div id="generate-plan-group" class="generator-plan hidden">
+                            <p class="generator-note" id="generate-plan-note"></p>
+                            <button type="button" id="generate-save-plan" class="btn btn-secondary btn-sm">
+                                Save as this deck's plan
+                            </button>
                         </div>
                     </section>
 

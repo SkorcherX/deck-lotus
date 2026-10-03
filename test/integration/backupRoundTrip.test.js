@@ -186,6 +186,17 @@ describe('backup and restore round trip', () => {
     assert.equal(db.get(`SELECT status FROM decks WHERE id = ?`, [deckId]).status, 'ready');
   });
 
+  test("a deck's saved plan comes back", () => {
+    const plan = JSON.stringify({ themeKey: 'graveyard', secondaryThemeKey: 'mill', secondaryShare: 0.25, keep: ['Sol Ring'] });
+    db.run(`UPDATE decks SET plan = ? WHERE id = ?`, [plan, deckId]);
+
+    const backup = createBackup();
+    wipeUserData();
+    restoreBackup(backup, { overwrite: false });
+
+    assert.deepEqual(JSON.parse(db.get(`SELECT plan FROM decks WHERE id = ?`, [deckId]).plan), JSON.parse(plan));
+  });
+
   test('the wanted list, found pile and price watches come back', () => {
     const backup = createBackup();
     wipeUserData();

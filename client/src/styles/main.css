@@ -7703,6 +7703,16 @@ body.maintenance-locked #app {
   color: var(--text-secondary);
 }
 
+/* A deck's saved plan, on the revise page. */
+.generator-plan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+.generator-plan .generator-note { margin: 0; flex: 1; min-width: 12rem; }
+
 /* The second theme's share. */
 .generator-share { margin-top: 0.75rem; }
 .generator-share-row { display: flex; align-items: center; gap: 0.6rem; }

@@ -383,6 +383,7 @@ router.get('/builder', authenticate, (req, res, next) => {
         fit: {
           themes: fit.themes.map((t) => ({ key: t.key, label: t.label })),
           options: fit.options,
+          fromPlan: fit.fromPlan,
         },
       }
       : result);

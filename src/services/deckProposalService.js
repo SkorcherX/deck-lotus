@@ -29,6 +29,7 @@ import {
 } from './deckGeneratorService.js';
 import { rankThemes, withinColorIdentity, themeRole } from './cardSynergyService.js';
 import { pairSwaps } from './revisionSwaps.js';
+import { parsePlan } from './deckPlanService.js';
 import { getGeneratorPool } from './inventoryService.js';
 import { findCard } from './importService.js';
 import { isBasicLandSql, isBasicLand } from './basicLands.js';
@@ -210,8 +211,18 @@ export function revisableDecks(userId) {
  * with six is not.
  */
 export function deckFitThemes(userId, deckId, { themeKey = null, secondaryThemeKey = null } = {}) {
-  const deck = db.get('SELECT id, format FROM decks WHERE id = ? AND user_id = ?', [deckId, userId]);
+  const deck = db.get('SELECT id, format, plan FROM decks WHERE id = ? AND user_id = ?', [deckId, userId]);
   if (!deck) throw new Error('That deck is not one of yours');
+
+  // A saved plan is the owner's answer to the question this function would
+  // otherwise guess at, so it wins over the reading below. Only where nothing
+  // was asked for explicitly: picking a theme in the panel still overrides it.
+  const plan = parsePlan(deck.plan);
+  const fromPlan = Boolean(plan?.themeKey && !themeKey);
+  if (fromPlan) {
+    themeKey = plan.themeKey;
+    if (secondaryThemeKey == null) secondaryThemeKey = plan.secondaryThemeKey || '';
+  }
 
   const cards = db.all(
     `SELECT DISTINCT c.id AS card_id, c.name, c.type_line, c.oracle_text, c.subtypes, c.keywords,
@@ -246,7 +257,7 @@ export function deckFitThemes(userId, deckId, { themeKey = null, secondaryThemeK
   const leaders = cards.filter((card) => card.is_commander);
   const identity = deckIdentity(leaders.length ? leaders : cards);
 
-  return { themes: [main, second].filter(Boolean), options, identity, format: deck.format || null };
+  return { themes: [main, second].filter(Boolean), options, identity, format: deck.format || null, fromPlan };
 }
 
 /**

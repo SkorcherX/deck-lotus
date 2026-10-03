@@ -645,6 +645,33 @@ describe('cards that fit a deck', () => {
     assert.ok(!feed.items.some((i) => i.cardName === 'Red Reanimator'));
   });
 
+  test("a saved plan decides the themes, until one is picked by hand", async () => {
+    const { saveDeckPlan, getDeckPlan } = await import('../../src/services/deckPlanService.js');
+    try {
+      saveDeckPlan(userId, deckId, { themeKey: 'tribe:Zombie', secondaryThemeKey: 'graveyard', secondaryShare: 0.9, keep: ['Miller 0', 'Miller 0', 42] });
+      const plan = getDeckPlan(userId, deckId);
+      assert.equal(plan.secondaryShare, 0.5, 'the share is clamped on the way in');
+      assert.deepEqual(plan.keep, ['Miller 0'], 'kept names are deduplicated and non-strings dropped');
+
+      const planned = deckFitThemes(userId, deckId);
+      assert.equal(planned.fromPlan, true);
+      assert.deepEqual(planned.themes.map((t) => t.key), ['tribe:Zombie', 'graveyard']);
+
+      const picked = deckFitThemes(userId, deckId, { themeKey: 'graveyard' });
+      assert.equal(picked.fromPlan, false);
+      assert.equal(picked.themes[0].key, 'graveyard');
+    } finally {
+      assert.equal(saveDeckPlan(userId, deckId, null), null);
+    }
+    assert.equal(getDeckPlan(userId, deckId), null);
+  });
+
+  test('a plan with nothing chosen is stored as no plan', async () => {
+    const { saveDeckPlan } = await import('../../src/services/deckPlanService.js');
+    assert.equal(saveDeckPlan(userId, deckId, { themeKey: '', keep: [] }), null);
+    assert.equal(db.get('SELECT plan FROM decks WHERE id = ?', [deckId]).plan, null);
+  });
+
   test("another user's deck is refused", () => {
     db.run(`INSERT INTO users (username, email, password_hash) VALUES ('stranger','s@example.test','h')`);
     const strangerId = db.get(`SELECT id FROM users WHERE username='stranger'`).id;

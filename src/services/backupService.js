@@ -255,7 +255,7 @@ export function createBackup(userId = null) {
     : [];
 
   backup.data.decks = db.prepare(`
-    SELECT id, user_id, name, format, description, status, created_at, updated_at
+    SELECT id, user_id, name, format, description, status, plan, created_at, updated_at
     FROM decks
     WHERE user_id IN (${userIdsStr})
   `).all();
@@ -585,8 +585,8 @@ export function restoreBackup(backupData, options = {}) {
 
     // ---- Decks -----------------------------------------------------------
     const insertDeck = db.prepare(`
-      INSERT OR REPLACE INTO decks (id, user_id, name, format, description, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO decks (id, user_id, name, format, description, status, plan, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const decks = (backupData.data.decks || []).filter(mine);
@@ -595,6 +595,8 @@ export function restoreBackup(backupData, options = {}) {
       insertDeck.run(
         deck.id, deck.user_id, deck.name, deck.format, deck.description,
         deck.status || 'building',
+        // Absent from backups made before migration 047.
+        deck.plan ?? null,
         deck.created_at, deck.updated_at
       );
     }, (d) => `Deck ${d.name}`);

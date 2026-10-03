@@ -705,6 +705,13 @@ class ApiClient {
     return this.request(`/decks/generate/themes?${params}`);
   }
 
+  async saveDeckPlan(deckId, plan) {
+    return this.request(`/decks/${deckId}/plan`, {
+      method: 'PUT',
+      body: JSON.stringify(plan === null ? { plan: null } : plan),
+    });
+  }
+
   async generateDeck(options) {
     return this.request('/decks/generate', {
       method: 'POST',

@@ -45,6 +45,12 @@ let keepCards = [];
 let keepDeckId = null;
 const kept = new Set();
 
+// The revised deck's saved plan, and which deck it has already been applied
+// to — applied once, when the deck is picked, so it never fights the person
+// changing things afterwards.
+let deckPlan = null;
+let planAppliedFor = null;
+
 const $ = (id) => document.getElementById(id);
 
 function escapeHtml(value) {
@@ -132,6 +138,7 @@ function applyFormat() {
   $('generate-revise-group')?.classList.toggle('hidden', !revising);
   renderRevisionNote();
   renderSplash();
+  renderPlanNote();
   loadKeepCards();
 }
 
@@ -149,7 +156,10 @@ async function loadKeepCards() {
   keepDeckId = deckId;
   kept.clear();
   keepCards = [];
+  deckPlan = null;
+  planAppliedFor = null;
   renderKeepCards();
+  renderPlanNote();
 
   try {
     const { deck } = await api.getDeck(deckId);
@@ -163,10 +173,76 @@ async function loadKeepCards() {
       else byCard.set(row.card_id, { cardId: row.card_id, name: row.name, quantity: row.quantity, typeLine: row.type_line || '' });
     }
     keepCards = [...byCard.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+    // The plan's kept cards are names; tick whichever of them the deck still
+    // lists. One that has since left the deck simply is not offered.
+    deckPlan = deck.plan || null;
+    if (deckPlan) {
+      const names = new Set(deckPlan.keep || []);
+      for (const c of keepCards) if (names.has(c.name)) kept.add(c.cardId);
+      if (deckPlan.secondaryShare && $('generate-share')) {
+        $('generate-share').value = String(Math.round(deckPlan.secondaryShare * 100));
+      }
+    }
   } catch (error) {
     console.error('Failed to load the deck to keep cards from:', error);
   }
   renderKeepCards();
+  renderPlanNote();
+  // Themes may have loaded before the plan did; measure again with the kept
+  // cards in, so the plan's themes are offered and picked.
+  if (deckPlan) loadThemes();
+}
+
+/** A theme key as its label, from the themes on offer. */
+const themeLabel = (key) => themes.find((t) => t.key === key)?.label || key;
+
+/** What is saved for this deck, said back in words. */
+function renderPlanNote() {
+  const group = $('generate-plan-group');
+  const note = $('generate-plan-note');
+  if (!group || !note) return;
+  const show = isRevising() && Boolean(revisingDeckId());
+  group.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  if (!deckPlan) {
+    note.textContent = 'No plan saved for this deck yet. Saving one makes these choices '
+      + 'the starting point next time, and ranks "Fits this deck" in the deck builder by them.';
+    return;
+  }
+  const parts = [];
+  if (deckPlan.themeKey) {
+    parts.push(`built around ${themeLabel(deckPlan.themeKey)}`
+      + (deckPlan.secondaryThemeKey
+        ? ` with ${Math.round((deckPlan.secondaryShare ?? 1 / 3) * 100)}% ${themeLabel(deckPlan.secondaryThemeKey)}`
+        : ''));
+  }
+  if (deckPlan.keep?.length) parts.push(`keeping ${deckPlan.keep.length} card${deckPlan.keep.length === 1 ? '' : 's'}`);
+  note.textContent = `This deck's plan: ${parts.join(', ')}.`;
+}
+
+async function savePlan() {
+  const deckId = revisingDeckId();
+  if (!deckId) return;
+  const button = $('generate-save-plan');
+  if (button) button.disabled = true;
+  try {
+    const { plan } = await api.saveDeckPlan(deckId, {
+      themeKey: mainTheme() || null,
+      secondaryThemeKey: secondTheme() || null,
+      secondaryShare: secondTheme() ? secondShare() : null,
+      keep: keepCards.filter((c) => kept.has(c.cardId)).map((c) => c.name),
+    });
+    deckPlan = plan;
+    planAppliedFor = deckId;
+    renderPlanNote();
+    showToast(plan ? "Saved as this deck's plan" : 'Nothing chosen, so the plan was cleared', 'success');
+  } catch (error) {
+    showError(error.body?.error || error.message || 'Could not save the plan');
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function renderKeepCards() {
@@ -420,6 +496,8 @@ function wire() {
     toggleTheme(tile.dataset.themeKey || '');
     resetResult();
   });
+
+  $('generate-save-plan')?.addEventListener('click', savePlan);
 
   $('generate-share')?.addEventListener('input', () => {
     renderShareNote();
@@ -728,12 +806,24 @@ function renderThemes() {
   let main = offered(mainTheme()) ? mainTheme() : '';
   let second = offered(secondTheme()) ? secondTheme() : '';
 
+  // A saved plan is applied once, when its deck is picked: it is the owner's
+  // own earlier answer, so it beats any guess below.
+  const deckId = revisingDeckId();
+  if (deckPlan && deckId && planAppliedFor !== deckId && keepDeckId === deckId) {
+    planAppliedFor = deckId;
+    if (offered(deckPlan.themeKey)) {
+      main = deckPlan.themeKey;
+      second = offered(deckPlan.secondaryThemeKey) ? deckPlan.secondaryThemeKey : '';
+    }
+  }
+
   // Kept cards are a statement about what the deck is. When nothing has been
   // picked yet, the theme most of them belong to is picked for them — offered,
   // and one press away from being taken back.
   if (!main && !second && themes[0]?.keptMatches?.length) main = themes[0].key;
   if (!main) second = '';
   selectThemes(main, second);
+  renderPlanNote();
 }
 
 // --- Generating ------------------------------------------------------------
