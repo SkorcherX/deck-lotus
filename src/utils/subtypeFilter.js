@@ -10,6 +10,15 @@
  * Several terms must all match — "Elf" + "Warrior" is Elf Warriors, the same
  * narrowing the name chips do. Case-insensitive, as SQLite's LIKE is for ASCII.
  *
+ * Changelings count as every creature type, but MTGJSON lists only
+ * Shapeshifter on them, so a card with the Changeling keyword matches too —
+ * for creature types only. Whether a term is a creature type is asked of the
+ * data: a creature carries it and nothing else does, apart from Kindred
+ * cards. "A creature carries it" alone is not enough — there are Equipment
+ * creatures and Forest creatures — and without the check, searching
+ * Equipment would fill up with Shapeshifters. The subquery does not depend on the
+ * outer row, so SQLite runs it once per term.
+ *
  * @param subtypeList  subtype names
  * @param prefix       table alias for the column, e.g. 'c' for `c.subtypes`
  * @returns {{ clause: string|null, params: string[] }}
@@ -23,11 +32,24 @@ export function subtypeFilterSql(subtypeList, prefix = '') {
 
   if (list.length === 0) return { clause: null, params: [] };
 
-  const col = prefix ? `${prefix}.subtypes` : 'subtypes';
-  const wrapped = `(',' || REPLACE(COALESCE(${col}, ''), ', ', ',') || ',')`;
+  const col = (name) => (prefix ? `${prefix}.${name}` : name);
+  const wrap = (expr) => `(',' || REPLACE(COALESCE(${expr}, ''), ', ', ',') || ',')`;
+
+  const one = `(${wrap(col('subtypes'))} LIKE ?
+    OR (${wrap(col('keywords'))} LIKE '%,Changeling,%'
+        AND EXISTS (SELECT 1 FROM cards ct
+                     WHERE ct.type_line LIKE '%Creature%'
+                       AND ${wrap('ct.subtypes')} LIKE ?)
+        AND NOT EXISTS (SELECT 1 FROM cards cn
+                         WHERE cn.type_line NOT LIKE '%Creature%'
+                           AND cn.type_line NOT LIKE '%Kindred%'
+                           AND cn.type_line NOT LIKE '%Tribal%'
+                           -- Un-set jokes typed "Summon — Specter"
+                           AND cn.type_line NOT LIKE 'Summon%'
+                           AND ${wrap('cn.subtypes')} LIKE ?)))`;
 
   return {
-    clause: `(${list.map(() => `${wrapped} LIKE ?`).join(' AND ')})`,
-    params: list.map((term) => `%,${term},%`)
+    clause: `(${list.map(() => one).join(' AND ')})`,
+    params: list.flatMap((term) => Array(3).fill(`%,${term},%`))
   };
 }

@@ -1386,6 +1386,7 @@ const AVAILABILITY_CTE = `
       c.color_identity,
       c.type_line,
       c.subtypes,
+      c.keywords,
       c.oracle_text,
       c.legalities,
       p.set_code,

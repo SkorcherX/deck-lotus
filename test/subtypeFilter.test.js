@@ -13,13 +13,15 @@ import { DatabaseSync } from 'node:sqlite';
 import { subtypeFilterSql } from '../src/utils/subtypeFilter.js';
 
 const db = new DatabaseSync(':memory:');
-db.exec(`CREATE TABLE cards (name TEXT, subtypes TEXT);`);
-const insert = db.prepare('INSERT INTO cards VALUES (?, ?)');
-insert.run('Llanowar Elves', 'Elf,Druid');
-insert.run('Elvish Warrior', 'Elf, Warrior');
-insert.run('Ancient Silverback', 'Ape');
-insert.run('Changeling Outcast', 'Shapeshifter,Rogue');
-insert.run('Lightning Bolt', null);
+db.exec(`CREATE TABLE cards (name TEXT, type_line TEXT, subtypes TEXT, keywords TEXT);`);
+const insert = db.prepare('INSERT INTO cards VALUES (?, ?, ?, ?)');
+insert.run('Llanowar Elves', 'Creature — Elf Druid', 'Elf,Druid', null);
+insert.run('Elvish Warrior', 'Creature — Elf Warrior', 'Elf, Warrior', null);
+insert.run('Ancient Silverback', 'Creature — Ape', 'Ape', 'Regenerate');
+insert.run('Changeling Outcast', 'Creature — Shapeshifter Rogue', 'Shapeshifter, Rogue', 'Changeling');
+insert.run('Bonesplitter', 'Artifact — Equipment', 'Equipment', 'Equip');
+insert.run('Equipped Golem', 'Artifact Creature — Equipment Golem', 'Equipment, Golem', null);
+insert.run('Lightning Bolt', 'Instant', null, null);
 
 function names(list) {
   const { clause, params } = subtypeFilterSql(list, 'c');
@@ -27,16 +29,24 @@ function names(list) {
   return db.prepare(sql).all(...params).map((r) => r.name);
 }
 
-test('matches a whole type, either storage shape, any case', () => {
-  assert.deepEqual(names(['elf']), ['Elvish Warrior', 'Llanowar Elves']);
+test('matches a whole type, either storage shape, any case — changelings included', () => {
+  assert.deepEqual(names(['elf']), ['Changeling Outcast', 'Elvish Warrior', 'Llanowar Elves']);
 });
 
 test('does not match a type inside a longer one', () => {
-  assert.deepEqual(names(['Ape']), ['Ancient Silverback']);
+  assert.deepEqual(names(['Ape']), ['Ancient Silverback', 'Changeling Outcast']);
 });
 
 test('several types must all match', () => {
-  assert.deepEqual(names(['Elf', 'Warrior']), ['Elvish Warrior']);
+  assert.deepEqual(names(['Elf', 'Warrior']), ['Changeling Outcast', 'Elvish Warrior']);
+});
+
+test('changelings are not every non-creature type', () => {
+  assert.deepEqual(names(['Equipment']), ['Bonesplitter', 'Equipped Golem']);
+});
+
+test('a type no creature has is not a creature type', () => {
+  assert.deepEqual(names(['Dragon']), []);
 });
 
 test('no terms means no clause', () => {
