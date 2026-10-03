@@ -571,3 +571,72 @@ describe('splashing a colour into a commanderless revision', () => {
     assert.equal(proposeDeck(userId, { reviseDeckId: deckId, format: null, splash: 'G' }).colorIdentity, 'BG');
   });
 });
+
+/**
+ * "Fits this deck" in the builder's collection panel: the deck's own themes,
+ * read off its cards, rank what the user owns and has not yet put in it.
+ */
+describe('cards that fit a deck', () => {
+  let deckId;
+  let getBuilderInventory;
+  let deckFitThemes;
+
+  before(async () => {
+    ({ getBuilderInventory } = await import('../../src/services/inventoryService.js'));
+    ({ deckFitThemes } = await import('../../src/services/deckProposalService.js'));
+
+    db.run(`INSERT INTO decks (user_id, name, format) VALUES (?, 'Fit Deck', 'modern')`, [userId]);
+    deckId = db.get(`SELECT id FROM decks WHERE name = 'Fit Deck'`).id;
+    const put = (name) => db.run(
+      `INSERT INTO deck_cards (deck_id, printing_id, quantity, board_type, is_sideboard, is_foil)
+       VALUES (?,?,1,'mainboard',0,0)`,
+      [deckId, printings[`OWN:${name}`]]
+    );
+    for (let i = 0; i < 4; i += 1) { put(`Miller ${i}`); put(`Reanimator ${i}`); }
+    put('Killer 0');
+  });
+
+  test('the deck is read as the theme its cards share', () => {
+    const { themes, options } = deckFitThemes(userId, deckId);
+    assert.equal(themes[0].key, 'graveyard');
+    assert.ok(options.some((o) => o.key === 'graveyard'));
+  });
+
+  test('owned cards that fit come back ranked, with their reasons, and nothing else', () => {
+    const { themes } = deckFitThemes(userId, deckId, { secondaryThemeKey: '' });
+    const feed = getBuilderInventory(userId, deckId, { fitThemes: themes, limit: 200 });
+    const names = feed.items.map((i) => i.cardName);
+
+    assert.ok(names.includes('Reanimator 10'), 'an unused payoff should be offered');
+    assert.ok(!names.includes('Reanimator 0'), 'a card already in the deck is not a suggestion');
+    assert.ok(!names.some((n) => n.startsWith('Killer')), 'a card fitting no theme is not a suggestion');
+    assert.equal(new Set(names).size, names.length, 'one row per card, not per printing');
+
+    const reanimator = feed.items.find((i) => i.cardName === 'Reanimator 10');
+    assert.deepEqual(reanimator.fit.reasons, [{ label: 'graveyard value', role: 'payoff' }]);
+
+    const scores = feed.items.map((i) => i.fit.score);
+    assert.deepEqual(scores, [...scores].sort((a, b) => b - a), 'best fit first');
+  });
+
+  test("a card outside the deck's colours is not offered, however well it fits", () => {
+    addCard('Red Reanimator', 'Sorcery', {
+      identity: 'R', manaCost: '{1}{R}',
+      oracle: 'Return target creature card from your graveyard to the battlefield.',
+    });
+    const fit = deckFitThemes(userId, deckId, { secondaryThemeKey: '' });
+    assert.equal(fit.identity, 'B');
+    assert.equal(fit.format, 'modern');
+
+    const feed = getBuilderInventory(userId, deckId, {
+      fitThemes: fit.themes, colorIdentity: fit.identity, limit: 200,
+    });
+    assert.ok(!feed.items.some((i) => i.cardName === 'Red Reanimator'));
+  });
+
+  test("another user's deck is refused", () => {
+    db.run(`INSERT INTO users (username, email, password_hash) VALUES ('stranger','s@example.test','h')`);
+    const strangerId = db.get(`SELECT id FROM users WHERE username='stranger'`).id;
+    assert.throws(() => deckFitThemes(strangerId, deckId), /not one of yours/);
+  });
+});

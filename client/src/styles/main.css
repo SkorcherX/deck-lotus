@@ -7703,6 +7703,33 @@ body.maintenance-locked #app {
   color: var(--text-secondary);
 }
 
+/* "Fits this deck" in the builder's collection panel. */
+.inventory-panel-fit-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.inventory-panel-fit-bar select {
+  font-size: 0.8rem;
+  max-width: 14rem;
+}
+
+.ip-fit {
+  font-size: 0.7rem;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+
+.ip-fit strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .generator-theme.secondary {
   border-style: dashed;
 }

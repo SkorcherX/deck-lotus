@@ -195,6 +195,60 @@ export function revisableDecks(userId) {
 }
 
 /**
+ * The themes a deck is built around, for ranking the collection against it.
+ *
+ * Read off the deck's own mainboard, commander included — the commander is
+ * usually the clearest statement of what the deck wants. The strongest theme
+ * leads; a second is added on its own only when it is at least half as strong,
+ * so a deck with two real plans is ranked for both and a deck with one is not
+ * diluted by whatever came second. Either can be named outright instead, and a
+ * second of '' means "none".
+ *
+ * Tribes count from five creatures rather than the generator's eight: a
+ * finished 60-card deck with six Zombies is a Zombie deck, where a collection
+ * with six is not.
+ */
+export function deckFitThemes(userId, deckId, { themeKey = null, secondaryThemeKey = null } = {}) {
+  const deck = db.get('SELECT id, format FROM decks WHERE id = ? AND user_id = ?', [deckId, userId]);
+  if (!deck) throw new Error('That deck is not one of yours');
+
+  const cards = db.all(
+    `SELECT DISTINCT c.id AS card_id, c.name, c.type_line, c.oracle_text, c.subtypes, c.keywords,
+            c.color_identity, c.cmc, dc.is_commander
+       FROM deck_cards dc
+       JOIN printings p ON dc.printing_id = p.id
+       JOIN cards c ON p.card_id = c.id
+      WHERE dc.deck_id = ?
+        AND COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) = 'mainboard'`,
+    [deckId]
+  );
+  const spells = cards.filter((card) => !/\bland\b/i.test(String(card.type_line || '')));
+
+  const ranked = rankThemes(spells, { minTribeCreatures: 5 }).filter((t) => t.strength > 0);
+  const options = ranked.slice(0, 8).map((t) => ({ key: t.key, label: t.label, strength: t.strength }));
+
+  const mainKey = themeKey || ranked[0]?.key || null;
+  let secondKey = secondaryThemeKey;
+  if (secondKey == null) {
+    const lead = ranked.find((t) => t.key === mainKey);
+    const next = ranked.find((t) => t.key !== mainKey);
+    secondKey = lead && next && next.strength * 2 >= lead.strength ? next.key : '';
+  }
+
+  const main = mainKey ? resolveTheme(mainKey, spells) : null;
+  const second = main && secondKey && secondKey !== mainKey ? resolveTheme(secondKey, spells) : null;
+
+  // The colours a suggestion has to stay inside. A commander's identity is a
+  // rule; otherwise the colours the deck already plays — the same reading a
+  // revision uses, and for the same reason: a fit list for a Dimir deck that
+  // leads with a red card is not a list about this deck.
+  const leaders = cards.filter((card) => card.is_commander);
+  const identity = deckIdentity(leaders.length ? leaders : cards);
+
+  return { themes: [main, second].filter(Boolean), options, identity, format: deck.format || null };
+}
+
+/**
  * The theme a deck already has, read from the cards in it.
  *
  * Ranked over the deck's own cards rather than the whole pool, so it answers

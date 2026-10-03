@@ -17,6 +17,12 @@ import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/comma
 let ctx = null;              // { getDeck, refreshDeck }
 let filters = { name: '', subtype: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
 let page = 1;
+
+// "Fits this deck": rank by the deck's themes rather than by name. The themes
+// are read off the deck unless picked here; null for the second means "let the
+// server decide", '' means "none". Kept apart from `filters` so the guidance
+// actions that replace the filters do not silently switch it off.
+let fit = { on: false, main: '', second: null };
 let feed = { items: [], total: 0, totalPages: 1 };
 let undoStack = [];
 let busy = false;
@@ -123,6 +129,29 @@ export function setupInventoryPanel(context) {
     });
   }
 
+  const fitBox = el('inventory-panel-fit');
+  if (fitBox) {
+    fitBox.addEventListener('change', () => {
+      fit = { on: fitBox.checked, main: '', second: null };
+      page = 1;
+      loadFeed();
+    });
+  }
+
+  el('inventory-panel-fit-main')?.addEventListener('change', (event) => {
+    fit.main = event.target.value;
+    // The old second may now be the main; let the server pick again.
+    fit.second = null;
+    page = 1;
+    loadFeed();
+  });
+
+  el('inventory-panel-fit-second')?.addEventListener('change', (event) => {
+    fit.second = event.target.value;
+    page = 1;
+    loadFeed();
+  });
+
   const colorBar = el('inventory-panel-colors');
   if (colorBar) {
     colorBar.addEventListener('click', (event) => {
@@ -179,6 +208,10 @@ export function resetInventoryPanel() {
   undoStack = [];
   page = 1;
   filters = { name: '', subtype: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
+  // Themes belong to the deck they were read from.
+  fit = { on: false, main: '', second: null };
+  const fitBox = el('inventory-panel-fit');
+  if (fitBox) fitBox.checked = false;
 
   syncFilterControls();
 
@@ -305,6 +338,9 @@ async function loadFeed() {
       colors: filters.colors,
       maxCmc: filters.maxCmc,
       role: filters.role,
+      fit: fit.on,
+      fitTheme: fit.main,
+      fitSecondary: fit.second,
       onlyFree: filters.onlyFree,
       format: filters.formatLegal ? deck.format : null,
       colorIdentity: identity,
@@ -349,6 +385,8 @@ function renderFeed() {
     count.textContent = feed.total === 1 ? '1 card' : `${feed.total} cards`;
   }
 
+  renderFitBar();
+
   const deck = ctx?.getDeck?.();
   const showCommander = deckUsesCommanders(deck);
   const commanderIds = new Set(
@@ -356,9 +394,14 @@ function renderFeed() {
   );
 
   if (feed.items.length === 0) {
-    list.innerHTML = `<div class="inventory-panel-empty">
-      No cards in your collection match these filters.
-    </div>`;
+    list.innerHTML = fit.on && feed.fit && feed.fit.themes.length === 0
+      ? `<div class="inventory-panel-empty">
+          This deck is not leaning on any theme yet, so there is nothing to rank
+          against. Add a few cards that share a plan, or pick a theme above.
+        </div>`
+      : `<div class="inventory-panel-empty">
+          No cards in your collection match these filters.
+        </div>`;
   } else {
     list.innerHTML = feed.items.map((item) => {
       const name = escapeHtml(item.cardName);
@@ -388,6 +431,7 @@ function renderFeed() {
               <span class="ip-mana">${formatMana(item.manaCost)}</span>
             </div>
             <div class="ip-avail">${availabilityLine(item)}</div>
+            ${item.fit ? `<div class="ip-fit">${fitLine(item.fit)}</div>` : ''}
             <div class="ip-controls">
               <button class="ip-btn" data-action="minus" aria-label="Remove one ${name}"
                       ${item.inThisDeck > 0 ? '' : 'disabled'}>−</button>
@@ -431,6 +475,51 @@ function renderFeed() {
   }
 
   renderPager();
+}
+
+/** "graveyard value: payoff · Zombie tribal: enabler" */
+function fitLine(itemFit) {
+  const ROLE = { both: 'enabler and payoff', payoff: 'payoff', enabler: 'enabler' };
+  return itemFit.reasons
+    .map((r) => `<strong>${escapeHtml(r.label)}</strong>: ${ROLE[r.role] || r.role}`)
+    .join(' · ');
+}
+
+/**
+ * Which themes the list is ranked for, as two pickers. Filled from what the
+ * server actually used, so it shows the themes it read off the deck rather
+ * than a guess at them.
+ */
+function renderFitBar() {
+  const bar = el('inventory-panel-fit-bar');
+  if (!bar) return;
+  const info = fit.on ? feed.fit : null;
+  bar.classList.toggle('hidden', !info);
+  if (!info) return;
+
+  const [main, second] = info.themes;
+  // A theme the deck does not lean on can still have been picked by name, so
+  // the in-use ones are always offered even if they are not in the options.
+  const offered = [...info.options];
+  for (const t of info.themes) {
+    if (!offered.some((o) => o.key === t.key)) offered.push(t);
+  }
+  const option = (t, selected) =>
+    `<option value="${escapeHtml(t.key)}"${selected ? ' selected' : ''}>${escapeHtml(t.label)}</option>`;
+
+  const mainSelect = el('inventory-panel-fit-main');
+  if (mainSelect) {
+    mainSelect.innerHTML = offered.length
+      ? offered.map((t) => option(t, main && t.key === main.key)).join('')
+      : '<option value="">no theme found</option>';
+  }
+
+  const secondSelect = el('inventory-panel-fit-second');
+  if (secondSelect) {
+    secondSelect.innerHTML = '<option value="">nothing else</option>'
+      + offered.filter((t) => !main || t.key !== main.key)
+        .map((t) => option(t, second && t.key === second.key)).join('');
+  }
 }
 
 function renderPager() {

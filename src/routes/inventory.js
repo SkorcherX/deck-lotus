@@ -20,6 +20,7 @@ import { importCardCastleSingles } from '../services/cardCastleImport.js';
 import { AUDIT_SOURCES } from '../services/auditService.js';
 import { normalizeCondition } from '../shared/conditions.js';
 import { authenticate } from '../middleware/auth.js';
+import { deckFitThemes } from '../services/deckProposalService.js';
 
 // 'all', 'unrecorded', or a condition code; anything else reads as 'all'
 // rather than an error, the way an unknown sort does.
@@ -345,6 +346,16 @@ router.get('/builder', authenticate, (req, res, next) => {
   try {
     const { deckId, name, type, subtype, colors, colorIdentity, maxCmc, onlyFree, format, role, page, limit } = req.query;
 
+    // "Fits this deck": rank by the deck's themes instead of by name. The
+    // themes are read from the deck unless named, and travel back with the
+    // feed so the panel can say what it ranked for.
+    const fit = req.query.fit === 'true' && deckId
+      ? deckFitThemes(req.user.id, parseInt(deckId, 10), {
+        themeKey: req.query.fitTheme || null,
+        secondaryThemeKey: req.query.fitSecondary === undefined ? null : String(req.query.fitSecondary),
+      })
+      : null;
+
     const result = getBuilderInventory(
       req.user.id,
       deckId ? parseInt(deckId, 10) : null,
@@ -353,18 +364,32 @@ router.get('/builder', authenticate, (req, res, next) => {
         type,
         subtype,
         colors: colors ? String(colors).split(',').filter(Boolean) : [],
-        colorIdentity,
+        // Fit mode stays inside the deck's colours and format unless the
+        // panel's own filters already narrowed further.
+        colorIdentity: colorIdentity ?? (fit ? fit.identity : undefined),
         maxCmc,
         onlyFree: onlyFree === 'true' || onlyFree === '1',
-        format,
+        format: format || (fit ? fit.format : undefined),
         role,
+        fitThemes: fit ? fit.themes : null,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? Math.min(parseInt(limit, 10), 200) : 60
       }
     );
 
-    res.json(result);
+    res.json(fit
+      ? {
+        ...result,
+        fit: {
+          themes: fit.themes.map((t) => ({ key: t.key, label: t.label })),
+          options: fit.options,
+        },
+      }
+      : result);
   } catch (error) {
+    if (/not one of yours/i.test(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 });

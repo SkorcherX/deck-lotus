@@ -5,6 +5,7 @@ import {
   rankFuzzyCandidates
 } from '../utils/cardNameMatch.js';
 import { ROLE_FILTERS } from './cardRoleService.js';
+import { themeRole } from './cardSynergyService.js';
 import { colorFilterSql } from '../utils/colorFilter.js';
 import { subtypeFilterSql } from '../utils/subtypeFilter.js';
 import { isBasicLandSql } from './basicLands.js';
@@ -1536,6 +1537,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     onlyFree = false,
     format,
     role,
+    fitThemes = null,
     page = 1,
     limit = 60
   } = filters;
@@ -1647,6 +1649,13 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
 
   const offset = (page - 1) * limit;
 
+  if (fitThemes && fitThemes.length > 0) {
+    return fitFeed(db.all(
+      `${AVAILABILITY_CTE} SELECT * FROM availability ${whereSql}`,
+      [...baseParams, ...queryParams]
+    ), fitThemes, { page, limit });
+  }
+
   const rows = db.all(
     `${AVAILABILITY_CTE}
      SELECT * FROM availability
@@ -1657,23 +1666,93 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   );
 
   return {
-    items: rows.map((row) => ({
-      ...toAvailability(row),
-      manaCost: row.mana_cost,
-      cmc: row.cmc,
-      colors: row.colors,
-      colorIdentity: row.color_identity,
-      typeLine: row.type_line,
-      oracleText: row.oracle_text,
-      rarity: row.rarity,
-      imageUrl: row.image_url
-    })),
+    items: rows.map(builderItem),
     total,
     page,
     limit,
     totalPages: Math.max(1, Math.ceil(total / limit))
   };
 }
+
+/** The shape the builder panel renders one row as. */
+function builderItem(row) {
+  return {
+    ...toAvailability(row),
+    manaCost: row.mana_cost,
+    cmc: row.cmc,
+    colors: row.colors,
+    colorIdentity: row.color_identity,
+    typeLine: row.type_line,
+    oracleText: row.oracle_text,
+    rarity: row.rarity,
+    imageUrl: row.image_url
+  };
+}
+
+/**
+ * The panel's "fits this deck" order: owned cards scored against the deck's
+ * themes, best first.
+ *
+ * Scored the way the generator ranks a pool — the main theme counts double, so
+ * a card serving both themes beats one serving either — and with the reason
+ * spelled out per theme, because these are regular expressions over card text
+ * and the person adding the card should be able to see what was matched.
+ *
+ * One row per card, not per printing: six printings of Thought Scour are one
+ * suggestion. The printing kept is the one with the most copies free, so the
+ * plus button spends a copy that is actually spare. Cards already in this deck
+ * and cards fitting neither theme are left out — this is a list of what to
+ * add. Paginated here rather than in SQL because the order is computed here.
+ */
+function fitFeed(rows, themes, { page, limit }) {
+  const scored = new Map();
+
+  for (const row of rows) {
+    if (row.in_this_deck > 0 || row.is_basic_land) continue;
+
+    const card = { ...row, name: row.card_name };
+    const roles = themes.map((theme) => themeRole(card, theme));
+    const score = roles.reduce((sum, role, i) => sum + (role ? FIT_WEIGHT[role] * (i === 0 ? 2 : 1) : 0), 0);
+    if (score === 0) continue;
+
+    const item = builderItem(row);
+    const seen = scored.get(row.card_id);
+    if (seen && seen.item.free >= item.free) continue;
+
+    scored.set(row.card_id, {
+      score,
+      item: {
+        ...item,
+        fit: {
+          score,
+          reasons: themes
+            .map((theme, i) => (roles[i] ? { label: theme.label, role: roles[i] } : null))
+            .filter(Boolean)
+        }
+      }
+    });
+  }
+
+  const ordered = [...scored.values()].sort((a, b) =>
+    b.score - a.score
+    // A card with a spare copy before one that would have to come out of
+    // another deck.
+    || Number(b.item.free > 0) - Number(a.item.free > 0)
+    || (a.item.cmc ?? 0) - (b.item.cmc ?? 0)
+    || String(a.item.cardName).localeCompare(String(b.item.cardName)));
+
+  const total = ordered.length;
+  return {
+    items: ordered.slice((page - 1) * limit, page * limit).map((entry) => entry.item),
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit))
+  };
+}
+
+/** Same weights as synergyScore: a card that is both is worth most. */
+const FIT_WEIGHT = { both: 3, payoff: 2, enabler: 1 };
 
 /**
  * What a collection wipe would take, without taking it.

@@ -632,6 +632,10 @@
                                     <input type="checkbox" id="inventory-panel-identity" />
                                     Commander colors
                                 </label>
+                                <label class="inventory-panel-check" title="Rank your cards by how well they fit what this deck is doing">
+                                    <input type="checkbox" id="inventory-panel-fit" />
+                                    Fits this deck
+                                </label>
                                 <button
                                     type="button"
                                     id="inventory-panel-cmc-note"
@@ -644,6 +648,13 @@
                                     class="inventory-panel-cmc-note hidden"
                                     title="Remove this filter"
                                 ></button>
+                            </div>
+
+                            <div id="inventory-panel-fit-bar" class="inventory-panel-fit-bar hidden">
+                                <span>Ranked for</span>
+                                <select id="inventory-panel-fit-main" aria-label="Main theme"></select>
+                                <span>and</span>
+                                <select id="inventory-panel-fit-second" aria-label="Second theme"></select>
                             </div>
 
                             <div id="inventory-panel-list" class="inventory-panel-list"></div>
