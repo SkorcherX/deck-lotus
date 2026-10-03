@@ -68,7 +68,21 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-const includeCommitted = () => Boolean($('generate-include-committed')?.checked);
+/**
+ * May the proposal use cards other decks hold? Off unless chosen, and the
+ * choice is remembered per browser: somebody who has said "leave my decks
+ * alone" once should not have to say it on every visit.
+ */
+const POOL_KEY = 'deckGenerator.pool';
+const includeCommitted = () =>
+  document.querySelector('input[name="generate-pool"]:checked')?.value === 'all';
+
+function restorePoolChoice() {
+  let saved = null;
+  try { saved = localStorage.getItem(POOL_KEY); } catch { /* storage blocked */ }
+  const radio = document.querySelector(`input[name="generate-pool"][value="${saved === 'all' ? 'all' : 'free'}"]`);
+  if (radio) radio.checked = true;
+}
 
 /** Is the page proposing a revision of an existing deck? */
 const isRevising = () =>
@@ -522,10 +536,12 @@ function wire() {
   // Changing any input invalidates whatever is on screen: leaving a proposal
   // visible under a commander it was not built for is how somebody saves the
   // wrong deck.
-  $('generate-include-committed')?.addEventListener('change', async () => {
+  restorePoolChoice();
+  document.querySelectorAll('input[name="generate-pool"]').forEach((radio) => radio.addEventListener('change', async () => {
+    try { localStorage.setItem(POOL_KEY, radio.value); } catch { /* storage blocked */ }
     resetResult();
     await reload();
-  });
+  }));
 
   $('generate-format')?.addEventListener('change', async () => {
     resetResult();

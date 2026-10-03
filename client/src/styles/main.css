@@ -7831,6 +7831,11 @@ body.maintenance-locked #app {
   margin-bottom: 1rem;
 }
 
+/* "Cards to build from", under the start-from choice. */
+.generator-pool-choice { margin-top: 1rem; display: grid; gap: 0.5rem; }
+.generator-pool-head { font-weight: 600; color: var(--text); }
+.generator-pool-choice .generator-note { margin: 0; }
+
 .generator-mode-option {
   display: flex;
   align-items: flex-start;

@@ -366,6 +366,7 @@ function availabilityLine(item) {
   const parts = [`${item.owned} owned`];
   if (item.committed > 0) parts.push(`${item.committed} in other decks`);
   if (item.inThisDeck > 0) parts.push(`${item.inThisDeck} here`);
+  if (item.lent > 0) parts.push(`${item.lent} lent out`);
 
   const over = item.free < 0;
   parts.push(

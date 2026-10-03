@@ -713,3 +713,65 @@ describe('cards that fit a deck', () => {
     assert.throws(() => deckFitThemes(strangerId, deckId), /not one of yours/);
   });
 });
+
+/**
+ * A copy on loan is owned but not in the box. The generator must not build
+ * a deck around it, and the builder's panel must not call it free.
+ */
+describe('cards lent out', () => {
+  let getGeneratorPool;
+  let getBuilderInventory;
+  let borrowerId;
+  const name = 'Killer 7';
+
+  before(async () => {
+    ({ getGeneratorPool, getBuilderInventory } = await import('../../src/services/inventoryService.js'));
+    db.run(`INSERT INTO users (username, email, password_hash) VALUES ('borrower','b@example.test','h')`);
+    borrowerId = db.get(`SELECT id FROM users WHERE username='borrower'`).id;
+  });
+
+  const lend = (quantity, status = 'active') => db.run(
+    `INSERT INTO card_loans (lender_user_id, borrower_user_id, printing_uuid, is_foil, quantity, card_name, status)
+     VALUES (?,?,?,0,?,?,?)`,
+    [userId, borrowerId, `uuid-OWN-${name}`.replace(/\s+/g, '-'), quantity, name, status]
+  );
+  const poolCopies = (opts) => getGeneratorPool(userId, opts).find((c) => c.name === name)?.available ?? 0;
+  const panelRow = () => getBuilderInventory(userId, null, { name, limit: 50 }).items.find((i) => i.cardName === name);
+
+  test('the generator and the panel count a live loan out', () => {
+    const before = poolCopies({ includeCommitted: true });
+    lend(1);
+    try {
+      assert.equal(poolCopies({ includeCommitted: true }), before - 1, 'even when other decks may be used');
+      const row = panelRow();
+      assert.equal(row.lent, 1);
+      assert.equal(row.free, row.owned - row.committed - row.inThisDeck - 1);
+    } finally {
+      db.run(`DELETE FROM card_loans WHERE card_name = ?`, [name]);
+    }
+  });
+
+  test('every copy on loan means the card is not proposed or offered as free at all', () => {
+    const owned = panelRow().owned;
+    lend(owned);
+    try {
+      assert.equal(poolCopies({ includeCommitted: true }), 0);
+      const onlyFree = getBuilderInventory(userId, null, { name, onlyFree: true, limit: 50 }).items;
+      assert.ok(!onlyFree.some((i) => i.cardName === name), '"Still available" leaves it out');
+    } finally {
+      db.run(`DELETE FROM card_loans WHERE card_name = ?`, [name]);
+    }
+  });
+
+  test('a returned or only-requested loan takes nothing', () => {
+    const before = poolCopies({ includeCommitted: true });
+    lend(2, 'returned');
+    lend(2, 'requested');
+    try {
+      assert.equal(poolCopies({ includeCommitted: true }), before);
+      assert.equal(panelRow().lent, 0);
+    } finally {
+      db.run(`DELETE FROM card_loans WHERE card_name = ?`, [name]);
+    }
+  });
+});

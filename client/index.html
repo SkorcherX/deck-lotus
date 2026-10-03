@@ -1460,6 +1460,29 @@
                             </label>
                         </div>
 
+                        <!-- Which copies may be proposed. Asked here, beside the mode,
+                             because it decides what every later step has to work with:
+                             it used to be a checkbox under Format, on by default, and a
+                             proposal that quietly emptied other decks read as the
+                             generator cannibalising them. -->
+                        <div class="generator-pool-choice" role="radiogroup" aria-label="Cards to build from">
+                            <div class="generator-pool-head">Cards to build from</div>
+                            <label class="generator-mode-option">
+                                <input type="radio" name="generate-pool" value="free" checked />
+                                <span><strong>Only cards no other deck is using</strong> &mdash; your
+                                      other decks keep everything they hold.</span>
+                            </label>
+                            <label class="generator-mode-option">
+                                <input type="radio" name="generate-pool" value="all" />
+                                <span><strong>Also cards in my other decks</strong> &mdash; for when
+                                      you are happy to move cards between decks. Nothing is taken
+                                      until you save, and a saved proposal is an idea, so it never
+                                      reports your built decks as short.</span>
+                            </label>
+                            <p class="generator-note">Cards you have lent out are never proposed —
+                               they are not in your collection to build with until they come back.</p>
+                        </div>
+
                         <div class="form-group hidden" id="generate-revise-group">
                             <label for="generate-revise-deck">Deck to revise</label>
                             <select id="generate-revise-deck"></select>
@@ -1527,17 +1550,6 @@
                                 </select>
                             </div>
 
-                            <label class="generate-toggle">
-                                <input type="checkbox" id="generate-include-committed" checked />
-                                <span>
-                                    <strong>Use cards that are in my other decks</strong>
-                                    &mdash; on by default, because most of a collection is usually
-                                    already built into something. Nothing is taken: a generated deck
-                                    is saved as an idea, so it never reports your built decks as
-                                    short. Turn it off to propose only from cards nothing else has
-                                    claimed.
-                                </span>
-                            </label>
                         </div>
                     </section>
 

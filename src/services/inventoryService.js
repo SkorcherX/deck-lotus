@@ -1248,7 +1248,10 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
   // `available` is computed in an outer select because SQLite cannot see one
   // column alias from another expression in the same SELECT list, and both
   // `owned` and `committed` are needed to work it out.
-  const available = includeCommitted ? 'owned' : 'owned - committed';
+  // Lent copies come off in both modes. "Use cards in my other decks" is
+  // about borrowing from yourself; a copy on loan is in somebody else's
+  // hands, and a deck proposed around it cannot be sleeved.
+  const available = includeCommitted ? 'owned - lent' : 'owned - committed - lent';
 
   // Two clauses rather than one binding used twice: SQLite takes bindings
   // positionally here, and a clause that vanishes has to take its binding
@@ -1298,6 +1301,14 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
          WHERE dc.deck_id = ?
            AND dp.card_id = c.id
       ), 0)`} AS in_deck,
+      COALESCE((
+        SELECT SUM(cl.quantity)
+          FROM card_loans cl
+          JOIN printings lp ON lp.uuid = cl.printing_uuid
+         WHERE cl.lender_user_id = ?
+           AND lp.card_id = c.id
+           AND cl.status IN ${LIVE_LOANS}
+      ), 0) AS lent,
       COALESCE(SUM(op.quantity), 0) AS owned
     FROM cards c
     JOIN printings p ON p.card_id = c.id
@@ -1316,6 +1327,7 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
     userId, userId, userId,
     userId, ...(exceptDeckId == null ? [] : [exceptDeckId]),
     ...(exceptDeckId == null ? [] : [exceptDeckId]),
+    userId, // lent out
     userId,
   ]);
 }
@@ -1352,8 +1364,8 @@ const IS_BASIC_LAND = isBasicLandSql('c');
  *
  * Ends with an `availability` table holding one row per printing-and-finish,
  * carrying enough card detail to render a list without a second query.
- * Expects six leading parameters, in order:
- *   userId, userId, currentDeckId, currentDeckId, userId, userId
+ * Expects seven leading parameters, in order:
+ *   userId, userId, currentDeckId, currentDeckId, userId, userId (lent), userId
  */
 const AVAILABILITY_CTE = `
   WITH keys AS (
@@ -1373,6 +1385,17 @@ const AVAILABILITY_CTE = `
       JOIN decks d ON d.id = dc.deck_id
      WHERE d.user_id = ?
      GROUP BY dc.printing_id, dc.is_foil
+  ),
+  -- Copies lent out on a live loan. Still owned, but not in the box, so they
+  -- come off \`free\` the same way copies in other decks do — otherwise the
+  -- builder offers a card that is sitting in somebody else's deck.
+  lent AS (
+    SELECT lp.id AS printing_id, cl.is_foil, SUM(cl.quantity) AS lent
+      FROM card_loans cl
+      JOIN printings lp ON lp.uuid = cl.printing_uuid
+     WHERE cl.lender_user_id = ?
+       AND cl.status IN ${LIVE_LOANS}
+     GROUP BY lp.id, cl.is_foil
   ),
   availability AS (
     SELECT
@@ -1397,6 +1420,7 @@ const AVAILABILITY_CTE = `
       COALESCE(o.quantity, 0)     AS owned,
       COALESCE(u.committed, 0)    AS committed,
       COALESCE(u.in_this_deck, 0) AS in_this_deck,
+      COALESCE(l.lent, 0)         AS lent,
       CASE WHEN ${IS_BASIC_LAND} THEN 1 ELSE 0 END AS is_basic_land
     FROM keys k
     JOIN printings p ON p.id = k.printing_id
@@ -1405,13 +1429,15 @@ const AVAILABILITY_CTE = `
       ON o.user_id = ? AND o.printing_id = k.printing_id AND o.is_foil = k.is_foil
     LEFT JOIN usage u
       ON u.printing_id = k.printing_id AND u.is_foil = k.is_foil
+    LEFT JOIN lent l
+      ON l.printing_id = k.printing_id AND l.is_foil = k.is_foil
   )
 `;
 
 /** -1 never matches a real deck id, so a null deckId needs no NULL handling. */
 function availabilityParams(userId, deckId) {
   const currentDeck = deckId ?? -1;
-  return [userId, userId, currentDeck, currentDeck, userId, userId];
+  return [userId, userId, currentDeck, currentDeck, userId, userId, userId];
 }
 
 /** Shape one availability row for callers. */
@@ -1428,8 +1454,9 @@ function toAvailability(row) {
     owned: row.owned,
     committed: row.committed,
     inThisDeck: row.in_this_deck,
+    lent: row.lent || 0,
     // Negative means over-allocated across decks — reported, never blocked.
-    free: unlimited ? null : row.owned - row.committed - row.in_this_deck,
+    free: unlimited ? null : row.owned - row.committed - row.in_this_deck - (row.lent || 0),
     unlimited
   };
 }
@@ -1600,7 +1627,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   }
 
   if (onlyFree) {
-    where.push('(is_basic_land = 1 OR owned - committed - in_this_deck > 0)');
+    where.push('(is_basic_land = 1 OR owned - committed - in_this_deck - lent > 0)');
   }
 
   if (format && format.trim()) {
