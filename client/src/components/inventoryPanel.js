@@ -1,5 +1,6 @@
 import api from '../services/api.js';
 import { debounce, formatMana, showToast } from '../utils/ui.js';
+import { loadSubtypeOptions } from './inventory.js';
 import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/commander.js';
 
 /**
@@ -14,7 +15,7 @@ import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/comma
  */
 
 let ctx = null;              // { getDeck, refreshDeck }
-let filters = { name: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
+let filters = { name: '', subtype: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
 let page = 1;
 let feed = { items: [], total: 0, totalPages: 1 };
 let undoStack = [];
@@ -66,6 +67,7 @@ export function setupInventoryPanel(context) {
       setTogglePresentation(opening);
       if (opening) {
         page = 1;
+        loadSubtypeOptions();
         loadFeed();
       }
     });
@@ -82,6 +84,17 @@ export function setupInventoryPanel(context) {
   if (search) {
     search.addEventListener('input', debounce(() => {
       filters.name = search.value;
+      page = 1;
+      loadFeed();
+    }, 250));
+  }
+
+  // Creature type, matched as a whole type ("Elf", not "El"), so a half-typed
+  // word shows nothing rather than a misleading near-match.
+  const subtype = el('inventory-panel-subtype');
+  if (subtype) {
+    subtype.addEventListener('input', debounce(() => {
+      filters.subtype = subtype.value;
       page = 1;
       loadFeed();
     }, 250));
@@ -165,7 +178,7 @@ export function setupInventoryPanel(context) {
 export function resetInventoryPanel() {
   undoStack = [];
   page = 1;
-  filters = { name: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
+  filters = { name: '', subtype: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
 
   syncFilterControls();
 
@@ -186,6 +199,7 @@ export function resetInventoryPanel() {
 export function openInventoryPanelWith({ type = 'all', colors = [], maxCmc = null, role = null } = {}) {
   filters = {
     name: '',
+    subtype: '',
     type: type || 'all',
     colors: [...colors],
     maxCmc,
@@ -210,6 +224,9 @@ export function openInventoryPanelWith({ type = 'all', colors = [], maxCmc = nul
 function syncFilterControls() {
   const search = el('inventory-panel-search');
   if (search) search.value = filters.name;
+
+  const subtype = el('inventory-panel-subtype');
+  if (subtype) subtype.value = filters.subtype;
 
   const typeFilter = el('inventory-panel-type');
   if (typeFilter) typeFilter.value = filters.type;
@@ -283,6 +300,7 @@ async function loadFeed() {
     feed = await api.getBuilderInventory({
       deckId: deck.id,
       name: filters.name,
+      subtype: filters.subtype,
       type: filters.type,
       colors: filters.colors,
       maxCmc: filters.maxCmc,

@@ -24,6 +24,11 @@ let filters = {
   // between looking up another card and refining the search you are in.
   liveName: '',
   sets: [],
+  // Creature types (any subtype, really). Each must match, so "Elf" +
+  // "Warrior" is Elf Warriors. `liveSubtype` is the box's contents, but only
+  // once they spell a whole known type — see setLiveTerm.
+  subtypes: [],
+  liveSubtype: '',
   colors: [],
   type: 'all',
   sort: 'name',
@@ -42,6 +47,8 @@ let quickSearchTimeout = null;
 // code -> set name, for labelling set chips. Empty until the sets the user
 // owns have loaded; an unrecognised code still filters, it just shows bare.
 let ownedSetNames = new Map();
+// lower-case subtype -> canonical spelling, for the creature-type mode.
+let knownSubtypes = new Map();
 let selectedCards = new Set(); // Track selected card IDs for multi-select
 let selectMode = false; // Whether multi-select mode is active
 
@@ -56,7 +63,7 @@ export function setupInventory() {
   // Load inventory data when page is shown
   window.addEventListener('page:inventory', async () => {
     await setupAdminUserFilter();
-    await Promise.all([loadOwnedSetOptions(), loadInventoryData()]);
+    await Promise.all([loadOwnedSetOptions(), loadSubtypeOptions(), loadInventoryData()]);
   });
 
   // Setup filter listeners
@@ -179,17 +186,18 @@ function setupSearchChips() {
   if (!input || !mode || !chips) return;
 
   const applyMode = () => {
-    const isSet = mode.value === 'set';
     // Names filter as you type, so the old "press Enter" hint would be
     // describing the wrong thing. Set codes still need it: a partial code is
     // not a filter worth running, so set mode really does wait for Enter.
-    input.placeholder = isSet
-      ? 'Filter by set code, press Enter...'
-      : 'Filter by name...';
-    // The set list is only a useful suggestion in set mode; leaving it
-    // attached in name mode offers set codes while typing a card name.
-    if (isSet) {
-      input.setAttribute('list', 'inventory-set-codes');
+    input.placeholder = {
+      set: 'Filter by set code, press Enter...',
+      subtype: 'Creature type, e.g. Elf, Dragon...',
+    }[mode.value] || 'Filter by name...';
+    // Each suggestion list is only useful in its own mode; leaving the set
+    // list attached in name mode offers set codes while typing a card name.
+    const list = { set: 'inventory-set-codes', subtype: 'inventory-subtypes' }[mode.value];
+    if (list) {
+      input.setAttribute('list', list);
     } else {
       input.removeAttribute('list');
     }
@@ -254,10 +262,16 @@ function setupSearchChips() {
  * of a name is a useful filter.
  */
 function setLiveTerm(rawValue, mode) {
-  const value = mode === 'set' ? '' : String(rawValue).trim();
-  if (value === filters.liveName) return;
+  const value = mode === 'name' ? String(rawValue).trim() : '';
+  // A creature type only filters once it is a whole one: the match is on the
+  // entire type, so "Gob" on the way to "Goblin" would empty the list.
+  const subtype = mode === 'subtype'
+    ? knownSubtypes.get(String(rawValue).trim().toLowerCase()) || ''
+    : '';
+  if (value === filters.liveName && subtype === filters.liveSubtype) return;
 
   filters.liveName = value;
+  filters.liveSubtype = subtype;
   currentPage = 1;
   loadInventoryData();
 }
@@ -265,12 +279,18 @@ function setLiveTerm(rawValue, mode) {
 /** Drop the live term without triggering a fetch — for callers about to do one. */
 function clearLiveTerm() {
   filters.liveName = '';
+  filters.liveSubtype = '';
+}
+
+function chipList(kind) {
+  return { set: filters.sets, subtype: filters.subtypes }[kind] || filters.names;
 }
 
 // Chips in the order they were committed, so backspace removes the newest.
 function activeChips() {
   return [
     ...filters.sets.map((value) => ({ kind: 'set', value })),
+    ...filters.subtypes.map((value) => ({ kind: 'subtype', value })),
     ...filters.names.map((value) => ({ kind: 'name', value })),
   ];
 }
@@ -278,12 +298,15 @@ function activeChips() {
 // Returns true when the term was accepted, so the caller knows to clear the
 // box. A blank or already-present term is a no-op rather than a duplicate.
 function addFilterChip(kind, rawValue) {
+  const trimmed = String(rawValue).trim();
   const value = kind === 'set'
-    ? String(rawValue).trim().toUpperCase()
-    : String(rawValue).trim();
+    ? trimmed.toUpperCase()
+    : kind === 'subtype'
+      ? knownSubtypes.get(trimmed.toLowerCase()) || trimmed
+      : trimmed;
   if (!value) return false;
 
-  const list = kind === 'set' ? filters.sets : filters.names;
+  const list = chipList(kind);
   const exists = list.some((entry) => entry.toLowerCase() === value.toLowerCase());
   if (exists) return true;
 
@@ -295,7 +318,7 @@ function addFilterChip(kind, rawValue) {
 }
 
 function removeFilterChip(kind, value) {
-  const list = kind === 'set' ? filters.sets : filters.names;
+  const list = chipList(kind);
   const index = list.findIndex((entry) => entry === value);
   if (index === -1) return;
 
@@ -316,7 +339,9 @@ function renderFilterChips() {
     const setName = kind === 'set' ? ownedSetNames.get(value) : null;
     const label = kind === 'set'
       ? `Set: ${escapeHtml(value)}${setName ? ` <span class="filter-chip-note">${escapeHtml(setName)}</span>` : ''}`
-      : `Name: ${escapeHtml(value)}`;
+      : kind === 'subtype'
+        ? `Type: ${escapeHtml(value)}`
+        : `Name: ${escapeHtml(value)}`;
 
     return `
       <span class="filter-chip filter-chip-${kind}">
@@ -356,6 +381,23 @@ async function loadOwnedSetOptions() {
     renderFilterChips();
   } catch (error) {
     console.error('Failed to load owned sets for filter:', error);
+  }
+}
+
+// Suggestions for the creature-type boxes — this page's and the deck builder's
+// panel, which share the datalist. Loaded once — the list is every
+// subtype in the card database, which only changes with the weekly sync.
+// Without it the mode still works on Enter; it just cannot filter live.
+export async function loadSubtypeOptions() {
+  const datalist = document.getElementById('inventory-subtypes');
+  if (!datalist || knownSubtypes.size > 0) return;
+
+  try {
+    const { subtypes = [] } = await api.getSubtypes();
+    knownSubtypes = new Map(subtypes.map((s) => [s.toLowerCase(), s]));
+    datalist.innerHTML = subtypes.map((s) => `<option value="${escapeHtml(s)}"></option>`).join('');
+  } catch (error) {
+    console.error('Failed to load subtypes for filter:', error);
   }
 }
 
@@ -1639,6 +1681,8 @@ function hasActiveFilters() {
     filters.names.length > 0 ||
     !!filters.liveName ||
     filters.sets.length > 0 ||
+    filters.subtypes.length > 0 ||
+    !!filters.liveSubtype ||
     filters.colors.length > 0 ||
     (filters.type && filters.type !== 'all') ||
     filters.availability !== 'all' ||

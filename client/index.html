@@ -594,6 +594,14 @@
                                     placeholder="Filter your cards..."
                                     autocomplete="off"
                                 />
+                                <input
+                                    type="search"
+                                    id="inventory-panel-subtype"
+                                    placeholder="Creature type..."
+                                    autocomplete="off"
+                                    list="inventory-subtypes"
+                                    title="Whole type, e.g. Elf, Zombie, Dragon"
+                                />
                                 <select id="inventory-panel-type">
                                     <option value="all">All types</option>
                                     <option value="Creature">Creature</option>
@@ -1165,6 +1173,7 @@
                                 <select id="inventory-search-mode" class="filter-select search-combo-mode">
                                     <option value="name">Card Name</option>
                                     <option value="set">Set Code</option>
+                                    <option value="subtype">Creature Type</option>
                                 </select>
                                 <input
                                     type="text"
@@ -1175,6 +1184,7 @@
                                     list="inventory-set-codes"
                                 />
                                 <datalist id="inventory-set-codes"></datalist>
+                                <datalist id="inventory-subtypes"></datalist>
                             </div>
                         </div>
                         <div class="filter-group">

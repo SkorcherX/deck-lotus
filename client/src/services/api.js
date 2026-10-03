@@ -578,6 +578,9 @@ class ApiClient {
     if (filters.colors && filters.colors.length > 0) params.append('colors', filters.colors.join(','));
     if (filters.type && filters.type !== 'all') params.append('type', filters.type);
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));
+    // Pinned creature-type chips plus the one being typed, all ANDed.
+    const subtypes = [...(filters.subtypes || []), filters.liveSubtype].filter(Boolean);
+    if (subtypes.length > 0) params.append('subtypes', subtypes.join(','));
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
@@ -605,6 +608,9 @@ class ApiClient {
     if (filters.colors && filters.colors.length > 0) params.append('colors', filters.colors.join(','));
     if (filters.type && filters.type !== 'all') params.append('type', filters.type);
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));
+    // Pinned creature-type chips plus the one being typed, all ANDed.
+    const subtypes = [...(filters.subtypes || []), filters.liveSubtype].filter(Boolean);
+    if (subtypes.length > 0) params.append('subtypes', subtypes.join(','));
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
@@ -730,11 +736,12 @@ class ApiClient {
     return this.request(`/decks/${deckId}/rules${query}`);
   }
 
-  async getBuilderInventory({ deckId, name, type, colors, maxCmc, onlyFree, format, colorIdentity, role, page = 1, limit = 60 } = {}) {
+  async getBuilderInventory({ deckId, name, type, subtype, colors, maxCmc, onlyFree, format, colorIdentity, role, page = 1, limit = 60 } = {}) {
     const params = new URLSearchParams();
     if (deckId) params.set('deckId', deckId);
     if (name) params.set('name', name);
     if (type && type !== 'all') params.set('type', type);
+    if (subtype && subtype.trim()) params.set('subtype', subtype.trim());
     if (colors && colors.length) params.set('colors', colors.join(','));
     if (maxCmc !== null && maxCmc !== undefined) params.set('maxCmc', maxCmc);
     if (onlyFree) params.set('onlyFree', 'true');
