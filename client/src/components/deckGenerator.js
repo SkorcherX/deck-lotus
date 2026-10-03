@@ -39,6 +39,12 @@ let themes = [];
 let revisable = [];
 let wired = false;
 
+// The revised deck's own cards, and which of them are kept. Kept is reset
+// when the deck changes: a tick against one deck means nothing on another.
+let keepCards = [];
+let keepDeckId = null;
+const kept = new Set();
+
 const $ = (id) => document.getElementById(id);
 
 function escapeHtml(value) {
@@ -126,6 +132,64 @@ function applyFormat() {
   $('generate-revise-group')?.classList.toggle('hidden', !revising);
   renderRevisionNote();
   renderSplash();
+  loadKeepCards();
+}
+
+/**
+ * The deck's mainboard as a checklist. The commander and basics are left off:
+ * the commander is never proposed away, and basics are rebuilt every time.
+ */
+async function loadKeepCards() {
+  const group = $('generate-keep-group');
+  if (!group) return;
+  const deckId = revisingDeckId();
+  group.classList.toggle('hidden', !deckId);
+  if (!deckId || deckId === keepDeckId) return;
+
+  keepDeckId = deckId;
+  kept.clear();
+  keepCards = [];
+  renderKeepCards();
+
+  try {
+    const { deck } = await api.getDeck(deckId);
+    if (keepDeckId !== deckId) return;
+    const byCard = new Map();
+    for (const row of deck.cards || []) {
+      if (row.board_type !== 'mainboard' || row.is_commander) continue;
+      if (/\bBasic\b/.test(row.type_line || '') && /\bLand\b/.test(row.type_line || '')) continue;
+      const seen = byCard.get(row.card_id);
+      if (seen) seen.quantity += row.quantity;
+      else byCard.set(row.card_id, { cardId: row.card_id, name: row.name, quantity: row.quantity, typeLine: row.type_line || '' });
+    }
+    keepCards = [...byCard.values()].sort((a, b) => a.name.localeCompare(b.name));
+  } catch (error) {
+    console.error('Failed to load the deck to keep cards from:', error);
+  }
+  renderKeepCards();
+}
+
+function renderKeepCards() {
+  const list = $('generate-keep-list');
+  if (!list) return;
+  const filter = ($('generate-keep-filter')?.value || '').trim().toLowerCase();
+
+  // Kept cards first, so what has been ticked stays in view while filtering.
+  const rows = keepCards
+    .filter((c) => kept.has(c.cardId) || !filter || c.name.toLowerCase().includes(filter)
+      || c.typeLine.toLowerCase().includes(filter))
+    .sort((a, b) => Number(kept.has(b.cardId)) - Number(kept.has(a.cardId)));
+
+  list.innerHTML = rows.length === 0
+    ? '<div class="generator-empty">No cards to show.</div>'
+    : rows.map((c) => `
+      <label class="generator-keep-row">
+        <input type="checkbox" class="generate-keep" value="${c.cardId}" ${kept.has(c.cardId) ? 'checked' : ''} />
+        <span>${c.quantity}&times; ${escapeHtml(c.name)}</span>
+      </label>`).join('');
+
+  const head = $('generate-keep-group')?.querySelector('label');
+  if (head) head.textContent = kept.size ? `Cards to keep (${kept.size})` : 'Cards to keep';
 }
 
 /** What the chosen deck is, said back to the person who chose it. */
@@ -254,6 +318,7 @@ async function loadRevisableDecks() {
       </option>`).join('');
     if (revisable.some((d) => String(d.id) === String(chosen))) select.value = chosen;
     renderSplash();
+    loadKeepCards();
   } catch (error) {
     console.error('Failed to load decks to revise:', error);
     select.innerHTML = '<option value="">Could not load your decks</option>';
@@ -283,10 +348,20 @@ function wire() {
     });
   });
 
+  $('generate-keep-filter')?.addEventListener('input', renderKeepCards);
+  $('generate-keep-list')?.addEventListener('change', (event) => {
+    const box = event.target.closest('.generate-keep');
+    if (!box) return;
+    if (box.checked) kept.add(Number(box.value)); else kept.delete(Number(box.value));
+    resetResult();
+    renderKeepCards();
+  });
+
   $('generate-revise-deck')?.addEventListener('change', async () => {
     resetResult();
     renderRevisionNote();
     renderSplash();
+    loadKeepCards();
     await loadThemes();
   });
 
@@ -621,6 +696,7 @@ async function run() {
       identity: revising ? null : (chosenColors() || null),
       reviseDeckId: revisingDeckId(),
       splash: revising ? (splashColors() || null) : null,
+      keepCardIds: revising ? [...kept] : [],
     });
 
     proposal = data.proposal;
@@ -686,7 +762,8 @@ function renderRevision(revision) {
         What this would change about ${escapeHtml(revision.deckName)}
       </div>
       <div class="generate-note">
-        ${revision.keptCount} cards stay as they are. Saving keeps
+        ${revision.keptCount} cards stay as they are${revision.kept?.length
+          ? `, including the ${revision.kept.length} you chose to keep` : ''}. Saving keeps
         ${escapeHtml(revision.deckName)} exactly as it is and creates a separate deck
         from this proposal, so nothing is lost if you disagree with it.
       </div>

@@ -271,6 +271,7 @@ export function buildDeck(pool, {
   themeKey = null,
   landCount = null,
   deckSize = null,
+  keep = [],
 } = {}) {
   const targets = getRoleTargets(format);
   const profile = getFormatProfile(format);
@@ -361,10 +362,34 @@ export function buildDeck(pool, {
 
   // Role quotas first. These are what stop a themed deck from being a theme
   // and nothing else — a graveyard deck still has to answer a creature.
+  //
+  // Kept cards go in before any of it. They are the person's own judgement
+  // about what the deck is — usually the payoffs it was built around — and
+  // the heuristics below are not entitled to outrank that. Each one is still
+  // credited to every role it fills, so keeping three removal spells means
+  // the quota looks for fewer, not three more on top.
   const roleCounts = {};
+  for (const [code] of ROLE_PREDICATES) roleCounts[code] = 0;
+
+  const keptLands = [];
+  const keptMissing = [];
+  for (const wish of keep) {
+    const card = legal.find((c) => (wish.cardId != null && c.card_id === wish.cardId) || c.name === wish.name);
+    if (!card) { keptMissing.push(wish.name || String(wish.cardId)); continue; }
+    if (isLand(card)) { keptLands.push({ card, quantity: wish.quantity || 1 }); continue; }
+    const took = take(card, 'kept', wish.quantity || 1);
+    for (const [code, , matches] of ROLE_PREDICATES) if (matches(card)) roleCounts[code] += took;
+  }
+
+  if (keptMissing.length > 0) {
+    notes.push(
+      `Could not keep ${keptMissing.join(', ')}: not available in your collection, `
+      + 'or not legal in this format and these colours.'
+    );
+  }
+
   for (const [code, label, matches] of ROLE_PREDICATES) {
     const want = targets.roles[code] || 0;
-    roleCounts[code] = 0;
     if (want <= 0) continue;
 
     for (const card of rankCandidates(spellPool.filter(matches), theme)) {
@@ -464,6 +489,7 @@ export function buildDeck(pool, {
     colorIdentity,
     maxCopies,
     format,
+    keep: keptLands,
   });
 
   // --- Report --------------------------------------------------------------
@@ -570,6 +596,7 @@ function curveOf(cards) {
 export function buildManaBase({
   spells, landPool, landCount, deckSize, colorIdentity, maxCopies = 1,
   format = 'commander',
+  keep = [],
 }) {
   const demands = colorDemands(spells, deckSize, format);
   const wantedColors = Object.keys(demands);
@@ -596,6 +623,17 @@ export function buildManaBase({
       if (sleeved !== 0) return sleeved;
       return String(a.name).localeCompare(String(b.name));
     });
+
+  // Kept lands first, whatever colours they make: somebody keeping a land
+  // that taps for nothing this deck casts has a reason the colour count
+  // cannot see (a utility land, a graveyard land).
+  for (const { card, quantity } of keep) {
+    const limit = Math.min(maxCopies, card.available ?? 0, quantity);
+    while ((taken.get(card.name) || 0) < limit && chosen.length < landCount) {
+      chosen.push(card);
+      taken.set(card.name, (taken.get(card.name) || 0) + 1);
+    }
+  }
 
   for (const card of ranked) {
     if (chosen.length >= landCount) break;

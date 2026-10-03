@@ -157,7 +157,7 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
 router.post('/generate', authenticate, (req, res, next) => {
   try {
     const {
-      commanderCardId, format, themeKey, includeCommitted, landCount, identity, reviseDeckId, splash,
+      commanderCardId, format, themeKey, includeCommitted, landCount, identity, reviseDeckId, splash, keepCardIds,
     } = req.body || {};
 
     res.json({
@@ -172,6 +172,7 @@ router.post('/generate', authenticate, (req, res, next) => {
         identity: identity || null,
         reviseDeckId: reviseDeckId == null ? null : Number(reviseDeckId),
         splash: splash || null,
+        keepCardIds: Array.isArray(keepCardIds) ? keepCardIds.map(Number).filter(Number.isFinite) : [],
       }),
     });
   } catch (error) {

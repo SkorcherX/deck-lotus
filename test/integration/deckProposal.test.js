@@ -438,6 +438,37 @@ describe('revising a deck', () => {
       'a revision of an unchanged collection must not be a rebuild');
   });
 
+  test('a kept card stays in the revision whatever the heuristics think of it', () => {
+    // An expensive vanilla creature is the card every ranking puts last, so
+    // it is the one a revision would cut first — which is what keeping is for.
+    addCard('Kept Oddity', 'Creature — Horror', { cmc: 7, manaCost: '{6}{B}' });
+    const cardId = db.get(`SELECT id FROM cards WHERE name = 'Kept Oddity'`).id;
+    db.run(
+      `INSERT INTO deck_cards (deck_id, printing_id, quantity, board_type, is_sideboard, is_foil)
+       VALUES (?,?,1,'mainboard',0,0)`,
+      [deckId, printings['OWN:Kept Oddity']]
+    );
+
+    try {
+      const proposal = proposeDeck(userId, { reviseDeckId: deckId, keepCardIds: [cardId] });
+      const row = proposal.mainboard.find((c) => c.name === 'Kept Oddity');
+
+      assert.ok(row, 'the kept card must be in the proposal');
+      assert.equal(row.reason, 'kept');
+      assert.ok(!proposal.revision.cut.some((c) => c.name === 'Kept Oddity'));
+      assert.deepEqual(proposal.revision.kept, ['Kept Oddity']);
+    } finally {
+      db.run(`DELETE FROM deck_cards WHERE deck_id = ? AND printing_id = ?`,
+        [deckId, printings['OWN:Kept Oddity']]);
+    }
+  });
+
+  test('keeping a card that is not in the deck is ignored, not an add', () => {
+    const outsider = db.get(`SELECT id FROM cards WHERE name = 'Kept Oddity'`).id;
+    const proposal = proposeDeck(userId, { reviseDeckId: deckId, keepCardIds: [outsider] });
+    assert.deepEqual(proposal.revision.kept, []);
+  });
+
   test('a revision inherits the format and the commander it was not given', () => {
     const proposal = proposeDeck(userId, { reviseDeckId: deckId });
     assert.equal(proposal.format, 'commander');

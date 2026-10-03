@@ -254,6 +254,28 @@ function revisionTarget(userId, deckId) {
 }
 
 /**
+ * The cards a revision has been told to keep, at the quantity the deck has.
+ *
+ * Only cards already in the deck's mainboard can be kept — "keep" is a claim
+ * about this deck, and an id that is not in it is ignored rather than turned
+ * into a request to add something. The commander is skipped: it is never
+ * proposed, so there is nothing to keep it from.
+ */
+function keptFrom(target, keepCardIds) {
+  if (!target || !Array.isArray(keepCardIds) || keepCardIds.length === 0) return [];
+  const wanted = new Set(keepCardIds.map(Number));
+  const byCard = new Map();
+  for (const row of target.cards) {
+    if (row.board !== 'mainboard' || row.is_commander || !wanted.has(row.card_id)) continue;
+    if (isBasicLand(row)) continue;
+    const seen = byCard.get(row.card_id);
+    if (seen) seen.quantity += row.quantity;
+    else byCard.set(row.card_id, { cardId: row.card_id, name: row.name, quantity: row.quantity });
+  }
+  return [...byCard.values()];
+}
+
+/**
  * What a proposal would change about the deck it was built from.
  *
  * Counted by name and by copies, because a revision that cuts two of a
@@ -326,8 +348,10 @@ export function proposeDeck(userId, {
   identity = null,
   reviseDeckId = null,
   splash = null,
+  keepCardIds = [],
 } = {}) {
   const target = reviseDeckId == null ? null : revisionTarget(userId, reviseDeckId);
+  const keep = keptFrom(target, keepCardIds);
 
   // A revision inherits the deck's own format and commander unless it was
   // told otherwise. Asking again for facts already recorded against the deck
@@ -365,7 +389,7 @@ export function proposeDeck(userId, {
   // outright when there is not — a 60-card format has nothing to infer them
   // from.
   const proposal = buildDeck(pool, {
-    commander, format, themeKey, landCount,
+    commander, format, themeKey, landCount, keep,
     identity: commander ? null : (identity || (target ? revisionIdentity(target.cards, splash) : null)),
   });
 
@@ -374,7 +398,7 @@ export function proposeDeck(userId, {
     // What this would change about the deck it started from. Null when
     // nothing was being revised, so a caller can tell "built from scratch"
     // apart from "revised and changed nothing".
-    revision: target ? diffAgainstDeck(target, proposal) : null,
+    revision: target ? { ...diffAgainstDeck(target, proposal), kept: keep.map((k) => k.name) } : null,
     // What the pool actually was, because "no removal found" means something
     // very different at 271 cards than at 1,033. Without this the shortfalls
     // read as a fault in the collection rather than in what was available.
