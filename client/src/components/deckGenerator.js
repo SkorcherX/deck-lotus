@@ -51,6 +51,15 @@ const kept = new Set();
 let deckPlan = null;
 let planAppliedFor = null;
 
+// Custom themes the page is carrying, as keys. Sent with every theme request
+// so they are measured in the current colours; replaced by the canonical keys
+// the server sends back, so a key here always matches a tile.
+let customKeys = [];
+
+/** A custom theme key from the two phrases — the server canonicalises it. */
+const rawCustomKey = (payoff, enabler) =>
+  `custom:${encodeURIComponent(payoff.trim())}|${encodeURIComponent(enabler.trim())}`;
+
 const $ = (id) => document.getElementById(id);
 
 function escapeHtml(value) {
@@ -186,6 +195,10 @@ async function loadKeepCards() {
     // lists. One that has since left the deck simply is not offered.
     deckPlan = deck.plan || null;
     if (deckPlan) {
+      // A plan built on a custom theme brings it back as a tile.
+      for (const key of [deckPlan.themeKey, deckPlan.secondaryThemeKey]) {
+        if (key && key.startsWith('custom:') && !customKeys.includes(key)) customKeys.push(key);
+      }
       const names = new Set(deckPlan.keep || []);
       for (const c of keepCards) if (names.has(c.name)) kept.add(c.cardId);
       if (deckPlan.secondaryShare && $('generate-share')) {
@@ -228,6 +241,48 @@ function renderPlanNote() {
   }
   if (deckPlan.keep?.length) parts.push(`keeping ${deckPlan.keep.length} card${deckPlan.keep.length === 1 ? '' : 's'}`);
   note.textContent = `This deck's plan: ${parts.join(', ')}.`;
+}
+
+/**
+ * Add the typed theme as a tile and pick it: as the main theme when none is
+ * picked, otherwise as the second. Typing a theme is a statement that it is
+ * wanted, so it should not then have to be found and pressed as well.
+ */
+async function addCustomTheme() {
+  const payoff = $('generate-custom-payoff')?.value || '';
+  const enabler = $('generate-custom-enabler')?.value || '';
+  if (!payoff.trim()) {
+    showToast('Type what the payoff cards say first', 'warning');
+    return;
+  }
+
+  const before = new Set(customKeys);
+  customKeys = [...customKeys, rawCustomKey(payoff, enabler)];
+  await loadThemes();
+
+  const added = customKeys.find((key) => !before.has(key));
+  const tile = themes.find((t) => t.key === added);
+  if (!tile) {
+    showToast(added === undefined ? 'That theme is already on the list' : 'Could not read that theme', 'warning');
+    return;
+  }
+
+  if (!mainTheme()) selectThemes(added);
+  else if (mainTheme() !== added) selectThemes(mainTheme(), added);
+  resetResult();
+  $('generate-custom-payoff').value = '';
+  $('generate-custom-enabler').value = '';
+  showToast(tile.strength > 0
+    ? `Added — ${tile.payoffs} ${tile.payoffName} in these colours`
+    : 'Added, but nothing you own in these colours matches it yet', tile.strength > 0 ? 'success' : 'warning');
+}
+
+function removeCustomTheme(key) {
+  customKeys = customKeys.filter((k) => k !== key);
+  if (mainTheme() === key) selectThemes(secondTheme());
+  else if (secondTheme() === key) selectThemes(mainTheme());
+  resetResult();
+  loadThemes();
 }
 
 async function savePlan() {
@@ -552,6 +607,11 @@ function wire() {
   });
 
   $('generate-theme-list')?.addEventListener('click', (event) => {
+    const remove = event.target.closest('[data-remove-custom]');
+    if (remove) {
+      removeCustomTheme(remove.dataset.removeCustom);
+      return;
+    }
     const tile = event.target.closest('.generator-theme');
     if (!tile) return;
     toggleTheme(tile.dataset.themeKey || '');
@@ -559,6 +619,12 @@ function wire() {
   });
 
   $('generate-save-plan')?.addEventListener('click', savePlan);
+  $('generate-custom-add')?.addEventListener('click', addCustomTheme);
+  for (const id of ['generate-custom-payoff', 'generate-custom-enabler']) {
+    $(id)?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); addCustomTheme(); }
+    });
+  }
 
   $('generate-share')?.addEventListener('input', () => {
     renderShareNote();
@@ -782,8 +848,11 @@ async function loadThemes() {
       reviseDeckId: revisingDeckId(),
       splash: revising ? splashColors() : '',
       keepCardIds: revising ? [...kept] : [],
+      customThemes: customKeys,
     });
     themes = data.themes || [];
+    // The server's spelling of each custom key, which is what the tiles carry.
+    customKeys = themes.filter((t) => t.custom).map((t) => t.key);
     renderThemes();
   } catch (error) {
     console.error('Failed to load themes:', error);
@@ -830,7 +899,11 @@ function renderThemes() {
               aria-pressed="false">
         <div class="generator-theme-head">
           <span class="generator-theme-label">${escapeHtml(theme.label)}</span>
+          ${theme.custom ? '<span class="generator-theme-custom-tag">yours</span>' : ''}
           <span class="generator-theme-pick hidden"></span>
+          ${theme.custom ? `<span role="button" tabindex="0" class="generator-theme-remove"
+                 data-remove-custom="${escapeHtml(theme.key)}" title="Remove this theme"
+                 aria-label="Remove this theme">&times;</span>` : ''}
           ${theme.viable
             ? ''
             // Named rather than hidden. A thin theme is still buildable and

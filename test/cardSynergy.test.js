@@ -21,6 +21,7 @@ import {
   THEMES, MIN_VIABLE_STRENGTH,
   subtypesOf, withinColorIdentity, tribeTheme, themeRole,
   analyzeTheme, candidateTribes, rankThemes, viableThemes, synergyScore,
+  customTheme, customThemeKey,
 } from '../src/services/cardSynergyService.js';
 
 /** A card row shaped the way the cards table hands one over. */
@@ -318,5 +319,53 @@ describe('self-mill and opponent mill are different themes', () => {
     assert.equal(THEMES.mill.payoff(aberration), true);
     assert.equal(THEMES.mill.payoff(bruvac), true);
     assert.equal(THEMES.graveyard.payoff(aberration), false);
+  });
+});
+
+/**
+ * A theme written as phrases of card text, for the plans the built-in
+ * themes do not cover.
+ */
+describe('a custom theme', () => {
+  const spell = (name, oracle, type_line = 'Instant') => card(name, { type_line, subtypes: '', oracle_text: oracle });
+  const lhurgoyf = spell('Lhurgoyf', 'Its power is equal to the number of cards in your graveyard.', 'Creature — Lhurgoyf');
+  const scour = spell('Thought Scour', 'Target player mills two cards. Draw a card.');
+  const consider = spell('Consider', 'Surveil 1. Draw a card.');
+  const shock = spell('Shock', 'Shock deals 2 damage to any target.');
+
+  test('payoffs and enablers come from their own phrases, commas as alternatives', () => {
+    const theme = customTheme(customThemeKey('cards in your graveyard', 'mill, surveil'));
+    assert.equal(themeRole(lhurgoyf, theme), 'payoff');
+    assert.equal(themeRole(scour, theme), 'enabler', '"mill" matches "mills"');
+    assert.equal(themeRole(consider, theme), 'enabler');
+    assert.equal(themeRole(shock, theme), null);
+  });
+
+  test('with one phrase every match is both halves, so it can have strength', () => {
+    const theme = customTheme(customThemeKey('draw a card'));
+    assert.equal(themeRole(scour, theme), 'both');
+    assert.equal(analyzeTheme([scour, consider, shock], theme).strength, 2);
+  });
+
+  test('the type line counts, so a type works as a phrase', () => {
+    const theme = customTheme(customThemeKey('lhurgoyf'));
+    assert.equal(themeRole(lhurgoyf, theme), 'both');
+  });
+
+  test('a phrase matches whole words, not inside other words', () => {
+    const theme = customTheme(customThemeKey('ill'));
+    assert.equal(themeRole(scour, theme), null, '"ill" is not inside "mills"');
+  });
+
+  test('the key is canonical, and a broken or empty one is no theme', () => {
+    assert.equal(customThemeKey('  Mill ,mill, SURVEIL '), customThemeKey('mill, surveil'));
+    assert.equal(customThemeKey('   '), null);
+    assert.equal(customTheme('custom:%E0%A4%A|x'), null);
+    assert.equal(customTheme('graveyard'), null);
+  });
+
+  test('regex characters in a phrase are text, not pattern', () => {
+    const counters = customTheme(customThemeKey('+1/+1 counter'));
+    assert.equal(themeRole(spell('Hardened Scales', 'Put a +1/+1 counter on target creature.'), counters), 'both');
   });
 });

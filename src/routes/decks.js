@@ -144,6 +144,9 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
         reviseDeckId: req.query.reviseDeckId ? Number(req.query.reviseDeckId) : null,
         // Extra colours a commanderless revision may reach into.
         splash: req.query.splash || null,
+        // Custom theme keys the page is carrying (see customTheme). Repeated
+        // as ?customTheme=…&customTheme=… since each key holds commas.
+        customThemeKeys: [].concat(req.query.customTheme || []).map(String).slice(0, 4),
         // Comma-separated card ids a revision is keeping, so the themes they
         // belong to can be offered first.
         keepCardIds: String(req.query.keepCardIds || '').split(',').map(Number).filter((n) => Number.isFinite(n) && n > 0),

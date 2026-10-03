@@ -48,7 +48,7 @@ import {
 
 import {
   THEMES, tribeTheme, synergyScore, themeRole,
-  withinColorIdentity, viableThemes, rankThemes,
+  withinColorIdentity, viableThemes, rankThemes, analyzeTheme, customTheme,
 } from './cardSynergyService.js';
 
 import { isBasicLand } from './basicLands.js';
@@ -269,6 +269,7 @@ export function resolveTheme(themeKey, pool) {
   if (!themeKey) return null;
   if (THEMES[themeKey]) return { key: themeKey, ...THEMES[themeKey] };
   if (String(themeKey).startsWith('tribe:')) return tribeTheme(String(themeKey).slice(6));
+  if (String(themeKey).startsWith('custom:')) return customTheme(String(themeKey));
 
   // A key naming a creature type directly, which is what a caller is likeliest
   // to send by hand.
@@ -344,13 +345,11 @@ export function buildDeck(pool, {
   const secondary = theme && secondaryThemeKey && secondaryThemeKey !== theme.key
     ? resolveTheme(secondaryThemeKey, spellPool)
     : null;
-  const secondaryReport = secondary
-    ? rankThemes(spellPool, { identity: colorIdentity }).find((t) => t.label === secondary.label) || null
-    : null;
-
-  const themeReport = theme
-    ? rankThemes(spellPool, { identity: colorIdentity }).find((t) => t.label === theme.label) || null
-    : null;
+  // Measured directly rather than looked up in rankThemes: a custom theme is
+  // in no ranking, and spellPool is already inside the deck's colours, which
+  // is all rankThemes would have filtered by.
+  const secondaryReport = secondary ? analyzeTheme(spellPool, secondary) : null;
+  const themeReport = theme ? analyzeTheme(spellPool, theme) : null;
 
   if (!theme) {
     notes.push(

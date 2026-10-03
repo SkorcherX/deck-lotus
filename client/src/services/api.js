@@ -702,6 +702,8 @@ class ApiClient {
     if (extra.reviseDeckId) params.set('reviseDeckId', extra.reviseDeckId);
     if (extra.splash) params.set('splash', extra.splash);
     if (extra.keepCardIds && extra.keepCardIds.length) params.set('keepCardIds', extra.keepCardIds.join(','));
+    // Repeated rather than joined: a custom theme's key holds commas.
+    for (const key of extra.customThemes || []) params.append('customTheme', key);
     return this.request(`/decks/generate/themes?${params}`);
   }
 

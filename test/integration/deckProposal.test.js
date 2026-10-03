@@ -587,6 +587,41 @@ describe('splashing a colour into a commanderless revision', () => {
  * "Fits this deck" in the builder's collection panel: the deck's own themes,
  * read off its cards, rank what the user owns and has not yet put in it.
  */
+describe('a custom theme', () => {
+  test('is offered first, measured, even when it matches nothing', async () => {
+    const { customThemeKey } = await import('../../src/services/cardSynergyService.js');
+    const hit = customThemeKey('from your graveyard', 'mill');
+    const miss = customThemeKey('venture into the dungeon');
+
+    const themes = themeOptions(userId, commanderCardId, { customThemeKeys: [hit, miss, hit] });
+    assert.equal(themes[0].key, hit);
+    assert.equal(themes[0].custom, true);
+    assert.ok(themes[0].payoffs >= 20 && themes[0].enablers >= 20, 'the Reanimators and Millers');
+    assert.equal(themes[1].key, miss);
+    assert.equal(themes[1].strength, 0);
+    assert.equal(themes.filter((t) => t.key === hit).length, 1, 'one tile per theme');
+  });
+
+  test('builds a deck with its cards, and says why', async () => {
+    const { customThemeKey } = await import('../../src/services/cardSynergyService.js');
+    const proposal = proposeDeck(userId, { commanderCardId, themeKey: customThemeKey('from your graveyard', 'mill') });
+    assert.match(proposal.theme.label, /your theme/);
+    assert.ok(proposal.theme.payoffs > 0);
+    assert.ok(proposal.mainboard.some((c) => /your theme/.test(c.reason || '')));
+  });
+
+  test('can be saved as a deck plan', async () => {
+    const { customThemeKey } = await import('../../src/services/cardSynergyService.js');
+    const { saveDeckPlan } = await import('../../src/services/deckPlanService.js');
+    db.run(`INSERT INTO decks (user_id, name, format) VALUES (?, 'Custom Plan Deck', 'modern')`, [userId]);
+    const deckId = db.get(`SELECT id FROM decks WHERE name = 'Custom Plan Deck'`).id;
+
+    const plan = saveDeckPlan(userId, deckId, { themeKey: customThemeKey('MILL ,  mill') });
+    assert.equal(plan.themeKey, customThemeKey('mill'), 'stored in its canonical form');
+    assert.equal(saveDeckPlan(userId, deckId, { themeKey: 'custom:%E0%A4%A' }), null, 'a broken key is not stored');
+  });
+});
+
 describe('cards that fit a deck', () => {
   let deckId;
   let getBuilderInventory;

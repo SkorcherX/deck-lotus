@@ -27,7 +27,9 @@ import db from '../db/connection.js';
 import {
   buildDeck, resolveTheme, isLegalIn, ROLE_PREDICATE_BY_CODE,
 } from './deckGeneratorService.js';
-import { rankThemes, withinColorIdentity, themeRole } from './cardSynergyService.js';
+import {
+  rankThemes, withinColorIdentity, themeRole, analyzeTheme, customTheme,
+} from './cardSynergyService.js';
 import { pairSwaps } from './revisionSwaps.js';
 import { parsePlan } from './deckPlanService.js';
 import { getGeneratorPool } from './inventoryService.js';
@@ -85,7 +87,7 @@ function commanderFrom(pool, commanderCardId) {
  */
 export function themeOptions(userId, commanderCardId, {
   includeCommitted = true, identity: chosenIdentity = null, format = 'commander',
-  reviseDeckId = null, splash = null, keepCardIds = [],
+  reviseDeckId = null, splash = null, keepCardIds = [], customThemeKeys = [],
 } = {}) {
   // The same pool the proposal will be built from, revision included: a theme
   // measured without the deck's own cards is measured against a collection the
@@ -108,19 +110,35 @@ export function themeOptions(userId, commanderCardId, {
   const keepIds = new Set((keepCardIds || []).map(Number));
   const keptCards = reviseDeckId == null ? [] : spells.filter((card) => keepIds.has(card.card_id));
 
-  return rankThemes(spells, { identity })
-    .filter((theme) => theme.strength > 0)
+  // Custom themes the page is carrying, measured in the same colours and
+  // offered first — including at zero, because "your phrase matched nothing
+  // you own" is the answer to the question that was asked, not a reason to
+  // hide it. Deduplicated by key, so two spellings of one theme are one tile.
+  const inColours = identity ? spells.filter((card) => withinColorIdentity(card, identity)) : spells;
+  const customs = [...new Map((customThemeKeys || [])
+    .map((key) => customTheme(key))
+    .filter(Boolean)
+    .map((theme) => [theme.key, theme])).values()]
+    .map((theme) => ({ ...analyzeTheme(inColours, theme), custom: true }));
+
+  const builtIn = rankThemes(spells, { identity })
+    .filter((theme) => theme.strength > 0 && !customs.some((c) => c.key === theme.key));
+
+  return [...customs, ...builtIn]
     .map((theme) => {
       const resolved = resolveTheme(theme.key, spells);
       const matched = resolved ? keptCards.filter((card) => themeRole(card, resolved) != null) : [];
       return { theme, keptMatches: [...new Set(matched.map((card) => card.name))] };
     })
     // Stable: among themes matching the same number of kept cards, the
-    // collection's own ranking still decides.
-    .sort((a, b) => b.keptMatches.length - a.keptMatches.length)
-    .slice(0, 8)
+    // collection's own ranking still decides. Custom themes are never cut by
+    // the limit — somebody just typed them.
+    .sort((a, b) => Number(Boolean(b.theme.custom)) - Number(Boolean(a.theme.custom))
+      || b.keptMatches.length - a.keptMatches.length)
+    .slice(0, 8 + customs.length)
     .map(({ theme, keptMatches }) => ({
       keptMatches,
+      custom: Boolean(theme.custom),
       key: theme.key,
       label: theme.label,
       // What the theme means, in words rather than counts. See the note on

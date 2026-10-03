@@ -355,6 +355,103 @@ const MIN_TRIBE_CREATURES = 8;
  * miss a lord that words itself unusually; the cost of that is a tribe scoring
  * lower than it deserves, which is the safe direction to be wrong in.
  */
+/**
+ * A theme written by the person building the deck, from phrases of card text.
+ *
+ * The built-in themes are a small fixed set; any deck plan they do not cover
+ * — "cards in your graveyard", "whenever you cycle", "Equipment" — could not
+ * be asked for at all. So a theme can be two phrases: what the payoffs say,
+ * and (optionally) what the cards feeding them say. Commas separate
+ * alternatives, so "mill, surveil" is either.
+ *
+ * Matched as whole words, case-insensitively, against the same self-reference
+ * -stripped, reminder-free text every other theme reads, plus the type line,
+ * so "Equipment" and "Zombie" work as phrases too. With one phrase, every
+ * match counts as both halves: there is nothing else to pair it with, and the
+ * min(enablers, payoffs) strength would otherwise always be zero.
+ *
+ * The phrases live in the key itself — `custom:<payoff>|<enabler>`,
+ * URI-encoded — so a custom theme travels through every place that already
+ * carries a theme key, deck plans included, without anything new to store.
+ */
+const CUSTOM_PREFIX = 'custom:';
+const MAX_PHRASES = 5;
+
+function phrasesOf(text) {
+  return [...new Set(String(text || '')
+    .split(',')
+    .map((p) => p.trim().toLowerCase().replace(/\s+/g, ' '))
+    .filter((p) => p.length >= 2 && p.length <= 60))]
+    .slice(0, MAX_PHRASES);
+}
+
+function phraseMatcher(phrases) {
+  if (phrases.length === 0) return null;
+  const patterns = phrases.map((phrase) => {
+    const body = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+    // Word edges only where the phrase starts or ends with a word character,
+    // so "+1/+1" still matches inside "+1/+1 counter". A phrase ending in a
+    // word also takes the usual endings: somebody typing "mill" means "mills"
+    // and "milled" too, and Thought Scour says "mills".
+    return new RegExp(`${/^\w/.test(phrase) ? '\\b' : ''}${body}${/\w$/.test(phrase) ? '(?:s|es|ed|ing)?\\b' : ''}`);
+  });
+  return (card) => {
+    const text = `${effectText(card)}\n${String(card.type_line || '').toLowerCase()}`;
+    return patterns.some((pattern) => pattern.test(text));
+  };
+}
+
+/** The key for a custom theme, or null when the payoff phrase is empty. */
+export function customThemeKey(payoffText, enablerText = '') {
+  const payoff = phrasesOf(payoffText);
+  if (payoff.length === 0) return null;
+  const enabler = phrasesOf(enablerText);
+  return `${CUSTOM_PREFIX}${encodeURIComponent(payoff.join(', '))}|${encodeURIComponent(enabler.join(', '))}`;
+}
+
+export const isCustomThemeKey = (key) => typeof key === 'string' && key.startsWith(CUSTOM_PREFIX);
+
+/** A custom theme from its key, or null when the key does not parse. */
+export function customTheme(key) {
+  if (!isCustomThemeKey(key) || key.length > 600) return null;
+  const [rawPayoff, rawEnabler = ''] = key.slice(CUSTOM_PREFIX.length).split('|');
+  let payoffText;
+  let enablerText;
+  try {
+    payoffText = decodeURIComponent(rawPayoff);
+    enablerText = decodeURIComponent(rawEnabler);
+  } catch {
+    return null;
+  }
+
+  const payoff = phrasesOf(payoffText);
+  const enabler = phrasesOf(enablerText);
+  if (payoff.length === 0) return null;
+
+  const quote = (list) => list.map((p) => `“${p}”`).join(' or ');
+  const payoffMatches = phraseMatcher(payoff);
+  const enablerMatches = enabler.length ? phraseMatcher(enabler) : payoffMatches;
+
+  return {
+    // Rebuilt from the cleaned phrases, so two spellings of one theme share a key.
+    key: customThemeKey(payoffText, enablerText),
+    label: enabler.length ? `your theme: ${quote(payoff)} fed by ${quote(enabler)}` : `your theme: ${quote(payoff)}`,
+    // For sentences that name the theme in passing — a swap's reason — where
+    // the full phrase list would be most of the sentence.
+    shortLabel: 'your theme',
+    blurb: enabler.length
+      ? `Your own theme. The deck is built around cards whose text says ${quote(payoff)}, `
+        + `fed by cards that say ${quote(enabler)}. Matched on the words alone, so check the examples.`
+      : `Your own theme. The deck is built around cards whose text says ${quote(payoff)}. `
+        + 'With one phrase every match counts as both halves. Matched on the words alone, so check the examples.',
+    enablerName: enabler.length ? `cards that say ${quote(enabler)}` : `cards that say ${quote(payoff)}`,
+    payoffName: enabler.length ? `cards that say ${quote(payoff)}` : 'of them, counted as both halves',
+    custom: { payoff, enabler },
+    enabler: enablerMatches,
+    payoff: payoffMatches,
+  };
+}
+
 export function tribeTheme(subtype) {
   const name = String(subtype);
   const needle = name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

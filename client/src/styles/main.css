@@ -7703,6 +7703,33 @@ body.maintenance-locked #app {
   color: var(--text-secondary);
 }
 
+/* "Describe your own theme", under the theme tiles. */
+.generator-custom { margin-top: 0.9rem; }
+.generator-custom summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.generator-custom-row { margin: 0.6rem 0; }
+.generator-custom-row label { display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-secondary); }
+.generator-custom-row input { width: 100%; }
+.generator-theme-custom-tag {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-full);
+  border: 1px dashed var(--primary);
+  color: var(--text-secondary);
+}
+.generator-theme-remove {
+  margin-left: 0.25rem;
+  padding: 0 0.35rem;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.generator-theme-remove:hover { color: var(--text); }
+
 /* A deck's saved plan, on the revise page. */
 .generator-plan {
   display: flex;

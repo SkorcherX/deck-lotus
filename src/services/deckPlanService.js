@@ -7,6 +7,7 @@
  */
 import db from '../db/connection.js';
 import { clampShare } from './deckGeneratorService.js';
+import { customTheme } from './cardSynergyService.js';
 
 const MAX_KEPT = 200;
 const KEY = /^[a-z0-9:+'’ -]{1,60}$/i;
@@ -23,7 +24,13 @@ export function parsePlan(raw) {
 }
 
 function normalizePlan(plan) {
-  const key = (value) => (typeof value === 'string' && KEY.test(value) ? value : null);
+  // A custom theme's key is its phrases, so it is checked by parsing it, and
+  // stored in the canonical form the parse rebuilds.
+  const key = (value) => {
+    if (typeof value !== 'string') return null;
+    if (value.startsWith('custom:')) return customTheme(value)?.key ?? null;
+    return KEY.test(value) ? value : null;
+  };
   const themeKey = key(plan.themeKey);
   const keep = Array.isArray(plan.keep)
     ? [...new Set(plan.keep.filter((n) => typeof n === 'string' && n.trim()).map((n) => n.trim().slice(0, 200)))].slice(0, MAX_KEPT)

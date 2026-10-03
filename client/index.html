@@ -1643,6 +1643,23 @@
                             </div>
                         </div>
                         <div id="generate-theme-list" class="generator-themes"></div>
+                        <details class="generator-custom" id="generate-custom">
+                            <summary>Describe your own theme</summary>
+                            <p class="generator-note">For a plan the themes above do not cover. Type words
+                               from the cards' rules text; commas separate alternatives, and "mill"
+                               also finds "mills" and "milled". Card types work too, like "Equipment".</p>
+                            <div class="generator-custom-row">
+                                <label for="generate-custom-payoff">Cards that pay off</label>
+                                <input type="text" id="generate-custom-payoff" maxlength="200"
+                                       placeholder="e.g. cards in your graveyard" />
+                            </div>
+                            <div class="generator-custom-row">
+                                <label for="generate-custom-enabler">Cards that feed them <span class="generator-note">(optional)</span></label>
+                                <input type="text" id="generate-custom-enabler" maxlength="200"
+                                       placeholder="e.g. mill, surveil, discard" />
+                            </div>
+                            <button type="button" id="generate-custom-add" class="btn btn-secondary btn-sm">Add theme</button>
+                        </details>
                         <!-- The chosen theme's key, written by the cards above. -->
                         <input type="hidden" id="generate-theme" />
                         <input type="hidden" id="generate-theme-secondary" />

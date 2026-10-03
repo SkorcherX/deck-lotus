@@ -63,8 +63,9 @@ function reasonsFor(cut, add, shared, themes) {
   for (const theme of themes) {
     const addFits = Boolean(themeRole(add, theme));
     const cutFits = Boolean(themeRole(cut, theme));
-    if (addFits && !cutFits) why.push(`${add.name} is part of ${theme.label}; ${cut.name} is not`);
-    else if (addFits && cutFits) why.push(`both part of ${theme.label}`);
+    const name = theme.shortLabel || theme.label;
+    if (addFits && !cutFits) why.push(`${add.name} is part of ${name}; ${cut.name} is not`);
+    else if (addFits && cutFits) why.push(`both part of ${name}`);
   }
 
   if (why.length === 0 && cut.roles.length === 0) {
