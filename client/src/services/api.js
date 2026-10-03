@@ -701,6 +701,7 @@ class ApiClient {
     // own cards, so the id travels with the question.
     if (extra.reviseDeckId) params.set('reviseDeckId', extra.reviseDeckId);
     if (extra.splash) params.set('splash', extra.splash);
+    if (extra.keepCardIds && extra.keepCardIds.length) params.set('keepCardIds', extra.keepCardIds.join(','));
     return this.request(`/decks/generate/themes?${params}`);
   }
 

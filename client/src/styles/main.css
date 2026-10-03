@@ -7685,6 +7685,28 @@ body.maintenance-locked #app {
 
 .generator-theme-label { font-weight: 600; font-size: 0.95rem; }
 
+/* Which pick a theme tile is, when two are chosen. */
+.generator-theme-pick {
+  margin-left: auto;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: rgb(var(--primary-rgb) / 0.18);
+  color: var(--text);
+}
+
+.generator-theme-kept {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.generator-theme.secondary {
+  border-style: dashed;
+}
+
 .generator-theme-thin {
   font-size: 0.65rem;
   text-transform: uppercase;

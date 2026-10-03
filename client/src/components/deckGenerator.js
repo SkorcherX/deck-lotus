@@ -355,6 +355,8 @@ function wire() {
     if (box.checked) kept.add(Number(box.value)); else kept.delete(Number(box.value));
     resetResult();
     renderKeepCards();
+    // Which themes the kept cards belong to has changed with them.
+    loadThemes();
   });
 
   $('generate-revise-deck')?.addEventListener('change', async () => {
@@ -412,7 +414,7 @@ function wire() {
   $('generate-theme-list')?.addEventListener('click', (event) => {
     const tile = event.target.closest('.generator-theme');
     if (!tile) return;
-    selectTheme(tile.dataset.themeKey || '');
+    toggleTheme(tile.dataset.themeKey || '');
     resetResult();
   });
 
@@ -545,14 +547,45 @@ function renderCommanders() {
 
 // --- Themes ----------------------------------------------------------------
 
-function selectTheme(key) {
-  const field = $('generate-theme');
-  if (field) field.value = key || '';
+const mainTheme = () => $('generate-theme')?.value || '';
+const secondTheme = () => $('generate-theme-secondary')?.value || '';
+
+/** Set both picks and redraw which tile is which. */
+function selectThemes(main, second = '') {
+  const m = main || '';
+  // A second theme only means something beside a first, and never the same one.
+  const s = m && second !== m ? (second || '') : '';
+  if ($('generate-theme')) $('generate-theme').value = m;
+  if ($('generate-theme-secondary')) $('generate-theme-secondary').value = s;
+
   document.querySelectorAll('.generator-theme').forEach((tile) => {
-    const selected = (tile.dataset.themeKey || '') === (key || '');
-    tile.classList.toggle('selected', selected);
-    tile.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    const key = tile.dataset.themeKey || '';
+    const isMain = key === m;
+    const isSecond = Boolean(s) && key === s;
+    tile.classList.toggle('selected', isMain || isSecond);
+    tile.classList.toggle('secondary', isSecond);
+    tile.setAttribute('aria-pressed', isMain || isSecond ? 'true' : 'false');
+    const badge = tile.querySelector('.generator-theme-pick');
+    if (badge) {
+      badge.textContent = isMain && key ? (s ? 'Main' : '') : isSecond ? 'Second' : '';
+      badge.classList.toggle('hidden', !badge.textContent);
+    }
   });
+}
+
+/**
+ * A click on a theme tile. The first theme picked is the main one; a second
+ * becomes the smaller share; picking a third replaces the second. Pressing a
+ * chosen tile again takes it off, and the "let it choose" tile clears both.
+ */
+function toggleTheme(key) {
+  const main = mainTheme();
+  const second = secondTheme();
+  if (!key) return selectThemes('');
+  if (key === main) return selectThemes(second);
+  if (key === second) return selectThemes(main);
+  if (!main) return selectThemes(key);
+  return selectThemes(main, key);
 }
 
 async function loadThemes() {
@@ -583,6 +616,7 @@ async function loadThemes() {
       format: revising ? (revisingDeck()?.format || '') : chosenFormat(),
       reviseDeckId: revisingDeckId(),
       splash: revising ? splashColors() : '',
+      keepCardIds: revising ? [...kept] : [],
     });
     themes = data.themes || [];
     renderThemes();
@@ -631,6 +665,7 @@ function renderThemes() {
               aria-pressed="false">
         <div class="generator-theme-head">
           <span class="generator-theme-label">${escapeHtml(theme.label)}</span>
+          <span class="generator-theme-pick hidden"></span>
           ${theme.viable
             ? ''
             // Named rather than hidden. A thin theme is still buildable and
@@ -643,6 +678,11 @@ function renderThemes() {
           <span><strong>${theme.enablers}</strong> ${escapeHtml(theme.enablerName)}</span>
           <span><strong>${theme.payoffs}</strong> ${escapeHtml(theme.payoffName)}</span>
         </div>
+        ${theme.keptMatches && theme.keptMatches.length ? `
+          <div class="generator-theme-kept">
+            Fits ${theme.keptMatches.length} of the cards you are keeping:
+            ${theme.keptMatches.slice(0, 4).map((n) => escapeHtml(n)).join(', ')}${theme.keptMatches.length > 4 ? '…' : ''}
+          </div>` : ''}
         ${theme.examples && theme.examples.length ? `
           <div class="generator-theme-examples">
             e.g. ${theme.examples.slice(0, 4).map((n) => escapeHtml(n)).join(', ')}
@@ -658,8 +698,16 @@ function renderThemes() {
   // Whatever was chosen before, if it is still on offer. A theme that has gone
   // (the colours moved) falls back to letting the generator choose rather than
   // silently keeping a key nothing here shows.
-  const chosen = $('generate-theme')?.value || '';
-  selectTheme(themes.some((t) => t.key === chosen) ? chosen : '');
+  const offered = (key) => themes.some((t) => t.key === key);
+  let main = offered(mainTheme()) ? mainTheme() : '';
+  let second = offered(secondTheme()) ? secondTheme() : '';
+
+  // Kept cards are a statement about what the deck is. When nothing has been
+  // picked yet, the theme most of them belong to is picked for them — offered,
+  // and one press away from being taken back.
+  if (!main && !second && themes[0]?.keptMatches?.length) main = themes[0].key;
+  if (!main) second = '';
+  selectThemes(main, second);
 }
 
 // --- Generating ------------------------------------------------------------
@@ -692,6 +740,7 @@ async function run() {
       // are what the proposal is built to.
       format: revising ? null : chosenFormat(),
       themeKey: $('generate-theme')?.value || null,
+      secondaryThemeKey: secondTheme() || null,
       includeCommitted: includeCommitted(),
       identity: revising ? null : (chosenColors() || null),
       reviseDeckId: revisingDeckId(),
@@ -813,6 +862,17 @@ function render(p) {
         <span class="generate-theme-evidence">
           Your collection has ${p.theme.enablers} ${escapeHtml(p.theme.enablerName || 'enablers')}
           and ${p.theme.payoffs} ${escapeHtml(p.theme.payoffName || 'payoffs')} in these colours.
+        </span>
+      </div>
+    ` : ''}
+
+    ${p.secondaryTheme ? `
+      <div class="generate-theme-note">
+        <strong>With a share of ${escapeHtml(p.secondaryTheme.label)}.</strong>
+        ${escapeHtml(p.secondaryTheme.blurb || '')}
+        <span class="generate-theme-evidence">
+          Your collection has ${p.secondaryTheme.enablers} ${escapeHtml(p.secondaryTheme.enablerName || 'enablers')}
+          and ${p.secondaryTheme.payoffs} ${escapeHtml(p.secondaryTheme.payoffName || 'payoffs')} in these colours.
         </span>
       </div>
     ` : ''}

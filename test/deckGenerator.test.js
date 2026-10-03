@@ -539,3 +539,47 @@ describe('revising prefers what is already sleeved', () => {
     assert.ok(deck.mainboard.length > 0);
   });
 });
+
+/**
+ * A second theme: a Dimir deck that grows creatures off its own graveyard and
+ * also mills the opponent out. The main theme still leads; the second gets a
+ * real share; and cards that serve both are the first ones picked.
+ */
+describe('a second theme', () => {
+  const pool = () => [
+    ...graveyardCollection(),
+    ...many(12, (i) => card(`Opponent Miller ${i}`, {
+      oracle_text: 'Each opponent mills four cards.', type_line: 'Sorcery', subtypes: '',
+    })),
+    ...many(6, (i) => card(`Library Watcher ${i}`, {
+      oracle_text: "This gets +1/+1 for each card in your opponents' graveyards.",
+    })),
+    card('Both Ways', { oracle_text: 'Target player mills four cards.', type_line: 'Instant', subtypes: '' }),
+  ];
+
+  test('takes a share of the deck without taking it over', () => {
+    const deck = buildDeck(pool(), {
+      commander, format: 'commander', themeKey: 'graveyard', secondaryThemeKey: 'mill',
+    });
+    const fromSecond = deck.mainboard.filter((c) => /milling your opponent/.test(c.reason || ''));
+    const fromMain = deck.mainboard.filter((c) => /graveyard value/.test(c.reason || ''));
+
+    assert.equal(deck.secondaryTheme.key, 'mill');
+    assert.ok(fromSecond.length > 0, 'the second theme must get slots');
+    assert.ok(fromMain.length > fromSecond.length, 'the main theme must still lead');
+  });
+
+  test('a card serving both themes is chosen', () => {
+    const deck = buildDeck(pool(), {
+      commander, format: 'commander', themeKey: 'graveyard', secondaryThemeKey: 'mill',
+    });
+    assert.ok(deck.mainboard.some((c) => c.name === 'Both Ways'));
+  });
+
+  test('the same theme twice, or a second with no first, is ignored', () => {
+    const same = buildDeck(pool(), { commander, format: 'commander', themeKey: 'graveyard', secondaryThemeKey: 'graveyard' });
+    assert.equal(same.secondaryTheme, null);
+    const alone = buildDeck(pool(), { commander, format: 'commander', secondaryThemeKey: 'mill' });
+    assert.notEqual(alone.secondaryTheme?.key, alone.theme?.key);
+  });
+});

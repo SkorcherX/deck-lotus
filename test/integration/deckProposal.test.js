@@ -463,6 +463,24 @@ describe('revising a deck', () => {
     }
   });
 
+  test('themes a kept card belongs to are offered first, naming it', () => {
+    const kept = db.get(
+      `SELECT c.id, c.name FROM deck_cards dc
+         JOIN printings p ON dc.printing_id = p.id
+         JOIN cards c ON p.card_id = c.id
+        WHERE dc.deck_id = ? AND c.name LIKE 'Reanimator%' LIMIT 1`,
+      [deckId]
+    );
+    assert.ok(kept, 'the fixture deck should hold a reanimation spell');
+
+    const plain = themeOptions(userId, null, { reviseDeckId: deckId });
+    assert.ok(plain.every((t) => t.keptMatches.length === 0));
+
+    const themes = themeOptions(userId, null, { reviseDeckId: deckId, keepCardIds: [kept.id] });
+    assert.equal(themes[0].key, 'graveyard');
+    assert.deepEqual(themes[0].keptMatches, [kept.name]);
+  });
+
   test('keeping a card that is not in the deck is ignored, not an add', () => {
     const outsider = db.get(`SELECT id FROM cards WHERE name = 'Kept Oddity'`).id;
     const proposal = proposeDeck(userId, { reviseDeckId: deckId, keepCardIds: [outsider] });

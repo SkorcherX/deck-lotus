@@ -223,12 +223,15 @@ export function colorDemands(cards, deckSize = 100, format = 'commander') {
  * because a revision that cannot replace a card with a better one is not a
  * revision.
  */
-function rankCandidates(cards, theme) {
+function rankCandidates(cards, theme, secondary = null) {
+  // With a second theme, fit is weighted two to one towards the main theme,
+  // so a card serving both outranks one serving either — those are the cards
+  // that hold a two-theme deck together rather than splitting it in half.
+  const fitOf = (card) => (theme ? synergyScore(card, theme) * 2 : 0)
+    + (secondary ? synergyScore(card, secondary) : 0);
   return [...cards].sort((a, b) => {
-    if (theme) {
-      const fit = synergyScore(b, theme) - synergyScore(a, theme);
-      if (fit !== 0) return fit;
-    }
+    const fit = fitOf(b) - fitOf(a);
+    if (fit !== 0) return fit;
 
     const sleeved = Math.sign(Number(b.in_deck) || 0) - Math.sign(Number(a.in_deck) || 0);
     if (sleeved !== 0) return sleeved;
@@ -272,6 +275,7 @@ export function buildDeck(pool, {
   landCount = null,
   deckSize = null,
   keep = [],
+  secondaryThemeKey = null,
 } = {}) {
   const targets = getRoleTargets(format);
   const profile = getFormatProfile(format);
@@ -317,6 +321,14 @@ export function buildDeck(pool, {
         : { key: best.key, ...THEMES[best.key] };
     }
   }
+
+  // A second theme only means something beside a first, and never the same one.
+  const secondary = theme && secondaryThemeKey && secondaryThemeKey !== theme.key
+    ? resolveTheme(secondaryThemeKey, spellPool)
+    : null;
+  const secondaryReport = secondary
+    ? rankThemes(spellPool, { identity: colorIdentity }).find((t) => t.label === secondary.label) || null
+    : null;
 
   const themeReport = theme
     ? rankThemes(spellPool, { identity: colorIdentity }).find((t) => t.label === theme.label) || null
@@ -392,7 +404,7 @@ export function buildDeck(pool, {
     const want = targets.roles[code] || 0;
     if (want <= 0) continue;
 
-    for (const card of rankCandidates(spellPool.filter(matches), theme)) {
+    for (const card of rankCandidates(spellPool.filter(matches), theme, secondary)) {
       if (roleCounts[code] >= want || chosen.length >= spellSlots) break;
       if (copiesLeft(card) <= 0) continue;
       // As many copies as the quota still needs, so a format that allows
@@ -417,21 +429,27 @@ export function buildDeck(pool, {
   // than maximising either. Roughly two enablers per payoff: a deck of
   // payoffs has nothing to trigger them, and a deck of enablers has nothing to
   // reward it.
-  if (theme) {
-    const remaining = () => spellSlots - chosen.length;
+  const remaining = () => spellSlots - chosen.length;
+
+  /**
+   * Fill theme slots for one theme until only `leaveFree` are left, holding
+   * its enabler-to-payoff ratio as it goes.
+   */
+  const fillTheme = (t, leaveFree) => {
     const unchosen = () => spellPool.filter((card) => copiesLeft(card) > 0);
 
-    let enablers = chosen.filter((c) => ['enabler', 'both'].includes(themeRole(c, theme))).length;
-    let payoffs = chosen.filter((c) => ['payoff', 'both'].includes(themeRole(c, theme))).length;
+    let enablers = chosen.filter((c) => ['enabler', 'both'].includes(themeRole(c, t))).length;
+    let payoffs = chosen.filter((c) => ['payoff', 'both'].includes(themeRole(c, t))).length;
 
-    while (remaining() > 0) {
+    while (remaining() > leaveFree) {
       // Whichever half is further behind its share of the ratio gets the slot.
       const wantPayoff = payoffs * 2 <= enablers;
       const wanted = wantPayoff ? ['payoff', 'both'] : ['enabler', 'both'];
 
       const candidates = rankCandidates(
-        unchosen().filter((card) => wanted.includes(themeRole(card, theme))),
-        theme
+        unchosen().filter((card) => wanted.includes(themeRole(card, t))),
+        t === theme ? theme : secondary,
+        t === theme ? secondary : theme
       );
 
       const picked = candidates.find((card) => copiesLeft(card) > 0);
@@ -439,14 +457,26 @@ export function buildDeck(pool, {
 
       // A playset at a time here too, but capped so one card cannot swing the
       // enabler-to-payoff ratio four steps before it is looked at again.
-      const took = take(picked, `${theme.label} (${wantPayoff ? 'payoff' : 'enabler'})`, maxCopies);
+      const took = take(picked, `${t.label} (${wantPayoff ? 'payoff' : 'enabler'})`,
+        Math.min(maxCopies, remaining() - leaveFree));
       if (took === 0) break;
 
-      const role = themeRole(picked, theme);
+      const role = themeRole(picked, t);
       if (role === 'both') { enablers += took; payoffs += took; }
       else if (role === 'payoff') payoffs += took;
       else enablers += took;
     }
+  };
+
+  if (theme) {
+    // A second theme gets about a third of what the role quotas left. Enough
+    // to be a real plan, not so much that the deck stops being about the
+    // first. Whatever it cannot fill goes back to the main theme.
+    if (secondary) {
+      fillTheme(theme, Math.round(remaining() / 3));
+      fillTheme(secondary, 0);
+    }
+    fillTheme(theme, 0);
 
     if (spellSlots - chosen.length > 0) {
       shortfalls.push({
@@ -463,7 +493,7 @@ export function buildDeck(pool, {
 
   // Anything still empty is filled with the best cards left, so a thin
   // collection still gets a complete deck rather than a truncated one.
-  for (const card of rankCandidates(spellPool, theme)) {
+  for (const card of rankCandidates(spellPool, theme, secondary)) {
     if (chosen.length >= spellSlots) break;
     if (copiesLeft(card) <= 0) continue;
     take(card, 'filling out the deck', maxCopies);
@@ -526,6 +556,19 @@ export function buildDeck(pool, {
         enablers: themeReport ? themeReport.enablers : null,
         payoffs: themeReport ? themeReport.payoffs : null,
         strength: themeReport ? themeReport.strength : null,
+      }
+      : null,
+    secondaryTheme: secondary
+      ? {
+        key: secondary.key || null,
+        label: secondary.label,
+        blurb: secondary.blurb || '',
+        enablerName: secondary.enablerName || 'enablers',
+        payoffName: secondary.payoffName || 'payoffs',
+        tribe: secondary.tribe || null,
+        enablers: secondaryReport ? secondaryReport.enablers : null,
+        payoffs: secondaryReport ? secondaryReport.payoffs : null,
+        strength: secondaryReport ? secondaryReport.strength : null,
       }
       : null,
     mainboard: groupedSpells,

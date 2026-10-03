@@ -143,6 +143,9 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
         reviseDeckId: req.query.reviseDeckId ? Number(req.query.reviseDeckId) : null,
         // Extra colours a commanderless revision may reach into.
         splash: req.query.splash || null,
+        // Comma-separated card ids a revision is keeping, so the themes they
+        // belong to can be offered first.
+        keepCardIds: String(req.query.keepCardIds || '').split(',').map(Number).filter((n) => Number.isFinite(n) && n > 0),
       }),
     });
   } catch (error) {
@@ -157,7 +160,7 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
 router.post('/generate', authenticate, (req, res, next) => {
   try {
     const {
-      commanderCardId, format, themeKey, includeCommitted, landCount, identity, reviseDeckId, splash, keepCardIds,
+      commanderCardId, format, themeKey, secondaryThemeKey, includeCommitted, landCount, identity, reviseDeckId, splash, keepCardIds,
     } = req.body || {};
 
     res.json({
@@ -167,6 +170,7 @@ router.post('/generate', authenticate, (req, res, next) => {
         // falls back to commander for everything else.
         format: format || (reviseDeckId == null ? 'commander' : null),
         themeKey: themeKey || null,
+        secondaryThemeKey: secondaryThemeKey || null,
         includeCommitted: includeCommitted !== false,
         landCount: landCount == null ? null : Number(landCount),
         identity: identity || null,

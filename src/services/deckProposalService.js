@@ -27,7 +27,7 @@ import db from '../db/connection.js';
 import {
   buildDeck, resolveTheme, isLegalIn, ROLE_PREDICATE_BY_CODE,
 } from './deckGeneratorService.js';
-import { rankThemes, withinColorIdentity } from './cardSynergyService.js';
+import { rankThemes, withinColorIdentity, themeRole } from './cardSynergyService.js';
 import { getGeneratorPool } from './inventoryService.js';
 import { findCard } from './importService.js';
 import { isBasicLandSql, isBasicLand } from './basicLands.js';
@@ -83,7 +83,7 @@ function commanderFrom(pool, commanderCardId) {
  */
 export function themeOptions(userId, commanderCardId, {
   includeCommitted = true, identity: chosenIdentity = null, format = 'commander',
-  reviseDeckId = null, splash = null,
+  reviseDeckId = null, splash = null, keepCardIds = [],
 } = {}) {
   // The same pool the proposal will be built from, revision included: a theme
   // measured without the deck's own cards is measured against a collection the
@@ -99,10 +99,26 @@ export function themeOptions(userId, commanderCardId, {
 
   const spells = pool.filter((card) => !/\bland\b/i.test(String(card.type_line || '')));
 
+  // The cards a revision is keeping, read for which themes they belong to.
+  // Somebody keeping three Lhurgoyfs has already said what the deck is about;
+  // the themes those cards serve are put first and say so, rather than
+  // leaving the person to work out which of eight labels matches them.
+  const keepIds = new Set((keepCardIds || []).map(Number));
+  const keptCards = reviseDeckId == null ? [] : spells.filter((card) => keepIds.has(card.card_id));
+
   return rankThemes(spells, { identity })
     .filter((theme) => theme.strength > 0)
+    .map((theme) => {
+      const resolved = resolveTheme(theme.key, spells);
+      const matched = resolved ? keptCards.filter((card) => themeRole(card, resolved) != null) : [];
+      return { theme, keptMatches: [...new Set(matched.map((card) => card.name))] };
+    })
+    // Stable: among themes matching the same number of kept cards, the
+    // collection's own ranking still decides.
+    .sort((a, b) => b.keptMatches.length - a.keptMatches.length)
     .slice(0, 8)
-    .map((theme) => ({
+    .map(({ theme, keptMatches }) => ({
+      keptMatches,
       key: theme.key,
       label: theme.label,
       // What the theme means, in words rather than counts. See the note on
@@ -343,6 +359,7 @@ export function proposeDeck(userId, {
   commanderCardId = null,
   format = 'commander',
   themeKey = null,
+  secondaryThemeKey = null,
   includeCommitted = true,
   landCount = null,
   identity = null,
@@ -389,7 +406,7 @@ export function proposeDeck(userId, {
   // outright when there is not — a 60-card format has nothing to infer them
   // from.
   const proposal = buildDeck(pool, {
-    commander, format, themeKey, landCount, keep,
+    commander, format, themeKey, secondaryThemeKey, landCount, keep,
     identity: commander ? null : (identity || (target ? revisionIdentity(target.cards, splash) : null)),
   });
 
