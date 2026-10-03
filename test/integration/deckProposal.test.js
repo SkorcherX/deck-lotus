@@ -467,3 +467,43 @@ describe('revising a deck', () => {
     assert.equal(proposeDeck(userId, { commanderCardId }).revision, null);
   });
 });
+
+/**
+ * A 60-card deck has no commander to take colours from, so a revision has to
+ * take them from the deck. Before this it took them from nowhere: a Dimir
+ * deck asked for graveyard value came back proposing every colour.
+ */
+describe('revising a deck without a commander', () => {
+  let deckId;
+
+  before(() => {
+    for (let i = 0; i < 10; i += 1) {
+      addCard(`Green Miller ${i}`, 'Creature — Elf', {
+        identity: 'G', manaCost: '{1}{G}',
+        oracle: 'When this creature enters, mill three cards. Return target creature card from your graveyard to your hand.',
+      });
+    }
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?, 'Dimir Mill', 'modern', 'idea')`, [userId]);
+    deckId = db.get(`SELECT id FROM decks WHERE name = 'Dimir Mill'`).id;
+    for (const name of ['Miller 0', 'Miller 1', 'Reanimator 0', 'Killer 0']) {
+      db.run(
+        `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_foil) VALUES (?,?,4,0,0)`,
+        [deckId, printings[`OWN:${name}`]]
+      );
+    }
+  });
+
+  test('suggestions stay inside the colours the deck already plays', () => {
+    const proposal = proposeDeck(userId, { reviseDeckId: deckId, format: null, themeKey: 'graveyard' });
+    const offColour = proposal.revision.added.filter((c) => c.name.startsWith('Green'));
+    assert.deepEqual(offColour, []);
+  });
+
+  test('the theme counts are measured in those colours too', () => {
+    const themes = themeOptions(userId, null, { reviseDeckId: deckId, format: 'modern' });
+    assert.ok(themes.length > 0);
+    const full = themeOptions(userId, null, { format: 'modern' });
+    const gy = (list) => list.find((t) => t.key === 'graveyard');
+    assert.ok(gy(themes).enablers < gy(full).enablers, 'green enablers should not be counted');
+  });
+});

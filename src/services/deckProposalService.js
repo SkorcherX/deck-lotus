@@ -94,7 +94,8 @@ export function themeOptions(userId, commanderCardId, {
   const commander = commanderFrom(pool, commanderCardId);
   const identity = commander
     ? String(commander.color_identity || '').replace(/[^WUBRG]/g, '')
-    : (chosenIdentity || null);
+    : (chosenIdentity
+      || (reviseDeckId == null ? null : deckIdentity(revisionTarget(userId, reviseDeckId).cards)));
 
   const spells = pool.filter((card) => !/\bland\b/i.test(String(card.type_line || '')));
 
@@ -175,6 +176,24 @@ function themeOfDeck(pool) {
 
   const best = rankThemes(own).filter((theme) => theme.strength > 0)[0];
   return best ? best.key : null;
+}
+
+/**
+ * The colour identity a deck already has: the union of its cards' identities.
+ *
+ * A revision of a 60-card deck has no commander to take colours from, and
+ * without this the pool went unfiltered — asking a Dimir deck for graveyard
+ * value proposed green, red and white cards and turned it five-colour. The
+ * deck's colours are a decision already made; a revision works inside them.
+ * Null for an empty deck, so there is still nothing to restrict.
+ */
+export function deckIdentity(cards) {
+  if (!cards || cards.length === 0) return null;
+  const seen = new Set();
+  for (const row of cards) {
+    for (const c of String(row.color_identity || '').toUpperCase().replace(/[^WUBRG]/g, '')) seen.add(c);
+  }
+  return 'WUBRG'.split('').filter((c) => seen.has(c)).join('');
 }
 
 /** A deck being revised: what it is, and what is in it. */
@@ -315,7 +334,7 @@ export function proposeDeck(userId, {
   // from.
   const proposal = buildDeck(pool, {
     commander, format, themeKey, landCount,
-    identity: commander ? null : (identity || null),
+    identity: commander ? null : (identity || (target ? deckIdentity(target.cards) : null)),
   });
 
   return {
