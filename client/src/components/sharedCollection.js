@@ -28,7 +28,7 @@ const state = {
   totalPages: 1,
   viewMode: 'grid',
   showPrices: localStorage.getItem('inventoryShowPrices') === 'true',
-  filters: { name: '', sort: 'name', type: 'all', commander: 'all', colors: [], sets: '' },
+  filters: { name: '', sort: 'name', type: 'all', commander: 'all', rarity: 'all', colors: [], sets: '' },
 };
 
 function escapeHtml(value) {
@@ -245,6 +245,7 @@ async function loadPage() {
       sort: state.filters.sort,
       type: state.filters.type,
       commander: state.filters.commander,
+      rarity: state.filters.rarity === 'all' ? '' : state.filters.rarity,
       colors: state.filters.colors.join(','),
       sets: state.filters.sets,
       page: state.page,
@@ -279,6 +280,7 @@ function wireViewer() {
     ['shared-coll-sort', 'sort'],
     ['shared-coll-type', 'type'],
     ['shared-coll-commander', 'commander'],
+    ['shared-coll-rarity', 'rarity'],
     ['shared-coll-set', 'sets'],
   ]) {
     document.getElementById(id).addEventListener('change', (event) => {
