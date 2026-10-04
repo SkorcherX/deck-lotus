@@ -7164,6 +7164,12 @@ body.maintenance-locked #app {
   color: var(--text-muted);
 }
 
+.search-panel-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
 .search-panel-row .search-box {
   flex: 1;
   min-width: 0;
