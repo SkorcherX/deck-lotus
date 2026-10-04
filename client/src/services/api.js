@@ -749,11 +749,12 @@ class ApiClient {
     return this.request(`/decks/${deckId}/rules${query}`);
   }
 
-  async getBuilderInventory({ deckId, name, type, subtype, colors, maxCmc, onlyFree, format, colorIdentity, role, fit = false, fitTheme = '', fitSecondary = null, page = 1, limit = 60 } = {}) {
+  async getBuilderInventory({ deckId, name, type, subtype, rarity, colors, maxCmc, onlyFree, format, colorIdentity, role, fit = false, fitTheme = '', fitSecondary = null, page = 1, limit = 60 } = {}) {
     const params = new URLSearchParams();
     if (deckId) params.set('deckId', deckId);
     if (name) params.set('name', name);
     if (type && type !== 'all') params.set('type', type);
+    if (rarity && rarity !== 'all') params.set('rarity', rarity);
     if (subtype && subtype.trim()) params.set('subtype', subtype.trim());
     if (colors && colors.length) params.set('colors', colors.join(','));
     if (maxCmc !== null && maxCmc !== undefined) params.set('maxCmc', maxCmc);

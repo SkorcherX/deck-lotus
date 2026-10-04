@@ -349,7 +349,7 @@ router.get('/availability', authenticate, (req, res, next) => {
  */
 router.get('/builder', authenticate, (req, res, next) => {
   try {
-    const { deckId, name, type, subtype, colors, colorIdentity, maxCmc, onlyFree, format, role, page, limit } = req.query;
+    const { deckId, name, type, subtype, rarity, colors, colorIdentity, maxCmc, onlyFree, format, role, page, limit } = req.query;
 
     // "Fits this deck": rank by the deck's themes instead of by name. The
     // themes are read from the deck unless named, and travel back with the
@@ -368,6 +368,7 @@ router.get('/builder', authenticate, (req, res, next) => {
         name,
         type,
         subtype,
+        rarity: RARITIES.includes(rarity) ? rarity : 'all',
         colors: colors ? String(colors).split(',').filter(Boolean) : [],
         // Fit mode stays inside the deck's colours and format unless the
         // panel's own filters already narrowed further.

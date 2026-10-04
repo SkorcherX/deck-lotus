@@ -1575,6 +1575,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     name,
     type,
     subtype,
+    rarity,
     colors = [],
     colorIdentity,
     maxCmc,
@@ -1600,6 +1601,12 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   if (type && type.trim() && type !== 'all') {
     where.push('type_line LIKE ?');
     params.push(`%${type}%`);
+  }
+
+  // Rarity of the printing, so a card is offered at the rarity it is held in.
+  if (rarity && rarity !== 'all') {
+    where.push('rarity = ?');
+    params.push(rarity);
   }
 
   const builderSubtypeFilter = subtypeFilterSql(subtype ? [subtype] : [], '');

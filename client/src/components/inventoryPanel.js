@@ -15,7 +15,7 @@ import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/comma
  */
 
 let ctx = null;              // { getDeck, refreshDeck }
-let filters = { name: '', subtype: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
+let filters = { name: '', subtype: '', type: 'all', rarity: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
 let page = 1;
 
 // "Fits this deck": rank by the deck's themes rather than by name. The themes
@@ -104,6 +104,15 @@ export function setupInventoryPanel(context) {
       page = 1;
       loadFeed();
     }, 250));
+  }
+
+  const rarityFilter = el('inventory-panel-rarity');
+  if (rarityFilter) {
+    rarityFilter.addEventListener('change', () => {
+      filters.rarity = rarityFilter.value;
+      page = 1;
+      loadFeed();
+    });
   }
 
   const typeFilter = el('inventory-panel-type');
@@ -207,7 +216,7 @@ export function setupInventoryPanel(context) {
 export function resetInventoryPanel() {
   undoStack = [];
   page = 1;
-  filters = { name: '', subtype: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
+  filters = { name: '', subtype: '', type: 'all', rarity: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
   // Themes belong to the deck they were read from.
   fit = { on: false, main: '', second: null };
   const fitBox = el('inventory-panel-fit');
@@ -234,6 +243,7 @@ export function openInventoryPanelWith({ type = 'all', colors = [], maxCmc = nul
     name: '',
     subtype: '',
     type: type || 'all',
+    rarity: 'all',
     colors: [...colors],
     maxCmc,
     role,
@@ -263,6 +273,9 @@ function syncFilterControls() {
 
   const typeFilter = el('inventory-panel-type');
   if (typeFilter) typeFilter.value = filters.type;
+
+  const rarityFilter = el('inventory-panel-rarity');
+  if (rarityFilter) rarityFilter.value = filters.rarity;
 
   for (const [id, key] of [
     ['inventory-panel-only-free', 'onlyFree'],
@@ -335,6 +348,7 @@ async function loadFeed() {
       name: filters.name,
       subtype: filters.subtype,
       type: filters.type,
+      rarity: filters.rarity,
       colors: filters.colors,
       maxCmc: filters.maxCmc,
       role: filters.role,
