@@ -126,9 +126,10 @@ class ApiClient {
   }
 
   // Card methods
-  async searchCards(query, limit = 20, type = null) {
+  async searchCards(query, limit = 20, type = null, rarity = null) {
     const params = new URLSearchParams({ q: query, limit });
     if (type) params.append('type', type);
+    if (rarity && rarity !== 'all') params.append('rarity', rarity);
     return this.request(`/cards/search?${params}`);
   }
 

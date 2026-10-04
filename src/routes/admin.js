@@ -17,11 +17,10 @@ import { getAllUsers, updateUser, deleteUser, resetUserPassword } from '../servi
 import { getSettings, updateSettings } from '../services/settingsService.js';
 import { getInventory, getInventoryStats } from '../services/inventoryService.js';
 import { authenticate } from '../middleware/auth.js';
+import { RARITIES } from '../shared/rarities.js';
 import { normalizeCondition } from '../shared/conditions.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
 
-// MTGJSON's rarity values; anything else reads as 'all', like condition.
-const RARITIES = ['common', 'uncommon', 'rare', 'mythic', 'special', 'bonus'];
 
 // 'all', 'unrecorded', or a condition code; anything else reads as 'all'
 // rather than an error, the way an unknown sort does.

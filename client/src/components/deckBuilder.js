@@ -108,7 +108,8 @@ export function setupDeckBuilder() {
     }
 
     try {
-      const result = await api.searchCards(query);
+      const rarity = document.getElementById('card-search-rarity')?.value;
+      const result = await api.searchCards(query, 20, null, rarity);
       displaySearchResults(result.cards);
     } catch (error) {
       console.error('Search error:', error);
@@ -117,6 +118,11 @@ export function setupDeckBuilder() {
 
   cardSearch.addEventListener('input', (e) => {
     debouncedSearch(e.target.value);
+  });
+
+  // Changing rarity re-runs whatever is already typed.
+  document.getElementById('card-search-rarity')?.addEventListener('change', () => {
+    debouncedSearch(cardSearch.value);
   });
 
   // Deck filter search

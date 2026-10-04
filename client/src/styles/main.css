@@ -7169,6 +7169,11 @@ body.maintenance-locked #app {
   min-width: 0;
 }
 
+#card-search-rarity {
+  width: auto;
+  flex: 0 0 auto;
+}
+
 #inventory-panel-toggle {
   white-space: nowrap;
   padding: 1rem 1.25rem;
@@ -7473,7 +7478,8 @@ body.maintenance-locked #app {
     flex-direction: column;
   }
 
-  #inventory-panel-toggle {
+  #inventory-panel-toggle,
+  #card-search-rarity {
     width: 100%;
   }
 

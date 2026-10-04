@@ -20,10 +20,9 @@ import { importCardCastleSingles } from '../services/cardCastleImport.js';
 import { AUDIT_SOURCES } from '../services/auditService.js';
 import { normalizeCondition } from '../shared/conditions.js';
 import { authenticate } from '../middleware/auth.js';
+import { RARITIES } from '../shared/rarities.js';
 import { deckFitThemes } from '../services/deckProposalService.js';
 
-// MTGJSON's rarity values; anything else reads as 'all', like condition.
-const RARITIES = ['common', 'uncommon', 'rare', 'mythic', 'special', 'bonus'];
 
 // 'all', 'unrecorded', or a condition code; anything else reads as 'all'
 // rather than an error, the way an unknown sort does.
