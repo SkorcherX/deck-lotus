@@ -104,6 +104,7 @@ export function getInventory(userIds, filters = {}) {
     availability = 'all', // 'all', 'available', 'in_decks', 'lent_out'
     commander = 'all', // 'all', 'eligible'
     condition = 'all', // 'all', 'unrecorded', or a code: NM, LP, MP, HP, DMG
+    rarity = 'all', // 'all' or an MTGJSON rarity: common, uncommon, rare, mythic, special, bonus
     page = 1,
     limit = 50
   } = filters;
@@ -266,6 +267,22 @@ export function getInventory(userIds, filters = {}) {
     countSql += clause;
     params.push(...scope.params, code);
     countParams.push(...scope.params, code);
+  }
+
+  // Rarity filter: cards with at least one owned printing at that rarity.
+  // Rarity belongs to the printing, not the card — a common reprinted as a
+  // mythic showcase is either, depending on which copy you hold.
+  if (rarity !== 'all') {
+    const clause = ` AND c.id IN (
+      SELECT p4.card_id
+      FROM owned_printings op4
+      JOIN printings p4 ON op4.printing_id = p4.id
+      WHERE op4.user_id ${scope.clause} AND p4.rarity = ?
+    )`;
+    sql += clause;
+    countSql += clause;
+    params.push(...scope.params, rarity);
+    countParams.push(...scope.params, rarity);
   }
 
   // Availability filter. This has to be part of the query rather than a pass

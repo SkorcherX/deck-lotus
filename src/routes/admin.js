@@ -20,6 +20,9 @@ import { authenticate } from '../middleware/auth.js';
 import { normalizeCondition } from '../shared/conditions.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
 
+// MTGJSON's rarity values; anything else reads as 'all', like condition.
+const RARITIES = ['common', 'uncommon', 'rare', 'mythic', 'special', 'bonus'];
+
 // 'all', 'unrecorded', or a condition code; anything else reads as 'all'
 // rather than an error, the way an unknown sort does.
 function normalizeConditionFilter(value) {
@@ -460,6 +463,7 @@ router.get('/inventory', authenticate, requireAdmin, (req, res, next) => {
       availability,
       commander,
       condition,
+      rarity,
       page = 1,
       limit = 50
     } = req.query;
@@ -476,6 +480,7 @@ router.get('/inventory', authenticate, requireAdmin, (req, res, next) => {
       availability: availability || 'all',
       commander: commander || 'all',
       condition: normalizeConditionFilter(condition),
+      rarity: RARITIES.includes(rarity) ? rarity : 'all',
       page: parseInt(page),
       limit: parseInt(limit)
     };

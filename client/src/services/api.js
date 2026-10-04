@@ -585,6 +585,7 @@ class ApiClient {
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
     if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
+    if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
 
@@ -615,6 +616,7 @@ class ApiClient {
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
     if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
+    if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
 

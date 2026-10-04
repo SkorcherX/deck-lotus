@@ -35,6 +35,7 @@ let filters = {
   availability: 'all',
   commander: 'all',
   condition: 'all',
+  rarity: 'all',
 };
 let showPrices = localStorage.getItem('inventoryShowPrices') === 'true';
 // Endless scroll replaces the pager: pages are appended as the reader reaches
@@ -140,6 +141,16 @@ function setupFilterListeners() {
   if (conditionSelect) {
     conditionSelect.addEventListener('change', (e) => {
       filters.condition = e.target.value;
+      currentPage = 1;
+      loadInventoryData();
+    });
+  }
+
+  // Rarity (of the printing owned, so a reprint can count at either)
+  const raritySelect = document.getElementById('inventory-rarity');
+  if (raritySelect) {
+    raritySelect.addEventListener('change', (e) => {
+      filters.rarity = e.target.value;
       currentPage = 1;
       loadInventoryData();
     });
@@ -1687,7 +1698,8 @@ function hasActiveFilters() {
     (filters.type && filters.type !== 'all') ||
     filters.availability !== 'all' ||
     filters.commander !== 'all' ||
-    filters.condition !== 'all'
+    filters.condition !== 'all' ||
+    filters.rarity !== 'all'
   );
 }
 
