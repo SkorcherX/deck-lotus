@@ -684,7 +684,8 @@
                             </div>
                         </div>
 
-                            <div style="padding: 0.75rem; position: relative;">
+                            <div style="padding: 0.75rem; display: flex; gap: 0.5rem; align-items: center;">
+                              <div style="position: relative; flex: 1; min-width: 0;">
                                 <input
                                     type="text"
                                     id="deck-filter-search"
@@ -695,11 +696,21 @@
                                 <button
                                     id="deck-filter-clear"
                                     class="hidden"
-                                    style="position: absolute; right: 1.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 0.25rem; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"
+                                    style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 0.25rem; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"
                                     title="Clear filter"
                                 >
                                     <i class="ph ph-x"></i>
                                 </button>
+                              </div>
+                                <select id="deck-filter-rarity" class="filter-select" aria-label="Rarity" title="Only show cards whose listed printing is this rarity" style="width: auto;">
+                                    <option value="all">Any rarity</option>
+                                    <option value="common">Common</option>
+                                    <option value="uncommon">Uncommon</option>
+                                    <option value="rare">Rare</option>
+                                    <option value="mythic">Mythic</option>
+                                    <option value="special">Special</option>
+                                    <option value="bonus">Bonus</option>
+                                </select>
                             </div>
                             <div id="mainboard" class="deck-list active"></div>
                             <div id="sideboard" class="deck-list hidden"></div>
@@ -1029,6 +1040,15 @@
                                 />
                                 <div id="shopping-wanted-results" class="search-results hidden"></div>
                             </div>
+                            <select id="shopping-wanted-rarity" class="filter-select" aria-label="Rarity" title="Only cards printed at this rarity" style="width: auto;">
+                                <option value="all">Any rarity</option>
+                                <option value="common">Common</option>
+                                <option value="uncommon">Uncommon</option>
+                                <option value="rare">Rare</option>
+                                <option value="mythic">Mythic</option>
+                                <option value="special">Special</option>
+                                <option value="bonus">Bonus</option>
+                            </select>
                             <button id="shopping-wanted-bulk-toggle" class="btn btn-secondary">
                                 <i class="ph ph-list-plus btn-icon"></i>
                                 <span class="btn-text">Paste a list</span>
@@ -2272,7 +2292,18 @@
                             <h3 style="margin-top: 0; font-size: 1rem;">
                                 <i class="ph ph-arrow-up-right"></i> You send
                             </h3>
-                            <input type="text" id="trade-search-give" placeholder="Search your collection…" autocomplete="off" style="width: 100%;" />
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="text" id="trade-search-give" placeholder="Search your collection…" autocomplete="off" style="flex: 1; min-width: 0;" />
+                                <select id="trade-search-rarity-give" class="filter-select" aria-label="Rarity" style="width: auto;">
+                                    <option value="all">Any rarity</option>
+                                    <option value="common">Common</option>
+                                    <option value="uncommon">Uncommon</option>
+                                    <option value="rare">Rare</option>
+                                    <option value="mythic">Mythic</option>
+                                    <option value="special">Special</option>
+                                    <option value="bonus">Bonus</option>
+                                </select>
+                            </div>
                             <div id="trade-search-results-give" style="max-height: 220px; overflow-y: auto; margin-top: 0.5rem;"></div>
                             <div id="trade-draft-give" style="margin-top: 0.75rem;"></div>
                         </div>
@@ -2281,7 +2312,18 @@
                             <h3 style="margin-top: 0; font-size: 1rem;">
                                 <i class="ph ph-arrow-down-left"></i> You get
                             </h3>
-                            <input type="text" id="trade-search-receive" placeholder="Search their collection…" autocomplete="off" style="width: 100%;" />
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="text" id="trade-search-receive" placeholder="Search their collection…" autocomplete="off" style="flex: 1; min-width: 0;" />
+                                <select id="trade-search-rarity-receive" class="filter-select" aria-label="Rarity" style="width: auto;">
+                                    <option value="all">Any rarity</option>
+                                    <option value="common">Common</option>
+                                    <option value="uncommon">Uncommon</option>
+                                    <option value="rare">Rare</option>
+                                    <option value="mythic">Mythic</option>
+                                    <option value="special">Special</option>
+                                    <option value="bonus">Bonus</option>
+                                </select>
+                            </div>
                             <div id="trade-search-results-receive" style="max-height: 220px; overflow-y: auto; margin-top: 0.5rem;"></div>
                             <div id="trade-draft-receive" style="margin-top: 0.75rem;"></div>
                         </div>
@@ -2353,6 +2395,15 @@
                                     <option value="Sorcery">Sorcery</option>
                                     <option value="Battle">Battle</option>
                                     <option value="Token">Token</option>
+                                </select>
+                                <select id="pm-card-rarity-filter" title="Filter by rarity" style="flex-shrink:0;width:130px;">
+                                    <option value="">Any rarity</option>
+                                    <option value="common">Common</option>
+                                    <option value="uncommon">Uncommon</option>
+                                    <option value="rare">Rare</option>
+                                    <option value="mythic">Mythic</option>
+                                    <option value="special">Special</option>
+                                    <option value="bonus">Bonus</option>
                                 </select>
                             </div>
                         </div>

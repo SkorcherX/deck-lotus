@@ -122,13 +122,18 @@ router.get('/stats', authenticate, (req, res, next) => {
  */
 router.get('/search', authenticate, (req, res, next) => {
   try {
-    const { q, limit = 10 } = req.query;
+    const { q, limit = 10, rarity } = req.query;
 
     if (!q || q.length < 2) {
       return res.json({ cards: [] });
     }
 
-    const cards = searchCardsForInventoryAdd(req.user.id, q, parseInt(limit));
+    const cards = searchCardsForInventoryAdd(
+      req.user.id,
+      q,
+      parseInt(limit),
+      RARITIES.includes(rarity) ? rarity : null
+    );
     res.json({ cards });
   } catch (error) {
     next(error);

@@ -141,6 +141,7 @@ function closeWatchModal() {
   document.getElementById('pm-watch-form').reset();
   document.getElementById('pm-card-name').disabled = false;
   document.getElementById('pm-card-type-filter').value = '';
+  document.getElementById('pm-card-rarity-filter').value = '';
   const r = document.getElementById('pm-card-search-results');
   if (r) { r.classList.add('hidden'); r.innerHTML = ''; }
   document.getElementById('pm-printing-section').style.display = 'none';
@@ -313,7 +314,8 @@ export function setupPriceMonitoring() {
     if (query.length < 2) { hidePmCardResults(); return; }
     try {
       const typeFilter = document.getElementById('pm-card-type-filter').value || null;
-      const result = await api.searchCards(query, 10, typeFilter);
+      const rarity = document.getElementById('pm-card-rarity-filter')?.value || null;
+      const result = await api.searchCards(query, 10, typeFilter, rarity);
       if (!result.cards.length) { hidePmCardResults(); return; }
       cardSearchResults.innerHTML = result.cards.map(card => `
         <div class="pm-card-result" data-name="${card.name}" data-card-id="${card.id ?? ''}" data-image-url="${card.image_url ?? ''}" style="padding: 0.5rem 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--border-color);">
@@ -358,10 +360,12 @@ export function setupPriceMonitoring() {
     if (!cardNameInput.disabled) debouncedCardSearch(e.target.value.trim());
   });
 
-  document.getElementById('pm-card-type-filter').addEventListener('change', () => {
-    const q = cardNameInput.value.trim();
-    if (!cardNameInput.disabled && q.length >= 2) debouncedCardSearch(q);
-  });
+  for (const id of ['pm-card-type-filter', 'pm-card-rarity-filter']) {
+    document.getElementById(id).addEventListener('change', () => {
+      const q = cardNameInput.value.trim();
+      if (!cardNameInput.disabled && q.length >= 2) debouncedCardSearch(q);
+    });
+  }
 
   cardNameInput.addEventListener('blur', () => {
     setTimeout(hidePmCardResults, 150);

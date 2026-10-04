@@ -630,8 +630,10 @@ class ApiClient {
     return this.request(`/admin/inventory/stats?${params}`);
   }
 
-  async searchForInventoryAdd(query) {
-    return this.request(`/inventory/search?q=${encodeURIComponent(query)}`);
+  async searchForInventoryAdd(query, rarity = null) {
+    const params = new URLSearchParams({ q: query });
+    if (rarity && rarity !== 'all') params.append('rarity', rarity);
+    return this.request(`/inventory/search?${params}`);
   }
 
   async getInventorySets() {

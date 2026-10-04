@@ -619,6 +619,7 @@ function addToDraft(side, printing, card) {
  */
 async function runSearch(side, term) {
   const results = document.getElementById(`trade-search-results-${side}`);
+  const rarity = document.getElementById(`trade-search-rarity-${side}`)?.value || 'all';
 
   if (!term || term.length < 2) {
     results.innerHTML = '';
@@ -627,8 +628,8 @@ async function runSearch(side, term) {
 
   try {
     const data = side === 'give'
-      ? await api.getInventory({ name: term, limit: 15 })
-      : await api.getPartnerInventory(state.draft.partnerId, { name: term, limit: 15 });
+      ? await api.getInventory({ name: term, rarity, limit: 15 })
+      : await api.getPartnerInventory(state.draft.partnerId, { name: term, rarity, limit: 15 });
 
     if (!data.cards.length) {
       results.innerHTML = '<div style="padding:0.5rem;color:var(--text-secondary);font-size:0.875rem;">Nothing owned by that name.</div>';
@@ -991,6 +992,8 @@ export function setupTrades() {
   for (const side of ['give', 'receive']) {
     const input = document.getElementById(`trade-search-${side}`);
     input.addEventListener('input', debounce(() => runSearch(side, input.value.trim()), 300));
+    document.getElementById(`trade-search-rarity-${side}`)
+      ?.addEventListener('change', () => runSearch(side, input.value.trim()));
   }
 
   window.addEventListener('page:trades', async () => {

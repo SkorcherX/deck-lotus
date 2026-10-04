@@ -614,7 +614,7 @@ function fuzzyCardIdsByName(normalizedQuery, limit) {
  * ("urzas tower", "jotun grunt"). If that finds nothing, falls back to an
  * edit-distance pass that forgives a typo or two.
  */
-export function searchCardsForInventoryAdd(userId, query, limit = 10) {
+export function searchCardsForInventoryAdd(userId, query, limit = 10, rarity = null) {
   if (!query || query.trim().length < 2) {
     return [];
   }
@@ -624,16 +624,23 @@ export function searchCardsForInventoryAdd(userId, query, limit = 10) {
     return [];
   }
 
+  // These results are cards, not printings, so a rarity means "printed at
+  // that rarity at least once".
+  const rarityClause = rarity
+    ? 'AND EXISTS (SELECT 1 FROM printings rp WHERE rp.card_id = c.id AND rp.rarity = ?)'
+    : '';
+  const rarityParams = rarity ? [rarity] : [];
+
   const cards = db.all(`
     SELECT ${INVENTORY_SEARCH_COLUMNS}
     FROM cards c
-    WHERE c.name_normalized LIKE ?
+    WHERE c.name_normalized LIKE ? ${rarityClause}
     ORDER BY
       CASE WHEN c.name_normalized LIKE ? THEN 0 ELSE 1 END,
       LENGTH(c.name),
       c.name
     LIMIT ?
-  `, [userId, `%${normalizedQuery}%`, `${normalizedQuery}%`, limit]);
+  `, [userId, `%${normalizedQuery}%`, ...rarityParams, `${normalizedQuery}%`, limit]);
 
   if (cards.length > 0) {
     return cards;
@@ -650,8 +657,8 @@ export function searchCardsForInventoryAdd(userId, query, limit = 10) {
   const matches = db.all(`
     SELECT ${INVENTORY_SEARCH_COLUMNS}
     FROM cards c
-    WHERE c.id IN (${placeholders})
-  `, [userId, ...ids]);
+    WHERE c.id IN (${placeholders}) ${rarityClause}
+  `, [userId, ...ids, ...rarityParams]);
 
   // Restore the ranking the fuzzy pass worked out; SQL gave it back in id order.
   const order = new Map(ids.map((id, index) => [id, index]));

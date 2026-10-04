@@ -31,6 +31,7 @@ let searchTimeout = null;
 // own dimension.
 let currentFilter = { cmc: null, color: null, ownership: null, produces: null };
 let deckFilterQuery = ''; // Name filter for deck cards
+let deckFilterRarity = 'all'; // Rarity of the printing the deck lists
 let exampleHand = []; // Current example hand
 let activeTab = 'mainboard'; // Track which tab is currently active ('mainboard', 'sideboard', or 'maybeboard')
 let pricingMode = false; // Track if pricing mode is enabled
@@ -137,6 +138,11 @@ export function setupDeckBuilder() {
     } else {
       deckFilterClear.classList.add('hidden');
     }
+    renderDeckCards();
+  });
+
+  document.getElementById('deck-filter-rarity')?.addEventListener('change', (e) => {
+    deckFilterRarity = e.target.value;
     renderDeckCards();
   });
 
@@ -809,13 +815,21 @@ function renderDeckCards() {
   let maybeboardCards = currentDeck.cards.filter(isMaybeboardCard);
 
   // Apply filters
-  const hasFilter = currentFilter.cmc !== null || currentFilter.color !== null || currentFilter.ownership !== null || currentFilter.produces !== null || deckFilterQuery;
+  const hasFilter = currentFilter.cmc !== null || currentFilter.color !== null || currentFilter.ownership !== null || currentFilter.produces !== null || deckFilterQuery || deckFilterRarity !== 'all';
 
   // Apply name filter
   if (deckFilterQuery) {
     mainboardCards = mainboardCards.filter(c => c.name.toLowerCase().includes(deckFilterQuery));
     sideboardCards = sideboardCards.filter(c => c.name.toLowerCase().includes(deckFilterQuery));
     maybeboardCards = maybeboardCards.filter(c => c.name.toLowerCase().includes(deckFilterQuery));
+  }
+
+  // Rarity of the printing in the deck, not of the card in general.
+  if (deckFilterRarity !== 'all') {
+    const atRarity = (c) => (c.rarity || '').toLowerCase() === deckFilterRarity;
+    mainboardCards = mainboardCards.filter(atRarity);
+    sideboardCards = sideboardCards.filter(atRarity);
+    maybeboardCards = maybeboardCards.filter(atRarity);
   }
 
   if (currentFilter.cmc !== null) {
@@ -873,6 +887,9 @@ function renderDeckCards() {
       currentFilter.color = null;
       currentFilter.ownership = null;
       currentFilter.produces = null;
+      deckFilterRarity = 'all';
+      const raritySelect = document.getElementById('deck-filter-rarity');
+      if (raritySelect) raritySelect.value = 'all';
       renderDeckCards();
       // Re-render stats to clear highlighted segments
       loadDeckStats();
