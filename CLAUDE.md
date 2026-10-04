@@ -377,3 +377,12 @@ taken on GitHub — only do it when explicitly asked.
   treats strings-attached rainbow mana — commander-identity outside
   Commander, "spend this mana only", "could produce", paid filters — as no
   colour at all.
+- Adding cards answers with their price: quick add returns `card` and
+  `bulkAddToInventory` returns `cards`, both from `describeAddedPrinting`
+  (priced like `OWNED_COPY_PRICE`; `price` is null, not 0, when unpriced).
+  The page colours them with `src/shared/priceBands.js`, which mirrors the
+  Android app's `PriceBand` thresholds — change one, change the other. The
+  `--price-band-*` tokens are locked across themes like rarity. On the
+  Inventory page, collection search is the primary field and quick add sits
+  behind the "Add cards" button (key `A`) on purpose: an always-open add box
+  in that spot got typed searches into it and added cards by accident.

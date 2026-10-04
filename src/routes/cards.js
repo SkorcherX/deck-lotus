@@ -18,6 +18,7 @@ import {
   getCardOwnershipAndUsage,
 } from '../services/cardService.js';
 import { authenticate } from '../middleware/auth.js';
+import { AUDIT_SOURCES } from '../services/auditService.js';
 import { RARITIES } from '../shared/rarities.js';
 
 const router = express.Router();
@@ -273,7 +274,7 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
   try {
     const printingId = parseInt(req.params.printingId);
     const userId = req.user.id;
-    const { quantity, isFoil = false, expectedQuantity } = req.body;
+    const { quantity, isFoil = false, expectedQuantity, source } = req.body;
     // Optional. Present (even as '') means "this condition's row"; absent
     // means the total across conditions, which is what the page always sent.
     const hasCondition = Object.prototype.hasOwnProperty.call(req.body, 'condition');
@@ -283,7 +284,9 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
     }
 
     const result = setOwnedPrintingQuantity(userId, printingId, parseInt(quantity), isFoil, {
-      source: 'card_page',
+      // The Inventory page's Undo comes through here too; it says so, so the
+      // history shows a quick add and its undo side by side.
+      source: AUDIT_SOURCES.includes(source) ? source : 'card_page',
       expectedQuantity,
       ...(hasCondition ? { condition: req.body.condition ?? '' } : {}),
     });

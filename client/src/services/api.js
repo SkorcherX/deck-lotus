@@ -193,11 +193,11 @@ class ApiClient {
   //
   // `condition` is optional: send it (even '') to set that condition's row,
   // leave it out to set the total across conditions as before.
-  async setOwnedPrintingQuantity(printingId, quantity, isFoil = false, { expectedQuantity, condition } = {}) {
+  async setOwnedPrintingQuantity(printingId, quantity, isFoil = false, { expectedQuantity, condition, source } = {}) {
     return this.request(`/cards/printings/${printingId}/quantity`, {
       method: 'POST',
       body: JSON.stringify({
-        quantity, isFoil, expectedQuantity,
+        quantity, isFoil, expectedQuantity, source,
         ...(condition === undefined ? {} : { condition }),
       }),
     });

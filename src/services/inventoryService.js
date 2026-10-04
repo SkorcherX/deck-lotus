@@ -33,6 +33,44 @@ export const OWNED_COPY_PRICE = `
   )
 `;
 
+/**
+ * What one just-added line is worth, for the add receipt.
+ *
+ * Priced the way OWNED_COPY_PRICE prices a copy — the finish's own tcgplayer
+ * price, a foil falling back to normal — so the receipt and the collection
+ * value agree. `priceType` says which one answered: a foil quoted at its
+ * normal price is not the same claim as one quoted at its foil price. `price`
+ * is null, not 0, when nothing priced the printing; "unpriced" and "cheap"
+ * are different statements, the same split the companion app's bands make.
+ */
+export function describeAddedPrinting(printingId, isFoil, quantity) {
+  const row = db.get(
+    `SELECT p.id, p.uuid, p.set_code, p.collector_number, p.rarity, p.image_url, c.name,
+            (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer'
+               AND price_type = 'foil' LIMIT 1) AS foil_price,
+            (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer'
+               AND price_type = 'normal' LIMIT 1) AS normal_price
+       FROM printings p JOIN cards c ON c.id = p.card_id
+      WHERE p.id = ?`,
+    [printingId]
+  );
+  if (!row) return null;
+  const useFoil = isFoil && row.foil_price != null;
+  const price = useFoil ? row.foil_price : row.normal_price;
+  return {
+    printingId: row.id,
+    name: row.name,
+    setCode: row.set_code,
+    collectorNumber: row.collector_number,
+    rarity: row.rarity,
+    imageUrl: row.image_url,
+    isFoil: !!isFoil,
+    quantity,
+    price: price ?? null,
+    priceType: price == null ? null : (useFoil ? 'foil' : 'normal'),
+  };
+}
+
 // A card can lead a Commander deck if it's a legendary creature, or its
 // Oracle text explicitly grants that (backgrounds' partners, some
 // planeswalkers, etc.). Expects `c` (cards) to be in scope.
@@ -833,7 +871,11 @@ export function bulkAddToInventory(userId, items, context = {}) {
   const results = {
     added: 0,
     failed: 0,
-    errors: []
+    errors: [],
+    // One entry per line that landed, priced, for the receipt. Lines are kept
+    // separate rather than merged by printing: the receipt reads back what
+    // was entered, and two lines of the same card are two things somebody typed.
+    cards: []
   };
 
   // A batch id ties every row of one paste together, so a hundred-line import
@@ -918,6 +960,8 @@ export function bulkAddToInventory(userId, items, context = {}) {
       });
 
       results.added += quantity;
+      const described = describeAddedPrinting(printing.id, isFoil, quantity);
+      if (described) results.cards.push({ ...described, condition });
     } catch (error) {
       results.failed++;
       results.errors.push({ cardName: item.cardName, error: error.message });

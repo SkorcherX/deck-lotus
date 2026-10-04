@@ -136,8 +136,13 @@ export function formatOracleText(text) {
 /**
  * Show toast notification (styled via .toast CSS classes + Phosphor icon).
  * Signature is unchanged so existing call sites keep working.
+ *
+ * `options.className` adds classes to the toast (a price band's accent, say).
+ * `options.action` is `{ label, onClick }` — a button inside the toast, used
+ * for Undo. Pressing it runs the handler and dismisses the toast; clicking
+ * the rest of the toast still just dismisses it.
  */
-export function showToast(message, type = 'success', duration = 3000) {
+export function showToast(message, type = 'success', duration = 3000, options = {}) {
   let container = document.getElementById('toast-container');
   if (!container) {
     container = document.createElement('div');
@@ -160,12 +165,26 @@ export function showToast(message, type = 'success', duration = 3000) {
   const text = document.createElement('span');
   text.textContent = message;
   toast.append(icon, text);
+  if (options.className) toast.className += ` ${options.className}`;
 
   const dismiss = () => {
     toast.classList.add('toast-out');
     setTimeout(() => toast.remove(), 250);
   };
   toast.addEventListener('click', dismiss);
+  if (options.action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast-action';
+    button.textContent = options.action.label;
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      button.disabled = true;
+      dismiss();
+      options.action.onClick();
+    });
+    toast.append(button);
+  }
   container.appendChild(toast);
 
   if (duration) setTimeout(dismiss, duration);

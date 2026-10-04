@@ -1193,19 +1193,52 @@
                 <div id="inventory-stats" class="inventory-stats"></div>
 
                 <!--
-                  Quick Add search bar, with what the collection is made of
-                  beside it. The field is capped at 500px because a
-                  full-width single-card input reads as a page search rather
-                  than an add box — which left two thirds of the row empty.
-                  The type split fills it with the one summary the stats row
-                  above does not already give.
+                  Search first, add second. The quick-add box used to be the
+                  first and largest field on the page, so people typed a
+                  search into it and added cards they meant to look up. Search
+                  now has that spot; adding is a button that opens the same
+                  box, labelled as an add so it cannot pass for the search.
                 -->
+                <div class="inventory-search-primary">
+                    <div class="search-combo search-combo-primary">
+                        <select id="inventory-search-mode" class="filter-select search-combo-mode" aria-label="Search by">
+                            <option value="name">Card Name</option>
+                            <option value="set">Set Code</option>
+                            <option value="subtype">Creature Type</option>
+                        </select>
+                        <div class="search-combo-field">
+                            <i class="ph ph-magnifying-glass search-combo-icon" aria-hidden="true"></i>
+                            <input
+                                type="text"
+                                id="inventory-search"
+                                placeholder="Search your collection..."
+                                class="filter-input search-combo-input"
+                                autocomplete="off"
+                                list="inventory-set-codes"
+                                aria-label="Search your collection"
+                            />
+                        </div>
+                        <datalist id="inventory-set-codes"></datalist>
+                        <datalist id="inventory-subtypes"></datalist>
+                    </div>
+                    <button id="inventory-quick-add-toggle" class="btn btn-secondary quick-add-toggle" aria-expanded="false" aria-controls="inventory-quick-add-panel" title="Add a card to your collection (A)" aria-label="Add cards">
+                        <i class="ph ph-plus"></i><span class="quick-add-toggle-label"> Add cards</span>
+                    </button>
+                </div>
+                <!-- Active search terms, one removable chip each -->
+                <div id="inventory-filter-chips" class="inventory-filter-chips hidden"></div>
+
+                <!-- The add box, closed until asked for, with the collection's
+                     type split beside it. -->
                 <div class="inventory-quick-add">
-                    <div class="quick-add-wrapper">
+                    <div id="inventory-quick-add-panel" class="quick-add-wrapper hidden">
+                        <label for="inventory-quick-search" class="quick-add-label">
+                            <i class="ph ph-plus-circle"></i> Add to collection
+                        </label>
                         <input
                             type="text"
                             id="inventory-quick-search"
-                            placeholder="Quick add: type card name..."
+                            placeholder="Type a card name to add..."
                             autocomplete="off"
                         />
                         <div id="inventory-quick-results" class="inventory-quick-results hidden"></div>
@@ -1216,26 +1249,6 @@
                 <!-- Filters -->
                 <div class="inventory-filters">
                     <div class="inventory-filter-row">
-                        <div class="filter-group filter-group-search">
-                            <label>Search</label>
-                            <div class="search-combo">
-                                <select id="inventory-search-mode" class="filter-select search-combo-mode">
-                                    <option value="name">Card Name</option>
-                                    <option value="set">Set Code</option>
-                                    <option value="subtype">Creature Type</option>
-                                </select>
-                                <input
-                                    type="text"
-                                    id="inventory-search"
-                                    placeholder="Filter by name..."
-                                    class="filter-input search-combo-input"
-                                    autocomplete="off"
-                                    list="inventory-set-codes"
-                                />
-                                <datalist id="inventory-set-codes"></datalist>
-                                <datalist id="inventory-subtypes"></datalist>
-                            </div>
-                        </div>
                         <div class="filter-group">
                             <label>Sort By</label>
                             <select id="inventory-sort" class="filter-select">
@@ -1364,9 +1377,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <!-- Active search terms, one removable chip each -->
-                    <div id="inventory-filter-chips" class="inventory-filter-chips hidden"></div>
 
                     <!-- Admin only: cross-user inventory filter -->
                     <div id="inventory-admin-user-filter" class="inventory-filter-row hidden" style="margin-top: 0.75rem;">

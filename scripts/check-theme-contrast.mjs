@@ -23,6 +23,8 @@ const LOCKED = {
   '--rarity-rare-grad-a': base['--rarity-rare-grad-a'], '--rarity-rare-grad-b': base['--rarity-rare-grad-b'],
   '--rarity-mythic-grad-a': base['--rarity-mythic-grad-a'], '--rarity-mythic-grad-b': base['--rarity-mythic-grad-b'],
   '--rarity-uncommon-grad-b': base['--rarity-uncommon-grad-b'],
+  ...Object.fromEntries(['purple', 'blue', 'green', 'yellow', 'grey', 'unknown']
+    .map((b) => [`--price-band-${b}`, base[`--price-band-${b}`]])),
   '--on-accent': base['--on-accent'], '--success': base['--success'],
   '--danger': base['--danger'], '--warning': base['--warning'],
   '--status-ok': base['--status-ok'], '--status-warn': base['--status-warn'],

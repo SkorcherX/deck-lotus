@@ -14,6 +14,7 @@ import {
   clearCollection,
   removeCardsFromCollection,
   summarizeCollectionForClear,
+  describeAddedPrinting,
 } from '../services/inventoryService.js';
 import { addOwnedPrintingQuantity } from '../services/cardService.js';
 import { importCardCastleSingles } from '../services/cardCastleImport.js';
@@ -455,7 +456,10 @@ router.post('/quick-add', authenticate, (req, res, next) => {
       source: auditSource(source, 'quick_add'),
       condition,
     });
-    res.json(result);
+    // The card and its price ride along so the page can say what was added
+    // and what it is worth — the price is the part of adding a card people
+    // actually wait for.
+    res.json({ ...result, card: describeAddedPrinting(printingId, isFoil, quantity) });
   } catch (error) {
     next(error);
   }

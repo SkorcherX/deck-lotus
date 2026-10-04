@@ -183,6 +183,17 @@
   --status-warn: #fbbf24;
   --status-unknown: #9ca3af;
 
+  /* Price bands — locked across themes, like rarity. They are the companion
+     app's scan colours (src/shared/priceBands.js has the thresholds), and a
+     card has to read the same colour on the phone and on the page. Unknown is
+     "nobody priced it", deliberately darker than grey's "cheap". */
+  --price-band-purple: #c084fc;
+  --price-band-blue: #60a5fa;
+  --price-band-green: #4ade80;
+  --price-band-yellow: #fbbf24;
+  --price-band-grey: #cbd5e1;
+  --price-band-unknown: #64748b;
+
   /* Unresolved drift. Each of these is close to a palette entry but is not it,
      and each appears exactly once. They are tokenised so a theme can reach
      them and grouped so Phase 2 can decide whether to fold them into the ramp
@@ -2876,6 +2887,160 @@ button.btn-icon.active {
 .toast-info i { color: var(--info); }
 .toast span { flex: 1; }
 
+.toast-action {
+  flex-shrink: 0;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 0.375rem);
+  background: var(--bg-secondary);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toast-action:hover { border-color: var(--primary); }
+
+/* A priced add takes its band's colour on the edge and icon, the way the
+   phone pulses on a scan. */
+.toast.toast-price { border-left-width: 5px; border-left-color: var(--band); }
+.toast.toast-price i { color: var(--band); }
+
+/* ============================================================
+   Price bands (src/shared/priceBands.js) — one class sets --band, and
+   everything that wants the colour reads it.
+   ============================================================ */
+.price-band-purple { --band: var(--price-band-purple); }
+.price-band-blue { --band: var(--price-band-blue); }
+.price-band-green { --band: var(--price-band-green); }
+.price-band-yellow { --band: var(--price-band-yellow); }
+.price-band-grey { --band: var(--price-band-grey); }
+.price-band-unknown { --band: var(--price-band-unknown); }
+
+.price-band-dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--band);
+  flex-shrink: 0;
+}
+
+/* Bulk add receipt */
+.add-receipt {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.add-receipt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px dashed var(--border);
+}
+
+.add-receipt-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.add-receipt-sub {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.add-receipt-total {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.add-receipt-bands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px dashed var(--border);
+}
+
+.receipt-band-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--band);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.receipt-band-chip strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.add-receipt-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.add-receipt-line {
+  display: grid;
+  grid-template-columns: auto 2.5rem minmax(0, 1fr) auto 4.5rem 4.5rem;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 1rem 0.35rem calc(1rem - 3px);
+  border-left: 3px solid var(--band);
+  font-size: 0.875rem;
+}
+
+.add-receipt-line:nth-child(even) { background: rgb(var(--primary-rgb) / 0.04); }
+
+.add-receipt-qty,
+.add-receipt-price,
+.add-receipt-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.add-receipt-qty { color: var(--text-secondary); }
+
+.add-receipt-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.add-receipt-foil { color: var(--foil-label); }
+
+.add-receipt-set {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.add-receipt-price { color: var(--band); font-weight: 600; }
+.add-receipt-value { color: var(--text-secondary); }
+.add-receipt-note { margin-left: 0.1rem; color: var(--text-secondary); cursor: help; }
+
+@media (max-width: 600px) {
+  .add-receipt-line {
+    grid-template-columns: auto 2rem minmax(0, 1fr) 4rem;
+  }
+  .add-receipt-set,
+  .add-receipt-value { display: none; }
+}
+
 @keyframes toastIn {
   from { transform: translateX(24px); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
@@ -4617,7 +4782,77 @@ button.btn-icon.active {
   font-weight: 600;
 }
 
-/* Quick Add Search */
+/* Collection search — the page's primary field. It sits where the quick-add
+   box used to and is the largest input on the page, because people type into
+   whatever looks like the search, and that used to add cards. */
+.inventory-search-primary {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.search-combo-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.search-combo-primary .search-combo-mode {
+  padding: 0 0.9rem;
+  border-width: 2px;
+  border-radius: 0.75rem 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+.search-combo-field {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+.search-combo-icon {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.15rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.search-combo-primary .search-combo-input {
+  width: 100%;
+  padding: 0.95rem 1.25rem 0.95rem 2.75rem;
+  border-width: 2px;
+  border-radius: 0 0.75rem 0.75rem 0;
+  font-size: 1.05rem;
+}
+
+.search-combo-primary .search-combo-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgb(var(--primary-rgb) / 0.15);
+}
+
+.search-combo-primary + .quick-add-toggle,
+.quick-add-toggle {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.quick-add-toggle.is-active {
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.inventory-search-primary + .inventory-filter-chips {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
+
+/* Quick add — closed behind the "Add cards" button, and when open it is
+   smaller than the search and carries a label saying it adds. */
 .inventory-quick-add {
   display: flex;
   align-items: center;
@@ -4627,7 +4862,19 @@ button.btn-icon.active {
 
 .quick-add-wrapper {
   position: relative;
-  flex: 0 1 500px;
+  flex: 0 1 460px;
+}
+
+.quick-add-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--success);
 }
 
 /* The collection's type split, filling the row beside the quick-add box.
@@ -4678,19 +4925,19 @@ button.btn-icon.active {
 
 #inventory-quick-search {
   width: 100%;
-  padding: 1rem 1.25rem;
+  padding: 0.6rem 0.9rem;
   background: var(--bg-secondary);
-  border: 2px solid var(--border);
-  border-radius: 0.75rem;
+  border: 1px dashed var(--success);
+  border-radius: 0.5rem;
   color: var(--text);
-  font-size: 1rem;
+  font-size: 0.95rem;
   transition: all 0.2s;
 }
 
 #inventory-quick-search:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgb(var(--primary-rgb) / 0.1);
+  border-style: solid;
+  box-shadow: 0 0 0 3px rgb(var(--success-bright-rgb) / 0.15);
 }
 
 .inventory-quick-results {
@@ -4898,11 +5145,6 @@ body.maintenance-locked #app {
 }
 
 /* Search box: mode dropdown and term input read as one control */
-.inventory-filters .filter-group-search {
-  min-width: 320px;
-  flex: 1 1 320px;
-}
-
 .search-combo {
   display: flex;
 }
@@ -5307,10 +5549,6 @@ body.maintenance-locked #app {
     min-width: auto;
   }
 
-  .inventory-filters .filter-group-search {
-    flex-basis: auto;
-  }
-
   .inventory-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.75rem;
@@ -5374,6 +5612,21 @@ body.maintenance-locked #app {
   .quick-add-wrapper {
     flex: 1 1 auto;
     max-width: 100%;
+  }
+
+  .search-combo-primary .search-combo-mode {
+    padding: 0 0.5rem;
+  }
+
+  /* The search gets the width; the button keeps its icon and its label in
+     the tooltip and aria-label. */
+  .quick-add-toggle {
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+
+  .quick-add-toggle-label {
+    display: none;
   }
 
   .inventory-type-breakdown {
