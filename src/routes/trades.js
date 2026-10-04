@@ -17,6 +17,7 @@ import {
   acknowledgeDisruption,
 } from '../services/tradeService.js';
 import { authenticate } from '../middleware/auth.js';
+import { RARITIES } from '../shared/rarities.js';
 import {
   sendTradeProposed,
   sendTradeAccepted,
@@ -80,7 +81,7 @@ router.get('/pending-count', authenticate, (req, res, next) => {
  */
 router.get('/partners/:userId/inventory', authenticate, (req, res, next) => {
   try {
-    const { name, colors, type, sets, sort, commander, page = 1, limit = 54 } = req.query;
+    const { name, colors, type, sets, sort, commander, rarity, page = 1, limit = 54 } = req.query;
 
     res.json(browsePartnerInventory(req.user.id, parseInt(req.params.userId, 10), {
       name,
@@ -89,6 +90,7 @@ router.get('/partners/:userId/inventory', authenticate, (req, res, next) => {
       sets: sets ? sets.split(',') : [],
       sort: sort || 'name',
       commander: commander || 'all',
+      rarity: RARITIES.includes(rarity) ? rarity : 'all',
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
     }));
