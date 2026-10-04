@@ -424,13 +424,13 @@
                 <div class="deck-builder">
                     <div class="deck-header">
                         <div class="deck-info-row">
-                            <input
+                            <input autocomplete="off"
                                 type="text"
                                 id="deck-name"
                                 class="deck-name-input"
                                 placeholder="Deck Name"
                             />
-                            <select id="deck-format" class="deck-format-select">
+                            <select autocomplete="off" id="deck-format" class="deck-format-select">
                                 <option value="">Select Format</option>
                                 <option value="standard">Standard</option>
                                 <option value="modern">Modern</option>
@@ -439,7 +439,7 @@
                                 <option value="vintage">Vintage</option>
                                 <option value="pauper">Pauper</option>
                             </select>
-                            <select id="deck-status" class="deck-format-select" aria-label="Deck status">
+                            <select autocomplete="off" id="deck-status" class="deck-format-select" aria-label="Deck status">
                                 <option value="ready">Ready</option>
                                 <option value="building">Building</option>
                                 <option value="idea">Idea</option>
@@ -564,7 +564,7 @@
                                     class="search-results hidden"
                                 ></div>
                             </div>
-                            <select id="card-search-rarity" class="filter-select" aria-label="Rarity" title="Only show printings of this rarity">
+                            <select autocomplete="off" id="card-search-rarity" class="filter-select" aria-label="Rarity" title="Only show printings of this rarity">
                                 <option value="all">Any rarity</option>
                                 <option value="common">Common</option>
                                 <option value="uncommon">Uncommon</option>
@@ -611,7 +611,7 @@
                                     list="inventory-subtypes"
                                     title="Whole type, e.g. Elf, Zombie, Dragon"
                                 />
-                                <select id="inventory-panel-type">
+                                <select autocomplete="off" id="inventory-panel-type">
                                     <option value="all">All types</option>
                                     <option value="Creature">Creature</option>
                                     <option value="Land">Land</option>
@@ -621,7 +621,7 @@
                                     <option value="Enchantment">Enchantment</option>
                                     <option value="Planeswalker">Planeswalker</option>
                                 </select>
-                                <select id="inventory-panel-rarity" aria-label="Rarity">
+                                <select autocomplete="off" id="inventory-panel-rarity" aria-label="Rarity">
                                     <option value="all">Any rarity</option>
                                     <option value="common">Common</option>
                                     <option value="uncommon">Uncommon</option>
@@ -639,19 +639,19 @@
                                     <button type="button" class="ip-color" data-color="C" aria-pressed="false" aria-label="Colorless" title="Colorless"><i class="ms ms-c"></i></button>
                                 </div>
                                 <label class="inventory-panel-check">
-                                    <input type="checkbox" id="inventory-panel-only-free" />
+                                    <input autocomplete="off" type="checkbox" id="inventory-panel-only-free" />
                                     Still available
                                 </label>
                                 <label class="inventory-panel-check">
-                                    <input type="checkbox" id="inventory-panel-format-legal" />
+                                    <input autocomplete="off" type="checkbox" id="inventory-panel-format-legal" />
                                     Legal in format
                                 </label>
                                 <label class="inventory-panel-check">
-                                    <input type="checkbox" id="inventory-panel-identity" />
+                                    <input autocomplete="off" type="checkbox" id="inventory-panel-identity" />
                                     Commander colors
                                 </label>
                                 <label class="inventory-panel-check" title="Rank your cards by how well they fit what this deck is doing">
-                                    <input type="checkbox" id="inventory-panel-fit" />
+                                    <input autocomplete="off" type="checkbox" id="inventory-panel-fit" />
                                     Fits this deck
                                 </label>
                                 <button
@@ -670,9 +670,9 @@
 
                             <div id="inventory-panel-fit-bar" class="inventory-panel-fit-bar hidden">
                                 <span id="inventory-panel-fit-source">Ranked for</span>
-                                <select id="inventory-panel-fit-main" aria-label="Main theme"></select>
+                                <select autocomplete="off" id="inventory-panel-fit-main" aria-label="Main theme"></select>
                                 <span>and</span>
-                                <select id="inventory-panel-fit-second" aria-label="Second theme"></select>
+                                <select autocomplete="off" id="inventory-panel-fit-second" aria-label="Second theme"></select>
                             </div>
 
                             <div id="inventory-panel-list" class="inventory-panel-list"></div>
@@ -702,7 +702,7 @@
                                     <i class="ph ph-x"></i>
                                 </button>
                               </div>
-                                <select id="deck-filter-rarity" class="filter-select" aria-label="Rarity" title="Only show cards whose listed printing is this rarity" style="width: auto;">
+                                <select autocomplete="off" id="deck-filter-rarity" class="filter-select" aria-label="Rarity" title="Only show cards whose listed printing is this rarity" style="width: auto;">
                                     <option value="all">Any rarity</option>
                                     <option value="common">Common</option>
                                     <option value="uncommon">Uncommon</option>
@@ -820,7 +820,7 @@
                     <h2>Browse Cards</h2>
                 </div>
                 <div class="cards-search" style="position: relative;">
-                    <input
+                    <input autocomplete="off"
                         type="text"
                         id="cards-browse-search"
                         placeholder="Search cards..."
@@ -837,7 +837,7 @@
                     <div class="filter-bar">
                         <div class="filter-field">
                             <label class="field-label">Sort By</label>
-                            <select id="filter-sort" class="filter-select">
+                            <select autocomplete="off" id="filter-sort" class="filter-select">
                                 <option value="random">Random</option>
                                 <option value="name">Alphabetical</option>
                                 <option value="cmc">Mana Value</option>
@@ -849,7 +849,7 @@
                         </div>
                         <div class="filter-field">
                             <label class="field-label">Card Type</label>
-                            <select id="filter-types" class="filter-select">
+                            <select autocomplete="off" id="filter-types" class="filter-select">
                                 <option value="all">All Types</option>
                                 <option value="Creature">Creature</option>
                                 <option value="Instant">Instant</option>
@@ -866,19 +866,19 @@
                             <label class="field-label">Rarity</label>
                             <div id="filter-rarity" class="rarity-filter-group" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                 <label class="rarity-checkbox">
-                                    <input type="checkbox" value="common" />
+                                    <input autocomplete="off" type="checkbox" value="common" />
                                     <span class="rarity-checkbox-box rarity-c">C</span>
                                 </label>
                                 <label class="rarity-checkbox">
-                                    <input type="checkbox" value="uncommon" />
+                                    <input autocomplete="off" type="checkbox" value="uncommon" />
                                     <span class="rarity-checkbox-box rarity-u">U</span>
                                 </label>
                                 <label class="rarity-checkbox">
-                                    <input type="checkbox" value="rare" />
+                                    <input autocomplete="off" type="checkbox" value="rare" />
                                     <span class="rarity-checkbox-box rarity-r">R</span>
                                 </label>
                                 <label class="rarity-checkbox">
-                                    <input type="checkbox" value="mythic" />
+                                    <input autocomplete="off" type="checkbox" value="mythic" />
                                     <span class="rarity-checkbox-box rarity-m">M</span>
                                 </label>
                             </div>
@@ -886,7 +886,7 @@
                         <div class="filter-field">
                             <label class="field-label">CMC</label>
                             <div class="cmc-range">
-                                <input
+                                <input autocomplete="off"
                                     type="number"
                                     id="filter-cmc-min"
                                     class="input-narrow"
@@ -895,7 +895,7 @@
                                     max="20"
                                 />
                                 <span>-</span>
-                                <input
+                                <input autocomplete="off"
                                     type="number"
                                     id="filter-cmc-max"
                                     class="input-narrow"
@@ -909,37 +909,37 @@
                             <label class="field-label">Colors</label>
                             <div id="filter-colors" class="color-filter-group">
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="W" />
+                                    <input autocomplete="off" type="checkbox" value="W" />
                                     <span class="color-checkbox-box"
                                         ><i class="ms ms-w ms-cost"></i
                                     ></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="U" />
+                                    <input autocomplete="off" type="checkbox" value="U" />
                                     <span class="color-checkbox-box"
                                         ><i class="ms ms-u ms-cost"></i
                                     ></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="B" />
+                                    <input autocomplete="off" type="checkbox" value="B" />
                                     <span class="color-checkbox-box"
                                         ><i class="ms ms-b ms-cost"></i
                                     ></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="R" />
+                                    <input autocomplete="off" type="checkbox" value="R" />
                                     <span class="color-checkbox-box"
                                         ><i class="ms ms-r ms-cost"></i
                                     ></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="G" />
+                                    <input autocomplete="off" type="checkbox" value="G" />
                                     <span class="color-checkbox-box"
                                         ><i class="ms ms-g ms-cost"></i
                                     ></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="C" />
+                                    <input autocomplete="off" type="checkbox" value="C" />
                                     <span class="color-checkbox-box"
                                         ><i class="ms ms-c ms-cost"></i
                                     ></span>
@@ -961,7 +961,7 @@
                         <div class="filter-field">
                             <label class="field-label">Collection</label>
                             <label class="color-checkbox">
-                                <input
+                                <input autocomplete="off"
                                     type="checkbox"
                                     id="filter-owned"
                                     value="owned"
@@ -1040,7 +1040,7 @@
                                 />
                                 <div id="shopping-wanted-results" class="search-results hidden"></div>
                             </div>
-                            <select id="shopping-wanted-rarity" class="filter-select" aria-label="Rarity" title="Only cards printed at this rarity" style="width: auto;">
+                            <select autocomplete="off" id="shopping-wanted-rarity" class="filter-select" aria-label="Rarity" title="Only cards printed at this rarity" style="width: auto;">
                                 <option value="all">Any rarity</option>
                                 <option value="common">Common</option>
                                 <option value="uncommon">Uncommon</option>
@@ -1123,7 +1123,7 @@
                         <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
                             <h3 style="margin: 0;"><i class="ph ph-magic-wand"></i> Mana Pool Optimizer</h3>
                             <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                                <select id="shopping-optimizer-strategy" class="form-control" style="font-size: 0.875rem;">
+                                <select autocomplete="off" id="shopping-optimizer-strategy" class="form-control" style="font-size: 0.875rem;">
                                     <option value="lowest_price">Lowest Total Price</option>
                                     <option value="fewest_packages">Fewest Packages</option>
                                     <option value="balanced">Balanced</option>
@@ -1201,7 +1201,7 @@
                 -->
                 <div class="inventory-search-primary">
                     <div class="search-combo search-combo-primary">
-                        <select id="inventory-search-mode" class="filter-select search-combo-mode" aria-label="Search by">
+                        <select autocomplete="off" id="inventory-search-mode" class="filter-select search-combo-mode" aria-label="Search by">
                             <option value="name">Card Name</option>
                             <option value="set">Set Code</option>
                             <option value="subtype">Creature Type</option>
@@ -1251,7 +1251,7 @@
                     <div class="inventory-filter-row">
                         <div class="filter-group">
                             <label>Sort By</label>
-                            <select id="inventory-sort" class="filter-select">
+                            <select autocomplete="off" id="inventory-sort" class="filter-select">
                                 <option value="name">Name</option>
                                 <option value="quantity">Quantity</option>
                                 <option value="cmc">Mana Value</option>
@@ -1269,7 +1269,7 @@
                         </div>
                         <div class="filter-group">
                             <label>Card Type</label>
-                            <select id="inventory-type" class="filter-select">
+                            <select autocomplete="off" id="inventory-type" class="filter-select">
                                 <option value="all">All Types</option>
                                 <option value="Creature">Creature</option>
                                 <option value="Instant">Instant</option>
@@ -1282,7 +1282,7 @@
                         </div>
                         <div class="filter-group">
                             <label>Availability</label>
-                            <select id="inventory-availability" class="filter-select">
+                            <select autocomplete="off" id="inventory-availability" class="filter-select">
                                 <option value="all">All Cards</option>
                                 <option value="available">Available Only</option>
                                 <option value="in_decks">In Decks Only</option>
@@ -1291,7 +1291,7 @@
                         </div>
                         <div class="filter-group">
                             <label>Condition</label>
-                            <select id="inventory-condition" class="filter-select" title="TCGplayer condition">
+                            <select autocomplete="off" id="inventory-condition" class="filter-select" title="TCGplayer condition">
                                 <option value="all">Any Condition</option>
                                 <option value="NM">Near Mint</option>
                                 <option value="LP">Lightly Played</option>
@@ -1303,7 +1303,7 @@
                         </div>
                         <div class="filter-group">
                             <label>Rarity</label>
-                            <select id="inventory-rarity" class="filter-select">
+                            <select autocomplete="off" id="inventory-rarity" class="filter-select">
                                 <option value="all">Any Rarity</option>
                                 <option value="common">Common</option>
                                 <option value="uncommon">Uncommon</option>
@@ -1315,7 +1315,7 @@
                         </div>
                         <div class="filter-group">
                             <label>Commander</label>
-                            <select id="inventory-commander" class="filter-select">
+                            <select autocomplete="off" id="inventory-commander" class="filter-select">
                                 <option value="all">All Cards</option>
                                 <option value="eligible">Commander Eligible</option>
                             </select>
@@ -1324,27 +1324,27 @@
                             <label>Colors</label>
                             <div id="inventory-colors" class="color-filter-group">
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="W" />
+                                    <input autocomplete="off" type="checkbox" value="W" />
                                     <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="U" />
+                                    <input autocomplete="off" type="checkbox" value="U" />
                                     <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="B" />
+                                    <input autocomplete="off" type="checkbox" value="B" />
                                     <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="R" />
+                                    <input autocomplete="off" type="checkbox" value="R" />
                                     <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="G" />
+                                    <input autocomplete="off" type="checkbox" value="G" />
                                     <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="C" />
+                                    <input autocomplete="off" type="checkbox" value="C" />
                                     <span class="color-checkbox-box"><i class="ms ms-c ms-cost"></i></span>
                                 </label>
                             </div>
@@ -1427,7 +1427,7 @@
                     <div class="form-group">
                         <label for="bulk-add-source">Import from</label>
                         <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                            <select id="bulk-add-source" style="flex: 1; min-width: 12rem;">
+                            <select autocomplete="off" id="bulk-add-source" style="flex: 1; min-width: 12rem;">
                                 <option value="">Pasted list</option>
                             </select>
                             <button id="bulk-add-file-btn" class="btn btn-secondary hidden" type="button">
@@ -1507,12 +1507,12 @@
 
                         <div class="generator-mode">
                             <label class="generator-mode-option">
-                                <input type="radio" name="generate-mode" value="new" checked />
+                                <input autocomplete="off" type="radio" name="generate-mode" value="new" checked />
                                 <span><strong>A new deck</strong> &mdash; built from cards nothing
                                       else has claimed, and whatever else you allow below.</span>
                             </label>
                             <label class="generator-mode-option">
-                                <input type="radio" name="generate-mode" value="revise" />
+                                <input autocomplete="off" type="radio" name="generate-mode" value="revise" />
                                 <span><strong>Revise a deck I have built</strong> &mdash; its own
                                       cards come back into the pool alongside the free ones, and
                                       cards already sleeved keep their slot unless something
@@ -1528,12 +1528,12 @@
                         <div class="generator-pool-choice" role="radiogroup" aria-label="Cards to build from">
                             <div class="generator-pool-head">Cards to build from</div>
                             <label class="generator-mode-option">
-                                <input type="radio" name="generate-pool" value="free" checked />
+                                <input autocomplete="off" type="radio" name="generate-pool" value="free" checked />
                                 <span><strong>Only cards no other deck is using</strong> &mdash; your
                                       other decks keep everything they hold.</span>
                             </label>
                             <label class="generator-mode-option">
-                                <input type="radio" name="generate-pool" value="all" />
+                                <input autocomplete="off" type="radio" name="generate-pool" value="all" />
                                 <span><strong>Also cards in my other decks</strong> &mdash; for when
                                       you are happy to move cards between decks. Nothing is taken
                                       until you save, and a saved proposal is an idea, so it never
@@ -1545,29 +1545,29 @@
 
                         <div class="form-group hidden" id="generate-revise-group">
                             <label for="generate-revise-deck">Deck to revise</label>
-                            <select id="generate-revise-deck"></select>
+                            <select autocomplete="off" id="generate-revise-deck"></select>
                             <p class="generator-note" id="generate-revise-note"></p>
                             <div class="hidden" id="generate-splash-group">
                                 <label>Colours</label>
                                 <div class="color-filter-group generator-color-pick">
                                 <label class="color-checkbox" title="White" aria-label="White">
-                                    <input type="checkbox" class="generate-splash" value="W" />
+                                    <input autocomplete="off" type="checkbox" class="generate-splash" value="W" />
                                     <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox" title="Blue" aria-label="Blue">
-                                    <input type="checkbox" class="generate-splash" value="U" />
+                                    <input autocomplete="off" type="checkbox" class="generate-splash" value="U" />
                                     <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox" title="Black" aria-label="Black">
-                                    <input type="checkbox" class="generate-splash" value="B" />
+                                    <input autocomplete="off" type="checkbox" class="generate-splash" value="B" />
                                     <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox" title="Red" aria-label="Red">
-                                    <input type="checkbox" class="generate-splash" value="R" />
+                                    <input autocomplete="off" type="checkbox" class="generate-splash" value="R" />
                                     <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox" title="Green" aria-label="Green">
-                                    <input type="checkbox" class="generate-splash" value="G" />
+                                    <input autocomplete="off" type="checkbox" class="generate-splash" value="G" />
                                     <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
                                 </label>
                                 </div>
@@ -1580,7 +1580,7 @@
                                    They stay in the revision whatever the rankings think, and the rest
                                    of the deck is chosen to go with them.</p>
                                 <div class="generator-keep-chips" id="generate-keep-chips" aria-live="polite"></div>
-                                <input type="search" id="generate-keep-filter" placeholder="Filter cards…" />
+                                <input autocomplete="off" type="search" id="generate-keep-filter" placeholder="Filter cards…" />
                                 <div class="generator-keep-list" id="generate-keep-list"></div>
                             </div>
                         </div>
@@ -1599,7 +1599,7 @@
                         <div class="generator-format-row">
                             <div class="form-group">
                                 <label for="generate-format">Format</label>
-                                <select id="generate-format">
+                                <select autocomplete="off" id="generate-format">
                                     <option value="commander" selected>Commander (100 cards, one of each)</option>
                                     <option value="standard">Standard (60 cards)</option>
                                     <option value="pioneer">Pioneer (60 cards)</option>
@@ -1638,23 +1638,23 @@
                                  in the app. -->
                             <div class="color-filter-group" id="generate-commander-colors">
                                 <label class="color-checkbox" title="White" aria-label="White">
-                                    <input type="checkbox" class="generate-commander-color" value="W" />
+                                    <input autocomplete="off" type="checkbox" class="generate-commander-color" value="W" />
                                     <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox" title="Blue" aria-label="Blue">
-                                    <input type="checkbox" class="generate-commander-color" value="U" />
+                                    <input autocomplete="off" type="checkbox" class="generate-commander-color" value="U" />
                                     <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox" title="Black" aria-label="Black">
-                                    <input type="checkbox" class="generate-commander-color" value="B" />
+                                    <input autocomplete="off" type="checkbox" class="generate-commander-color" value="B" />
                                     <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox" title="Red" aria-label="Red">
-                                    <input type="checkbox" class="generate-commander-color" value="R" />
+                                    <input autocomplete="off" type="checkbox" class="generate-commander-color" value="R" />
                                     <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox" title="Green" aria-label="Green">
-                                    <input type="checkbox" class="generate-commander-color" value="G" />
+                                    <input autocomplete="off" type="checkbox" class="generate-commander-color" value="G" />
                                     <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
                                 </label>
                             </div>
@@ -1680,23 +1680,23 @@
                         </div>
                         <div class="color-filter-group generator-color-pick">
                             <label class="color-checkbox" title="White" aria-label="White">
-                                <input type="checkbox" class="generate-color" value="W" />
+                                <input autocomplete="off" type="checkbox" class="generate-color" value="W" />
                                 <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
                             </label>
                             <label class="color-checkbox" title="Blue" aria-label="Blue">
-                                <input type="checkbox" class="generate-color" value="U" />
+                                <input autocomplete="off" type="checkbox" class="generate-color" value="U" />
                                 <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
                             </label>
                             <label class="color-checkbox" title="Black" aria-label="Black">
-                                <input type="checkbox" class="generate-color" value="B" />
+                                <input autocomplete="off" type="checkbox" class="generate-color" value="B" />
                                 <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
                             </label>
                             <label class="color-checkbox" title="Red" aria-label="Red">
-                                <input type="checkbox" class="generate-color" value="R" />
+                                <input autocomplete="off" type="checkbox" class="generate-color" value="R" />
                                 <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
                             </label>
                             <label class="color-checkbox" title="Green" aria-label="Green">
-                                <input type="checkbox" class="generate-color" value="G" />
+                                <input autocomplete="off" type="checkbox" class="generate-color" value="G" />
                                 <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
                             </label>
                         </div>
@@ -1722,12 +1722,12 @@
                                also finds "mills" and "milled". Card types work too, like "Equipment".</p>
                             <div class="generator-custom-row">
                                 <label for="generate-custom-payoff">Cards that pay off</label>
-                                <input type="text" id="generate-custom-payoff" maxlength="200"
+                                <input autocomplete="off" type="text" id="generate-custom-payoff" maxlength="200"
                                        placeholder="e.g. cards in your graveyard" />
                             </div>
                             <div class="generator-custom-row">
                                 <label for="generate-custom-enabler">Cards that feed them <span class="generator-note">(optional)</span></label>
-                                <input type="text" id="generate-custom-enabler" maxlength="200"
+                                <input autocomplete="off" type="text" id="generate-custom-enabler" maxlength="200"
                                        placeholder="e.g. mill, surveil, discard" />
                             </div>
                             <button type="button" id="generate-custom-add" class="btn btn-secondary btn-sm">Add theme</button>
@@ -1739,7 +1739,7 @@
                             <label for="generate-share">How much of the second theme</label>
                             <div class="generator-share-row">
                                 <span class="generator-note">A touch</span>
-                                <input type="range" id="generate-share" min="10" max="50" step="5" value="35" />
+                                <input autocomplete="off" type="range" id="generate-share" min="10" max="50" step="5" value="35" />
                                 <span class="generator-note">Half</span>
                             </div>
                             <p class="generator-note" id="generate-share-note"></p>
@@ -1756,7 +1756,7 @@
                         <button id="generate-run" class="btn btn-primary generator-run">Generate</button>
                         <div id="generate-result" class="hidden"></div>
                         <div id="generate-accept-row" class="hidden generate-accept-row">
-                            <input type="text" id="generate-deck-name" placeholder="Deck name" />
+                            <input autocomplete="off" type="text" id="generate-deck-name" placeholder="Deck name" />
                             <button id="generate-accept" class="btn btn-primary">Save as a new deck</button>
                         </div>
                     </section>
@@ -1774,19 +1774,19 @@
                     </p>
                     <div class="form-group">
                         <label style="display: flex; align-items: baseline; gap: 0.5rem; font-weight: normal;">
-                            <input type="radio" name="inventory-export-shape" value="precise" style="width: auto; flex: none;" checked />
+                            <input autocomplete="off" type="radio" name="inventory-export-shape" value="precise" style="width: auto; flex: none;" checked />
                             <span><strong>With printings</strong> &mdash; "4 Lightning Bolt (M21) 137 *NM*".
                             Restores the exact printings you own, with their condition.</span>
                         </label>
                         <label style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.5rem; font-weight: normal;">
-                            <input type="radio" name="inventory-export-shape" value="simple" style="width: auto; flex: none;" />
+                            <input autocomplete="off" type="radio" name="inventory-export-shape" value="simple" style="width: auto; flex: none;" />
                             <span><strong>Names only</strong> &mdash; "4 Lightning Bolt". Portable to
                             other sites; loses which printing and condition.</span>
                         </label>
                     </div>
                     <div class="form-group">
                         <label for="inventory-export-condition">Only copies in condition</label>
-                        <select id="inventory-export-condition" class="filter-select">
+                        <select autocomplete="off" id="inventory-export-condition" class="filter-select">
                             <option value="all">Any condition</option>
                             <option value="NM">Near Mint</option>
                             <option value="LP">Lightly Played</option>
@@ -1878,11 +1878,11 @@
                     <div class="inventory-filter-row">
                         <div class="filter-group">
                             <label>Search</label>
-                            <input type="text" id="trade-shop-search" placeholder="Filter by name..." class="filter-input" />
+                            <input autocomplete="off" type="text" id="trade-shop-search" placeholder="Filter by name..." class="filter-input" />
                         </div>
                         <div class="filter-group">
                             <label>Sort By</label>
-                            <select id="trade-shop-sort" class="filter-select">
+                            <select autocomplete="off" id="trade-shop-sort" class="filter-select">
                                 <option value="name">Name</option>
                                 <option value="quantity">Quantity</option>
                                 <option value="cmc">Mana Value</option>
@@ -1894,7 +1894,7 @@
                         </div>
                         <div class="filter-group">
                             <label>Card Type</label>
-                            <select id="trade-shop-type" class="filter-select">
+                            <select autocomplete="off" id="trade-shop-type" class="filter-select">
                                 <option value="all">All Types</option>
                                 <option value="Creature">Creature</option>
                                 <option value="Instant">Instant</option>
@@ -1907,7 +1907,7 @@
                         </div>
                         <div class="filter-group">
                             <label>Commander</label>
-                            <select id="trade-shop-rarity" class="filter-select" aria-label="Rarity">
+                            <select autocomplete="off" id="trade-shop-rarity" class="filter-select" aria-label="Rarity">
                                 <option value="all">Any Rarity</option>
                                 <option value="common">Common</option>
                                 <option value="uncommon">Uncommon</option>
@@ -1916,7 +1916,7 @@
                                 <option value="special">Special</option>
                                 <option value="bonus">Bonus</option>
                             </select>
-                            <select id="trade-shop-commander" class="filter-select">
+                            <select autocomplete="off" id="trade-shop-commander" class="filter-select">
                                 <option value="all">All Cards</option>
                                 <option value="eligible">Commander Eligible</option>
                             </select>
@@ -1925,27 +1925,27 @@
                             <label>Colors</label>
                             <div id="trade-shop-colors" class="color-filter-group">
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="W" />
+                                    <input autocomplete="off" type="checkbox" value="W" />
                                     <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="U" />
+                                    <input autocomplete="off" type="checkbox" value="U" />
                                     <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="B" />
+                                    <input autocomplete="off" type="checkbox" value="B" />
                                     <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="R" />
+                                    <input autocomplete="off" type="checkbox" value="R" />
                                     <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="G" />
+                                    <input autocomplete="off" type="checkbox" value="G" />
                                     <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="C" />
+                                    <input autocomplete="off" type="checkbox" value="C" />
                                     <span class="color-checkbox-box"><i class="ms ms-c ms-cost"></i></span>
                                 </label>
                             </div>
@@ -2006,11 +2006,11 @@
                     <div class="inventory-filter-row">
                         <div class="filter-group">
                             <label>Search</label>
-                            <input type="text" id="shared-coll-search" placeholder="Filter by name..." class="filter-input" />
+                            <input autocomplete="off" type="text" id="shared-coll-search" placeholder="Filter by name..." class="filter-input" />
                         </div>
                         <div class="filter-group">
                             <label>Sort By</label>
-                            <select id="shared-coll-sort" class="filter-select">
+                            <select autocomplete="off" id="shared-coll-sort" class="filter-select">
                                 <option value="name">Name</option>
                                 <option value="quantity">Quantity</option>
                                 <option value="cmc">Mana Value</option>
@@ -2022,7 +2022,7 @@
                         </div>
                         <div class="filter-group">
                             <label>Card Type</label>
-                            <select id="shared-coll-type" class="filter-select">
+                            <select autocomplete="off" id="shared-coll-type" class="filter-select">
                                 <option value="all">All Types</option>
                                 <option value="Creature">Creature</option>
                                 <option value="Instant">Instant</option>
@@ -2035,13 +2035,13 @@
                         </div>
                         <div class="filter-group">
                             <label>Set</label>
-                            <select id="shared-coll-set" class="filter-select">
+                            <select autocomplete="off" id="shared-coll-set" class="filter-select">
                                 <option value="">All Sets</option>
                             </select>
                         </div>
                         <div class="filter-group">
                             <label>Commander</label>
-                            <select id="shared-coll-rarity" class="filter-select" aria-label="Rarity">
+                            <select autocomplete="off" id="shared-coll-rarity" class="filter-select" aria-label="Rarity">
                                 <option value="all">Any Rarity</option>
                                 <option value="common">Common</option>
                                 <option value="uncommon">Uncommon</option>
@@ -2050,7 +2050,7 @@
                                 <option value="special">Special</option>
                                 <option value="bonus">Bonus</option>
                             </select>
-                            <select id="shared-coll-commander" class="filter-select">
+                            <select autocomplete="off" id="shared-coll-commander" class="filter-select">
                                 <option value="all">All Cards</option>
                                 <option value="eligible">Commander Eligible</option>
                             </select>
@@ -2059,27 +2059,27 @@
                             <label>Colors</label>
                             <div id="shared-coll-colors" class="color-filter-group">
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="W" />
+                                    <input autocomplete="off" type="checkbox" value="W" />
                                     <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="U" />
+                                    <input autocomplete="off" type="checkbox" value="U" />
                                     <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="B" />
+                                    <input autocomplete="off" type="checkbox" value="B" />
                                     <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="R" />
+                                    <input autocomplete="off" type="checkbox" value="R" />
                                     <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="G" />
+                                    <input autocomplete="off" type="checkbox" value="G" />
                                     <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
                                 </label>
                                 <label class="color-checkbox">
-                                    <input type="checkbox" value="C" />
+                                    <input autocomplete="off" type="checkbox" value="C" />
                                     <span class="color-checkbox-box"><i class="ms ms-c ms-cost"></i></span>
                                 </label>
                             </div>
@@ -2147,7 +2147,7 @@
                     </div>
                     <div id="collection-share-on" class="hidden">
                         <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                            <input type="text" id="collection-share-url" class="filter-input" readonly style="flex: 1;" />
+                            <input autocomplete="off" type="text" id="collection-share-url" class="filter-input" readonly style="flex: 1;" />
                             <button id="collection-share-copy" class="btn btn-primary">
                                 <i class="ph ph-copy btn-icon"></i> Copy
                             </button>
@@ -2185,7 +2185,7 @@
                     <div id="trade-cart-warnings" style="margin-top: 1rem;"></div>
 
                     <label id="trade-cart-borrow-row" class="hidden" style="display:flex;align-items:flex-start;gap:0.5rem;margin-top:1rem;font-size:0.9rem;cursor:pointer;">
-                        <input type="checkbox" id="trade-cart-borrow" style="margin-top:0.2rem;" />
+                        <input autocomplete="off" type="checkbox" id="trade-cart-borrow" style="margin-top:0.2rem;" />
                         <span>
                             <strong>Borrow these instead of trading</strong><br />
                             <span style="color:var(--text-secondary);font-size:0.82rem;">
@@ -2196,7 +2196,7 @@
 
                     <div class="form-group" style="margin-top: 1rem;">
                         <label for="trade-cart-note">Note (optional)</label>
-                        <input type="text" id="trade-cart-note" placeholder="e.g. swapping at Sunday game night" style="width: 100%;" />
+                        <input autocomplete="off" type="text" id="trade-cart-note" placeholder="e.g. swapping at Sunday game night" style="width: 100%;" />
                     </div>
 
                     <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
@@ -2222,15 +2222,15 @@
 
                 <form id="sealed-add-form" class="sealed-add-form" autocomplete="off">
                     <div class="sealed-add-name">
-                        <input name="name" type="text" placeholder="Search the catalog, e.g. &quot;Neon Dynasty collector&quot;" required />
+                        <input autocomplete="off" name="name" type="text" placeholder="Search the catalog, e.g. &quot;Neon Dynasty collector&quot;" required />
                         <div id="sealed-picked" class="sealed-meta"></div>
                         <div id="sealed-catalog-results" class="sealed-catalog-results"></div>
                     </div>
-                    <input name="quantity" type="number" min="1" step="1" value="1" title="Quantity" />
-                    <input name="costPaid" type="number" min="0" step="0.01" placeholder="Cost ea" />
-                    <input name="priceOverride" type="number" min="0" step="0.01" placeholder="Value ea (optional)" />
-                    <input name="acquiredAt" type="date" title="Date acquired" />
-                    <input name="notes" type="text" placeholder="Notes" />
+                    <input autocomplete="off" name="quantity" type="number" min="1" step="1" value="1" title="Quantity" />
+                    <input autocomplete="off" name="costPaid" type="number" min="0" step="0.01" placeholder="Cost ea" />
+                    <input autocomplete="off" name="priceOverride" type="number" min="0" step="0.01" placeholder="Value ea (optional)" />
+                    <input autocomplete="off" name="acquiredAt" type="date" title="Date acquired" />
+                    <input autocomplete="off" name="notes" type="text" placeholder="Notes" />
                     <button type="submit" class="btn btn-primary"><i class="ph ph-plus btn-icon"></i> Add</button>
                 </form>
 
@@ -2242,7 +2242,7 @@
                     <h2>Loaned &amp; Borrowed</h2>
                     <div class="page-header-actions">
                         <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.875rem;">
-                            <input type="checkbox" id="loans-show-closed" /> Show returned &amp; closed
+                            <input autocomplete="off" type="checkbox" id="loans-show-closed" /> Show returned &amp; closed
                         </label>
                     </div>
                 </div>
@@ -2294,7 +2294,7 @@
                 <div id="trade-builder" class="hidden">
                     <div class="form-group">
                         <label for="trade-partner-select">Trade with</label>
-                        <select id="trade-partner-select"></select>
+                        <select autocomplete="off" id="trade-partner-select"></select>
                     </div>
 
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
@@ -2304,7 +2304,7 @@
                             </h3>
                             <div style="display: flex; gap: 0.5rem;">
                                 <input type="text" id="trade-search-give" placeholder="Search your collection…" autocomplete="off" style="flex: 1; min-width: 0;" />
-                                <select id="trade-search-rarity-give" class="filter-select" aria-label="Rarity" style="width: auto;">
+                                <select autocomplete="off" id="trade-search-rarity-give" class="filter-select" aria-label="Rarity" style="width: auto;">
                                     <option value="all">Any rarity</option>
                                     <option value="common">Common</option>
                                     <option value="uncommon">Uncommon</option>
@@ -2324,7 +2324,7 @@
                             </h3>
                             <div style="display: flex; gap: 0.5rem;">
                                 <input type="text" id="trade-search-receive" placeholder="Search their collection…" autocomplete="off" style="flex: 1; min-width: 0;" />
-                                <select id="trade-search-rarity-receive" class="filter-select" aria-label="Rarity" style="width: auto;">
+                                <select autocomplete="off" id="trade-search-rarity-receive" class="filter-select" aria-label="Rarity" style="width: auto;">
                                     <option value="all">Any rarity</option>
                                     <option value="common">Common</option>
                                     <option value="uncommon">Uncommon</option>
@@ -2345,7 +2345,7 @@
 
                     <div class="form-group" style="margin-top: 1rem;">
                         <label for="trade-note">Note (optional)</label>
-                        <input type="text" id="trade-note" placeholder="e.g. swapping at Sunday game night" style="width: 100%;" />
+                        <input autocomplete="off" type="text" id="trade-note" placeholder="e.g. swapping at Sunday game night" style="width: 100%;" />
                     </div>
 
                     <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
@@ -2394,7 +2394,7 @@
                                     <input type="text" id="pm-card-name" placeholder="e.g. Meekstone" required autocomplete="off" style="width: 100%;" />
                                     <div id="pm-card-search-results" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgb(var(--scrim-rgb) / 0.3);"></div>
                                 </div>
-                                <select id="pm-card-type-filter" title="Filter by card type" style="flex-shrink:0;width:140px;">
+                                <select autocomplete="off" id="pm-card-type-filter" title="Filter by card type" style="flex-shrink:0;width:140px;">
                                     <option value="">All types</option>
                                     <option value="Artifact">Artifact</option>
                                     <option value="Creature">Creature</option>
@@ -2406,7 +2406,7 @@
                                     <option value="Battle">Battle</option>
                                     <option value="Token">Token</option>
                                 </select>
-                                <select id="pm-card-rarity-filter" title="Filter by rarity" style="flex-shrink:0;width:130px;">
+                                <select autocomplete="off" id="pm-card-rarity-filter" title="Filter by rarity" style="flex-shrink:0;width:130px;">
                                     <option value="">Any rarity</option>
                                     <option value="common">Common</option>
                                     <option value="uncommon">Uncommon</option>
@@ -2419,7 +2419,7 @@
                         </div>
                         <div class="form-group">
                             <label for="pm-condition">Condition</label>
-                            <select id="pm-condition">
+                            <select autocomplete="off" id="pm-condition">
                                 <option value="any">Any Condition</option>
                                 <option value="nm">Near Mint (NM)</option>
                                 <option value="lp">Lightly Played (LP)</option>
@@ -2430,17 +2430,17 @@
                         </div>
                         <div class="form-group">
                             <label for="pm-max-price">Target Price ($) <span style="font-weight: 400; color: var(--text-secondary);">— optional</span></label>
-                            <input type="number" id="pm-max-price" placeholder="Leave blank to alert on any new low" min="0.01" step="0.01" />
+                            <input autocomplete="off" type="number" id="pm-max-price" placeholder="Leave blank to alert on any new low" min="0.01" step="0.01" />
                             <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.35rem;">If left blank, you'll be alerted whenever the price drops lower than the previously recorded price.</p>
                         </div>
                         <div class="form-group">
                             <label for="pm-expires-at">Expires (optional)</label>
-                            <input type="date" id="pm-expires-at" />
+                            <input autocomplete="off" type="date" id="pm-expires-at" />
                             <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">Watch auto-deactivates after this date</p>
                         </div>
                         <div class="form-group">
                             <label for="pm-notes">Notes (optional)</label>
-                            <input type="text" id="pm-notes" placeholder="e.g. For Stax deck" />
+                            <input autocomplete="off" type="text" id="pm-notes" placeholder="e.g. For Stax deck" />
                         </div>
                         <div class="form-group" id="pm-printing-section" style="display:none;">
                             <label>Printing <span style="font-weight:400;color:var(--text-secondary);">— optional</span></label>
@@ -2636,7 +2636,7 @@
                 <div class="filter-bar audit-filter-bar">
                     <div class="filter-group audit-filter-search">
                         <label for="audit-search">Search</label>
-                        <input
+                        <input autocomplete="off"
                             type="search"
                             id="audit-search"
                             class="filter-input"
@@ -2645,7 +2645,7 @@
                     </div>
                     <div class="filter-group">
                         <label for="audit-entity">Area</label>
-                        <select id="audit-entity" class="filter-select">
+                        <select autocomplete="off" id="audit-entity" class="filter-select">
                             <option value="">All areas</option>
                             <option value="inventory">Inventory</option>
                             <option value="deck">Decks</option>
@@ -2654,30 +2654,30 @@
                     </div>
                     <div class="filter-group">
                         <label for="audit-action">Action</label>
-                        <select id="audit-action" class="filter-select">
+                        <select autocomplete="off" id="audit-action" class="filter-select">
                             <option value="">All actions</option>
                         </select>
                     </div>
                     <div class="filter-group">
                         <label for="audit-source">Source</label>
-                        <select id="audit-source" class="filter-select">
+                        <select autocomplete="off" id="audit-source" class="filter-select">
                             <option value="">All sources</option>
                         </select>
                     </div>
                     <!-- Admins only; the whole group hides so the label goes with it -->
                     <div class="filter-group hidden" id="audit-user-group">
                         <label for="audit-user">User</label>
-                        <select id="audit-user" class="filter-select">
+                        <select autocomplete="off" id="audit-user" class="filter-select">
                             <option value="">My history</option>
                         </select>
                     </div>
                     <div class="filter-group">
                         <label for="audit-from">From</label>
-                        <input type="date" id="audit-from" class="filter-input" />
+                        <input autocomplete="off" type="date" id="audit-from" class="filter-input" />
                     </div>
                     <div class="filter-group">
                         <label for="audit-to">To</label>
-                        <input type="date" id="audit-to" class="filter-input" />
+                        <input autocomplete="off" type="date" id="audit-to" class="filter-input" />
                     </div>
                     <div class="filter-group">
                         <button id="audit-clear" class="btn btn-secondary">
@@ -2859,13 +2859,13 @@
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                                 <div>
                                     <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
-                                        <input type="checkbox" id="backup-schedule-enabled" style="width: 18px; height: 18px; cursor: pointer;">
+                                        <input autocomplete="off" type="checkbox" id="backup-schedule-enabled" style="width: 18px; height: 18px; cursor: pointer;">
                                         <span style="font-weight: 600;">Enable Automatic Backups</span>
                                     </label>
                                 </div>
                                 <div>
                                     <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Frequency</label>
-                                    <select id="backup-frequency" style="width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); ">
+                                    <select autocomplete="off" id="backup-frequency" style="width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); ">
                                         <option value="6hours">Every 6 Hours</option>
                                         <option value="12hours">Every 12 Hours</option>
                                         <option value="daily" selected>Daily (2 AM)</option>
@@ -2884,7 +2884,7 @@
 
                             <div style="margin-bottom: 1rem;">
                                 <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Keep Last N Backups</label>
-                                <input
+                                <input autocomplete="off"
                                     type="number"
                                     id="backup-retain-count"
                                     min="1"
@@ -2967,7 +2967,7 @@
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:end;margin-bottom:1rem;">
                             <div>
                                 <label style="display:block;margin-bottom:0.5rem;font-weight:600;">Frequency</label>
-                                <select id="price-schedule-preset" style="width:100%;padding:0.5rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);">
+                                <select autocomplete="off" id="price-schedule-preset" style="width:100%;padding:0.5rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);">
                                     <option value="0 * * * *">Every 1 hour</option>
                                     <option value="0 */3 * * *">Every 3 hours</option>
                                     <option value="0 */6 * * *">Every 6 hours (default)</option>
@@ -2978,7 +2978,7 @@
                             </div>
                             <div id="price-schedule-custom-wrap" style="display:none;">
                                 <label style="display:block;margin-bottom:0.5rem;font-weight:600;">Cron expression</label>
-                                <input type="text" id="price-schedule-custom" placeholder="e.g. 0 */4 * * *" style="width:100%;padding:0.5rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);">
+                                <input autocomplete="off" type="text" id="price-schedule-custom" placeholder="e.g. 0 */4 * * *" style="width:100%;padding:0.5rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);">
                             </div>
                         </div>
                         <div style="display:flex;align-items:center;gap:1rem;">
@@ -3006,7 +3006,7 @@
                                 </div>
                             </div>
                             <label class="toggle-switch">
-                                <input type="checkbox" id="toggle-registration" />
+                                <input autocomplete="off" type="checkbox" id="toggle-registration" />
                                 <span class="toggle-slider"></span>
                             </label>
                         </div>
@@ -3044,7 +3044,7 @@
                     <!-- Non-owned only toggle -->
                     <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: var(--bg-tertiary); border-radius: 0.5rem;">
                         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="copy-non-owned-only" style="width: 18px; height: 18px; cursor: pointer;">
+                            <input autocomplete="off" type="checkbox" id="copy-non-owned-only" style="width: 18px; height: 18px; cursor: pointer;">
                             <span style="font-weight: 600;">Non-owned cards only</span>
                         </label>
                     </div>
@@ -3063,7 +3063,7 @@
                     <div id="buy-tab-optimizer">
                         <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
                             <label style="font-size: 0.875rem; color: var(--text-secondary); white-space: nowrap;">Strategy:</label>
-                            <select id="optimizer-strategy" class="form-control" style="flex: 1; min-width: 160px;">
+                            <select autocomplete="off" id="optimizer-strategy" class="form-control" style="flex: 1; min-width: 160px;">
                                 <option value="lowest_price">Lowest Total Price</option>
                                 <option value="fewest_packages">Fewest Packages (saves shipping)</option>
                                 <option value="balanced">Balanced</option>
@@ -3121,7 +3121,7 @@
                     <span class="modal-close" id="deck-validator-close">&times;</span>
                     <h2 style="margin-bottom: 1.5rem;"><i class="ph ph-shield-check"></i> Deck Validator</h2>
                     <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem; align-items: center;">
-                        <select id="validator-format" class="form-control" style="flex: 1;">
+                        <select autocomplete="off" id="validator-format" class="form-control" style="flex: 1;">
                             <option value="commander">Commander / EDH</option>
                             <option value="standard">Standard</option>
                             <option value="modern">Modern</option>
@@ -3220,7 +3220,7 @@
                         <div class="record-form-row">
                             <div class="form-group">
                                 <label for="deck-game-result">Result</label>
-                                <select id="deck-game-result" required>
+                                <select autocomplete="off" id="deck-game-result" required>
                                     <option value="win">Win</option>
                                     <option value="loss">Loss</option>
                                     <option value="draw">Draw</option>
@@ -3228,13 +3228,13 @@
                             </div>
                             <div class="form-group">
                                 <label for="deck-game-date">Played</label>
-                                <input type="date" id="deck-game-date" required />
+                                <input autocomplete="off" type="date" id="deck-game-date" required />
                             </div>
                         </div>
                         <div class="record-form-row">
                             <div class="form-group">
                                 <label for="deck-game-opponent">Opponent</label>
-                                <input
+                                <input autocomplete="off"
                                     type="text"
                                     id="deck-game-opponent"
                                     placeholder="Optional"
@@ -3242,7 +3242,7 @@
                             </div>
                             <div class="form-group">
                                 <label for="deck-game-opponent-deck">Their deck</label>
-                                <input
+                                <input autocomplete="off"
                                     type="text"
                                     id="deck-game-opponent-deck"
                                     placeholder="Optional"
@@ -3251,7 +3251,7 @@
                         </div>
                         <div class="form-group">
                             <label for="deck-game-notes">Notes</label>
-                            <input
+                            <input autocomplete="off"
                                 type="text"
                                 id="deck-game-notes"
                                 placeholder="Optional"
@@ -3285,13 +3285,13 @@
                     <form id="import-deck-form">
                         <div class="form-group">
                             <label for="import-deck-name">Deck Name</label>
-                            <input type="text" id="import-deck-name" required />
+                            <input autocomplete="off" type="text" id="import-deck-name" required />
                         </div>
                         <div class="form-group">
                             <label for="import-deck-format"
                                 >Format (Optional)</label
                             >
-                            <select id="import-deck-format">
+                            <select autocomplete="off" id="import-deck-format">
                                 <option value="">Select Format</option>
                                 <option value="standard">Standard</option>
                                 <option value="modern">Modern</option>
@@ -3370,7 +3370,7 @@
                     <div class="form-group">
                         <label>Share Link</label>
                         <div style="display: flex; gap: 0.5rem">
-                            <input
+                            <input autocomplete="off"
                                 type="text"
                                 id="share-link-input"
                                 readonly
@@ -3500,7 +3500,7 @@
                     >
                     <h2 style="margin-bottom: 1rem">Filter by Sets</h2>
                     <div class="form-group">
-                        <input
+                        <input autocomplete="off"
                             type="text"
                             id="set-search-input"
                             placeholder="Search sets..."
@@ -3549,7 +3549,7 @@
                     >
                     <h2 style="margin-bottom: 1rem">Filter by Subtypes</h2>
                     <div class="form-group">
-                        <input
+                        <input autocomplete="off"
                             type="text"
                             id="subtype-search-input"
                             placeholder="Search subtypes..."
@@ -3645,7 +3645,7 @@
                     <div id="optimizer-auto-view">
                         <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 0.5rem;">
                             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
-                                <input type="checkbox" id="exclude-commander-sets" style="width: 18px; height: 18px; cursor: pointer;">
+                                <input autocomplete="off" type="checkbox" id="exclude-commander-sets" style="width: 18px; height: 18px; cursor: pointer;">
                                 <span style="font-weight: 600;">Exclude Commander sets</span>
                             </label>
                             <p style="margin: 0.5rem 0 0 1.75rem; font-size: 0.875rem; color: var(--text-secondary);">
@@ -3693,7 +3693,7 @@
                         <div style="margin-bottom: 1.5rem;">
                             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Select a Set</label>
                             <div style="display: flex; gap: 0.5rem;">
-                                <select id="manual-set-select" style="flex: 1; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text);">
+                                <select autocomplete="off" id="manual-set-select" style="flex: 1; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text);">
                                     <option value="">Choose a set...</option>
                                 </select>
                                 <button id="analyze-manual-set-btn" class="btn btn-primary">
