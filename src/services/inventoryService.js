@@ -13,7 +13,7 @@ import { deckPrioritySql, DECK_PRIORITY } from './deckPriority.js';
 import { recordInventoryChange } from './auditService.js';
 import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
 import { normalizeCondition, conditionLabel } from '../shared/conditions.js';
-import { takeOwnedCopies } from './cardService.js';
+import { takeOwnedCopies, changeOwnedCondition } from './cardService.js';
 
 const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
 
@@ -1273,6 +1273,51 @@ function moxfieldCsv(rows) {
     '',
   ].map(quote).join(','));
   return [MOXFIELD_COLUMNS.map(quote).join(','), ...lines].join('\n');
+}
+
+/**
+ * Regrade many rows at once: the chosen cards (`cardIds`), or the whole
+ * collection when `cardIds` is null.
+ *
+ * By default only copies with **no condition recorded** move. That is the
+ * "my collection is new, call it all Near Mint" case, and it must not undo
+ * grading someone already did by hand — a card they marked LP stays LP.
+ * `overwrite` regrades every row instead.
+ *
+ * Each row goes through `changeOwnedCondition`, the same path as the card
+ * page's dropdown, so merging and the audit trail behave identically; one
+ * `batchId` covers the lot so the audit page can show it as a unit.
+ */
+export function setConditionForCards(userId, { cardIds = null, to, overwrite = false } = {}) {
+  const dest = normalizeCondition(to, { strict: true });
+  const batchId = `set-condition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const ids = cardIds === null
+    ? null
+    : [...new Set(cardIds.map((id) => parseInt(id, 10)).filter(Number.isInteger))];
+  if (ids && ids.length === 0) return { rows: 0, copies: 0, batchId };
+
+  const rows = db.all(`
+    SELECT op.printing_id, op.is_foil, op.condition, op.quantity
+      FROM owned_printings op
+      JOIN printings p ON p.id = op.printing_id
+     WHERE op.user_id = ? AND op.quantity > 0 AND op.condition != ?
+       ${overwrite ? '' : "AND op.condition = ''"}
+       ${ids ? `AND p.card_id IN (${ids.map(() => '?').join(',')})` : ''}
+  `, [userId, dest, ...(ids || [])]);
+
+  let copies = 0;
+  db.transaction(() => {
+    for (const row of rows) {
+      changeOwnedCondition(userId, row.printing_id, !!row.is_foil, row.condition, dest, {
+        source: 'bulk_condition',
+        detail: { batchId },
+      });
+      copies += row.quantity;
+    }
+  });
+
+  return { rows: rows.length, copies, batchId };
 }
 
 /**

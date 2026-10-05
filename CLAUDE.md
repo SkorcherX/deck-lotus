@@ -358,6 +358,14 @@ taken on GitHub — only do it when explicitly asked.
   `[SET]` or `(SET)`. The simple export is summed per card and finish and
   deliberately carries none. Inventory and export both take a `condition`
   filter: `all`, `unrecorded` (the `''` rows) or a code.
+- Regrading goes through `changeOwnedCondition` in `cardService.js`, which
+  takes an optional `context.quantity` to move only some of a row's copies
+  (the card page asks "how many?" when a row holds more than one). The
+  Inventory page's "Set Condition" (`setConditionForCards`,
+  `POST /api/inventory/set-condition`) runs it per row under one `batchId`
+  with source `bulk_condition`, and by default touches **only unrecorded
+  copies** — marking a new collection Near Mint must never undo grading done
+  by hand. `overwrite` is the explicit opt-out.
 - A deck's plan (`decks.plan`, migration 047, `src/services/deckPlanService.js`)
   is one JSON column: `{ themeKey, secondaryThemeKey, secondaryShare, keep }`.
   Kept cards are stored by **name**, never `card_id`, for the backup rule

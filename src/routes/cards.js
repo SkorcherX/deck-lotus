@@ -305,11 +305,13 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
  * POST /api/cards/printings/:printingId/condition
  * Regrade one row: every copy of this printing and finish held at `from`
  * moves to `to`, merging with a row already there. '' is "not recorded".
+ * Optional `quantity` moves only that many of them.
  */
 router.post('/printings/:printingId/condition', authenticate, (req, res, next) => {
   try {
-    const { isFoil = false, from = '', to = '' } = req.body || {};
-    res.json(changeOwnedCondition(req.user.id, parseInt(req.params.printingId, 10), !!isFoil, from, to));
+    const { isFoil = false, from = '', to = '', quantity } = req.body || {};
+    res.json(changeOwnedCondition(req.user.id, parseInt(req.params.printingId, 10), !!isFoil, from, to,
+      quantity === undefined || quantity === null ? {} : { quantity }));
   } catch (error) {
     if (/condition|Nothing to/i.test(error.message)) return res.status(400).json({ error: error.message });
     next(error);

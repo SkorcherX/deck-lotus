@@ -1,4 +1,5 @@
 import { parseCardLine } from '../../../src/shared/cardLines.js';
+import { CONDITIONS } from '../../../src/shared/conditions.js';
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog, debounce } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
@@ -84,6 +85,7 @@ export function setupInventory() {
 
   // Setup export modal
   setupExportModal();
+  setupSetConditionButtons();
 
   // Setup quick search
   setupQuickSearch();
@@ -1107,6 +1109,105 @@ function setupBulkActions() {
       await showAddToDeckModal();
     });
   }
+}
+
+function setupSetConditionButtons() {
+  // Toolbar: no selection needed, so it opens on the whole collection.
+  document.getElementById('inventory-set-condition-btn')
+    ?.addEventListener('click', () => showSetConditionModal());
+  // Selection bar: opens on the ticked cards.
+  document.getElementById('inventory-set-condition-selected')
+    ?.addEventListener('click', () => showSetConditionModal());
+}
+
+/**
+ * Regrade many cards at once (POST /inventory/set-condition).
+ *
+ * Defaults are chosen for "my collection is new, call it Near Mint": whole
+ * collection when nothing is ticked, Near Mint, and only copies with no
+ * condition recorded — so grading already done by hand is never undone
+ * unless the box saying so is ticked.
+ */
+function showSetConditionModal() {
+  const selected = selectMode ? [...selectedCards] : [];
+  const hasSelection = selected.length > 0;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 460px;">
+      <span class="modal-close" data-act="close">&times;</span>
+      <h2 style="margin-bottom: 1rem;">Set Condition</h2>
+      <div class="form-group">
+        <label for="set-condition-to">Condition</label>
+        <select id="set-condition-to" class="filter-select" style="width: 100%;">
+          ${CONDITIONS.map((c) => `<option value="${c.code}">${c.label}</option>`).join('')}
+          <option value="">Not recorded (clear)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="display: flex; align-items: baseline; gap: 0.5rem; font-weight: normal;">
+          <input type="radio" name="set-condition-scope" value="selected" style="width: auto; flex: none;"
+                 ${hasSelection ? 'checked' : 'disabled'} />
+          <span>The <strong>${selected.length}</strong> selected card${selected.length === 1 ? '' : 's'}${hasSelection ? '' : ' (use Select to tick some)'}</span>
+        </label>
+        <label style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.5rem; font-weight: normal;">
+          <input type="radio" name="set-condition-scope" value="all" style="width: auto; flex: none;"
+                 ${hasSelection ? '' : 'checked'} />
+          <span>My <strong>whole collection</strong></span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label style="display: flex; align-items: baseline; gap: 0.5rem; font-weight: normal;">
+          <input type="checkbox" id="set-condition-overwrite" style="width: auto; flex: none;" />
+          <span>Also change copies that already have a condition.
+          Left unticked, only copies with no condition recorded change.</span>
+        </label>
+      </div>
+      <p style="color: var(--text-secondary); font-size: 0.875rem;">
+        Every copy of each card is changed. To regrade just some copies, use the
+        Condition dropdown on the card's page.
+      </p>
+      <button data-act="apply" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Apply</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector('[data-act="close"]').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+  modal.querySelector('[data-act="apply"]').addEventListener('click', async () => {
+    const to = modal.querySelector('#set-condition-to').value;
+    const all = modal.querySelector('input[name="set-condition-scope"]:checked')?.value === 'all';
+    const overwrite = modal.querySelector('#set-condition-overwrite').checked;
+    const label = CONDITIONS.find((c) => c.code === to)?.label || 'not recorded';
+
+    if (all && overwrite) {
+      const ok = await confirmDialog({
+        title: 'Regrade everything?',
+        message: `Every copy in your collection will be marked <strong>${label}</strong>, including ones you have already graded.`,
+        confirmText: 'Regrade all',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+
+    try {
+      showLoading();
+      const result = await api.setInventoryCondition({ to, cardIds: all ? undefined : selected, all, overwrite });
+      close();
+      if (!all) selectedCards.clear();
+      await loadInventoryData();
+      hideLoading();
+      showToast(result.copies
+        ? `Marked ${result.copies} ${result.copies === 1 ? 'copy' : 'copies'} ${label}`
+        : 'Nothing to change — those copies already have a condition', result.copies ? 'success' : 'warning');
+    } catch (error) {
+      hideLoading();
+      showError('Failed to set condition: ' + error.message);
+    }
+  });
 }
 
 async function showAddToDeckModal() {

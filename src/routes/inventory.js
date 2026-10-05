@@ -11,6 +11,7 @@ import {
   getBuilderInventory,
   getOwnedSets,
   exportInventory,
+  setConditionForCards,
   clearCollection,
   removeCardsFromCollection,
   summarizeCollectionForClear,
@@ -255,6 +256,25 @@ router.post('/bulk-remove-resolve', authenticate, (req, res, next) => {
 
     res.json({ items: resolveBulkRemoveItems(req.user.id, items) });
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/set-condition
+ * Body: { to, cardIds?, all?, overwrite? }. `all: true` regrades the whole
+ * collection; otherwise `cardIds` is required. Without `overwrite`, only
+ * copies with no condition recorded change (see setConditionForCards).
+ */
+router.post('/set-condition', authenticate, (req, res, next) => {
+  try {
+    const { to, cardIds, all = false, overwrite = false } = req.body || {};
+    if (!all && (!Array.isArray(cardIds) || cardIds.length === 0)) {
+      return res.status(400).json({ error: 'cardIds array is required unless all is set' });
+    }
+    res.json({ success: true, ...setConditionForCards(req.user.id, { cardIds: all ? null : cardIds, to, overwrite: !!overwrite }) });
+  } catch (error) {
+    if (/condition/i.test(error.message)) return res.status(400).json({ error: error.message });
     next(error);
   }
 });

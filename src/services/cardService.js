@@ -990,10 +990,21 @@ export function changeOwnedCondition(userId, printingId, isFoil, from, to, conte
   if (!have) throw new Error('Nothing to regrade: no copies held at that condition');
   if (src === dest) return { success: true, quantity: have, condition: dest };
 
-  const ctx = { source: context.source || 'card_page', actorUserId: context.actorUserId, detail: { via: 'regrade', from: src, to: dest } };
+  // `context.quantity` moves only that many — "1 of my 4 NM is really LP".
+  // Omitted, the whole row moves, which is what the card page always did.
+  const move = context.quantity === undefined ? have : parseInt(context.quantity, 10);
+  if (!Number.isInteger(move) || move < 1 || move > have) {
+    throw new Error(`Cannot regrade ${context.quantity} copies: ${have} held at that condition`);
+  }
+
+  const ctx = {
+    source: context.source || 'card_page',
+    actorUserId: context.actorUserId,
+    detail: { ...(context.detail || {}), via: 'regrade', from: src, to: dest },
+  };
   return db.transaction(() => {
-    setOwnedPrintingQuantity(userId, printingId, 0, isFoil, { ...ctx, condition: src });
-    return addOwnedPrintingQuantity(userId, printingId, have, isFoil, { ...ctx, condition: dest });
+    setOwnedPrintingQuantity(userId, printingId, have - move, isFoil, { ...ctx, condition: src });
+    return addOwnedPrintingQuantity(userId, printingId, move, isFoil, { ...ctx, condition: dest });
   });
 }
 

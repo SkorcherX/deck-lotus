@@ -204,10 +204,10 @@ class ApiClient {
   }
 
   /** Move one row's copies from one condition to another ('' = not recorded). */
-  async changeOwnedCondition(printingId, isFoil, from, to) {
+  async changeOwnedCondition(printingId, isFoil, from, to, quantity) {
     return this.request(`/cards/printings/${printingId}/condition`, {
       method: 'POST',
-      body: JSON.stringify({ isFoil, from, to }),
+      body: JSON.stringify({ isFoil, from, to, ...(quantity ? { quantity } : {}) }),
     });
   }
 
@@ -638,6 +638,13 @@ class ApiClient {
 
   async getInventorySets() {
     return this.request('/inventory/sets');
+  }
+
+  async setInventoryCondition({ to, cardIds, all = false, overwrite = false }) {
+    return this.request('/inventory/set-condition', {
+      method: 'POST',
+      body: JSON.stringify({ to, cardIds, all, overwrite }),
+    });
   }
 
   async exportInventory(shape = 'precise', condition = 'all') {
