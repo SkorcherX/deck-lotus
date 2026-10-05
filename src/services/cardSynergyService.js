@@ -47,6 +47,9 @@
 
 import { effectText, isCreature, isLand, isInstantOrSorcery, isArtifact } from './cardRoleService.js';
 
+// "create two 1/1 white Soldier creature tokens", but not Treasure or Clue.
+const makesCreatureTokens = (text) => /create[^.]{0,60}creature tokens?/.test(text);
+
 const typeOf = (card) => String(card.type_line || '').toLowerCase();
 
 /**
@@ -213,16 +216,47 @@ export const THEMES = {
   tokens: {
     label: 'token swarm',
     blurb: 'Quantity over quality. You make lots of small creature tokens, then play the cards that make a wide board frightening — anthems, effects counting your creatures, ways to cash the whole team in at once.',
-    enablerName: 'ways to make tokens',
+    enablerName: 'ways to make creature tokens',
     payoffName: 'cards that reward a wide board',
-    enabler: (card) => /create[^.]{0,50}token/.test(effectText(card)),
+    // Creature tokens only: "create a Treasure token" is ramp, and used to
+    // count as a token-swarm enabler.
+    enabler: (card) => makesCreatureTokens(effectText(card)),
     payoff: (card) => {
       const text = effectText(card);
       return /whenever[^.]{0,50}token[^.]{0,30}(enters|attacks)/.test(text)
         || /tokens? you control (get|have)/.test(text)
         || /for each (creature|token) you control/.test(text)
         || /creatures you control get \+\d+\/\+\d+/.test(text)
+        || /twice that many[^.]{0,30}tokens/.test(text)
         || /\b(convoke|populate)\b/.test(text);
+    },
+  },
+
+  // Token swarm is one way to go wide; this is the other. The bodies are
+  // cheap creatures cast two a turn as often as tokens, so the enabler is
+  // "a creature costing 2 or less" as well as a token maker. The payoffs
+  // overlap with token swarm on purpose — anthems reward either board.
+  goWide: {
+    label: 'go wide',
+    blurb: 'Lots of cheap creatures, fast. The deck is packed with one- and two-drops and token makers so the board fills in the first few turns, then an anthem or a mass pump turns a crowd of small bodies into lethal damage.',
+    enablerName: 'cheap creatures and creature-token makers',
+    payoffName: 'cards that reward having many creatures',
+    enabler: (card) => (isCreature(card) && (Number(card.cmc) || 0) <= 2)
+      || makesCreatureTokens(effectText(card)),
+    // The part of the enabler that is about what a card does rather than what
+    // it costs. Mimic reads this so that two cheap creatures are not called a
+    // theme match on mana value alone.
+    textEnabler: (card) => makesCreatureTokens(effectText(card)),
+    payoff: (card) => {
+      const text = effectText(card);
+      return /creatures you control get \+\d+\/\+\d+/.test(text)
+        || /other creatures you control get/.test(text)
+        || /creatures you control (gain|have)[^.]{0,40}(trample|double strike|first strike|vigilance)/.test(text)
+        || /for each (other )?(creature|token) you control/.test(text)
+        || /whenever (a|another|one or more)( other)?( nontoken)? creatures? (you control )?enters?/.test(text)
+        || /whenever (you attack|one or more creatures you control attack)/.test(text)
+        || /(three|four|five) or more creatures/.test(text)
+        || /\b(battalion|raid|mentor|convoke|coven)\b/.test(text);
     },
   },
 

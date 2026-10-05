@@ -369,3 +369,30 @@ describe('a custom theme', () => {
     assert.equal(themeRole(spell('Hardened Scales', 'Put a +1/+1 counter on target creature.'), counters), 'both');
   });
 });
+
+describe('token swarm and go wide', () => {
+  const spell = (name, oracle) => card(name, { type_line: 'Instant', subtypes: '', oracle_text: oracle });
+  const treasure = spell('Big Score', 'As an additional cost, discard a card. Draw two cards and create two Treasure tokens.');
+  const raise = spell('Raise the Alarm', 'Create two 1/1 white Soldier creature tokens.');
+  const champion = card('Champion of the Parish', { cmc: 1, oracle_text: 'Whenever another Human you control enters, put a +1/+1 counter on this creature.' });
+  const ogre = card('Big Ogre', { cmc: 5, subtypes: 'Ogre', type_line: 'Creature — Ogre' });
+  const anthem = spell('Glorious Anthem', 'Creatures you control get +1/+1.');
+  const hoof = card('Craterhoof Behemoth', { cmc: 8, oracle_text: 'When this creature enters, creatures you control gain trample and get +X/+X until end of turn, where X is the number of creatures you control.' });
+
+  test('a Treasure maker is not a token-swarm enabler', () => {
+    assert.equal(themeRole(treasure, THEMES.tokens), null);
+    assert.equal(themeRole(raise, THEMES.tokens), 'enabler');
+  });
+
+  test('cheap creatures enable go wide; expensive ones do not', () => {
+    assert.equal(themeRole(champion, THEMES.goWide), 'enabler');
+    assert.equal(themeRole(raise, THEMES.goWide), 'enabler');
+    assert.equal(themeRole(ogre, THEMES.goWide), null);
+    assert.equal(themeRole(champion, THEMES.tokens), null, 'not a token maker');
+  });
+
+  test('anthems and mass pumps pay off a wide board', () => {
+    assert.equal(themeRole(anthem, THEMES.goWide), 'payoff');
+    assert.equal(themeRole(hoof, THEMES.goWide), 'payoff');
+  });
+});

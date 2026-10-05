@@ -91,7 +91,13 @@ function profile(card, format) {
   const themes = {};
   if (!land) {
     for (const [key, theme] of Object.entries(THEMES)) {
-      const role = themeRole(card, theme);
+      let role = themeRole(card, theme);
+      // Go wide counts any cheap creature as an enabler. Mana value is scored
+      // on its own here, so that half would only call every pair of two-drops
+      // a theme match. Its token makers and payoffs still count.
+      if (theme.textEnabler && role && role !== 'payoff' && !theme.textEnabler(card)) {
+        role = role === 'both' ? 'payoff' : null;
+      }
       if (role) themes[key] = role;
     }
   }
