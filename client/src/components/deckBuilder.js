@@ -14,6 +14,7 @@ import { setupDeckRecord, renderDeckRecordLabel } from './deckRecord.js';
 import { renderDisruptionBanner } from './trades.js';
 import { zoomButton } from '../utils/cardZoom.js';
 import { openMimic } from './deckMimic.js';
+import { openPullList } from './deckPull.js';
 import { EXPORT_FORMATS, formatDeckExport, exportFilename } from '../utils/deckExport.js';
 
 // Mana Pool's /search page 404s, but /card/{slug} goes straight to the
@@ -439,6 +440,7 @@ export function setupDeckBuilder() {
   });
 
   // Check Legality button
+  document.getElementById('pull-list-btn').addEventListener('click', () => openPullList(currentDeck));
   document.getElementById('mimic-deck-btn').addEventListener('click', () => openMimic(currentDeck));
 
   document.getElementById('check-legality-btn').addEventListener('click', () => {

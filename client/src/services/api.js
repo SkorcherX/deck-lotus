@@ -740,6 +740,28 @@ class ApiClient {
     });
   }
 
+  async getPullList(deckId) {
+    return this.request(`/decks/${deckId}/pull-list`);
+  }
+
+  async setPullProgress(deckId, payload) {
+    return this.request(`/decks/${deckId}/pull-list/progress`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async resetPullProgress(deckId) {
+    return this.request(`/decks/${deckId}/pull-list/progress`, { method: 'DELETE' });
+  }
+
+  async savePullLayout(layout) {
+    return this.request('/decks/pull-layout', {
+      method: 'PUT',
+      body: JSON.stringify({ layout }),
+    });
+  }
+
   async mimicDeck(payload) {
     return this.request('/decks/generate/mimic', {
       method: 'POST',

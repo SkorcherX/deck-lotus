@@ -40,6 +40,9 @@ import {
 } from '../services/deckProposalService.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.js';
 import { saveDeckPlan } from '../services/deckPlanService.js';
+import {
+  getPullList, setPulled, resetPulled, getPullLayout, savePullLayout,
+} from '../services/pullListService.js';
 
 const router = express.Router();
 
@@ -279,6 +282,65 @@ router.post('/generate/accept', authenticate, (req, res, next) => {
     });
     res.status(201).json(result);
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET/PUT /api/decks/pull-layout
+ * How the caller's physical storage is arranged, for grouping pull lists.
+ * Declared before `/:id` for the same reason as /generate.
+ */
+router.get('/pull-layout', authenticate, (req, res, next) => {
+  try {
+    res.json({ layout: getPullLayout(req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/pull-layout', authenticate, (req, res, next) => {
+  try {
+    res.json({ layout: savePullLayout(req.user.id, req.body?.layout) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/decks/:id/pull-list
+ * The cards to take out of storage for this deck, with pull progress.
+ */
+router.get('/:id/pull-list', authenticate, (req, res, next) => {
+  try {
+    res.json(getPullList(req.user.id, Number(req.params.id)));
+  } catch (error) {
+    if (/not one of yours/.test(error.message)) return res.status(404).json({ error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/decks/:id/pull-list/progress  { uuid, isFoil, pulled }
+ * DELETE /api/decks/:id/pull-list/progress — start again
+ * Changes nothing in the deck or the collection.
+ */
+router.put('/:id/pull-list/progress', authenticate, (req, res, next) => {
+  try {
+    const { uuid, isFoil, pulled } = req.body || {};
+    res.json(setPulled(req.user.id, Number(req.params.id), { uuid, isFoil: Boolean(isFoil), pulled }));
+  } catch (error) {
+    if (/not one of yours/.test(error.message)) return res.status(404).json({ error: error.message });
+    if (/required/.test(error.message)) return res.status(400).json({ error: error.message });
+    next(error);
+  }
+});
+
+router.delete('/:id/pull-list/progress', authenticate, (req, res, next) => {
+  try {
+    res.json(resetPulled(req.user.id, Number(req.params.id)));
+  } catch (error) {
+    if (/not one of yours/.test(error.message)) return res.status(404).json({ error: error.message });
     next(error);
   }
 });

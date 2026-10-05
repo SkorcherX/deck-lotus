@@ -107,7 +107,7 @@ export function createBackup(userId = null) {
 
   backup.data.users = db.prepare(`
     SELECT id, username, email, password_hash, is_admin, theme, avatar_type, avatar_value,
-           bulk_price_threshold, created_at, updated_at
+           bulk_price_threshold, pull_layout, created_at, updated_at
     FROM users
     ${userFilter}
   `).all();
@@ -303,11 +303,20 @@ export function createBackup(userId = null) {
       FROM deck_games
       WHERE deck_id IN (${deckIdsStr})
     `).all();
+
+    // Pull progress is keyed by printing uuid already — no printing_id to
+    // translate — so it travels as stored.
+    backup.data.deck_pull_progress = db.prepare(`
+      SELECT deck_id, printing_uuid, is_foil, pulled, updated_at
+      FROM deck_pull_progress
+      WHERE deck_id IN (${deckIdsStr})
+    `).all();
   } else {
     backup.data.deck_cards = [];
     backup.data.deck_shares = [];
     backup.data.deck_card_disruptions = [];
     backup.data.deck_games = [];
+    backup.data.deck_pull_progress = [];
   }
 
   return backup;
@@ -354,6 +363,7 @@ export function restoreBackup(backupData, options = {}) {
     deck_shares: 0,
     deck_card_disruptions: 0,
     deck_games: 0,
+    deck_pull_progress: 0,
     errors: []
   };
 
@@ -384,6 +394,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM trades WHERE from_user_id = ? OR to_user_id = ?').run(userId, userId);
       db.prepare('DELETE FROM card_loans WHERE lender_user_id = ? OR borrower_user_id = ?').run(userId, userId);
       db.prepare('DELETE FROM deck_games WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM deck_pull_progress WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
       db.prepare('DELETE FROM deck_card_disruptions WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
       db.prepare('DELETE FROM deck_cards WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
       db.prepare('DELETE FROM deck_shares WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
@@ -392,6 +403,7 @@ export function restoreBackup(backupData, options = {}) {
     } else if (overwrite && !userId) {
       db.prepare('DELETE FROM deck_card_disruptions').run();
       db.prepare('DELETE FROM deck_games').run();
+      db.prepare('DELETE FROM deck_pull_progress').run();
       db.prepare('DELETE FROM deck_cards').run();
       db.prepare('DELETE FROM deck_shares').run();
       db.prepare('DELETE FROM decks').run();
@@ -453,8 +465,8 @@ export function restoreBackup(backupData, options = {}) {
     const insertUser = db.prepare(`
       INSERT OR REPLACE INTO users (id, username, email, password_hash, is_admin, theme,
                                     avatar_type, avatar_value, bulk_price_threshold,
-                                    created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    pull_layout, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     restoreRows('users', usersToRestore, (user) => {
@@ -471,6 +483,7 @@ export function restoreBackup(backupData, options = {}) {
         user.avatar_type || 'gravatar',
         user.avatar_value ?? null,
         user.bulk_price_threshold ?? 1.0,
+        user.pull_layout ?? null,
         user.created_at,
         user.updated_at
       );
@@ -657,6 +670,15 @@ export function restoreBackup(backupData, options = {}) {
         game.opponent_deck, game.format, game.notes, game.created_at
       );
     }, () => 'Deck game');
+
+    const insertPull = db.prepare(`
+      INSERT OR REPLACE INTO deck_pull_progress (deck_id, printing_uuid, is_foil, pulled, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    restoreRows('deck_pull_progress', (backupData.data.deck_pull_progress || []).filter(inDeck), (row) => {
+      insertPull.run(row.deck_id, row.printing_uuid, row.is_foil ? 1 : 0, row.pulled, row.updated_at);
+    }, (row) => `Pull progress ${row.printing_uuid}`);
 
     // ---- Trades ----------------------------------------------------------
     //

@@ -395,3 +395,15 @@ taken on GitHub — only do it when explicitly asked.
   passed off as a match. The commander is never substituted. It writes nothing;
   saving goes through `acceptProposal`, so the copy is a new `idea` and the
   original is untouched. The core is pure, like the generator.
+- The pull list ("Pull cards" in the deck builder, `pullListService.js`,
+  `/api/decks/:id/pull-list`) is a checklist for taking a deck out of physical
+  storage, grouped by `groupPullRows` in `src/shared/pullLayout.js` the way the
+  shelves are arranged: section (printed colour — not identity — then
+  Multicolour, Colourless, Lands) → rarity → type, where the type split applies
+  only to the rarities each section lists in `users.pull_layout`. Default:
+  mono-colour and colourless split commons, Multicolour splits uncommons.
+  Creature wins the type, so an Artifact Creature files under Creature. Ticks
+  live in `deck_pull_progress`, keyed by `printing_uuid` with no FK (same
+  reason as `audit_log`) and change nothing in the deck or the collection.
+  `backupService` carries both. The generator's own in-memory checklist is for
+  unsaved proposals and is separate.
