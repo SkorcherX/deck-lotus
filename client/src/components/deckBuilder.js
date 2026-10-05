@@ -1171,29 +1171,15 @@ function setupCardControls() {
       }
     });
 
-    // Add hover preview (only on non-touch devices)
-    if (!isTouchDevice()) {
-      item.addEventListener('mouseenter', (e) => {
-        // Don't show preview if hovering over commander button
-        if (e.target.closest('.commander-toggle-btn')) return;
-
-        const img = item.querySelector('.deck-card-image, .deck-card-image-compact');
-        if (img && img.src) {
-          showCardPreview(img);
-        }
+    // Hover preview (only on non-touch devices), from the thumbnail alone:
+    // over the whole row it opened while reading the name or reaching for
+    // the quantity buttons, and covered the rows below.
+    const thumb = item.querySelector('.deck-card-image, .deck-card-image-compact');
+    if (!isTouchDevice() && thumb) {
+      thumb.addEventListener('mouseenter', () => {
+        if (thumb.src) showCardPreview(thumb);
       });
-
-      item.addEventListener('mouseleave', () => {
-        hideCardPreview();
-      });
-
-      // Prevent preview when hovering over commander button
-      const commanderBtn = item.querySelector('.commander-toggle-btn');
-      if (commanderBtn) {
-        commanderBtn.addEventListener('mouseenter', () => {
-          hideCardPreview();
-        });
-      }
+      thumb.addEventListener('mouseleave', hideCardPreview);
     }
   });
 
@@ -1906,8 +1892,8 @@ function downloadExport() {
 }
 
 /**
- * Show the large card image over the thumbnail being hovered, centred on it
- * and kept inside the window. It used to sit at the far edge of the screen,
+ * Show the large card image over the thumbnail being hovered, bottom edges
+ * lined up, kept inside the window. It used to sit at the far edge of the screen,
  * away from the card it belonged to, which meant looking across the page to
  * see it. The preview ignores the pointer, so covering the thumbnail does not
  * end the hover that opened it.
@@ -1933,10 +1919,13 @@ function showCardPreview(thumb) {
     loader.src = large;
   }
 
+  // Grows up and to the right from the thumbnail: its bottom-left corner sits
+  // on the thumbnail's, so it covers the rows above (already read) and never
+  // the names below. Pushed back inside the window where there is no room.
   const box = thumb.getBoundingClientRect();
   const clamp = (value, max) => Math.min(Math.max(PREVIEW_MARGIN, value), max - PREVIEW_MARGIN);
-  const left = clamp(box.left + box.width / 2 - PREVIEW_WIDTH / 2, window.innerWidth - PREVIEW_WIDTH);
-  const top = clamp(box.top + box.height / 2 - PREVIEW_HEIGHT / 2, window.innerHeight - PREVIEW_HEIGHT);
+  const left = clamp(box.left, window.innerWidth - PREVIEW_WIDTH);
+  const top = clamp(box.bottom - PREVIEW_HEIGHT, window.innerHeight - PREVIEW_HEIGHT);
 
   preview.style.left = `${left}px`;
   preview.style.top = `${top}px`;
