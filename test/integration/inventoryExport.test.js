@@ -161,6 +161,17 @@ describe('inventory export', () => {
     assert.ok(simple.lines < precise.lines);
   });
 
+  test('moxfield export matches the columns of a Moxfield haves file', () => {
+    const { text, lines } = exportInventory(userId, { shape: 'moxfield' });
+    const rows = text.split('\n');
+
+    assert.equal(rows[0], '"Count","Tradelist Count","Name","Edition","Condition","Language","Foil","Tags","Last Modified","Collector Number","Alter","Proxy","Purchase Price"');
+    assert.equal(rows.length, lines + 1);
+    const foil = rows.find((r) => r.startsWith('"2","0","Counterspell","tst"') && r.includes('"foil"'));
+    assert.ok(foil, 'foil row present');
+    assert.match(foil, /"Near Mint","English","foil","",".*","2","False","False",""$/);
+  });
+
   test('an empty collection exports a header and nothing else', () => {
     db.run(`INSERT INTO users (username, email, password_hash) VALUES ('empty','e@example.test','hash')`);
     const emptyId = db.get(`SELECT id FROM users WHERE username='empty'`).id;

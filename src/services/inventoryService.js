@@ -12,7 +12,7 @@ import { isBasicLandSql } from './basicLands.js';
 import { deckPrioritySql, DECK_PRIORITY } from './deckPriority.js';
 import { recordInventoryChange } from './auditService.js';
 import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
-import { normalizeCondition } from '../shared/conditions.js';
+import { normalizeCondition, conditionLabel } from '../shared/conditions.js';
 import { takeOwnedCopies } from './cardService.js';
 
 const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
@@ -1152,6 +1152,10 @@ export function bulkRemoveFromInventory(userId, items, context = {}) {
  *              printing, which is what a paste into Moxfield or a deck list
  *              wants, since those care about the card and not the art.
  *
+ *   'moxfield' Moxfield's collection CSV, the columns of their own "haves"
+ *              export, so it uploads through Moxfield's collection import.
+ *              One row per owned row, like 'precise'. See `moxfieldCsv`.
+ *
  * Foils stay on their own line in **both** shapes, marked `*F*`. Finish is half
  * the unique key of `owned_printings`, so folding a foil in with its non-foil
  * would not merely lose a detail — it would re-import as the wrong rows.
@@ -1164,7 +1168,9 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
       p.collector_number,
       op.is_foil,
       op.condition,
-      op.quantity
+      op.quantity,
+      op.updated_at,
+      p.language
     FROM owned_printings op
     JOIN printings p ON op.printing_id = p.id
     JOIN cards c ON p.card_id = c.id
@@ -1179,6 +1185,12 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
   // and finish, where a single condition would be a claim they cannot make.
   const conditionMark = (code) => (code ? ` *${code}*` : '');
   let lines;
+
+  if (shape === 'moxfield') {
+    const copies = rows.reduce((sum, row) => sum + row.quantity, 0);
+    const cards = new Set(rows.map((row) => row.name)).size;
+    return { shape, text: moxfieldCsv(rows), lines: rows.length, cards, copies };
+  }
 
   if (shape === 'simple') {
     // Summed per card and finish. A Map preserves the ORDER BY above, so the
@@ -1219,6 +1231,48 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
     cards,
     copies,
   };
+}
+
+const MOXFIELD_COLUMNS = [
+  'Count', 'Tradelist Count', 'Name', 'Edition', 'Condition', 'Language', 'Foil',
+  'Tags', 'Last Modified', 'Collector Number', 'Alter', 'Proxy', 'Purchase Price',
+];
+
+// `printings.language` may hold a code (the column defaults to 'en');
+// Moxfield wants the name. Anything else passes through as stored.
+const MOXFIELD_LANGUAGES = {
+  en: 'English', es: 'Spanish', fr: 'French', de: 'German', it: 'Italian',
+  pt: 'Portuguese', ja: 'Japanese', ko: 'Korean', ru: 'Russian',
+  zhs: 'Chinese Simplified', zht: 'Chinese Traditional',
+};
+
+/**
+ * Rows as Moxfield's collection CSV, matching the header of a file exported
+ * from Moxfield itself — every field quoted, as theirs are.
+ *
+ * Moxfield has no "not recorded" condition, so an unrecorded copy goes out as
+ * Near Mint, which is also what Moxfield assumes for a new card. Tradelist
+ * Count is 0: an export is not a decision to offer the whole collection for
+ * trade. No `//` header — it would be read as a card row.
+ */
+function moxfieldCsv(rows) {
+  const quote = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const lines = rows.map((row) => [
+    row.quantity,
+    0,
+    row.name,
+    String(row.set_code).toLowerCase(),
+    conditionLabel(row.condition) || 'Near Mint',
+    MOXFIELD_LANGUAGES[row.language] || row.language || 'English',
+    row.is_foil ? 'foil' : '',
+    '',
+    row.updated_at ? `${row.updated_at}.000000` : '',
+    row.collector_number || '',
+    'False',
+    'False',
+    '',
+  ].map(quote).join(','));
+  return [MOXFIELD_COLUMNS.map(quote).join(','), ...lines].join('\n');
 }
 
 /**

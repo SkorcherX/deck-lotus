@@ -1245,6 +1245,7 @@ function setupExportModal() {
     try {
       const result = await api.exportInventory(selectedShape(), conditionSelect?.value || 'all');
       textarea.value = result.text;
+      if (downloadBtn) downloadBtn.textContent = result.shape === 'moxfield' ? 'Download .csv' : 'Download .txt';
       summary.textContent = `${result.cards} cards, ${result.copies} copies, ${result.lines} lines`;
     } catch (error) {
       console.error('Failed to export inventory:', error);
@@ -1277,11 +1278,12 @@ function setupExportModal() {
 
   downloadBtn?.addEventListener('click', () => {
     if (!textarea.value) return;
-    const blob = new Blob([textarea.value], { type: 'text/plain' });
+    const csv = selectedShape() === 'moxfield';
+    const blob = new Blob([textarea.value], { type: csv ? 'text/csv' : 'text/plain' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `collection-${new Date().toISOString().slice(0, 10)}.txt`;
+    link.download = `collection-${new Date().toISOString().slice(0, 10)}.${csv ? 'csv' : 'txt'}`;
     link.click();
     URL.revokeObjectURL(url);
   });

@@ -168,7 +168,7 @@ router.get('/sets', authenticate, (req, res, next) => {
  */
 router.get('/export', authenticate, (req, res, next) => {
   try {
-    const shape = req.query.shape === 'simple' ? 'simple' : 'precise';
+    const shape = ['simple', 'moxfield'].includes(req.query.shape) ? req.query.shape : 'precise';
     res.json(exportInventory(req.user.id, { shape, condition: normalizeConditionFilter(req.query.condition) }));
   } catch (error) {
     next(error);
