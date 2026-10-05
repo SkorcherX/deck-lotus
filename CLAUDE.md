@@ -386,6 +386,11 @@ taken on GitHub — only do it when explicitly asked.
   Inventory page, collection search is the primary field and quick add sits
   behind the "Add cards" button (key `A`) on purpose: an always-open add box
   in that spot got typed searches into it and added cards by accident.
+  The deck builder follows the same rule: "From Inventory" is the primary
+  control, and the any-card search sits behind an "Any card" button with a
+  label saying it is not from the collection. That search adds a card's
+  *first* printing, usually one nobody owns, so an always-open box filled
+  decks with cards that then had to be bought.
 - Mimic (`src/services/deckMimicService.js`, `POST /api/decks/generate/mimic`,
   the deck builder's "Mimic" button) rebuilds an existing deck — usually an
   imported list — card by card from the collection: owned copies first, then a

@@ -559,36 +559,63 @@
                                 </div>
                             </div>
                         <!-- Card Search - Full Width Row -->
+                        <!--
+                          From Inventory first, any card second. The any-card
+                          search used to be the first field in the deck panel,
+                          and picking a result adds that card's first printing —
+                          usually one nobody owns — so typing a name there put
+                          cards in the deck that had to be bought. Building from
+                          the collection is the normal path; adding a card you
+                          do not own is a deliberate one, behind its own button.
+                        -->
                         <div class="search-panel-row">
-                            <div class="search-box">
-                                <input
-                                    type="text"
-                                    id="card-search"
-                                    placeholder="Add new cards..."
-                                    autocomplete="off"
-                                />
-                                <div
-                                    id="search-results"
-                                    class="search-results hidden"
-                                ></div>
-                            </div>
-                            <select autocomplete="off" id="card-search-rarity" class="filter-select" aria-label="Rarity" title="Only show printings of this rarity">
-                                <option value="all">Any rarity</option>
-                                <option value="common">Common</option>
-                                <option value="uncommon">Uncommon</option>
-                                <option value="rare">Rare</option>
-                                <option value="mythic">Mythic</option>
-                                <option value="special">Special</option>
-                                <option value="bonus">Bonus</option>
-                            </select>
                             <button
                                 id="inventory-panel-toggle"
-                                class="btn btn-secondary"
+                                class="btn btn-primary"
                                 aria-expanded="false"
                                 aria-controls="inventory-panel"
                             >
                                 From Inventory
                             </button>
+                            <button
+                                id="any-card-toggle"
+                                class="btn btn-secondary"
+                                aria-expanded="false"
+                                aria-controls="any-card-panel"
+                                title="Add a card you don't own to this deck"
+                            >
+                                <i class="ph ph-plus"></i> Any card
+                            </button>
+                        </div>
+
+                        <div id="any-card-panel" class="search-panel-row any-card-panel hidden">
+                            <label for="card-search" class="any-card-label">
+                                <i class="ph ph-warning-circle" aria-hidden="true"></i>
+                                Adds to this deck from all cards, not from your collection
+                            </label>
+                            <div class="any-card-fields">
+                                <div class="search-box">
+                                    <input
+                                        type="text"
+                                        id="card-search"
+                                        placeholder="Type a card name to add to the deck..."
+                                        autocomplete="off"
+                                    />
+                                    <div
+                                        id="search-results"
+                                        class="search-results hidden"
+                                    ></div>
+                                </div>
+                                <select autocomplete="off" id="card-search-rarity" class="filter-select" aria-label="Rarity" title="Only show printings of this rarity">
+                                    <option value="all">Any rarity</option>
+                                    <option value="common">Common</option>
+                                    <option value="uncommon">Uncommon</option>
+                                    <option value="rare">Rare</option>
+                                    <option value="mythic">Mythic</option>
+                                    <option value="special">Special</option>
+                                    <option value="bonus">Bonus</option>
+                                </select>
+                            </div>
                         </div>
 
                         <!-- Build from cards you own -->

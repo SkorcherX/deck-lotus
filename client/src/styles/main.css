@@ -7435,7 +7435,8 @@ body.maintenance-locked #app {
   flex: 0 0 auto;
 }
 
-#inventory-panel-toggle {
+#inventory-panel-toggle,
+#any-card-toggle {
   white-space: nowrap;
   padding: 1rem 1.25rem;
 }
@@ -7470,7 +7471,8 @@ body.maintenance-locked #app {
    field in the deck panel's header it matches the filter box below it. */
 .deck-panel > .search-panel-row #card-search { padding: 0.6rem 0.75rem; }
 
-.deck-panel > .search-panel-row #inventory-panel-toggle { padding: 0.6rem 1rem; }
+.deck-panel > .search-panel-row #inventory-panel-toggle,
+.deck-panel > .search-panel-row #any-card-toggle { padding: 0.6rem 1rem; }
 
 .inventory-panel-head {
   display: flex;
@@ -7740,8 +7742,13 @@ body.maintenance-locked #app {
   }
 
   #inventory-panel-toggle,
+  #any-card-toggle,
   #card-search-rarity {
     width: 100%;
+  }
+
+  .any-card-fields {
+    flex-direction: column;
   }
 
   .inventory-panel-list {
@@ -9479,3 +9486,11 @@ body.pull-list-open { overflow: hidden; }
   .pull-card-art { width: 90px; }
   .pull-pile-head { position: static; }
 }
+
+/* Any-card search in the deck builder: closed by default, and labelled so it
+   cannot be mistaken for adding from the collection. */
+#any-card-toggle.is-open { border-color: var(--primary); color: var(--primary); }
+.any-card-panel { flex-direction: column; gap: 0.5rem; }
+.any-card-label { font-size: var(--text-sm); color: var(--warning); display: flex; gap: 0.35rem; align-items: center; }
+.any-card-fields { display: flex; gap: 1rem; align-items: flex-start; width: 100%; }
+.any-card-fields .search-box { flex: 1; min-width: 0; }

@@ -63,6 +63,20 @@ function isTouchDevice() {
 }
 
 export function setupDeckBuilder() {
+  // The any-card search is closed until asked for; see the note above it in
+  // index.html. Opening the collection panel closes it, so only one way of
+  // adding cards is open at a time.
+  const anyCardToggle = document.getElementById('any-card-toggle');
+  const anyCardPanel = document.getElementById('any-card-panel');
+  const setAnyCardOpen = (open) => {
+    anyCardPanel.classList.toggle('hidden', !open);
+    anyCardToggle.setAttribute('aria-expanded', String(open));
+    anyCardToggle.classList.toggle('is-open', open);
+    if (open) document.getElementById('card-search').focus();
+  };
+  anyCardToggle.addEventListener('click', () => setAnyCardOpen(anyCardPanel.classList.contains('hidden')));
+  document.getElementById('inventory-panel-toggle').addEventListener('click', () => setAnyCardOpen(false));
+
   const cardSearch = document.getElementById('card-search');
   const searchResults = document.getElementById('search-results');
   const saveDeckBtn = document.getElementById('save-deck-btn');
