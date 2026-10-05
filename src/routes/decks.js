@@ -263,10 +263,13 @@ router.post('/generate/gaps/shopping-list', authenticate, (req, res, next) => {
  */
 router.post('/generate/mimic', authenticate, (req, res, next) => {
   try {
-    const { deckId, includeCommitted } = req.body || {};
+    const { deckId, includeCommitted, releaseDeckIds } = req.body || {};
     if (deckId == null) return res.status(400).json({ error: 'deckId is required' });
     res.json({
-      mimic: mimicFromCollection(req.user.id, Number(deckId), { includeCommitted: includeCommitted !== false }),
+      mimic: mimicFromCollection(req.user.id, Number(deckId), {
+        includeCommitted: includeCommitted !== false,
+        releaseDeckIds: releaseIds(releaseDeckIds),
+      }),
     });
   } catch (error) {
     if (/not one of yours|no mainboard/i.test(error.message)) {

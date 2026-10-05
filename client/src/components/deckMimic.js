@@ -6,8 +6,11 @@
  */
 import api from '../services/api.js';
 import { showModal, hideModal, showToast, formatMana } from '../utils/ui.js';
+import { savedPool, savePool, saveRaidChoice, raidDeckIds, raidDecksHtml } from './raidDecks.js';
 
 let result = null;
+// Every deck, for choosing which ones the mimic may take cards from.
+let decks = [];
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -66,6 +69,7 @@ function render(m) {
 
   const list = (rows) => rows.map((c) => `<li>${qty(c.quantity)}${nameCell(c)}</li>`).join('');
 
+  const pool = savedPool('all');
   showModal(`Mimic: ${escapeHtml(m.deck.name)}`, `
     <div class="mimic">
       <p class="mimic-stats">
@@ -75,8 +79,12 @@ function render(m) {
         <strong class="${s.missingCards ? 'mimic-warn' : ''}">${s.missingCards}</strong> with no stand-in
       </p>
       ${commander}${themes}
-      <label class="mimic-option"><input type="checkbox" id="mimic-committed" ${m.pool.includeCommitted ? 'checked' : ''}>
-        Use cards that are in my other decks</label>
+      <div class="mimic-option" role="radiogroup" aria-label="Cards to build from">
+        ${[['free', 'Only cards no other deck is using'], ['picked', 'Also cards in decks I pick'], ['all', 'Also cards in all my other decks']]
+          .map(([value, label]) => `<label><input type="radio" name="mimic-pool" value="${value}" ${pool === value ? 'checked' : ''}> ${label}</label>`).join('')}
+        <div class="generator-raid-decks ${pool === 'picked' ? '' : 'hidden'}" id="mimic-raid-decks">
+          ${raidDecksHtml(decks, escapeHtml, m.deck.id)}</div>
+      </div>
 
       <h3>Mana curve</h3>${curveTable(s.curve)}
       <h3>Jobs the deck does</h3>${roleTable(s.roles)}
@@ -95,13 +103,31 @@ function render(m) {
       <p class="mimic-note">Saved as an <em>idea</em>. The original deck is left as it is.</p>
     </div>`);
 
-  document.getElementById('mimic-committed')?.addEventListener('change', (e) => run(m.deck.id, e.target.checked));
+  document.querySelectorAll('input[name="mimic-pool"]').forEach((radio) => radio.addEventListener('change', () => {
+    savePool(radio.value);
+    run(m.deck.id);
+  }));
+  document.getElementById('mimic-raid-decks')?.addEventListener('change', (e) => {
+    if (!e.target.matches('input[type="checkbox"]')) return;
+    saveRaidChoice(e.target.value, e.target.checked);
+    run(m.deck.id);
+  });
   document.getElementById('mimic-save')?.addEventListener('click', save);
 }
 
-async function run(deckId, includeCommitted = true) {
+async function run(deckId) {
   try {
-    const { mimic } = await api.mimicDeck({ deckId, includeCommitted });
+    // Mimic has always defaulted to using every deck, so it keeps that until
+    // somebody picks otherwise on either screen.
+    const pool = savedPool('all');
+    if (pool === 'picked' && decks.length === 0) {
+      decks = (await api.getRevisableDecks()).decks || [];
+    }
+    const { mimic } = await api.mimicDeck({
+      deckId,
+      includeCommitted: pool === 'all',
+      releaseDeckIds: pool === 'picked' ? raidDeckIds(decks, deckId) : [],
+    });
     result = mimic;
     render(mimic);
   } catch (error) {
@@ -140,5 +166,5 @@ async function save() {
 
 export function openMimic(deck) {
   if (!deck?.id) { showToast('Save the deck first', 'warning'); return; }
-  run(deck.id, true);
+  run(deck.id);
 }

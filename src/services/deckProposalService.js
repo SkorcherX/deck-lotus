@@ -845,7 +845,7 @@ export function acceptProposal(userId, { name, format = 'commander', commander =
  * as a revision: an imported list is usually an idea whose claim on your
  * cards is exactly the claim the mimic is about to make.
  */
-export function mimicFromCollection(userId, deckId, { includeCommitted = true } = {}) {
+export function mimicFromCollection(userId, deckId, { includeCommitted = true, releaseDeckIds = [] } = {}) {
   const deck = db.get('SELECT id, name, format FROM decks WHERE id = ? AND user_id = ?', [deckId, userId]);
   if (!deck) throw new Error('That deck is not one of yours');
 
@@ -864,7 +864,7 @@ export function mimicFromCollection(userId, deckId, { includeCommitted = true } 
   if (rows.length === 0) throw new Error('That deck has no mainboard cards to copy');
 
   const format = deck.format || null;
-  const pool = getGeneratorPool(userId, { includeCommitted, exceptDeckId: deckId });
+  const pool = getGeneratorPool(userId, { includeCommitted, exceptDeckId: deckId, releaseDeckIds });
 
   const leaderRow = rows.find((r) => r.is_commander);
   const leaderOwned = leaderRow

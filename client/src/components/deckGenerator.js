@@ -32,6 +32,7 @@
 import api from '../services/api.js';
 import { showToast, showError } from '../utils/ui.js';
 import { zoomButton } from '../utils/cardZoom.js';
+import { savedPool, savePool, saveRaidChoice, raidDeckIds, raidDecksHtml } from './raidDecks.js';
 
 let proposal = null;
 let commanders = [];
@@ -70,65 +71,25 @@ function escapeHtml(value) {
 
 /**
  * May the proposal use cards other decks hold? Off unless chosen, and the
- * choice is remembered per browser: somebody who has said "leave my decks
- * alone" once should not have to say it on every visit.
+ * choice is remembered per browser (see raidDecks.js), shared with Mimic.
  */
-const POOL_KEY = 'deckGenerator.pool';
 const poolChoice = () =>
   document.querySelector('input[name="generate-pool"]:checked')?.value || 'free';
 const includeCommitted = () => poolChoice() === 'all';
 
 function restorePoolChoice() {
-  let saved = null;
-  try { saved = localStorage.getItem(POOL_KEY); } catch { /* storage blocked */ }
-  const value = ['all', 'picked'].includes(saved) ? saved : 'free';
-  const radio = document.querySelector(`input[name="generate-pool"][value="${value}"]`);
+  const radio = document.querySelector(`input[name="generate-pool"][value="${savedPool()}"]`);
   if (radio) radio.checked = true;
 }
 
-/**
- * Which decks may be raided under "decks I pick". A deck nobody has said
- * anything about defaults by status: a ready deck has had its cards pulled
- * and sleeved, so taking from it is real work; a building or idea deck
- * usually has not, so its cards are still in the box. Choices are kept per
- * browser by deck id, so a deck ticked or unticked stays that way.
- * Retired decks are not listed — they claim nothing to begin with.
- */
-const RAID_KEY = 'deckGenerator.raidDecks';
-function savedRaidChoices() {
-  try { return JSON.parse(localStorage.getItem(RAID_KEY) || '{}') || {}; } catch { return {}; }
-}
-const raidable = () => revisable.filter((d) => d.status !== 'retired');
-function isRaidable(deck, saved = savedRaidChoices()) {
-  return deck.id in saved ? Boolean(saved[deck.id]) : deck.status !== 'ready';
-}
-
 /** Deck ids whose cards count as free, or [] unless "decks I pick" is chosen. */
-function releaseDeckIds() {
-  if (poolChoice() !== 'picked') return [];
-  const saved = savedRaidChoices();
-  return raidable().filter((d) => isRaidable(d, saved)).map((d) => d.id);
-}
+const releaseDeckIds = () => (poolChoice() === 'picked' ? raidDeckIds(revisable) : []);
 
 function renderRaidDecks() {
   const box = $('generate-raid-decks');
   if (!box) return;
   box.classList.toggle('hidden', poolChoice() !== 'picked');
-  const decks = raidable();
-  if (decks.length === 0) {
-    box.innerHTML = '<p class="generator-note">You have no other decks to take from.</p>';
-    return;
-  }
-  const saved = savedRaidChoices();
-  const order = { ready: 0, building: 1, idea: 2 };
-  box.innerHTML = [...decks]
-    .sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3) || a.name.localeCompare(b.name))
-    .map((d) => `
-      <label class="generator-raid-deck">
-        <input autocomplete="off" type="checkbox" value="${d.id}" ${isRaidable(d, saved) ? 'checked' : ''} />
-        <span class="generator-raid-name">${escapeHtml(d.name)}</span>
-        <span class="generator-raid-status">${escapeHtml(d.status || 'building')}</span>
-      </label>`).join('');
+  box.innerHTML = raidDecksHtml(revisable, escapeHtml);
 }
 
 /** Is the page proposing a revision of an existing deck? */
@@ -586,7 +547,7 @@ function wire() {
   // wrong deck.
   restorePoolChoice();
   document.querySelectorAll('input[name="generate-pool"]').forEach((radio) => radio.addEventListener('change', async () => {
-    try { localStorage.setItem(POOL_KEY, radio.value); } catch { /* storage blocked */ }
+    savePool(radio.value);
     renderRaidDecks();
     resetResult();
     await reload();
@@ -595,9 +556,7 @@ function wire() {
   $('generate-raid-decks')?.addEventListener('change', async (event) => {
     const box = event.target.closest('input[type="checkbox"]');
     if (!box) return;
-    const saved = savedRaidChoices();
-    saved[box.value] = box.checked;
-    try { localStorage.setItem(RAID_KEY, JSON.stringify(saved)); } catch { /* storage blocked */ }
+    saveRaidChoice(box.value, box.checked);
     resetResult();
     await reload();
   });
