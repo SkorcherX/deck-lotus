@@ -74,14 +74,61 @@ function escapeHtml(value) {
  * alone" once should not have to say it on every visit.
  */
 const POOL_KEY = 'deckGenerator.pool';
-const includeCommitted = () =>
-  document.querySelector('input[name="generate-pool"]:checked')?.value === 'all';
+const poolChoice = () =>
+  document.querySelector('input[name="generate-pool"]:checked')?.value || 'free';
+const includeCommitted = () => poolChoice() === 'all';
 
 function restorePoolChoice() {
   let saved = null;
   try { saved = localStorage.getItem(POOL_KEY); } catch { /* storage blocked */ }
-  const radio = document.querySelector(`input[name="generate-pool"][value="${saved === 'all' ? 'all' : 'free'}"]`);
+  const value = ['all', 'picked'].includes(saved) ? saved : 'free';
+  const radio = document.querySelector(`input[name="generate-pool"][value="${value}"]`);
   if (radio) radio.checked = true;
+}
+
+/**
+ * Which decks may be raided under "decks I pick". A deck nobody has said
+ * anything about defaults by status: a ready deck has had its cards pulled
+ * and sleeved, so taking from it is real work; a building or idea deck
+ * usually has not, so its cards are still in the box. Choices are kept per
+ * browser by deck id, so a deck ticked or unticked stays that way.
+ * Retired decks are not listed — they claim nothing to begin with.
+ */
+const RAID_KEY = 'deckGenerator.raidDecks';
+function savedRaidChoices() {
+  try { return JSON.parse(localStorage.getItem(RAID_KEY) || '{}') || {}; } catch { return {}; }
+}
+const raidable = () => revisable.filter((d) => d.status !== 'retired');
+function isRaidable(deck, saved = savedRaidChoices()) {
+  return deck.id in saved ? Boolean(saved[deck.id]) : deck.status !== 'ready';
+}
+
+/** Deck ids whose cards count as free, or [] unless "decks I pick" is chosen. */
+function releaseDeckIds() {
+  if (poolChoice() !== 'picked') return [];
+  const saved = savedRaidChoices();
+  return raidable().filter((d) => isRaidable(d, saved)).map((d) => d.id);
+}
+
+function renderRaidDecks() {
+  const box = $('generate-raid-decks');
+  if (!box) return;
+  box.classList.toggle('hidden', poolChoice() !== 'picked');
+  const decks = raidable();
+  if (decks.length === 0) {
+    box.innerHTML = '<p class="generator-note">You have no other decks to take from.</p>';
+    return;
+  }
+  const saved = savedRaidChoices();
+  const order = { ready: 0, building: 1, idea: 2 };
+  box.innerHTML = [...decks]
+    .sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3) || a.name.localeCompare(b.name))
+    .map((d) => `
+      <label class="generator-raid-deck">
+        <input autocomplete="off" type="checkbox" value="${d.id}" ${isRaidable(d, saved) ? 'checked' : ''} />
+        <span class="generator-raid-name">${escapeHtml(d.name)}</span>
+        <span class="generator-raid-status">${escapeHtml(d.status || 'building')}</span>
+      </label>`).join('');
 }
 
 /** Is the page proposing a revision of an existing deck? */
@@ -510,6 +557,7 @@ async function loadRevisableDecks() {
   try {
     const data = await api.getRevisableDecks();
     revisable = data.decks || [];
+    renderRaidDecks();
 
     if (revisable.length === 0) {
       select.innerHTML = '<option value="">You have no decks to revise yet</option>';
@@ -539,9 +587,20 @@ function wire() {
   restorePoolChoice();
   document.querySelectorAll('input[name="generate-pool"]').forEach((radio) => radio.addEventListener('change', async () => {
     try { localStorage.setItem(POOL_KEY, radio.value); } catch { /* storage blocked */ }
+    renderRaidDecks();
     resetResult();
     await reload();
   }));
+
+  $('generate-raid-decks')?.addEventListener('change', async (event) => {
+    const box = event.target.closest('input[type="checkbox"]');
+    if (!box) return;
+    const saved = savedRaidChoices();
+    saved[box.value] = box.checked;
+    try { localStorage.setItem(RAID_KEY, JSON.stringify(saved)); } catch { /* storage blocked */ }
+    resetResult();
+    await reload();
+  });
 
   $('generate-format')?.addEventListener('change', async () => {
     resetResult();
@@ -674,7 +733,7 @@ async function loadCommanders() {
 
   gallery.innerHTML = '<div class="generator-empty">Loading your commanders…</div>';
   try {
-    const data = await api.getGeneratorCommanders(includeCommitted());
+    const data = await api.getGeneratorCommanders(includeCommitted(), releaseDeckIds());
     commanders = data.commanders || [];
 
     if (commanders.length === 0) {
@@ -864,6 +923,7 @@ async function loadThemes() {
       reviseDeckId: revisingDeckId(),
       splash: revising ? splashColors() : '',
       keepCardIds: revising ? [...kept] : [],
+      releaseDeckIds: releaseDeckIds(),
       customThemes: customKeys,
     });
     themes = data.themes || [];
@@ -1009,6 +1069,7 @@ async function run() {
       secondaryThemeKey: secondTheme() || null,
       secondaryShare: secondTheme() ? secondShare() : null,
       includeCommitted: includeCommitted(),
+      releaseDeckIds: releaseDeckIds(),
       identity: revising ? null : (chosenColors() || null),
       reviseDeckId: revisingDeckId(),
       splash: revising ? (splashColors() || null) : null,
@@ -1258,7 +1319,9 @@ function render(p) {
     <div class="generate-pool">
       Chosen from ${p.pool.cards} cards${p.pool.includeCommitted
         ? ', including cards currently in your other decks'
-        : ' that no other deck has claimed'}.
+        : p.pool.releasedDecks
+          ? `, including cards in the ${p.pool.releasedDecks === 1 ? 'deck' : `${p.pool.releasedDecks} decks`} you picked`
+          : ' that no other deck has claimed'}.
     </div>
   `;
 
@@ -1397,6 +1460,7 @@ async function findGaps() {
       format: proposal?.format || chosenFormat(),
       themeKey: $('generate-theme')?.value || null,
       includeCommitted: includeCommitted(),
+      releaseDeckIds: releaseDeckIds(),
       identity: isRevising() ? (proposal?.colorIdentity || null) : (chosenColors() || null),
     });
 

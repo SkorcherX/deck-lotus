@@ -1468,7 +1468,7 @@ const BEST_OWNED_COPY = (column) => `(
  * committed count hands those copies back, and `in_deck` says which ones they
  * are so the ranking can prefer leaving them where they are.
  */
-export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId = null } = {}) {
+export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId = null, releaseDeckIds = [] } = {}) {
   // `available` is computed in an outer select because SQLite cannot see one
   // column alias from another expression in the same SELECT list, and both
   // `owned` and `committed` are needed to work it out.
@@ -1481,6 +1481,15 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
   // positionally here, and a clause that vanishes has to take its binding
   // with it.
   const notThisDeck = exceptDeckId == null ? '' : 'AND d.id != ?';
+
+  // Decks the user has said may be raided, for the in-between reading: a
+  // half-built deck whose cards were never pulled costs nothing to borrow
+  // from, while a sleeved one does. Their copies stop counting as committed,
+  // exactly like the deck being revised. Meaningless when everything is open.
+  const released = includeCommitted
+    ? []
+    : [...new Set((releaseDeckIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  const notReleased = released.length ? `AND d.id NOT IN (${released.map(() => '?').join(',')})` : '';
 
   return db.all(`
     SELECT *, ${available} AS available FROM (
@@ -1515,6 +1524,7 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
            AND dp.card_id = c.id
            AND ${deckPrioritySql('d')} <= ${DECK_PRIORITY.idea}
            ${notThisDeck}
+           ${notReleased}
       ), 0) AS committed,
       -- Copies of this card already in the deck being revised, mainboard and
       -- sideboard alike. Zero for every card when nothing is being revised.
@@ -1549,7 +1559,7 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
   // two deck ids are conditional and drop out together with their clauses.
   [
     userId, userId, userId,
-    userId, ...(exceptDeckId == null ? [] : [exceptDeckId]),
+    userId, ...(exceptDeckId == null ? [] : [exceptDeckId]), ...released,
     ...(exceptDeckId == null ? [] : [exceptDeckId]),
     userId, // lent out
     userId,

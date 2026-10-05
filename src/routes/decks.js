@@ -95,6 +95,16 @@ router.post('/', authenticate, (req, res, next) => {
  */
 
 /**
+ * Decks the generator may take cards from when other decks are otherwise off
+ * limits. Accepts an array or a comma-separated string; ownership is enforced
+ * by the pool query, which only counts the caller's own decks.
+ */
+function releaseIds(value) {
+  const raw = Array.isArray(value) ? value : String(value || '').split(',');
+  return raw.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 500);
+}
+
+/**
  * GET /api/decks/generate/commanders
  * Commanders in the collection, to choose between.
  */
@@ -105,6 +115,7 @@ router.get('/generate/commanders', authenticate, (req, res, next) => {
         // Absent means on: see the note on getGeneratorPool about why the
         // permissive reading is the useful default here.
         includeCommitted: req.query.includeCommitted !== 'false',
+        releaseDeckIds: releaseIds(req.query.releaseDeckIds),
       }),
     });
   } catch (error) {
@@ -141,6 +152,7 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
         // was changed, which left the two halves of one screen disagreeing
         // about what omitting the flag meant.
         includeCommitted: req.query.includeCommitted !== 'false',
+        releaseDeckIds: releaseIds(req.query.releaseDeckIds),
         // A 60-card format has no commander to take colours from.
         identity: req.query.identity || null,
         format: req.query.format || 'commander',
@@ -167,7 +179,7 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
 router.post('/generate', authenticate, (req, res, next) => {
   try {
     const {
-      commanderCardId, format, themeKey, secondaryThemeKey, secondaryShare, includeCommitted, landCount, identity, reviseDeckId, splash, keepCardIds,
+      commanderCardId, format, themeKey, secondaryThemeKey, secondaryShare, includeCommitted, landCount, identity, reviseDeckId, splash, keepCardIds, releaseDeckIds,
     } = req.body || {};
 
     res.json({
@@ -181,6 +193,7 @@ router.post('/generate', authenticate, (req, res, next) => {
         // Clamped in the generator; absent means its default.
         secondaryShare: secondaryShare == null ? undefined : Number(secondaryShare),
         includeCommitted: includeCommitted !== false,
+        releaseDeckIds: releaseIds(releaseDeckIds),
         landCount: landCount == null ? null : Number(landCount),
         identity: identity || null,
         reviseDeckId: reviseDeckId == null ? null : Number(reviseDeckId),
@@ -207,13 +220,14 @@ router.post('/generate', authenticate, (req, res, next) => {
  */
 router.post('/generate/gaps', authenticate, (req, res, next) => {
   try {
-    const { commanderCardId, format, themeKey, includeCommitted, identity } = req.body || {};
+    const { commanderCardId, format, themeKey, includeCommitted, identity, releaseDeckIds } = req.body || {};
 
     res.json(suggestForGaps(req.user.id, {
       commanderCardId: commanderCardId == null ? null : Number(commanderCardId),
       format: format || 'commander',
       themeKey: themeKey || null,
       includeCommitted: includeCommitted !== false,
+      releaseDeckIds: releaseIds(releaseDeckIds),
       identity: identity || null,
     }));
   } catch (error) {

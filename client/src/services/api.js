@@ -694,8 +694,10 @@ class ApiClient {
   // --- The deck generator ---------------------------------------------------
   // Generating writes nothing; only acceptGeneratedDeck creates anything.
 
-  async getGeneratorCommanders(includeCommitted = true) {
-    return this.request(`/decks/generate/commanders?includeCommitted=${includeCommitted}`);
+  async getGeneratorCommanders(includeCommitted = true, releaseDeckIds = []) {
+    const params = new URLSearchParams({ includeCommitted: String(includeCommitted) });
+    if (releaseDeckIds.length) params.set('releaseDeckIds', releaseDeckIds.join(','));
+    return this.request(`/decks/generate/commanders?${params}`);
   }
 
   async getRevisableDecks() {
@@ -713,6 +715,7 @@ class ApiClient {
     // own cards, so the id travels with the question.
     if (extra.reviseDeckId) params.set('reviseDeckId', extra.reviseDeckId);
     if (extra.splash) params.set('splash', extra.splash);
+    if (extra.releaseDeckIds && extra.releaseDeckIds.length) params.set('releaseDeckIds', extra.releaseDeckIds.join(','));
     if (extra.keepCardIds && extra.keepCardIds.length) params.set('keepCardIds', extra.keepCardIds.join(','));
     // Repeated rather than joined: a custom theme's key holds commas.
     for (const key of extra.customThemes || []) params.append('customTheme', key);

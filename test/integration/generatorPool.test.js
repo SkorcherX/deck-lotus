@@ -128,6 +128,17 @@ describe('getGeneratorPool', () => {
     db.run(`UPDATE deck_cards SET quantity = 1 WHERE deck_id = ? AND printing_id = ?`,
       [deckId, printings['Claimed Card']]);
   });
+
+  test('releaseDeckIds frees only the decks named', () => {
+    const deckId = db.get(`SELECT id FROM decks WHERE name='Built'`).id;
+    const freed = poolBy(getGeneratorPool(userId, { includeCommitted: false, releaseDeckIds: [deckId] }));
+    assert.equal(freed.get('Claimed Card').available, 2);
+    assert.equal(freed.get('Claimed Card').committed, 0);
+
+    // Naming some other deck leaves this one's claim standing.
+    const other = poolBy(getGeneratorPool(userId, { includeCommitted: false, releaseDeckIds: [deckId + 999] }));
+    assert.equal(other.get('Claimed Card').available, 1);
+  });
 });
 
 /**

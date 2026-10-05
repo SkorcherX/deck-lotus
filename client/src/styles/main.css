@@ -8683,6 +8683,14 @@ body.maintenance-locked #app {
 .generator-pool-choice { margin-top: 1rem; display: grid; gap: 0.5rem; }
 .generator-pool-head { font-weight: 600; color: var(--text); }
 .generator-pool-choice .generator-note { margin: 0; }
+.generator-raid-decks {
+    display: grid; gap: 0.25rem; margin-left: 1.75rem;
+    max-height: 16rem; overflow-y: auto;
+}
+.generator-raid-deck { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+.generator-raid-deck input { width: auto; flex: none; margin: 0; }
+.generator-raid-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.generator-raid-status { font-size: 0.8em; color: var(--text-muted); text-transform: capitalize; }
 
 .generator-mode-option {
   display: flex;

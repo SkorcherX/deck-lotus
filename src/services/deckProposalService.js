@@ -45,8 +45,8 @@ import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
  * The same test the deck builder and the inventory panel already make, so the
  * three cannot disagree about what is a commander.
  */
-export function commanderOptions(userId, { includeCommitted = true } = {}) {
-  return getGeneratorPool(userId, { includeCommitted })
+export function commanderOptions(userId, { includeCommitted = true, releaseDeckIds = [] } = {}) {
+  return getGeneratorPool(userId, { includeCommitted, releaseDeckIds })
     .filter((card) => {
       const type = String(card.type_line || '');
       if (/legendary/i.test(type) && /creature/i.test(type)) return true;
@@ -88,13 +88,13 @@ function commanderFrom(pool, commanderCardId) {
  */
 export function themeOptions(userId, commanderCardId, {
   includeCommitted = true, identity: chosenIdentity = null, format = 'commander',
-  reviseDeckId = null, splash = null, keepCardIds = [], customThemeKeys = [],
+  reviseDeckId = null, splash = null, keepCardIds = [], customThemeKeys = [], releaseDeckIds = [],
 } = {}) {
   // The same pool the proposal will be built from, revision included: a theme
   // measured without the deck's own cards is measured against a collection the
   // build will never see, and the numbers offered would not be the numbers the
   // deck was built with.
-  const pool = getGeneratorPool(userId, { includeCommitted, exceptDeckId: reviseDeckId })
+  const pool = getGeneratorPool(userId, { includeCommitted, exceptDeckId: reviseDeckId, releaseDeckIds })
     .filter((card) => isLegalIn(card, format));
   const commander = commanderFrom(pool, commanderCardId);
   const identity = commander
@@ -481,6 +481,7 @@ export function proposeDeck(userId, {
   reviseDeckId = null,
   splash = null,
   keepCardIds = [],
+  releaseDeckIds = [],
 } = {}) {
   const target = reviseDeckId == null ? null : revisionTarget(userId, reviseDeckId);
   const keep = keptFrom(target, keepCardIds);
@@ -501,6 +502,7 @@ export function proposeDeck(userId, {
     // The deck's own cards stop counting as spoken for, which is the whole
     // point: a revision may keep what is already sleeved.
     exceptDeckId: reviseDeckId,
+    releaseDeckIds,
   });
   const commander = commanderFrom(pool, commanderCardId);
 
@@ -537,6 +539,7 @@ export function proposeDeck(userId, {
     pool: {
       cards: pool.length,
       includeCommitted,
+      releasedDecks: includeCommitted ? 0 : new Set((releaseDeckIds || []).map(Number)).size,
       committedCards: pool.filter((card) => (card.committed || 0) > 0).length,
     },
     commanderCard: commander
@@ -589,10 +592,11 @@ export function suggestForGaps(userId, {
   themeKey = null,
   includeCommitted = true,
   identity = null,
+  releaseDeckIds = [],
   perGap = 6,
 } = {}) {
   const proposal = proposeDeck(userId, {
-    commanderCardId, format, themeKey, includeCommitted, identity,
+    commanderCardId, format, themeKey, includeCommitted, identity, releaseDeckIds,
   });
 
   const roleGaps = proposal.shortfalls.filter((s) => s.kind === 'role' && s.found < s.wanted);
