@@ -36,7 +36,7 @@ import {
 } from '../services/printingOptimizerService.js';
 import {
   commanderOptions, themeOptions, proposeDeck, acceptProposal, revisableDecks,
-  suggestForGaps, addGapsToShoppingList,
+  suggestForGaps, addGapsToShoppingList, mimicFromCollection,
 } from '../services/deckProposalService.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.js';
 import { saveDeckPlan } from '../services/deckPlanService.js';
@@ -235,6 +235,26 @@ router.post('/generate/gaps/shopping-list', authenticate, (req, res, next) => {
 
     res.status(201).json(addGapsToShoppingList(req.user.id, { items }));
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/decks/generate/mimic
+ * Rebuild one of your decks from your own collection, with stand-ins for the
+ * cards you do not own. Writes nothing; save through /generate/accept.
+ */
+router.post('/generate/mimic', authenticate, (req, res, next) => {
+  try {
+    const { deckId, includeCommitted } = req.body || {};
+    if (deckId == null) return res.status(400).json({ error: 'deckId is required' });
+    res.json({
+      mimic: mimicFromCollection(req.user.id, Number(deckId), { includeCommitted: includeCommitted !== false }),
+    });
+  } catch (error) {
+    if (/not one of yours|no mainboard/i.test(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 });

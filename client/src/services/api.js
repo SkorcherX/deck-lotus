@@ -740,6 +740,13 @@ class ApiClient {
     });
   }
 
+  async mimicDeck(payload) {
+    return this.request('/decks/generate/mimic', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async acceptGeneratedDeck(payload) {
     return this.request('/decks/generate/accept', {
       method: 'POST',

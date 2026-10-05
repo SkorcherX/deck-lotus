@@ -9378,3 +9378,32 @@ body.maintenance-locked #app {
 .generator-keep-tile.is-kept .generator-keep-art { border-color: var(--primary); }
 .generator-keep-tile.is-kept .generator-keep-badge { display: block; }
 .generator-keep-tile.is-kept .generator-keep-name { color: var(--text); font-weight: 600; }
+
+/* Deck mimic — rebuilding a deck from your own collection (deckMimic.js) */
+.mimic h3 { margin: 1rem 0 0.5rem; font-size: var(--text-sm); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.mimic-stats { margin: 0 0 0.5rem; }
+.mimic-note { color: var(--text-secondary); font-size: var(--text-sm); margin: 0.25rem 0; }
+.mimic-warn { color: var(--warning); }
+.mimic-option { display: flex; gap: 0.5rem; align-items: center; font-size: var(--text-sm); margin: 0.5rem 0; }
+.mimic-list { list-style: none; padding: 0; margin: 0; max-height: 18rem; overflow-y: auto; }
+.mimic-list li { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+.mimic-qty { color: var(--text-muted); margin-right: 0.35rem; }
+.mimic-cost { font-size: var(--text-xs); }
+.mimic-for { color: var(--text-secondary); font-size: var(--text-sm); margin-left: 0.35rem; }
+.mimic-why { color: var(--text-secondary); font-size: var(--text-xs); margin-top: 0.15rem; }
+.mimic-swap.is-loose .mimic-why { color: var(--text-muted); }
+.mimic-tag { font-size: var(--text-xs); border: 1px solid var(--border-strong); border-radius: var(--radius-full); padding: 0 0.4rem; margin-left: 0.35rem; color: var(--text-muted); }
+.mimic-curve { display: flex; gap: 0.5rem; align-items: flex-end; }
+.mimic-curve-col { flex: 1; text-align: center; }
+.mimic-curve-bars { display: flex; gap: 2px; align-items: flex-end; justify-content: center; height: 62px; }
+.mimic-bar { width: 40%; min-height: 1px; border-radius: 2px 2px 0 0; }
+.mimic-bar.is-original, .mimic-swatch.is-original { background: var(--border-strong); }
+.mimic-bar.is-mimic, .mimic-swatch.is-mimic { background: var(--primary); }
+.mimic-curve-label { font-size: var(--text-xs); color: var(--text-muted); }
+.mimic-legend { font-size: var(--text-xs); color: var(--text-muted); margin-top: 0.25rem; display: flex; gap: 0.35rem; align-items: center; }
+.mimic-swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px; }
+.mimic-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.mimic-table th, .mimic-table td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border); }
+.mimic-table tr.is-short td:last-child { color: var(--warning); }
+.mimic-save { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+.mimic-save input { flex: 1; min-width: 12rem; }

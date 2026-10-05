@@ -386,3 +386,12 @@ taken on GitHub — only do it when explicitly asked.
   Inventory page, collection search is the primary field and quick add sits
   behind the "Add cards" button (key `A`) on purpose: an always-open add box
   in that spot got typed searches into it and added cards by accident.
+- Mimic (`src/services/deckMimicService.js`, `POST /api/decks/generate/mimic`,
+  the deck builder's "Mimic" button) rebuilds an existing deck — usually an
+  imported list — card by card from the collection: owned copies first, then a
+  stand-in scored on shared role predicates, theme enabler/payoff sides, card
+  type, keywords, creature type, size and mana value, assigned globally like
+  `pairSwaps`. A stand-in sharing no role or theme is labelled `loose`, not
+  passed off as a match. The commander is never substituted. It writes nothing;
+  saving goes through `acceptProposal`, so the copy is a new `idea` and the
+  original is untouched. The core is pure, like the generator.

@@ -31,6 +31,7 @@ import {
   rankThemes, withinColorIdentity, themeRole, analyzeTheme, customTheme,
 } from './cardSynergyService.js';
 import { pairSwaps } from './revisionSwaps.js';
+import { mimicDeck } from './deckMimicService.js';
 import { parsePlan } from './deckPlanService.js';
 import { getGeneratorPool } from './inventoryService.js';
 import { findCard } from './importService.js';
@@ -829,4 +830,80 @@ export function acceptProposal(userId, { name, format = 'commander', commander =
   });
 
   return { deckId, name: deckName, added, unresolved };
+}
+
+/**
+ * Rebuild one of your decks — typically a list imported from a deck site —
+ * out of what you own, card by card. Writes nothing: the result is saved, if
+ * at all, through `acceptProposal` like any other proposal, as a new idea.
+ *
+ * The deck's own cards stop counting as spoken for (`exceptDeckId`), the same
+ * as a revision: an imported list is usually an idea whose claim on your
+ * cards is exactly the claim the mimic is about to make.
+ */
+export function mimicFromCollection(userId, deckId, { includeCommitted = true } = {}) {
+  const deck = db.get('SELECT id, name, format FROM decks WHERE id = ? AND user_id = ?', [deckId, userId]);
+  if (!deck) throw new Error('That deck is not one of yours');
+
+  const rows = db.all(
+    `SELECT c.id AS card_id, c.name, c.mana_cost, c.cmc, c.colors, c.color_identity, c.type_line,
+            c.oracle_text, c.subtypes, c.supertypes, c.keywords, c.power, c.toughness, c.legalities,
+            SUM(dc.quantity) AS quantity, MAX(dc.is_commander) AS is_commander
+       FROM deck_cards dc
+       JOIN printings p ON dc.printing_id = p.id
+       JOIN cards c ON p.card_id = c.id
+      WHERE dc.deck_id = ?
+        AND COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) = 'mainboard'
+      GROUP BY c.id`,
+    [deckId]
+  );
+  if (rows.length === 0) throw new Error('That deck has no mainboard cards to copy');
+
+  const format = deck.format || null;
+  const pool = getGeneratorPool(userId, { includeCommitted, exceptDeckId: deckId });
+
+  const leaderRow = rows.find((r) => r.is_commander);
+  const leaderOwned = leaderRow
+    ? pool.find((card) => card.card_id === leaderRow.card_id && (Number(card.available) || 0) > 0)
+    : null;
+
+  const identity = leaderRow
+    ? String(leaderRow.color_identity || '').replace(/[^WUBRG]/g, '')
+    : deckIdentity(rows);
+
+  const result = mimicDeck(
+    rows.filter((r) => !r.is_commander).map((card) => ({ card, quantity: Number(card.quantity) || 1 })),
+    // The commander is not up for substitution or for use as a stand-in.
+    leaderRow ? pool.filter((card) => card.card_id !== leaderRow.card_id) : pool,
+    { format, identity }
+  );
+
+  const brief = (card) => ({
+    name: card.name,
+    cardId: card.card_id,
+    printingId: card.printing_id ?? null,
+    isFoil: Boolean(card.is_foil),
+    manaCost: card.mana_cost || '',
+    cmc: Number(card.cmc) || 0,
+    typeLine: card.type_line || '',
+  });
+
+  return {
+    deck: { id: deck.id, name: deck.name, format },
+    identity,
+    // Kept as listed: a commander is the deck's identity, not a slot to fill
+    // with something similar. When it is not owned that is said outright.
+    commander: leaderRow
+      ? { ...brief(leaderOwned || leaderRow), owned: Boolean(leaderOwned), printingId: leaderOwned?.printing_id ?? null }
+      : null,
+    owned: result.owned.map((e) => ({ ...brief(e.card), quantity: e.quantity })),
+    basics: result.basics.map((e) => ({ ...brief(e.card), printingId: null, quantity: e.quantity })),
+    standIns: result.standIns.map((s) => ({
+      for: brief(s.for), card: brief(s.card), quantity: s.quantity, match: s.match, why: s.why,
+    })),
+    missing: result.missing.map((e) => ({ ...brief(e.card), quantity: e.quantity })),
+    deckThemes: result.deckThemes,
+    summary: result.summary,
+    pool: { cards: pool.length, includeCommitted },
+  };
 }

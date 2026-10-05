@@ -13,6 +13,7 @@ import {
 import { setupDeckRecord, renderDeckRecordLabel } from './deckRecord.js';
 import { renderDisruptionBanner } from './trades.js';
 import { zoomButton } from '../utils/cardZoom.js';
+import { openMimic } from './deckMimic.js';
 import { EXPORT_FORMATS, formatDeckExport, exportFilename } from '../utils/deckExport.js';
 
 // Mana Pool's /search page 404s, but /card/{slug} goes straight to the
@@ -438,6 +439,8 @@ export function setupDeckBuilder() {
   });
 
   // Check Legality button
+  document.getElementById('mimic-deck-btn').addEventListener('click', () => openMimic(currentDeck));
+
   document.getElementById('check-legality-btn').addEventListener('click', () => {
     if (!currentDeck || !currentDeck.cards || currentDeck.cards.length === 0) {
       showToast('Add some cards first', 'warning');
