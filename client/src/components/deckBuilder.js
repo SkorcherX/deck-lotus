@@ -1179,7 +1179,7 @@ function setupCardControls() {
 
         const img = item.querySelector('.deck-card-image, .deck-card-image-compact');
         if (img && img.src) {
-          showCardPreview(img.src, e);
+          showCardPreview(img);
         }
       });
 
@@ -1905,39 +1905,42 @@ function downloadExport() {
   showToast(`Saved ${link.download}`, 'success', 2000);
 }
 
-let lastMouseX = 0;
-let lastMouseY = 0;
+/**
+ * Show the large card image over the thumbnail being hovered, centred on it
+ * and kept inside the window. It used to sit at the far edge of the screen,
+ * away from the card it belonged to, which meant looking across the page to
+ * see it. The preview ignores the pointer, so covering the thumbnail does not
+ * end the hover that opened it.
+ */
+const PREVIEW_WIDTH = 250;
+const PREVIEW_HEIGHT = Math.round(PREVIEW_WIDTH * 680 / 488);
+const PREVIEW_MARGIN = 8;
 
-// Track mouse position globally
-document.addEventListener('mousemove', (e) => {
-  lastMouseX = e.clientX;
-  lastMouseY = e.clientY;
-});
-
-function showCardPreview(imageSrc, event) {
+function showCardPreview(thumb) {
   const preview = document.getElementById('card-preview');
   const img = document.getElementById('card-preview-img');
 
-  // Use large image if available
-  const largeImageSrc = imageSrc.replace('/normal/', '/large/') || imageSrc;
-  img.src = largeImageSrc;
-
-  // Position preview away from mouse
-  // If mouse is on left half of screen, show preview on right
-  // If mouse is on right half, show preview on left
-  const screenWidth = window.innerWidth;
-  const screenHeight = window.innerHeight;
-
-  if (lastMouseX < screenWidth / 2) {
-    // Mouse on left, show preview on right
-    preview.style.left = 'auto';
-    preview.style.right = '20px';
-  } else {
-    // Mouse on right, show preview on left
-    preview.style.left = '20px';
-    preview.style.right = 'auto';
+  // The thumbnail is already loaded, so it shows at once; the large image
+  // replaces it when it arrives. Setting the large one directly left the
+  // *previous* card on screen until the download finished — over the top of
+  // the card being hovered, which read as the wrong card.
+  const large = thumb.src.replace('/normal/', '/large/');
+  img.src = thumb.src;
+  img.dataset.want = large;
+  if (large !== thumb.src) {
+    const loader = new Image();
+    loader.onload = () => { if (img.dataset.want === large) img.src = large; };
+    loader.src = large;
   }
 
+  const box = thumb.getBoundingClientRect();
+  const clamp = (value, max) => Math.min(Math.max(PREVIEW_MARGIN, value), max - PREVIEW_MARGIN);
+  const left = clamp(box.left + box.width / 2 - PREVIEW_WIDTH / 2, window.innerWidth - PREVIEW_WIDTH);
+  const top = clamp(box.top + box.height / 2 - PREVIEW_HEIGHT / 2, window.innerHeight - PREVIEW_HEIGHT);
+
+  preview.style.left = `${left}px`;
+  preview.style.top = `${top}px`;
+  preview.style.right = 'auto';
   preview.classList.remove('hidden');
 }
 
@@ -2853,7 +2856,7 @@ function renderExampleHand() {
       cardEl.addEventListener('mouseenter', (e) => {
         const img = cardEl.querySelector('img');
         if (img && img.src) {
-          showCardPreview(img.src, e);
+          showCardPreview(img);
         }
       });
 

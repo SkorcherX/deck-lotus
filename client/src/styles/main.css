@@ -1766,12 +1766,11 @@ select option {
 
 /* Card Preview (hover) */
 .card-preview {
+  /* Placed over the hovered thumbnail by showCardPreview. No transition:
+     animating position slid the preview across the page from the last card. */
   position: fixed;
-  top: 50%;
-  transform: translateY(-50%);
   z-index: 999;
   pointer-events: none;
-  transition: all 0.2s;
 }
 
 .card-preview img {
