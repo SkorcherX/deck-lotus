@@ -1155,6 +1155,8 @@ export function bulkRemoveFromInventory(userId, items, context = {}) {
  *   'moxfield' Moxfield's collection CSV, the columns of their own "haves"
  *              export, so it uploads through Moxfield's collection import.
  *              One row per owned row, like 'precise'. See `moxfieldCsv`.
+ *   'manabox'  ManaBox's collection CSV, the columns of their own export.
+ *              One row per owned row. See `manaboxCsv`.
  *
  * Foils stay on their own line in **both** shapes, marked `*F*`. Finish is half
  * the unique key of `owned_printings`, so folding a foil in with its non-foil
@@ -1170,10 +1172,15 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
       op.condition,
       op.quantity,
       op.updated_at,
-      p.language
+      op.created_at,
+      p.language,
+      p.rarity,
+      p.scryfall_id,
+      s.name AS set_name
     FROM owned_printings op
     JOIN printings p ON op.printing_id = p.id
     JOIN cards c ON p.card_id = c.id
+    LEFT JOIN sets s ON s.code = p.set_code
     WHERE op.user_id = ? AND op.quantity > 0
       ${condition === 'all' ? '' : 'AND op.condition = ?'}
     ORDER BY c.name COLLATE NOCASE, p.set_code, p.collector_number, op.is_foil, op.condition
@@ -1186,10 +1193,11 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
   const conditionMark = (code) => (code ? ` *${code}*` : '');
   let lines;
 
-  if (shape === 'moxfield') {
+  if (shape === 'moxfield' || shape === 'manabox') {
     const copies = rows.reduce((sum, row) => sum + row.quantity, 0);
     const cards = new Set(rows.map((row) => row.name)).size;
-    return { shape, text: moxfieldCsv(rows), lines: rows.length, cards, copies };
+    const text = shape === 'moxfield' ? moxfieldCsv(rows) : manaboxCsv(rows);
+    return { shape, text, lines: rows.length, cards, copies };
   }
 
   if (shape === 'simple') {
@@ -1273,6 +1281,55 @@ function moxfieldCsv(rows) {
     '',
   ].map(quote).join(','));
   return [MOXFIELD_COLUMNS.map(quote).join(','), ...lines].join('\n');
+}
+
+const MANABOX_COLUMNS = [
+  'Name', 'Set code', 'Set name', 'Collector number', 'Foil', 'Rarity', 'Quantity',
+  'ManaBox ID', 'Scryfall ID', 'Purchase price', 'Misprint', 'Altered', 'Signed',
+  'Condition', 'Language', 'Proxy', 'Purchase price currency', 'Added',
+];
+
+const MANABOX_CONDITIONS = {
+  NM: 'near_mint', LP: 'lightly_played', MP: 'moderately_played', HP: 'heavily_played', DMG: 'damaged',
+};
+
+/**
+ * Rows as ManaBox's collection CSV, matching the header of a file exported
+ * from ManaBox — quoted only where a field needs it, as theirs are.
+ *
+ * ManaBox ID is ManaBox's own catalogue number, which we do not have; the
+ * Scryfall ID beside it is what identifies the printing. Unrecorded condition
+ * goes out as near_mint (ManaBox has no "unknown"), and purchase price is
+ * blank because we do not record what was paid.
+ */
+function manaboxCsv(rows) {
+  const field = (value) => {
+    const text = String(value ?? '');
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  // SQLite's CURRENT_TIMESTAMP is UTC without a zone; ManaBox writes ISO with Z.
+  const iso = (stamp) => (stamp ? `${String(stamp).replace(' ', 'T')}.000Z` : '');
+  const lines = rows.map((row) => [
+    row.name,
+    String(row.set_code).toUpperCase(),
+    row.set_name || '',
+    row.collector_number || '',
+    row.is_foil ? 'foil' : 'normal',
+    row.rarity || '',
+    row.quantity,
+    '',
+    row.scryfall_id || '',
+    '',
+    'false',
+    'false',
+    'false',
+    MANABOX_CONDITIONS[row.condition] || 'near_mint',
+    row.language || 'en',
+    'false',
+    '',
+    iso(row.created_at),
+  ].map(field).join(','));
+  return [MANABOX_COLUMNS.join(','), ...lines].join('\n');
 }
 
 /**

@@ -172,6 +172,23 @@ describe('inventory export', () => {
     assert.match(foil, /"Near Mint","English","foil","",".*","2","False","False",""$/);
   });
 
+  test('manabox export matches the columns of a ManaBox collection file', () => {
+    const { text, lines } = exportInventory(userId, { shape: 'manabox' });
+    const rows = text.split('\n');
+
+    assert.equal(rows[0], 'Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall ID,Purchase price,Misprint,Altered,Signed,Condition,Language,Proxy,Purchase price currency,Added');
+    assert.equal(rows.length, lines + 1);
+    const foil = rows.find((r) => r.startsWith('Counterspell,TST,') && r.includes(',foil,'));
+    assert.ok(foil, 'foil row present');
+    const cols = foil.split(',');
+    assert.equal(cols.length, 18);
+    assert.equal(cols[3], '2');
+    assert.equal(cols[6], '2');
+    assert.equal(cols[13], 'near_mint');
+    assert.equal(cols[14], 'en');
+    assert.match(cols[17], /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.000Z$/);
+  });
+
   test('an empty collection exports a header and nothing else', () => {
     db.run(`INSERT INTO users (username, email, password_hash) VALUES ('empty','e@example.test','hash')`);
     const emptyId = db.get(`SELECT id FROM users WHERE username='empty'`).id;
