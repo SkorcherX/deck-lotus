@@ -1,7 +1,7 @@
 # Multi-stage build for minimal image size
 
 # Stage 1: Build frontend
-FROM node:22-alpine AS frontend-builder
+FROM mirror.gcr.io/library/node:22-alpine AS frontend-builder
 
 WORKDIR /app/client
 
@@ -41,7 +41,7 @@ RUN npm run build
 # from source, which this image has no toolchain for. 12.11.1 publishes
 # linuxmusl prebuilds for ABIs 127, 137, 141 and 147; Node 22 is 127, for both
 # amd64 and arm64.
-FROM node:22-alpine AS backend-builder
+FROM mirror.gcr.io/library/node:22-alpine AS backend-builder
 
 WORKDIR /app
 
@@ -60,7 +60,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 
 # Stage 3: Final production image
-FROM node:22-alpine
+FROM mirror.gcr.io/library/node:22-alpine
 
 # Install bzip2 for MTGJSON decompression
 RUN apk add --no-cache bzip2
