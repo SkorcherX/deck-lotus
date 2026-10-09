@@ -200,7 +200,7 @@ async function showStatus() {
     const banner = document.getElementById('pm-status-banner');
     const warnings = [];
     if (!status.manapool && !status.tcgplayer) warnings.push('No price source configured — set MANAPOOL_API_TOKEN (preferred) or TCGPlayer credentials');
-    if (!status.ntfy) warnings.push('ntfy not configured (NTFY_TOPIC missing) — no push notifications will be sent');
+    if (!status.ntfy) warnings.push('ntfy not configured — set a topic in Settings → Push Notifications, or no alerts will be sent');
 
     if (warnings.length) {
       banner.innerHTML = `<i class="ph ph-warning"></i> ${warnings.join(' &bull; ')}`;

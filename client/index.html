@@ -3071,10 +3071,42 @@
                         </button>
                     </section>
 
-                    <section class="settings-section" style="margin-top: 2rem;">
+                    <section id="notifications-section" class="settings-section" style="margin-top: 2rem; display: none">
+                        <h3>Push Notifications (ntfy)</h3>
+                        <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:1rem;">
+                            Price alerts, trade and loan notices are pushed to one ntfy topic for the whole server.
+                            Subscribe to the same topic in the ntfy app, then send a test to make sure it arrives.
+                            Blank fields fall back to the <code>NTFY_URL</code> / <code>NTFY_TOPIC</code> / <code>NTFY_TOKEN</code> environment variables.
+                        </p>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:1rem;">
+                            <div>
+                                <label for="ntfy-url" style="display:block;margin-bottom:0.5rem;font-weight:600;">Server</label>
+                                <input autocomplete="off" type="url" id="ntfy-url" placeholder="https://ntfy.sh" style="width:100%;padding:0.5rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);">
+                            </div>
+                            <div>
+                                <label for="ntfy-topic" style="display:block;margin-bottom:0.5rem;font-weight:600;">Topic</label>
+                                <input autocomplete="off" type="text" id="ntfy-topic" placeholder="your-unique-topic-name" style="width:100%;padding:0.5rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);">
+                            </div>
+                            <div>
+                                <label for="ntfy-token" style="display:block;margin-bottom:0.5rem;font-weight:600;">Access token <span style="font-weight:400;color:var(--text-secondary);">(optional)</span></label>
+                                <input autocomplete="new-password" type="password" id="ntfy-token" placeholder="Only for protected topics" style="width:100%;padding:0.5rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);">
+                                <label id="ntfy-clear-token-wrap" style="display:none;margin-top:0.35rem;font-size:0.8rem;color:var(--text-secondary);">
+                                    <input type="checkbox" id="ntfy-clear-token"> Remove the saved token
+                                </label>
+                            </div>
+                        </div>
+                        <div id="ntfy-effective" style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:1rem;"></div>
+                        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                            <button id="save-ntfy-btn" class="btn btn-primary">Save</button>
+                            <button id="test-ntfy-btn" class="btn btn-secondary"><i class="ph ph-bell-ringing"></i> Send test notification</button>
+                            <span id="ntfy-test-result" style="font-size:0.85rem;"></span>
+                        </div>
+                    </section>
+
+                    <section id="price-schedule-section" class="settings-section" style="margin-top: 2rem; display: none">
                         <h3>Price Check Schedule</h3>
                         <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:1rem;">
-                            How often the server checks price watches against Mana Pool. Changes take effect immediately without a restart.
+                            How often the server checks price watches against Mana Pool. Changes take effect immediately and are kept across restarts.
                         </p>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:end;margin-bottom:1rem;">
                             <div>

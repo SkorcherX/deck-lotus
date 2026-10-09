@@ -288,6 +288,45 @@ export function setupSettings() {
     } catch {}
   }
 
+  // ntfy push settings
+  const ntfyForm = () => ({
+    ntfyUrl: document.getElementById('ntfy-url').value.trim(),
+    ntfyTopic: document.getElementById('ntfy-topic').value.trim(),
+    ntfyToken: document.getElementById('ntfy-token').value,
+  });
+
+  document.getElementById('save-ntfy-btn').addEventListener('click', async () => {
+    try {
+      await api.saveNotificationSettings({
+        ...ntfyForm(),
+        clearToken: document.getElementById('ntfy-clear-token').checked,
+      });
+      showToast('Notification settings saved', 'success');
+      await loadNotificationSettings();
+    } catch (err) {
+      showToast(err.message || 'Failed to save notification settings', 'error');
+    }
+  });
+
+  // Tests what is in the form, saved or not, so a topic can be checked first.
+  document.getElementById('test-ntfy-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('test-ntfy-btn');
+    const out = document.getElementById('ntfy-test-result');
+    btn.disabled = true;
+    out.style.color = 'var(--text-secondary)';
+    out.textContent = 'Sending…';
+    try {
+      const result = await api.sendTestNotification(ntfyForm());
+      out.style.color = 'var(--success)';
+      out.textContent = `Sent to "${result.topic}" on ${result.url}. Check your ntfy app.`;
+    } catch (err) {
+      out.style.color = 'var(--danger)';
+      out.textContent = err.message || 'Test failed';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   document.getElementById('clear-collection-btn')
     .addEventListener('click', clearCollectionFlow);
 
@@ -562,6 +601,10 @@ async function checkAdminAndLoadUsers() {
     const accessControlSection = document.getElementById('access-control-section');
     const backupSection = document.getElementById('backup-section');
     const databaseSection = document.getElementById('database-section');
+    // Server-wide settings, so admin only.
+    const adminOnly = ['notifications-section', 'price-schedule-section']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
 
     // Backup section is available to all users (they can backup their own data)
     if (backupSection) backupSection.style.display = 'block';
@@ -571,16 +614,50 @@ async function checkAdminAndLoadUsers() {
       if (userManagementSection) userManagementSection.style.display = 'block';
       if (accessControlSection) accessControlSection.style.display = 'block';
       if (databaseSection) databaseSection.style.display = 'block';
+      adminOnly.forEach((el) => { el.style.display = 'block'; });
       await loadUsers();
+      await loadNotificationSettings();
       await loadAccessControl();
     } else {
       // Hide admin-only sections for non-admins
       if (userManagementSection) userManagementSection.style.display = 'none';
       if (accessControlSection) accessControlSection.style.display = 'none';
       if (databaseSection) databaseSection.style.display = 'none';
+      adminOnly.forEach((el) => { el.style.display = 'none'; });
     }
   } catch (error) {
     console.error('Failed to check admin status:', error);
+  }
+}
+
+const NTFY_SOURCE = {
+  settings: 'saved here',
+  env: 'from the container environment',
+  default: 'default',
+};
+
+async function loadNotificationSettings() {
+  const effectiveEl = document.getElementById('ntfy-effective');
+  if (!effectiveEl) return;
+  try {
+    const cfg = await api.getNotificationSettings();
+    document.getElementById('ntfy-url').value = cfg.ntfyUrl;
+    document.getElementById('ntfy-topic').value = cfg.ntfyTopic;
+    const tokenInput = document.getElementById('ntfy-token');
+    tokenInput.value = '';
+    tokenInput.placeholder = cfg.hasNtfyToken ? 'Saved (leave blank to keep)' : 'Only for protected topics';
+    document.getElementById('ntfy-clear-token').checked = false;
+    document.getElementById('ntfy-clear-token-wrap').style.display = cfg.hasNtfyToken ? 'block' : 'none';
+    document.getElementById('ntfy-test-result').textContent = '';
+
+    const e = cfg.effective;
+    effectiveEl.textContent = e.topic
+      ? `Currently sending to "${e.topic}" (${NTFY_SOURCE[e.topicSource]}) on ${e.url} (${NTFY_SOURCE[e.urlSource]})`
+        + (e.hasToken ? `, with an access token (${NTFY_SOURCE[e.tokenSource]}).` : '.')
+      : 'No topic set, so notifications are not being sent.';
+  } catch (error) {
+    effectiveEl.textContent = 'Could not load notification settings.';
+    console.error('Failed to load notification settings:', error);
   }
 }
 

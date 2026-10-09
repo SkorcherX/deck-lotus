@@ -21,8 +21,27 @@ const DEFAULTS = {
     frequency: 'daily', // daily, 6hours, 12hours, weekly
     retainCount: 10,
     lastRun: null
-  }
+  },
+  // ntfy push settings. Blank means "fall back to the env var", so an existing
+  // NTFY_TOPIC deploy keeps working until someone sets a topic here.
+  notifications: {
+    ntfyUrl: '',
+    ntfyTopic: '',
+    ntfyToken: ''
+  },
+  // Price-watch cron. Blank means PRICE_CHECK_SCHEDULE or the 6-hour default;
+  // stored so a schedule picked in Settings survives a container rebuild.
+  priceCheckSchedule: ''
 };
+
+function merged(stored) {
+  return {
+    ...DEFAULTS,
+    ...stored,
+    scheduledBackups: { ...DEFAULTS.scheduledBackups, ...(stored.scheduledBackups || {}) },
+    notifications: { ...DEFAULTS.notifications, ...(stored.notifications || {}) }
+  };
+}
 
 function readFile() {
   try {
@@ -41,11 +60,7 @@ function readFile() {
  */
 export function getSettings() {
   const stored = readFile();
-  const settings = {
-    ...DEFAULTS,
-    ...stored,
-    scheduledBackups: { ...DEFAULTS.scheduledBackups, ...(stored.scheduledBackups || {}) }
-  };
+  const settings = merged(stored);
   if (process.env.REGISTRATION_ENABLED !== undefined) {
     settings.registrationEnabled =
       process.env.REGISTRATION_ENABLED.toLowerCase() === 'true';
@@ -64,16 +79,22 @@ export function isRegistrationEnabled() {
  */
 export function updateSettings(patch = {}) {
   const stored = readFile();
-  const current = {
-    ...DEFAULTS,
-    ...stored,
-    scheduledBackups: { ...DEFAULTS.scheduledBackups, ...(stored.scheduledBackups || {}) }
-  };
+  const current = merged(stored);
   if (typeof patch.registrationEnabled === 'boolean') {
     current.registrationEnabled = patch.registrationEnabled;
   }
   if (patch.scheduledBackups && typeof patch.scheduledBackups === 'object') {
     current.scheduledBackups = { ...current.scheduledBackups, ...patch.scheduledBackups };
+  }
+  if (patch.notifications && typeof patch.notifications === 'object') {
+    for (const key of Object.keys(DEFAULTS.notifications)) {
+      if (typeof patch.notifications[key] === 'string') {
+        current.notifications[key] = patch.notifications[key].trim();
+      }
+    }
+  }
+  if (typeof patch.priceCheckSchedule === 'string') {
+    current.priceCheckSchedule = patch.priceCheckSchedule.trim();
   }
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });

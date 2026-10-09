@@ -1,44 +1,103 @@
-// ntfy.sh push notification integration
-// Requires NTFY_TOPIC env var. NTFY_URL defaults to https://ntfy.sh
+// ntfy.sh push notification integration.
+//
+// Configured in Settings (stored in app-settings.json) with the NTFY_URL /
+// NTFY_TOPIC / NTFY_TOKEN env vars as the fallback for anything left blank.
+// Settings win so the topic can be changed without recreating the container.
+import { getSettings } from './settingsService.js';
 
-function getNtfyUrl() {
-  const base = (process.env.NTFY_URL || 'https://ntfy.sh').replace(/\/$/, '');
-  const topic = process.env.NTFY_TOPIC;
-  if (!topic) return null;
-  return `${base}/${topic}`;
+const DEFAULT_URL = 'https://ntfy.sh';
+
+/**
+ * The ntfy config in force, and where each part came from. `overrides` lets
+ * the test button try values the admin has typed but not yet saved.
+ */
+export function resolveNtfyConfig(overrides = {}) {
+  const stored = getSettings().notifications || {};
+  const pick = (key, envName, fallback = '') => {
+    const override = typeof overrides[key] === 'string' ? overrides[key].trim() : '';
+    if (override) return { value: override, source: 'form' };
+    if (stored[key]) return { value: stored[key], source: 'settings' };
+    if (process.env[envName]) return { value: process.env[envName], source: 'env' };
+    return { value: fallback, source: fallback ? 'default' : null };
+  };
+
+  const url = pick('ntfyUrl', 'NTFY_URL', DEFAULT_URL);
+  const topic = pick('ntfyTopic', 'NTFY_TOPIC');
+  const token = pick('ntfyToken', 'NTFY_TOKEN');
+
+  return {
+    url: url.value.replace(/\/$/, ''),
+    urlSource: url.source,
+    topic: topic.value,
+    topicSource: topic.source,
+    token: token.value,
+    tokenSource: token.source,
+  };
 }
 
 export function isConfigured() {
-  return !!process.env.NTFY_TOPIC;
+  return !!resolveNtfyConfig().topic;
+}
+
+/**
+ * The one place a notification leaves the server. Throws on an HTTP failure so
+ * the test button can report it; scheduled callers already catch.
+ */
+async function post({ title, message, tags, priority = 'default' }, overrides) {
+  const config = resolveNtfyConfig(overrides);
+  if (!config.topic) {
+    console.warn('ntfy not configured (no topic set), skipping notification');
+    return { sent: false };
+  }
+
+  const headers = {
+    Title: title,
+    Priority: priority,
+    Tags: tags,
+    'Content-Type': 'text/plain',
+  };
+  if (config.token) headers.Authorization = `Bearer ${config.token}`;
+
+  let res;
+  try {
+    res = await fetch(`${config.url}/${encodeURIComponent(config.topic)}`, {
+      method: 'POST',
+      headers,
+      body: message,
+    });
+  } catch (err) {
+    throw new Error(`Could not reach ntfy server ${config.url} (${err.cause?.code || err.message})`);
+  }
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`ntfy notification failed: ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ''}`);
+  }
+  return { sent: true, url: config.url, topic: config.topic };
+}
+
+/**
+ * A test push, so an admin can confirm their phone is subscribed to the topic
+ * the server is actually sending to.
+ */
+export async function sendTestNotification(overrides = {}, sentBy = 'an admin') {
+  const config = resolveNtfyConfig(overrides);
+  if (!config.topic) throw new Error('No ntfy topic set');
+  return post({
+    title: 'Deck Lotus test notification',
+    message: `Sent by ${sentBy} from Settings. If you can read this, price alerts and trade notices will reach you on topic "${config.topic}".`,
+    tags: 'bell,card_index',
+  }, overrides);
 }
 
 export async function sendPriceAlert({ cardName, foundPrice, threshold, condition }) {
-  const url = getNtfyUrl();
-  if (!url) {
-    console.warn('ntfy not configured (NTFY_TOPIC missing), skipping notification');
-    return;
-  }
-
   const condLabel = { nm: 'NM', lp: 'LP', mp: 'MP', hp: 'HP', dm: 'DM', any: 'Any' }[condition] || condition.toUpperCase();
   const title = `Price Alert: ${cardName}`;
   const message = threshold != null
     ? `${cardName} (${condLabel}) is now $${foundPrice.toFixed(2)} — below your $${threshold.toFixed(2)} threshold!`
     : `${cardName} (${condLabel}) hit a new low: $${foundPrice.toFixed(2)}!`;
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Title: title,
-      Priority: 'default',
-      Tags: 'moneybag,card_index',
-      'Content-Type': 'text/plain',
-    },
-    body: message,
-  });
-
-  if (!res.ok) {
-    throw new Error(`ntfy notification failed: ${res.status}`);
-  }
+  return post({ title, message, tags: 'moneybag,card_index' });
 }
 
 /** One line summarising a side of a trade, e.g. "2x Lightning Bolt, Brainstorm". */
@@ -52,28 +111,8 @@ function summarise(items) {
     : names.join(', ');
 }
 
-async function push({ title, message, tags, priority = 'default' }) {
-  const url = getNtfyUrl();
-
-  if (!url) {
-    console.warn('ntfy not configured (NTFY_TOPIC missing), skipping notification');
-    return;
-  }
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Title: title,
-      Priority: priority,
-      Tags: tags,
-      'Content-Type': 'text/plain',
-    },
-    body: message,
-  });
-
-  if (!res.ok) {
-    throw new Error(`ntfy notification failed: ${res.status}`);
-  }
+async function push(notice) {
+  await post(notice);
 }
 
 /**

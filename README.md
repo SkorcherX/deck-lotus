@@ -219,6 +219,7 @@ docker compose up -d --build
 | `TCGPLAYER_CLIENT_SECRET` | — | No | TCGPlayer API fallback |
 | `NTFY_URL` | `https://ntfy.sh` | No | ntfy server URL for push notifications |
 | `NTFY_TOPIC` | — | No | ntfy topic name for price alert push notifications |
+| `NTFY_TOKEN` | — | No | ntfy access token, for protected topics on a self-hosted server |
 | `PRICE_CHECK_SCHEDULE` | `0 */6 * * *` | No | Cron expression for price check frequency |
 | `ADMIN_USERNAME` | — | No | Username for initial admin account |
 | `ADMIN_EMAIL` | — | No | Email for initial admin account |
@@ -247,8 +248,14 @@ With the token set you get:
 
 1. Install the [ntfy app](https://ntfy.sh) on your phone, or use the web UI
 2. Pick a unique topic name (e.g. `deck-lotus-alerts-abc123`)
-3. Set `NTFY_TOPIC` to that name
-4. Subscribe to the same topic in the ntfy app
+3. Subscribe to that topic in the ntfy app
+4. As an admin, open **Settings → Push Notifications**, enter the topic (and
+   server/token if you self-host), and press **Send test notification** — it
+   should arrive within a few seconds. Save once it does.
+
+`NTFY_URL` / `NTFY_TOPIC` / `NTFY_TOKEN` still work as a fallback for any field
+left blank in Settings. Alerts go to one topic for the whole server, so every
+subscriber sees every user's price, trade and loan notices.
 
 You'll receive a push notification whenever a watched card price drops to or below your target.
 

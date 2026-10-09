@@ -2,7 +2,8 @@ import cron from 'node-cron';
 import { getDb } from '../db/connection.js';
 import { getLowestPrice as manaPoolPrice, isConfigured as manaPoolConfigured } from './manaPoolService.js';
 import { getLowestPrice as tcgPlayerPrice, isConfigured as tcgConfigured } from './tcgplayerService.js';
-import { sendPriceAlert, isConfigured as ntfyConfigured } from './notificationService.js';
+import { sendPriceAlert } from './notificationService.js';
+import { getSettings, updateSettings } from './settingsService.js';
 
 async function getLowestPrice(cardName, condition, scryfallId = null) {
   if (manaPoolConfigured()) return manaPoolPrice(cardName, condition, scryfallId);
@@ -139,15 +140,19 @@ async function checkWatch(watch) {
       const hoursSinceLast = lastNotified ? (Date.now() - lastNotified.getTime()) / 3_600_000 : Infinity;
 
       if (hoursSinceLast > 24) {
-        await sendPriceAlert({
+        const { sent } = await sendPriceAlert({
           cardName: watch.card_name,
           foundPrice,
           threshold: watch.max_price,
           condition: watch.condition,
         });
 
-        db.prepare(`UPDATE price_watches SET last_notified = datetime('now') WHERE id = ?`).run(watch.id);
-        console.log(`  ✓ Alert sent: ${watch.card_name} @ $${foundPrice}`);
+        // Only start the 24h quiet period when something actually went out —
+        // otherwise configuring a topic later would sit silent for a day.
+        if (sent) {
+          db.prepare(`UPDATE price_watches SET last_notified = datetime('now') WHERE id = ?`).run(watch.id);
+          console.log(`  ✓ Alert sent: ${watch.card_name} @ $${foundPrice}`);
+        }
       }
     }
 
@@ -195,10 +200,20 @@ export async function runPriceChecks() {
 }
 
 let activeScheduleJob = null;
-let activeScheduleExpression = process.env.PRICE_CHECK_SCHEDULE || '0 */6 * * *';
+const DEFAULT_SCHEDULE = '0 */6 * * *';
+
+// Saved setting → env var → default. Read at startup so a schedule picked in
+// Settings survives a restart instead of reverting to the env value.
+function configuredSchedule() {
+  const stored = getSettings().priceCheckSchedule;
+  if (stored && cron.validate(stored)) return stored;
+  return process.env.PRICE_CHECK_SCHEDULE || DEFAULT_SCHEDULE;
+}
+
+let activeScheduleExpression = null;
 
 export function getPriceCheckSchedule() {
-  return activeScheduleExpression;
+  return activeScheduleExpression || configuredSchedule();
 }
 
 export function setPriceCheckSchedule(expression) {
@@ -213,6 +228,12 @@ export function setPriceCheckSchedule(expression) {
   console.log(`✓ Price monitoring ${isReschedule ? 'rescheduled' : 'scheduled'} (${expression})`);
 }
 
+/** Change the schedule and remember it. */
+export function savePriceCheckSchedule(expression) {
+  setPriceCheckSchedule(expression);
+  updateSettings({ priceCheckSchedule: expression });
+}
+
 export function setupPriceMonitoringSchedule() {
-  setPriceCheckSchedule(activeScheduleExpression);
+  setPriceCheckSchedule(configuredSchedule());
 }

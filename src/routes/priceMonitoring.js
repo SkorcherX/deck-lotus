@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { requireAdmin } from '../middleware/adminAuth.js';
 import {
   getWatches,
   createWatch,
@@ -8,7 +9,7 @@ import {
   getWatchHistory,
   runPriceChecks,
   getPriceCheckSchedule,
-  setPriceCheckSchedule,
+  savePriceCheckSchedule,
 } from '../services/priceMonitoringService.js';
 import { isConfigured as tcgConfigured } from '../services/tcgplayerService.js';
 import { isConfigured as manaPoolConfigured } from '../services/manaPoolService.js';
@@ -21,7 +22,7 @@ router.get('/status', authenticate, (req, res) => {
     tcgplayer: tcgConfigured(),
     manapool: manaPoolConfigured(),
     ntfy: ntfyConfigured(),
-    schedule: process.env.PRICE_CHECK_SCHEDULE || '0 */6 * * *',
+    schedule: getPriceCheckSchedule(),
   });
 });
 
@@ -100,11 +101,12 @@ router.get('/schedule', authenticate, (req, res) => {
   res.json({ schedule: getPriceCheckSchedule() });
 });
 
-router.post('/schedule', authenticate, (req, res, next) => {
+// Server-wide and persisted, so admin only.
+router.post('/schedule', authenticate, requireAdmin, (req, res, next) => {
   try {
     const { schedule } = req.body;
     if (!schedule) return res.status(400).json({ error: 'schedule is required' });
-    setPriceCheckSchedule(schedule);
+    savePriceCheckSchedule(schedule);
     res.json({ schedule });
   } catch (err) {
     next(err);

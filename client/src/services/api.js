@@ -470,6 +470,18 @@ class ApiClient {
   }
 
   // App settings (admin only)
+  async getNotificationSettings() {
+    return this.request('/admin/notifications');
+  }
+
+  async saveNotificationSettings(data) {
+    return this.request('/admin/notifications', { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async sendTestNotification(data) {
+    return this.request('/admin/notifications/test', { method: 'POST', body: JSON.stringify(data) });
+  }
+
   async getAdminSettings() {
     return this.request('/admin/settings');
   }

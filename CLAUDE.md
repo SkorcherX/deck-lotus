@@ -252,6 +252,14 @@ taken on GitHub — only do it when explicitly asked.
   tcgplayer and cardkingdom and no cardmarket at all, and an unscoped prune
   deleted 158,000 cardmarket prices because MTGJSON's file was short a provider
   that morning.
+- ntfy push settings (`NTFY_URL`/`NTFY_TOPIC`/`NTFY_TOKEN`) and the price-check
+  cron are set in Settings and stored in `app-settings.json`
+  (`settingsService.js`); the env vars are only the fallback for a blank field,
+  so changing them no longer needs a container recreate once Settings has a
+  value — and an env change does nothing while Settings does. Every send goes
+  through `post` in `notificationService.js`, which reports `{ sent }`; a price
+  watch only starts its 24-hour quiet period when something actually went out.
+  The token is never returned to the browser (`hasNtfyToken` instead).
 - Deployment is Docker on Unraid. Env var changes require recreating the
   container, not just restarting the app or reloading the page.
 - Removing selected cards from the inventory page goes through

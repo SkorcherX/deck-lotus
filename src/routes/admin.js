@@ -20,6 +20,7 @@ import { authenticate } from '../middleware/auth.js';
 import { RARITIES } from '../shared/rarities.js';
 import { normalizeCondition } from '../shared/conditions.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
+import { resolveNtfyConfig, sendTestNotification } from '../services/notificationService.js';
 
 
 // 'all', 'unrecorded', or a condition code; anything else reads as 'all'
@@ -37,9 +38,16 @@ const router = express.Router();
  * GET /api/admin/settings
  * Read app settings (admin only)
  */
+// The ntfy token is a secret: report whether one is stored, never its value.
+function publicSettings(settings) {
+  const { notifications = {}, ...rest } = settings;
+  const { ntfyToken, ...visible } = notifications;
+  return { ...rest, notifications: { ...visible, hasNtfyToken: !!ntfyToken } };
+}
+
 router.get('/settings', authenticate, requireAdmin, (req, res, next) => {
   try {
-    res.json(getSettings());
+    res.json(publicSettings(getSettings()));
   } catch (error) {
     next(error);
   }
@@ -51,9 +59,81 @@ router.get('/settings', authenticate, requireAdmin, (req, res, next) => {
  */
 router.put('/settings', authenticate, requireAdmin, (req, res, next) => {
   try {
-    res.json(updateSettings(req.body || {}));
+    res.json(publicSettings(updateSettings(req.body || {})));
   } catch (error) {
     next(error);
+  }
+});
+
+/**
+ * GET /api/admin/notifications
+ * The ntfy config in force and where each part comes from (settings or env),
+ * so the page can say "using NTFY_TOPIC from the container" when the field is blank.
+ */
+router.get('/notifications', authenticate, requireAdmin, (req, res, next) => {
+  try {
+    const stored = getSettings().notifications || {};
+    const resolved = resolveNtfyConfig();
+    res.json({
+      ntfyUrl: stored.ntfyUrl || '',
+      ntfyTopic: stored.ntfyTopic || '',
+      hasNtfyToken: !!stored.ntfyToken,
+      effective: {
+        url: resolved.url,
+        urlSource: resolved.urlSource,
+        topic: resolved.topic,
+        topicSource: resolved.topicSource,
+        hasToken: !!resolved.token,
+        tokenSource: resolved.tokenSource,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/notifications
+ * Body: { ntfyUrl, ntfyTopic, ntfyToken?, clearToken? }. Blank fields fall back
+ * to the env vars. The token is left alone unless sent or cleared explicitly,
+ * since the page never has it to send back.
+ */
+router.put('/notifications', authenticate, requireAdmin, (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const patch = {};
+    if (typeof body.ntfyUrl === 'string') patch.ntfyUrl = body.ntfyUrl;
+    if (typeof body.ntfyTopic === 'string') patch.ntfyTopic = body.ntfyTopic;
+    if (typeof body.ntfyToken === 'string' && body.ntfyToken.trim()) patch.ntfyToken = body.ntfyToken;
+    if (body.clearToken) patch.ntfyToken = '';
+    if (patch.ntfyUrl && !/^https?:\/\//i.test(patch.ntfyUrl.trim())) {
+      return res.status(400).json({ error: 'ntfy server must start with http:// or https://' });
+    }
+    updateSettings({ notifications: patch });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/notifications/test
+ * Sends a test push. Unsaved values in the body are tried first, so a topic
+ * can be checked before it is saved.
+ */
+router.post('/notifications/test', authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    if (body.ntfyUrl && !/^https?:\/\//i.test(String(body.ntfyUrl).trim())) {
+      return res.status(400).json({ error: 'ntfy server must start with http:// or https://' });
+    }
+    const result = await sendTestNotification(
+      { ntfyUrl: body.ntfyUrl, ntfyTopic: body.ntfyTopic, ntfyToken: body.ntfyToken },
+      req.user.username || 'an admin'
+    );
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
