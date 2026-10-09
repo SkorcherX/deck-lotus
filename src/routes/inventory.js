@@ -88,6 +88,7 @@ router.get('/', authenticate, (req, res, next) => {
       // hands us either a string or an array. Both collapse to a list here.
       names: name ? [].concat(name) : [],
       colors: colors ? colors.split(',') : [],
+      colorMode: req.query.colorMode || 'includes',
       type,
       subtypes: subtypes ? String(subtypes).split(',') : [],
       text: text ? String(text) : '',
@@ -401,6 +402,7 @@ router.get('/builder', authenticate, (req, res, next) => {
         ability,
         rarity: RARITIES.includes(rarity) ? rarity : 'all',
         colors: colors ? String(colors).split(',').filter(Boolean) : [],
+        colorMode: req.query.colorMode || 'includes',
         // Fit mode stays inside the deck's colours and format unless the
         // panel's own filters already narrowed further.
         colorIdentity: colorIdentity ?? (fit ? fit.identity : undefined),

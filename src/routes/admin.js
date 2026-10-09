@@ -474,6 +474,7 @@ router.get('/inventory', authenticate, requireAdmin, (req, res, next) => {
       // hands us either a string or an array. Both collapse to a list here.
       names: name ? [].concat(name) : [],
       colors: colors ? colors.split(',') : [],
+      colorMode: req.query.colorMode || 'includes',
       type,
       subtypes: subtypes ? String(subtypes).split(',') : [],
       text: text ? String(text) : '',

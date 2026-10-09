@@ -696,6 +696,11 @@
                                     <button type="button" class="ip-color" data-color="G" aria-pressed="false" aria-label="Green" title="Green"><i class="ms ms-g"></i></button>
                                     <button type="button" class="ip-color" data-color="C" aria-pressed="false" aria-label="Colorless" title="Colorless"><i class="ms ms-c"></i></button>
                                 </div>
+                                <select autocomplete="off" id="inventory-panel-color-mode" aria-label="How colours match" title="Includes: has these colours, maybe others. Exactly: these colours and no others. At most: castable in these colours, colourless included.">
+                                    <option value="includes">Includes</option>
+                                    <option value="exactly">Exactly</option>
+                                    <option value="atmost">At most</option>
+                                </select>
                                 <label class="inventory-panel-check">
                                     <input autocomplete="off" type="checkbox" id="inventory-panel-only-free" />
                                     Still available
@@ -1433,6 +1438,11 @@
                                     <span class="color-checkbox-box"><i class="ms ms-c ms-cost"></i></span>
                                 </label>
                             </div>
+                            <select autocomplete="off" id="inventory-color-mode" class="filter-select color-mode-select" aria-label="How colours match" title="Includes: has these colours, maybe others. Exactly: these colours and no others. At most: castable in these colours, colourless included.">
+                                <option value="includes">Includes</option>
+                                <option value="exactly">Exactly</option>
+                                <option value="atmost">At most</option>
+                            </select>
                         </div>
                         <div class="filter-group">
                             <label>Prices</label>

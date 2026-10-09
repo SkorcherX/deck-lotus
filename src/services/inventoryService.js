@@ -136,6 +136,7 @@ export function getInventory(userIds, filters = {}) {
     name,
     names,
     colors = [],
+    colorMode = 'includes',
     type,
     subtypes = [],
     text = '',
@@ -241,7 +242,7 @@ export function getInventory(userIds, filters = {}) {
   // Color filter. The rule for what counts as a colour — including that a land
   // counts as what it taps for — lives in colorFilterSql, shared with the deck
   // builder's panel so the two views cannot disagree.
-  const colorFilter = colorFilterSql(colors, 'c');
+  const colorFilter = colorFilterSql(colors, 'c', colorMode);
   if (colorFilter.clause) {
     sql += ` AND ${colorFilter.clause}`;
     countSql += ` AND ${colorFilter.clause}`;
@@ -1808,6 +1809,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     ability,
     rarity,
     colors = [],
+    colorMode = 'includes',
     colorIdentity,
     maxCmc,
     onlyFree = false,
@@ -1855,7 +1857,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   // Colour filter, shared with the inventory page. A land counts as the colours
   // it produces rather than the colours it is, which is what makes "show me
   // blue lands" work at all.
-  const builderColorFilter = colorFilterSql(colors, '');
+  const builderColorFilter = colorFilterSql(colors, '', colorMode);
   if (builderColorFilter.clause) {
     where.push(builderColorFilter.clause);
     params.push(...builderColorFilter.params);

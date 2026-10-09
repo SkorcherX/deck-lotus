@@ -15,7 +15,7 @@ import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/comma
  */
 
 let ctx = null;              // { getDeck, refreshDeck }
-let filters = { name: '', subtype: '', text: '', ability: '', type: 'all', rarity: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
+let filters = { name: '', subtype: '', text: '', ability: '', type: 'all', rarity: 'all', colors: [], colorMode: 'includes', maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
 let page = 1;
 
 // "Fits this deck": rank by the deck's themes rather than by name. The themes
@@ -198,6 +198,16 @@ export function setupInventoryPanel(context) {
     });
   }
 
+  const colorMode = el('inventory-panel-color-mode');
+  if (colorMode) {
+    colorMode.addEventListener('change', () => {
+      filters.colorMode = colorMode.value;
+      if (filters.colors.length === 0) return;
+      page = 1;
+      loadFeed();
+    });
+  }
+
   // The mana-value filter only ever arrives from a guidance action, so its
   // only control is a way to drop it again.
   const cmcNote = el('inventory-panel-cmc-note');
@@ -235,7 +245,7 @@ export function setupInventoryPanel(context) {
 export function resetInventoryPanel() {
   undoStack = [];
   page = 1;
-  filters = { name: '', subtype: '', text: '', ability: '', type: 'all', rarity: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
+  filters = { name: '', subtype: '', text: '', ability: '', type: 'all', rarity: 'all', colors: [], colorMode: 'includes', maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
   // Themes belong to the deck they were read from.
   fit = { on: false, main: '', second: null };
   const fitBox = el('inventory-panel-fit');
@@ -266,6 +276,7 @@ export function openInventoryPanelWith({ type = 'all', colors = [], maxCmc = nul
     type: type || 'all',
     rarity: 'all',
     colors: [...colors],
+    colorMode: 'includes',
     maxCmc,
     role,
     onlyFree: false,
@@ -318,6 +329,9 @@ function syncFilterControls() {
     chip.classList.toggle('is-on', on);
     chip.setAttribute('aria-pressed', String(on));
   });
+
+  const colorMode = el('inventory-panel-color-mode');
+  if (colorMode) colorMode.value = filters.colorMode;
 
   const cmcNote = el('inventory-panel-cmc-note');
   if (cmcNote) {
@@ -379,6 +393,7 @@ async function loadFeed() {
       type: filters.type,
       rarity: filters.rarity,
       colors: filters.colors,
+      colorMode: filters.colorMode,
       maxCmc: filters.maxCmc,
       role: filters.role,
       fit: fit.on,

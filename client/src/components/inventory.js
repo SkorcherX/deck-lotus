@@ -37,6 +37,8 @@ let filters = {
   liveText: '',
   ability: '',
   colors: [],
+  // How the picked colours match: 'includes', 'exactly' or 'atmost'.
+  colorMode: 'includes',
   type: 'all',
   sort: 'name',
   availability: 'all',
@@ -199,6 +201,17 @@ function setupFilterListeners() {
       loadInventoryData();
     });
   });
+
+  // Colour match mode. Only refetch when it would change anything.
+  const colorMode = document.getElementById('inventory-color-mode');
+  if (colorMode) {
+    colorMode.addEventListener('change', (e) => {
+      filters.colorMode = e.target.value;
+      if (filters.colors.length === 0) return;
+      currentPage = 1;
+      loadInventoryData();
+    });
+  }
 }
 
 // The search box filters by card name or by set code depending on the mode

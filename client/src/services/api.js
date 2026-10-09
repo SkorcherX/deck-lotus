@@ -577,6 +577,7 @@ class ApiClient {
     }
     if (filters.liveName) params.append('name', filters.liveName);
     if (filters.colors && filters.colors.length > 0) params.append('colors', filters.colors.join(','));
+    if (filters.colors?.length && filters.colorMode && filters.colorMode !== 'includes') params.append('colorMode', filters.colorMode);
     if (filters.type && filters.type !== 'all') params.append('type', filters.type);
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));
     // Pinned creature-type chips plus the one being typed, all ANDed.
@@ -612,6 +613,7 @@ class ApiClient {
     }
     if (filters.liveName) params.append('name', filters.liveName);
     if (filters.colors && filters.colors.length > 0) params.append('colors', filters.colors.join(','));
+    if (filters.colors?.length && filters.colorMode && filters.colorMode !== 'includes') params.append('colorMode', filters.colorMode);
     if (filters.type && filters.type !== 'all') params.append('type', filters.type);
     if (filters.sets && filters.sets.length > 0) params.append('sets', filters.sets.join(','));
     // Pinned creature-type chips plus the one being typed, all ANDed.
@@ -799,7 +801,7 @@ class ApiClient {
     return this.request(`/decks/${deckId}/rules${query}`);
   }
 
-  async getBuilderInventory({ deckId, name, type, subtype, text, ability, rarity, colors, maxCmc, onlyFree, format, colorIdentity, role, fit = false, fitTheme = '', fitSecondary = null, page = 1, limit = 60 } = {}) {
+  async getBuilderInventory({ deckId, name, type, subtype, text, ability, rarity, colors, colorMode, maxCmc, onlyFree, format, colorIdentity, role, fit = false, fitTheme = '', fitSecondary = null, page = 1, limit = 60 } = {}) {
     const params = new URLSearchParams();
     if (deckId) params.set('deckId', deckId);
     if (name) params.set('name', name);
@@ -809,6 +811,7 @@ class ApiClient {
     if (text && text.trim()) params.set('text', text.trim());
     if (ability) params.set('ability', ability);
     if (colors && colors.length) params.set('colors', colors.join(','));
+    if (colors && colors.length && colorMode && colorMode !== 'includes') params.set('colorMode', colorMode);
     if (maxCmc !== null && maxCmc !== undefined) params.set('maxCmc', maxCmc);
     if (onlyFree) params.set('onlyFree', 'true');
     if (format) params.set('format', format);

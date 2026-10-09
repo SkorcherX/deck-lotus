@@ -9506,3 +9506,10 @@ body.pull-list-open { overflow: hidden; }
 .any-card-label { font-size: var(--text-sm); color: var(--warning); display: flex; gap: 0.35rem; align-items: center; }
 .any-card-fields { display: flex; gap: 1rem; align-items: flex-start; width: 100%; }
 .any-card-fields .search-box { flex: 1; min-width: 0; }
+
+/* "Includes / Exactly / At most" sits under the colour toggles it qualifies. */
+.filter-select.color-mode-select {
+  margin-top: 0.4rem;
+  width: fit-content;
+  min-width: 7.5rem;
+}

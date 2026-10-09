@@ -40,6 +40,8 @@ const rows = [
   ['Llanowar Elves', 'Creature — Elf Druid', 'G', 'G'],
   ['Counterspell', 'Instant', 'U', 'U'],
   ['Simic Charm', 'Instant', 'G,U', 'G,U'],
+  // Colours stored as NULL rather than ''.
+  ['Ornithopter', 'Artifact Creature — Thopter', null, null],
   // A colourless artifact.
   ['Sol Ring', 'Artifact', '', '']
 ];
@@ -48,8 +50,8 @@ const insert = db.prepare('INSERT INTO cards VALUES (?, ?, ?, ?)');
 for (const row of rows) insert.run(...row);
 
 /** Run the filter and return matching card names. */
-function query(colors, { landsOnly = false } = {}) {
-  const { clause, params } = colorFilterSql(colors, 'c');
+function query(colors, { landsOnly = false, mode } = {}) {
+  const { clause, params } = colorFilterSql(colors, 'c', mode);
   const where = [clause, landsOnly ? `c.type_line LIKE '%Land%'` : null]
     .filter(Boolean)
     .map((c) => `(${c})`)
@@ -105,5 +107,40 @@ test('placeholders and parameters stay in step', () => {
     const { clause, params } = colorFilterSql(colors, 'c');
     const placeholders = (clause.match(/\?/g) || []).length;
     assert.equal(placeholders, params.length, `mismatch for ${colors.join('')}`);
+  }
+});
+
+test('exactly: one colour is mono-coloured only, lands included', () => {
+  assert.deepEqual(query(['G'], { mode: 'exactly' }), ['Forest', 'Llanowar Elves']);
+});
+
+test('exactly: two colours is that pair and nothing wider or narrower', () => {
+  assert.deepEqual(query(['G', 'U'], { mode: 'exactly' }), ['Breeding Pool', 'Simic Charm']);
+});
+
+test('exactly with colourless adds colourless cards', () => {
+  assert.deepEqual(query(['U', 'C'], { mode: 'exactly' }),
+    ['Counterspell', 'Island', 'Ornithopter', 'Sol Ring', 'Wastes']);
+});
+
+test('at most: what a deck of those colours can cast, colourless included', () => {
+  assert.deepEqual(query(['G'], { mode: 'atmost' }),
+    ['Forest', 'Llanowar Elves', 'Ornithopter', 'Sol Ring', 'Wastes']);
+  assert.deepEqual(query(['G', 'U'], { mode: 'atmost' }),
+    ['Breeding Pool', 'Counterspell', 'Forest', 'Island', 'Llanowar Elves', 'Ornithopter', 'Simic Charm', 'Sol Ring', 'Wastes']);
+});
+
+test('an unknown mode falls back to includes', () => {
+  assert.deepEqual(query(['G'], { mode: 'bogus' }), query(['G']));
+});
+
+test('placeholders and parameters stay in step in every mode', () => {
+  for (const mode of ['includes', 'exactly', 'atmost']) {
+    for (const colors of [['G'], ['G', 'U'], ['C'], ['C', 'U'], ['W', 'U', 'B', 'R', 'G']]) {
+      const { clause, params } = colorFilterSql(colors, 'c', mode);
+      assert.equal((clause.match(/\?/g) || []).length, params.length, `${mode} ${colors.join('')}`);
+      // Every clause must actually run.
+      db.prepare(`SELECT name FROM cards c WHERE ${clause}`).all(...params);
+    }
   }
 });
