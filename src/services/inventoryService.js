@@ -7,6 +7,7 @@ import {
 import { ROLE_FILTERS } from './cardRoleService.js';
 import { colorFilterSql } from '../utils/colorFilter.js';
 import { subtypeFilterSql } from '../utils/subtypeFilter.js';
+import { cardTextFilterSql } from '../utils/cardTextFilter.js';
 import { isBasicLandSql } from './basicLands.js';
 import { deckPrioritySql, DECK_PRIORITY } from './deckPriority.js';
 import { recordInventoryChange } from './auditService.js';
@@ -98,6 +99,8 @@ export function getInventory(userIds, filters = {}) {
     colors = [],
     type,
     subtypes = [],
+    text = '',
+    abilities = [],
     sets = [],
     sort = 'name',
     availability = 'all', // 'all', 'available', 'in_decks', 'lent_out'
@@ -221,6 +224,15 @@ export function getInventory(userIds, filters = {}) {
     countSql += ` AND ${subtypeFilter.clause}`;
     params.push(...subtypeFilter.params);
     countParams.push(...subtypeFilter.params);
+  }
+
+  // Rules text: free words / "phrases" plus named abilities (Draw, Mill, ...).
+  const textFilter = cardTextFilterSql(text, abilities, 'c');
+  if (textFilter.clause) {
+    sql += ` AND ${textFilter.clause}`;
+    countSql += ` AND ${textFilter.clause}`;
+    params.push(...textFilter.params);
+    countParams.push(...textFilter.params);
   }
 
   // Commander eligibility filter: legendary creatures, plus anything else
@@ -1530,6 +1542,8 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     name,
     type,
     subtype,
+    text,
+    ability,
     colors = [],
     colorIdentity,
     maxCmc,
@@ -1560,6 +1574,12 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   if (builderSubtypeFilter.clause) {
     where.push(builderSubtypeFilter.clause);
     params.push(...builderSubtypeFilter.params);
+  }
+
+  const builderTextFilter = cardTextFilterSql(text, ability ? [ability] : [], '');
+  if (builderTextFilter.clause) {
+    where.push(builderTextFilter.clause);
+    params.push(...builderTextFilter.params);
   }
 
   // Colour filter, shared with the inventory page. A land counts as the colours

@@ -581,6 +581,10 @@ class ApiClient {
     // Pinned creature-type chips plus the one being typed, all ANDed.
     const subtypes = [...(filters.subtypes || []), filters.liveSubtype].filter(Boolean);
     if (subtypes.length > 0) params.append('subtypes', subtypes.join(','));
+    // Rules-text chips plus the text being typed; every word must appear.
+    const text = [...(filters.texts || []), filters.liveText].filter(Boolean).join(' ');
+    if (text) params.append('text', text);
+    if (filters.ability) params.append('abilities', filters.ability);
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
@@ -611,6 +615,10 @@ class ApiClient {
     // Pinned creature-type chips plus the one being typed, all ANDed.
     const subtypes = [...(filters.subtypes || []), filters.liveSubtype].filter(Boolean);
     if (subtypes.length > 0) params.append('subtypes', subtypes.join(','));
+    // Rules-text chips plus the text being typed; every word must appear.
+    const text = [...(filters.texts || []), filters.liveText].filter(Boolean).join(' ');
+    if (text) params.append('text', text);
+    if (filters.ability) params.append('abilities', filters.ability);
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
@@ -736,12 +744,14 @@ class ApiClient {
     return this.request(`/decks/${deckId}/rules${query}`);
   }
 
-  async getBuilderInventory({ deckId, name, type, subtype, colors, maxCmc, onlyFree, format, colorIdentity, role, page = 1, limit = 60 } = {}) {
+  async getBuilderInventory({ deckId, name, type, subtype, text, ability, colors, maxCmc, onlyFree, format, colorIdentity, role, page = 1, limit = 60 } = {}) {
     const params = new URLSearchParams();
     if (deckId) params.set('deckId', deckId);
     if (name) params.set('name', name);
     if (type && type !== 'all') params.set('type', type);
     if (subtype && subtype.trim()) params.set('subtype', subtype.trim());
+    if (text && text.trim()) params.set('text', text.trim());
+    if (ability) params.set('ability', ability);
     if (colors && colors.length) params.set('colors', colors.join(','));
     if (maxCmc !== null && maxCmc !== undefined) params.set('maxCmc', maxCmc);
     if (onlyFree) params.set('onlyFree', 'true');

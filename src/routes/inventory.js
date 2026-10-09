@@ -66,6 +66,8 @@ router.get('/', authenticate, (req, res, next) => {
       colors,
       type,
       subtypes,
+      text,
+      abilities,
       sets,
       sort,
       availability,
@@ -82,6 +84,8 @@ router.get('/', authenticate, (req, res, next) => {
       colors: colors ? colors.split(',') : [],
       type,
       subtypes: subtypes ? String(subtypes).split(',') : [],
+      text: text ? String(text) : '',
+      abilities: abilities ? String(abilities).split(',') : [],
       sets: sets ? sets.split(',') : [],
       sort: sort || 'name',
       availability: availability || 'all',
@@ -343,7 +347,7 @@ router.get('/availability', authenticate, (req, res, next) => {
  */
 router.get('/builder', authenticate, (req, res, next) => {
   try {
-    const { deckId, name, type, subtype, colors, colorIdentity, maxCmc, onlyFree, format, role, page, limit } = req.query;
+    const { deckId, name, type, subtype, text, ability, colors, colorIdentity, maxCmc, onlyFree, format, role, page, limit } = req.query;
 
     const result = getBuilderInventory(
       req.user.id,
@@ -352,6 +356,8 @@ router.get('/builder', authenticate, (req, res, next) => {
         name,
         type,
         subtype,
+        text,
+        ability,
         colors: colors ? String(colors).split(',').filter(Boolean) : [],
         colorIdentity,
         maxCmc,

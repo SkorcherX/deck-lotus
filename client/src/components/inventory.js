@@ -29,6 +29,11 @@ let filters = {
   // once they spell a whole known type — see setLiveTerm.
   subtypes: [],
   liveSubtype: '',
+  // Rules-text chips and the text being typed; every word must appear, a
+  // "quoted phrase" as written. `ability` is a named action (draw, mill...).
+  texts: [],
+  liveText: '',
+  ability: '',
   colors: [],
   type: 'all',
   sort: 'name',
@@ -125,6 +130,16 @@ function setupFilterListeners() {
     });
   }
 
+  // Ability — draw, discard, mill... matched against the rules text server-side.
+  const abilitySelect = document.getElementById('inventory-ability');
+  if (abilitySelect) {
+    abilitySelect.addEventListener('change', (e) => {
+      filters.ability = e.target.value;
+      currentPage = 1;
+      loadInventoryData();
+    });
+  }
+
   // Availability
   const availabilitySelect = document.getElementById('inventory-availability');
   if (availabilitySelect) {
@@ -192,6 +207,7 @@ function setupSearchChips() {
     input.placeholder = {
       set: 'Filter by set code, press Enter...',
       subtype: 'Creature type, e.g. Elf, Dragon...',
+      text: 'Card text, e.g. draw card or "target player draws"',
     }[mode.value] || 'Filter by name...';
     // Each suggestion list is only useful in its own mode; leaving the set
     // list attached in name mode offers set codes while typing a card name.
@@ -268,10 +284,12 @@ function setLiveTerm(rawValue, mode) {
   const subtype = mode === 'subtype'
     ? knownSubtypes.get(String(rawValue).trim().toLowerCase()) || ''
     : '';
-  if (value === filters.liveName && subtype === filters.liveSubtype) return;
+  const text = mode === 'text' ? String(rawValue).trim() : '';
+  if (value === filters.liveName && subtype === filters.liveSubtype && text === filters.liveText) return;
 
   filters.liveName = value;
   filters.liveSubtype = subtype;
+  filters.liveText = text;
   currentPage = 1;
   loadInventoryData();
 }
@@ -280,10 +298,11 @@ function setLiveTerm(rawValue, mode) {
 function clearLiveTerm() {
   filters.liveName = '';
   filters.liveSubtype = '';
+  filters.liveText = '';
 }
 
 function chipList(kind) {
-  return { set: filters.sets, subtype: filters.subtypes }[kind] || filters.names;
+  return { set: filters.sets, subtype: filters.subtypes, text: filters.texts }[kind] || filters.names;
 }
 
 // Chips in the order they were committed, so backspace removes the newest.
@@ -291,6 +310,7 @@ function activeChips() {
   return [
     ...filters.sets.map((value) => ({ kind: 'set', value })),
     ...filters.subtypes.map((value) => ({ kind: 'subtype', value })),
+    ...filters.texts.map((value) => ({ kind: 'text', value })),
     ...filters.names.map((value) => ({ kind: 'name', value })),
   ];
 }
@@ -341,7 +361,9 @@ function renderFilterChips() {
       ? `Set: ${escapeHtml(value)}${setName ? ` <span class="filter-chip-note">${escapeHtml(setName)}</span>` : ''}`
       : kind === 'subtype'
         ? `Type: ${escapeHtml(value)}`
-        : `Name: ${escapeHtml(value)}`;
+        : kind === 'text'
+          ? `Text: ${escapeHtml(value)}`
+          : `Name: ${escapeHtml(value)}`;
 
     return `
       <span class="filter-chip filter-chip-${kind}">
@@ -1683,6 +1705,9 @@ function hasActiveFilters() {
     filters.sets.length > 0 ||
     filters.subtypes.length > 0 ||
     !!filters.liveSubtype ||
+    filters.texts.length > 0 ||
+    !!filters.liveText ||
+    !!filters.ability ||
     filters.colors.length > 0 ||
     (filters.type && filters.type !== 'all') ||
     filters.availability !== 'all' ||

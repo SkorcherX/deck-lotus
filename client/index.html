@@ -602,6 +602,29 @@
                                     list="inventory-subtypes"
                                     title="Whole type, e.g. Elf, Zombie, Dragon"
                                 />
+                                <input
+                                    type="search"
+                                    id="inventory-panel-text"
+                                    placeholder="Card text..."
+                                    autocomplete="off"
+                                    title='Every word must appear in the rules text; "quote" an exact phrase'
+                                />
+                                <select id="inventory-panel-ability" title="Cards that do this">
+                                    <option value="">Any ability</option>
+                                    <option value="draw">Card draw</option>
+                                    <option value="discard">Discard</option>
+                                    <option value="mill">Mill</option>
+                                    <option value="removal">Removal</option>
+                                    <option value="wipe">Board wipe</option>
+                                    <option value="counter">Counterspell</option>
+                                    <option value="ramp">Ramp</option>
+                                    <option value="tutor">Tutor</option>
+                                    <option value="selection">Scry / surveil</option>
+                                    <option value="lifegain">Lifegain</option>
+                                    <option value="tokens">Makes tokens</option>
+                                    <option value="recursion">Graveyard recursion</option>
+                                    <option value="sacrifice">Sacrifice outlet</option>
+                                </select>
                                 <select id="inventory-panel-type">
                                     <option value="all">All types</option>
                                     <option value="Creature">Creature</option>
@@ -1174,6 +1197,7 @@
                                     <option value="name">Card Name</option>
                                     <option value="set">Set Code</option>
                                     <option value="subtype">Creature Type</option>
+                                    <option value="text">Card Text</option>
                                 </select>
                                 <input
                                     type="text"
@@ -1203,6 +1227,25 @@
                                      to know what they have. -->
                                 <option value="added_desc">Recently Added</option>
                                 <option value="added_asc">Oldest Added</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Ability</label>
+                            <select id="inventory-ability" class="filter-select" title="Cards that do this">
+                                <option value="">Any ability</option>
+                                <option value="draw">Card draw</option>
+                                <option value="discard">Discard</option>
+                                <option value="mill">Mill</option>
+                                <option value="removal">Removal</option>
+                                <option value="wipe">Board wipe</option>
+                                <option value="counter">Counterspell</option>
+                                <option value="ramp">Ramp</option>
+                                <option value="tutor">Tutor</option>
+                                <option value="selection">Scry / surveil</option>
+                                <option value="lifegain">Lifegain</option>
+                                <option value="tokens">Makes tokens</option>
+                                <option value="recursion">Graveyard recursion</option>
+                                <option value="sacrifice">Sacrifice outlet</option>
                             </select>
                         </div>
                         <div class="filter-group">

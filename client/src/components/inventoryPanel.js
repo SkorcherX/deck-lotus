@@ -15,7 +15,7 @@ import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/comma
  */
 
 let ctx = null;              // { getDeck, refreshDeck }
-let filters = { name: '', subtype: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
+let filters = { name: '', subtype: '', text: '', ability: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
 let page = 1;
 let feed = { items: [], total: 0, totalPages: 1 };
 let undoStack = [];
@@ -100,6 +100,25 @@ export function setupInventoryPanel(context) {
     }, 250));
   }
 
+  // Rules text: every word must appear, a "quoted phrase" as written.
+  const text = el('inventory-panel-text');
+  if (text) {
+    text.addEventListener('input', debounce(() => {
+      filters.text = text.value;
+      page = 1;
+      loadFeed();
+    }, 250));
+  }
+
+  const ability = el('inventory-panel-ability');
+  if (ability) {
+    ability.addEventListener('change', () => {
+      filters.ability = ability.value;
+      page = 1;
+      loadFeed();
+    });
+  }
+
   const typeFilter = el('inventory-panel-type');
   if (typeFilter) {
     typeFilter.addEventListener('change', () => {
@@ -178,7 +197,7 @@ export function setupInventoryPanel(context) {
 export function resetInventoryPanel() {
   undoStack = [];
   page = 1;
-  filters = { name: '', subtype: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
+  filters = { name: '', subtype: '', text: '', ability: '', type: 'all', colors: [], maxCmc: null, role: null, onlyFree: false, formatLegal: false, identityOnly: false };
 
   syncFilterControls();
 
@@ -200,6 +219,8 @@ export function openInventoryPanelWith({ type = 'all', colors = [], maxCmc = nul
   filters = {
     name: '',
     subtype: '',
+    text: '',
+    ability: '',
     type: type || 'all',
     colors: [...colors],
     maxCmc,
@@ -227,6 +248,12 @@ function syncFilterControls() {
 
   const subtype = el('inventory-panel-subtype');
   if (subtype) subtype.value = filters.subtype;
+
+  const text = el('inventory-panel-text');
+  if (text) text.value = filters.text;
+
+  const ability = el('inventory-panel-ability');
+  if (ability) ability.value = filters.ability;
 
   const typeFilter = el('inventory-panel-type');
   if (typeFilter) typeFilter.value = filters.type;
@@ -301,6 +328,8 @@ async function loadFeed() {
       deckId: deck.id,
       name: filters.name,
       subtype: filters.subtype,
+      text: filters.text,
+      ability: filters.ability,
       type: filters.type,
       colors: filters.colors,
       maxCmc: filters.maxCmc,
