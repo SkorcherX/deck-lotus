@@ -27,7 +27,12 @@ import db from '../db/connection.js';
 import {
   buildDeck, resolveTheme, isLegalIn, ROLE_PREDICATE_BY_CODE,
 } from './deckGeneratorService.js';
-import { rankThemes, withinColorIdentity } from './cardSynergyService.js';
+import {
+  rankThemes, withinColorIdentity, themeRole, analyzeTheme, customTheme,
+} from './cardSynergyService.js';
+import { pairSwaps } from './revisionSwaps.js';
+import { mimicDeck } from './deckMimicService.js';
+import { parsePlan } from './deckPlanService.js';
 import { getGeneratorPool } from './inventoryService.js';
 import { findCard } from './importService.js';
 import { isBasicLandSql, isBasicLand } from './basicLands.js';
@@ -40,8 +45,8 @@ import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
  * The same test the deck builder and the inventory panel already make, so the
  * three cannot disagree about what is a commander.
  */
-export function commanderOptions(userId, { includeCommitted = true } = {}) {
-  return getGeneratorPool(userId, { includeCommitted })
+export function commanderOptions(userId, { includeCommitted = true, releaseDeckIds = [] } = {}) {
+  return getGeneratorPool(userId, { includeCommitted, releaseDeckIds })
     .filter((card) => {
       const type = String(card.type_line || '');
       if (/legendary/i.test(type) && /creature/i.test(type)) return true;
@@ -83,25 +88,58 @@ function commanderFrom(pool, commanderCardId) {
  */
 export function themeOptions(userId, commanderCardId, {
   includeCommitted = true, identity: chosenIdentity = null, format = 'commander',
-  reviseDeckId = null,
+  reviseDeckId = null, splash = null, keepCardIds = [], customThemeKeys = [], releaseDeckIds = [],
 } = {}) {
   // The same pool the proposal will be built from, revision included: a theme
   // measured without the deck's own cards is measured against a collection the
   // build will never see, and the numbers offered would not be the numbers the
   // deck was built with.
-  const pool = getGeneratorPool(userId, { includeCommitted, exceptDeckId: reviseDeckId })
+  const pool = getGeneratorPool(userId, { includeCommitted, exceptDeckId: reviseDeckId, releaseDeckIds })
     .filter((card) => isLegalIn(card, format));
   const commander = commanderFrom(pool, commanderCardId);
   const identity = commander
     ? String(commander.color_identity || '').replace(/[^WUBRG]/g, '')
-    : (chosenIdentity || null);
+    : (chosenIdentity
+      || (reviseDeckId == null ? null : revisionIdentity(revisionTarget(userId, reviseDeckId).cards, splash)));
 
   const spells = pool.filter((card) => !/\bland\b/i.test(String(card.type_line || '')));
 
-  return rankThemes(spells, { identity })
-    .filter((theme) => theme.strength > 0)
-    .slice(0, 8)
-    .map((theme) => ({
+  // The cards a revision is keeping, read for which themes they belong to.
+  // Somebody keeping three Lhurgoyfs has already said what the deck is about;
+  // the themes those cards serve are put first and say so, rather than
+  // leaving the person to work out which of eight labels matches them.
+  const keepIds = new Set((keepCardIds || []).map(Number));
+  const keptCards = reviseDeckId == null ? [] : spells.filter((card) => keepIds.has(card.card_id));
+
+  // Custom themes the page is carrying, measured in the same colours and
+  // offered first — including at zero, because "your phrase matched nothing
+  // you own" is the answer to the question that was asked, not a reason to
+  // hide it. Deduplicated by key, so two spellings of one theme are one tile.
+  const inColours = identity ? spells.filter((card) => withinColorIdentity(card, identity)) : spells;
+  const customs = [...new Map((customThemeKeys || [])
+    .map((key) => customTheme(key))
+    .filter(Boolean)
+    .map((theme) => [theme.key, theme])).values()]
+    .map((theme) => ({ ...analyzeTheme(inColours, theme), custom: true }));
+
+  const builtIn = rankThemes(spells, { identity })
+    .filter((theme) => theme.strength > 0 && !customs.some((c) => c.key === theme.key));
+
+  return [...customs, ...builtIn]
+    .map((theme) => {
+      const resolved = resolveTheme(theme.key, spells);
+      const matched = resolved ? keptCards.filter((card) => themeRole(card, resolved) != null) : [];
+      return { theme, keptMatches: [...new Set(matched.map((card) => card.name))] };
+    })
+    // Stable: among themes matching the same number of kept cards, the
+    // collection's own ranking still decides. Custom themes are never cut by
+    // the limit — somebody just typed them.
+    .sort((a, b) => Number(Boolean(b.theme.custom)) - Number(Boolean(a.theme.custom))
+      || b.keptMatches.length - a.keptMatches.length)
+    .slice(0, 8 + customs.length)
+    .map(({ theme, keptMatches }) => ({
+      keptMatches,
+      custom: Boolean(theme.custom),
       key: theme.key,
       label: theme.label,
       // What the theme means, in words rather than counts. See the note on
@@ -129,6 +167,22 @@ export function themeOptions(userId, commanderCardId, {
  * wants a second pass over.
  */
 export function revisableDecks(userId) {
+  // Each deck's colours, so the page can show which are already played and
+  // offer only the others as a splash.
+  const identities = new Map();
+  for (const row of db.all(
+    `SELECT DISTINCT dc.deck_id, c.color_identity
+       FROM deck_cards dc
+       JOIN decks d ON d.id = dc.deck_id
+       JOIN printings p ON dc.printing_id = p.id
+       JOIN cards c ON p.card_id = c.id
+      WHERE d.user_id = ?`,
+    [userId]
+  )) {
+    if (!identities.has(row.deck_id)) identities.set(row.deck_id, []);
+    identities.get(row.deck_id).push(row);
+  }
+
   return db.all(
     `SELECT
        d.id,
@@ -157,7 +211,72 @@ export function revisableDecks(userId) {
     status: row.status || null,
     cards: row.cards || 0,
     commanderName: row.commander_name || null,
+    colorIdentity: deckIdentity(identities.get(row.id)),
   }));
+}
+
+/**
+ * The themes a deck is built around, for ranking the collection against it.
+ *
+ * Read off the deck's own mainboard, commander included — the commander is
+ * usually the clearest statement of what the deck wants. The strongest theme
+ * leads; a second is added on its own only when it is at least half as strong,
+ * so a deck with two real plans is ranked for both and a deck with one is not
+ * diluted by whatever came second. Either can be named outright instead, and a
+ * second of '' means "none".
+ *
+ * Tribes count from five creatures rather than the generator's eight: a
+ * finished 60-card deck with six Zombies is a Zombie deck, where a collection
+ * with six is not.
+ */
+export function deckFitThemes(userId, deckId, { themeKey = null, secondaryThemeKey = null } = {}) {
+  const deck = db.get('SELECT id, format, plan FROM decks WHERE id = ? AND user_id = ?', [deckId, userId]);
+  if (!deck) throw new Error('That deck is not one of yours');
+
+  // A saved plan is the owner's answer to the question this function would
+  // otherwise guess at, so it wins over the reading below. Only where nothing
+  // was asked for explicitly: picking a theme in the panel still overrides it.
+  const plan = parsePlan(deck.plan);
+  const fromPlan = Boolean(plan?.themeKey && !themeKey);
+  if (fromPlan) {
+    themeKey = plan.themeKey;
+    if (secondaryThemeKey == null) secondaryThemeKey = plan.secondaryThemeKey || '';
+  }
+
+  const cards = db.all(
+    `SELECT DISTINCT c.id AS card_id, c.name, c.type_line, c.oracle_text, c.subtypes, c.keywords,
+            c.color_identity, c.cmc, dc.is_commander
+       FROM deck_cards dc
+       JOIN printings p ON dc.printing_id = p.id
+       JOIN cards c ON p.card_id = c.id
+      WHERE dc.deck_id = ?
+        AND COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) = 'mainboard'`,
+    [deckId]
+  );
+  const spells = cards.filter((card) => !/\bland\b/i.test(String(card.type_line || '')));
+
+  const ranked = rankThemes(spells, { minTribeCreatures: 5 }).filter((t) => t.strength > 0);
+  const options = ranked.slice(0, 8).map((t) => ({ key: t.key, label: t.label, strength: t.strength }));
+
+  const mainKey = themeKey || ranked[0]?.key || null;
+  let secondKey = secondaryThemeKey;
+  if (secondKey == null) {
+    const lead = ranked.find((t) => t.key === mainKey);
+    const next = ranked.find((t) => t.key !== mainKey);
+    secondKey = lead && next && next.strength * 2 >= lead.strength ? next.key : '';
+  }
+
+  const main = mainKey ? resolveTheme(mainKey, spells) : null;
+  const second = main && secondKey && secondKey !== mainKey ? resolveTheme(secondKey, spells) : null;
+
+  // The colours a suggestion has to stay inside. A commander's identity is a
+  // rule; otherwise the colours the deck already plays — the same reading a
+  // revision uses, and for the same reason: a fit list for a Dimir deck that
+  // leads with a red card is not a list about this deck.
+  const leaders = cards.filter((card) => card.is_commander);
+  const identity = deckIdentity(leaders.length ? leaders : cards);
+
+  return { themes: [main, second].filter(Boolean), options, identity, format: deck.format || null, fromPlan };
 }
 
 /**
@@ -177,6 +296,38 @@ function themeOfDeck(pool) {
   return best ? best.key : null;
 }
 
+/**
+ * The colour identity a deck already has: the union of its cards' identities.
+ *
+ * A revision of a 60-card deck has no commander to take colours from, and
+ * without this the pool went unfiltered — asking a Dimir deck for graveyard
+ * value proposed green, red and white cards and turned it five-colour. The
+ * deck's colours are a decision already made; a revision works inside them.
+ * Null for an empty deck, so there is still nothing to restrict.
+ */
+export function deckIdentity(cards) {
+  if (!cards || cards.length === 0) return null;
+  const seen = new Set();
+  for (const row of cards) {
+    for (const c of String(row.color_identity || '').toUpperCase().replace(/[^WUBRG]/g, '')) seen.add(c);
+  }
+  return 'WUBRG'.split('').filter((c) => seen.has(c)).join('');
+}
+
+/**
+ * A revision's colours: the deck's own, plus any splash asked for.
+ *
+ * A splash only widens a commanderless deck. A commander's identity is a rule
+ * of the format, not a preference, so a splash cannot override it.
+ */
+function revisionIdentity(cards, splash) {
+  const own = deckIdentity(cards);
+  const extra = String(splash || '').toUpperCase().replace(/[^WUBRG]/g, '');
+  if (own == null && !extra) return null;
+  const seen = new Set(`${own || ''}${extra}`);
+  return 'WUBRG'.split('').filter((c) => seen.has(c)).join('');
+}
+
 /** A deck being revised: what it is, and what is in it. */
 function revisionTarget(userId, deckId) {
   const deck = db.get('SELECT id, name, format, status FROM decks WHERE id = ? AND user_id = ?',
@@ -190,6 +341,13 @@ function revisionTarget(userId, deckId) {
        c.name,
        c.color_identity,
        c.type_line,
+       c.oracle_text,
+       c.subtypes,
+       c.keywords,
+       c.cmc,
+       c.mana_cost,
+       dc.printing_id,
+       dc.is_foil,
        dc.quantity,
        dc.is_commander,
        COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) AS board
@@ -201,6 +359,28 @@ function revisionTarget(userId, deckId) {
   );
 
   return { deck, cards };
+}
+
+/**
+ * The cards a revision has been told to keep, at the quantity the deck has.
+ *
+ * Only cards already in the deck's mainboard can be kept — "keep" is a claim
+ * about this deck, and an id that is not in it is ignored rather than turned
+ * into a request to add something. The commander is skipped: it is never
+ * proposed, so there is nothing to keep it from.
+ */
+function keptFrom(target, keepCardIds) {
+  if (!target || !Array.isArray(keepCardIds) || keepCardIds.length === 0) return [];
+  const wanted = new Set(keepCardIds.map(Number));
+  const byCard = new Map();
+  for (const row of target.cards) {
+    if (row.board !== 'mainboard' || row.is_commander || !wanted.has(row.card_id)) continue;
+    if (isBasicLand(row)) continue;
+    const seen = byCard.get(row.card_id);
+    if (seen) seen.quantity += row.quantity;
+    else byCard.set(row.card_id, { cardId: row.card_id, name: row.name, quantity: row.quantity });
+  }
+  return [...byCard.values()];
 }
 
 /**
@@ -216,7 +396,7 @@ function revisionTarget(userId, deckId) {
  * The commander is not diffed either. It is chosen, not proposed — a revision
  * that swapped it would be a different deck.
  */
-function diffAgainstDeck(target, proposal) {
+function diffAgainstDeck(target, proposal, pool = []) {
   const before = new Map();
   for (const row of target.cards) {
     if (row.board !== 'mainboard' || row.is_commander) continue;
@@ -250,12 +430,34 @@ function diffAgainstDeck(target, proposal) {
 
   const byName = (a, b) => a.name.localeCompare(b.name);
 
+  // Card text for both sides, so the pairing can tell what job each card
+  // does. A cut card is read from the deck — it may no longer be owned, and
+  // then it is not in the pool — and an added card from the pool it came from.
+  const deckRow = new Map(target.cards.map((row) => [row.name, row]));
+  const poolRow = new Map(pool.map((row) => [row.name, row]));
+  const themes = [proposal.theme, proposal.secondaryTheme]
+    .filter((t) => t && t.key)
+    .map((t) => resolveTheme(t.key, pool))
+    .filter(Boolean);
+
+  const paired = pairSwaps(
+    cut.map((row) => ({ card: deckRow.get(row.name) || { name: row.name }, quantity: row.quantity })),
+    added.map((row) => ({ card: poolRow.get(row.name) || deckRow.get(row.name) || { name: row.name }, quantity: row.quantity })),
+    themes
+  );
+
   return {
     deckId: target.deck.id,
     deckName: target.deck.name,
     deckStatus: target.deck.status || null,
     added: added.sort(byName),
     cut: cut.sort(byName),
+    // The same changes, paired into swaps where one card takes over another's
+    // job, with what is left over listed on its own. `added` and `cut` above
+    // stay the full lists, so a reader of either never has to add them up.
+    swaps: paired.swaps,
+    unpairedAdded: paired.added.sort(byName),
+    unpairedCut: paired.cut.sort(byName),
     keptCount: kept.reduce((sum, row) => sum + row.quantity, 0),
     // Said outright rather than left to be inferred from three empty lists.
     unchanged: added.length === 0 && cut.length === 0,
@@ -271,12 +473,18 @@ export function proposeDeck(userId, {
   commanderCardId = null,
   format = 'commander',
   themeKey = null,
+  secondaryThemeKey = null,
+  secondaryShare = undefined,
   includeCommitted = true,
   landCount = null,
   identity = null,
   reviseDeckId = null,
+  splash = null,
+  keepCardIds = [],
+  releaseDeckIds = [],
 } = {}) {
   const target = reviseDeckId == null ? null : revisionTarget(userId, reviseDeckId);
+  const keep = keptFrom(target, keepCardIds);
 
   // A revision inherits the deck's own format and commander unless it was
   // told otherwise. Asking again for facts already recorded against the deck
@@ -294,6 +502,7 @@ export function proposeDeck(userId, {
     // The deck's own cards stop counting as spoken for, which is the whole
     // point: a revision may keep what is already sleeved.
     exceptDeckId: reviseDeckId,
+    releaseDeckIds,
   });
   const commander = commanderFrom(pool, commanderCardId);
 
@@ -314,8 +523,8 @@ export function proposeDeck(userId, {
   // outright when there is not — a 60-card format has nothing to infer them
   // from.
   const proposal = buildDeck(pool, {
-    commander, format, themeKey, landCount,
-    identity: commander ? null : (identity || null),
+    commander, format, themeKey, secondaryThemeKey, secondaryShare, landCount, keep,
+    identity: commander ? null : (identity || (target ? revisionIdentity(target.cards, splash) : null)),
   });
 
   return {
@@ -323,13 +532,14 @@ export function proposeDeck(userId, {
     // What this would change about the deck it started from. Null when
     // nothing was being revised, so a caller can tell "built from scratch"
     // apart from "revised and changed nothing".
-    revision: target ? diffAgainstDeck(target, proposal) : null,
+    revision: target ? { ...diffAgainstDeck(target, proposal, pool), kept: keep.map((k) => k.name) } : null,
     // What the pool actually was, because "no removal found" means something
     // very different at 271 cards than at 1,033. Without this the shortfalls
     // read as a fault in the collection rather than in what was available.
     pool: {
       cards: pool.length,
       includeCommitted,
+      releasedDecks: includeCommitted ? 0 : new Set((releaseDeckIds || []).map(Number)).size,
       committedCards: pool.filter((card) => (card.committed || 0) > 0).length,
     },
     commanderCard: commander
@@ -382,10 +592,11 @@ export function suggestForGaps(userId, {
   themeKey = null,
   includeCommitted = true,
   identity = null,
+  releaseDeckIds = [],
   perGap = 6,
 } = {}) {
   const proposal = proposeDeck(userId, {
-    commanderCardId, format, themeKey, includeCommitted, identity,
+    commanderCardId, format, themeKey, includeCommitted, identity, releaseDeckIds,
   });
 
   const roleGaps = proposal.shortfalls.filter((s) => s.kind === 'role' && s.found < s.wanted);
@@ -623,4 +834,80 @@ export function acceptProposal(userId, { name, format = 'commander', commander =
   });
 
   return { deckId, name: deckName, added, unresolved };
+}
+
+/**
+ * Rebuild one of your decks — typically a list imported from a deck site —
+ * out of what you own, card by card. Writes nothing: the result is saved, if
+ * at all, through `acceptProposal` like any other proposal, as a new idea.
+ *
+ * The deck's own cards stop counting as spoken for (`exceptDeckId`), the same
+ * as a revision: an imported list is usually an idea whose claim on your
+ * cards is exactly the claim the mimic is about to make.
+ */
+export function mimicFromCollection(userId, deckId, { includeCommitted = true, releaseDeckIds = [] } = {}) {
+  const deck = db.get('SELECT id, name, format FROM decks WHERE id = ? AND user_id = ?', [deckId, userId]);
+  if (!deck) throw new Error('That deck is not one of yours');
+
+  const rows = db.all(
+    `SELECT c.id AS card_id, c.name, c.mana_cost, c.cmc, c.colors, c.color_identity, c.type_line,
+            c.oracle_text, c.subtypes, c.supertypes, c.keywords, c.power, c.toughness, c.legalities,
+            SUM(dc.quantity) AS quantity, MAX(dc.is_commander) AS is_commander
+       FROM deck_cards dc
+       JOIN printings p ON dc.printing_id = p.id
+       JOIN cards c ON p.card_id = c.id
+      WHERE dc.deck_id = ?
+        AND COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) = 'mainboard'
+      GROUP BY c.id`,
+    [deckId]
+  );
+  if (rows.length === 0) throw new Error('That deck has no mainboard cards to copy');
+
+  const format = deck.format || null;
+  const pool = getGeneratorPool(userId, { includeCommitted, exceptDeckId: deckId, releaseDeckIds });
+
+  const leaderRow = rows.find((r) => r.is_commander);
+  const leaderOwned = leaderRow
+    ? pool.find((card) => card.card_id === leaderRow.card_id && (Number(card.available) || 0) > 0)
+    : null;
+
+  const identity = leaderRow
+    ? String(leaderRow.color_identity || '').replace(/[^WUBRG]/g, '')
+    : deckIdentity(rows);
+
+  const result = mimicDeck(
+    rows.filter((r) => !r.is_commander).map((card) => ({ card, quantity: Number(card.quantity) || 1 })),
+    // The commander is not up for substitution or for use as a stand-in.
+    leaderRow ? pool.filter((card) => card.card_id !== leaderRow.card_id) : pool,
+    { format, identity }
+  );
+
+  const brief = (card) => ({
+    name: card.name,
+    cardId: card.card_id,
+    printingId: card.printing_id ?? null,
+    isFoil: Boolean(card.is_foil),
+    manaCost: card.mana_cost || '',
+    cmc: Number(card.cmc) || 0,
+    typeLine: card.type_line || '',
+  });
+
+  return {
+    deck: { id: deck.id, name: deck.name, format },
+    identity,
+    // Kept as listed: a commander is the deck's identity, not a slot to fill
+    // with something similar. When it is not owned that is said outright.
+    commander: leaderRow
+      ? { ...brief(leaderOwned || leaderRow), owned: Boolean(leaderOwned), printingId: leaderOwned?.printing_id ?? null }
+      : null,
+    owned: result.owned.map((e) => ({ ...brief(e.card), quantity: e.quantity })),
+    basics: result.basics.map((e) => ({ ...brief(e.card), printingId: null, quantity: e.quantity })),
+    standIns: result.standIns.map((s) => ({
+      for: brief(s.for), card: brief(s.card), quantity: s.quantity, match: s.match, why: s.why,
+    })),
+    missing: result.missing.map((e) => ({ ...brief(e.card), quantity: e.quantity })),
+    deckThemes: result.deckThemes,
+    summary: result.summary,
+    pool: { cards: pool.length, includeCommitted },
+  };
 }

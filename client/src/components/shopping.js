@@ -153,7 +153,9 @@ function setupWantedList() {
   const results = document.getElementById('shopping-wanted-results');
 
   if (search && results) {
-    search.addEventListener('input', debounce(async () => {
+    const raritySelect = document.getElementById('shopping-wanted-rarity');
+
+    const runSearch = debounce(async () => {
       const query = search.value.trim();
 
       if (query.length < 2) {
@@ -163,12 +165,16 @@ function setupWantedList() {
       }
 
       try {
-        const { cards = [] } = await api.searchForInventoryAdd(query);
+        const { cards = [] } = await api.searchForInventoryAdd(query, raritySelect?.value);
         renderWantedSearchResults(cards);
       } catch (error) {
         console.error('Wanted-card search failed:', error);
       }
-    }, 250));
+    }, 250);
+
+    search.addEventListener('input', runSearch);
+    // Changing rarity re-runs whatever is already typed.
+    raritySelect?.addEventListener('change', runSearch);
 
     // Clicking away closes the dropdown; without this it hangs over the deck
     // selector below and swallows the clicks meant for it.
@@ -575,6 +581,8 @@ function renderFilters() {
           <option value="uncommon" ${filters.rarity === 'uncommon' ? 'selected' : ''}>Uncommon</option>
           <option value="rare" ${filters.rarity === 'rare' ? 'selected' : ''}>Rare</option>
           <option value="mythic" ${filters.rarity === 'mythic' ? 'selected' : ''}>Mythic</option>
+          <option value="special" ${filters.rarity === 'special' ? 'selected' : ''}>Special</option>
+          <option value="bonus" ${filters.rarity === 'bonus' ? 'selected' : ''}>Bonus</option>
         </select>
       </div>
 

@@ -11,15 +11,20 @@ import {
   getBuilderInventory,
   getOwnedSets,
   exportInventory,
+  setConditionForCards,
   clearCollection,
   removeCardsFromCollection,
   summarizeCollectionForClear,
+  describeAddedPrinting,
 } from '../services/inventoryService.js';
 import { addOwnedPrintingQuantity } from '../services/cardService.js';
 import { importCardCastleSingles } from '../services/cardCastleImport.js';
 import { AUDIT_SOURCES } from '../services/auditService.js';
 import { normalizeCondition } from '../shared/conditions.js';
 import { authenticate } from '../middleware/auth.js';
+import { RARITIES } from '../shared/rarities.js';
+import { deckFitThemes } from '../services/deckProposalService.js';
+
 
 // 'all', 'unrecorded', or a condition code; anything else reads as 'all'
 // rather than an error, the way an unknown sort does.
@@ -73,6 +78,7 @@ router.get('/', authenticate, (req, res, next) => {
       availability,
       commander,
       condition,
+      rarity,
       page = 1,
       limit = 50
     } = req.query;
@@ -91,6 +97,7 @@ router.get('/', authenticate, (req, res, next) => {
       availability: availability || 'all',
       commander: commander || 'all',
       condition: normalizeConditionFilter(condition),
+      rarity: RARITIES.includes(rarity) ? rarity : 'all',
       page: parseInt(page),
       limit: parseInt(limit)
     };
@@ -121,13 +128,18 @@ router.get('/stats', authenticate, (req, res, next) => {
  */
 router.get('/search', authenticate, (req, res, next) => {
   try {
-    const { q, limit = 10 } = req.query;
+    const { q, limit = 10, rarity } = req.query;
 
     if (!q || q.length < 2) {
       return res.json({ cards: [] });
     }
 
-    const cards = searchCardsForInventoryAdd(req.user.id, q, parseInt(limit));
+    const cards = searchCardsForInventoryAdd(
+      req.user.id,
+      q,
+      parseInt(limit),
+      RARITIES.includes(rarity) ? rarity : null
+    );
     res.json({ cards });
   } catch (error) {
     next(error);
@@ -161,7 +173,7 @@ router.get('/sets', authenticate, (req, res, next) => {
  */
 router.get('/export', authenticate, (req, res, next) => {
   try {
-    const shape = req.query.shape === 'simple' ? 'simple' : 'precise';
+    const shape = ['simple', 'moxfield', 'manabox'].includes(req.query.shape) ? req.query.shape : 'precise';
     res.json(exportInventory(req.user.id, { shape, condition: normalizeConditionFilter(req.query.condition) }));
   } catch (error) {
     next(error);
@@ -248,6 +260,25 @@ router.post('/bulk-remove-resolve', authenticate, (req, res, next) => {
 
     res.json({ items: resolveBulkRemoveItems(req.user.id, items) });
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/set-condition
+ * Body: { to, cardIds?, all?, overwrite? }. `all: true` regrades the whole
+ * collection; otherwise `cardIds` is required. Without `overwrite`, only
+ * copies with no condition recorded change (see setConditionForCards).
+ */
+router.post('/set-condition', authenticate, (req, res, next) => {
+  try {
+    const { to, cardIds, all = false, overwrite = false } = req.body || {};
+    if (!all && (!Array.isArray(cardIds) || cardIds.length === 0)) {
+      return res.status(400).json({ error: 'cardIds array is required unless all is set' });
+    }
+    res.json({ success: true, ...setConditionForCards(req.user.id, { cardIds: all ? null : cardIds, to, overwrite: !!overwrite }) });
+  } catch (error) {
+    if (/condition/i.test(error.message)) return res.status(400).json({ error: error.message });
     next(error);
   }
 });
@@ -347,7 +378,17 @@ router.get('/availability', authenticate, (req, res, next) => {
  */
 router.get('/builder', authenticate, (req, res, next) => {
   try {
-    const { deckId, name, type, subtype, text, ability, colors, colorIdentity, maxCmc, onlyFree, format, role, page, limit } = req.query;
+    const { deckId, name, type, subtype, text, ability, rarity, colors, colorIdentity, maxCmc, onlyFree, format, role, page, limit } = req.query;
+
+    // "Fits this deck": rank by the deck's themes instead of by name. The
+    // themes are read from the deck unless named, and travel back with the
+    // feed so the panel can say what it ranked for.
+    const fit = req.query.fit === 'true' && deckId
+      ? deckFitThemes(req.user.id, parseInt(deckId, 10), {
+        themeKey: req.query.fitTheme || null,
+        secondaryThemeKey: req.query.fitSecondary === undefined ? null : String(req.query.fitSecondary),
+      })
+      : null;
 
     const result = getBuilderInventory(
       req.user.id,
@@ -358,19 +399,35 @@ router.get('/builder', authenticate, (req, res, next) => {
         subtype,
         text,
         ability,
+        rarity: RARITIES.includes(rarity) ? rarity : 'all',
         colors: colors ? String(colors).split(',').filter(Boolean) : [],
-        colorIdentity,
+        // Fit mode stays inside the deck's colours and format unless the
+        // panel's own filters already narrowed further.
+        colorIdentity: colorIdentity ?? (fit ? fit.identity : undefined),
         maxCmc,
         onlyFree: onlyFree === 'true' || onlyFree === '1',
-        format,
+        format: format || (fit ? fit.format : undefined),
         role,
+        fitThemes: fit ? fit.themes : null,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? Math.min(parseInt(limit, 10), 200) : 60
       }
     );
 
-    res.json(result);
+    res.json(fit
+      ? {
+        ...result,
+        fit: {
+          themes: fit.themes.map((t) => ({ key: t.key, label: t.label })),
+          options: fit.options,
+          fromPlan: fit.fromPlan,
+        },
+      }
+      : result);
   } catch (error) {
+    if (/not one of yours/i.test(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 });
@@ -425,7 +482,10 @@ router.post('/quick-add', authenticate, (req, res, next) => {
       source: auditSource(source, 'quick_add'),
       condition,
     });
-    res.json(result);
+    // The card and its price ride along so the page can say what was added
+    // and what it is worth — the price is the part of adding a card people
+    // actually wait for.
+    res.json({ ...result, card: describeAddedPrinting(printingId, isFoil, quantity) });
   } catch (error) {
     next(error);
   }

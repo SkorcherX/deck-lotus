@@ -5,6 +5,7 @@ import {
   rankFuzzyCandidates
 } from '../utils/cardNameMatch.js';
 import { ROLE_FILTERS } from './cardRoleService.js';
+import { themeRole } from './cardSynergyService.js';
 import { colorFilterSql } from '../utils/colorFilter.js';
 import { subtypeFilterSql } from '../utils/subtypeFilter.js';
 import { cardTextFilterSql } from '../utils/cardTextFilter.js';
@@ -12,8 +13,8 @@ import { isBasicLandSql } from './basicLands.js';
 import { deckPrioritySql, DECK_PRIORITY } from './deckPriority.js';
 import { recordInventoryChange } from './auditService.js';
 import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
-import { normalizeCondition } from '../shared/conditions.js';
-import { takeOwnedCopies } from './cardService.js';
+import { normalizeCondition, conditionLabel } from '../shared/conditions.js';
+import { takeOwnedCopies, changeOwnedCondition } from './cardService.js';
 
 const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
 
@@ -32,6 +33,44 @@ export const OWNED_COPY_PRICE = `
       LIMIT 1)
   )
 `;
+
+/**
+ * What one just-added line is worth, for the add receipt.
+ *
+ * Priced the way OWNED_COPY_PRICE prices a copy — the finish's own tcgplayer
+ * price, a foil falling back to normal — so the receipt and the collection
+ * value agree. `priceType` says which one answered: a foil quoted at its
+ * normal price is not the same claim as one quoted at its foil price. `price`
+ * is null, not 0, when nothing priced the printing; "unpriced" and "cheap"
+ * are different statements, the same split the companion app's bands make.
+ */
+export function describeAddedPrinting(printingId, isFoil, quantity) {
+  const row = db.get(
+    `SELECT p.id, p.uuid, p.set_code, p.collector_number, p.rarity, p.image_url, c.name,
+            (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer'
+               AND price_type = 'foil' LIMIT 1) AS foil_price,
+            (SELECT price FROM prices WHERE printing_uuid = p.uuid AND provider = 'tcgplayer'
+               AND price_type = 'normal' LIMIT 1) AS normal_price
+       FROM printings p JOIN cards c ON c.id = p.card_id
+      WHERE p.id = ?`,
+    [printingId]
+  );
+  if (!row) return null;
+  const useFoil = isFoil && row.foil_price != null;
+  const price = useFoil ? row.foil_price : row.normal_price;
+  return {
+    printingId: row.id,
+    name: row.name,
+    setCode: row.set_code,
+    collectorNumber: row.collector_number,
+    rarity: row.rarity,
+    imageUrl: row.image_url,
+    isFoil: !!isFoil,
+    quantity,
+    price: price ?? null,
+    priceType: price == null ? null : (useFoil ? 'foil' : 'normal'),
+  };
+}
 
 // A card can lead a Commander deck if it's a legendary creature, or its
 // Oracle text explicitly grants that (backgrounds' partners, some
@@ -106,6 +145,7 @@ export function getInventory(userIds, filters = {}) {
     availability = 'all', // 'all', 'available', 'in_decks', 'lent_out'
     commander = 'all', // 'all', 'eligible'
     condition = 'all', // 'all', 'unrecorded', or a code: NM, LP, MP, HP, DMG
+    rarity = 'all', // 'all' or an MTGJSON rarity: common, uncommon, rare, mythic, special, bonus
     page = 1,
     limit = 50
   } = filters;
@@ -277,6 +317,22 @@ export function getInventory(userIds, filters = {}) {
     countSql += clause;
     params.push(...scope.params, code);
     countParams.push(...scope.params, code);
+  }
+
+  // Rarity filter: cards with at least one owned printing at that rarity.
+  // Rarity belongs to the printing, not the card — a common reprinted as a
+  // mythic showcase is either, depending on which copy you hold.
+  if (rarity !== 'all') {
+    const clause = ` AND c.id IN (
+      SELECT p4.card_id
+      FROM owned_printings op4
+      JOIN printings p4 ON op4.printing_id = p4.id
+      WHERE op4.user_id ${scope.clause} AND p4.rarity = ?
+    )`;
+    sql += clause;
+    countSql += clause;
+    params.push(...scope.params, rarity);
+    countParams.push(...scope.params, rarity);
   }
 
   // Availability filter. This has to be part of the query rather than a pass
@@ -608,7 +664,7 @@ function fuzzyCardIdsByName(normalizedQuery, limit) {
  * ("urzas tower", "jotun grunt"). If that finds nothing, falls back to an
  * edit-distance pass that forgives a typo or two.
  */
-export function searchCardsForInventoryAdd(userId, query, limit = 10) {
+export function searchCardsForInventoryAdd(userId, query, limit = 10, rarity = null) {
   if (!query || query.trim().length < 2) {
     return [];
   }
@@ -618,16 +674,23 @@ export function searchCardsForInventoryAdd(userId, query, limit = 10) {
     return [];
   }
 
+  // These results are cards, not printings, so a rarity means "printed at
+  // that rarity at least once".
+  const rarityClause = rarity
+    ? 'AND EXISTS (SELECT 1 FROM printings rp WHERE rp.card_id = c.id AND rp.rarity = ?)'
+    : '';
+  const rarityParams = rarity ? [rarity] : [];
+
   const cards = db.all(`
     SELECT ${INVENTORY_SEARCH_COLUMNS}
     FROM cards c
-    WHERE c.name_normalized LIKE ?
+    WHERE c.name_normalized LIKE ? ${rarityClause}
     ORDER BY
       CASE WHEN c.name_normalized LIKE ? THEN 0 ELSE 1 END,
       LENGTH(c.name),
       c.name
     LIMIT ?
-  `, [userId, `%${normalizedQuery}%`, `${normalizedQuery}%`, limit]);
+  `, [userId, `%${normalizedQuery}%`, ...rarityParams, `${normalizedQuery}%`, limit]);
 
   if (cards.length > 0) {
     return cards;
@@ -644,8 +707,8 @@ export function searchCardsForInventoryAdd(userId, query, limit = 10) {
   const matches = db.all(`
     SELECT ${INVENTORY_SEARCH_COLUMNS}
     FROM cards c
-    WHERE c.id IN (${placeholders})
-  `, [userId, ...ids]);
+    WHERE c.id IN (${placeholders}) ${rarityClause}
+  `, [userId, ...ids, ...rarityParams]);
 
   // Restore the ranking the fuzzy pass worked out; SQL gave it back in id order.
   const order = new Map(ids.map((id, index) => [id, index]));
@@ -820,7 +883,11 @@ export function bulkAddToInventory(userId, items, context = {}) {
   const results = {
     added: 0,
     failed: 0,
-    errors: []
+    errors: [],
+    // One entry per line that landed, priced, for the receipt. Lines are kept
+    // separate rather than merged by printing: the receipt reads back what
+    // was entered, and two lines of the same card are two things somebody typed.
+    cards: []
   };
 
   // A batch id ties every row of one paste together, so a hundred-line import
@@ -905,6 +972,8 @@ export function bulkAddToInventory(userId, items, context = {}) {
       });
 
       results.added += quantity;
+      const described = describeAddedPrinting(printing.id, isFoil, quantity);
+      if (described) results.cards.push({ ...described, condition });
     } catch (error) {
       results.failed++;
       results.errors.push({ cardName: item.cardName, error: error.message });
@@ -1095,6 +1164,12 @@ export function bulkRemoveFromInventory(userId, items, context = {}) {
  *              printing, which is what a paste into Moxfield or a deck list
  *              wants, since those care about the card and not the art.
  *
+ *   'moxfield' Moxfield's collection CSV, the columns of their own "haves"
+ *              export, so it uploads through Moxfield's collection import.
+ *              One row per owned row, like 'precise'. See `moxfieldCsv`.
+ *   'manabox'  ManaBox's collection CSV, the columns of their own export.
+ *              One row per owned row. See `manaboxCsv`.
+ *
  * Foils stay on their own line in **both** shapes, marked `*F*`. Finish is half
  * the unique key of `owned_printings`, so folding a foil in with its non-foil
  * would not merely lose a detail — it would re-import as the wrong rows.
@@ -1107,10 +1182,17 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
       p.collector_number,
       op.is_foil,
       op.condition,
-      op.quantity
+      op.quantity,
+      op.updated_at,
+      op.created_at,
+      p.language,
+      p.rarity,
+      p.scryfall_id,
+      s.name AS set_name
     FROM owned_printings op
     JOIN printings p ON op.printing_id = p.id
     JOIN cards c ON p.card_id = c.id
+    LEFT JOIN sets s ON s.code = p.set_code
     WHERE op.user_id = ? AND op.quantity > 0
       ${condition === 'all' ? '' : 'AND op.condition = ?'}
     ORDER BY c.name COLLATE NOCASE, p.set_code, p.collector_number, op.is_foil, op.condition
@@ -1122,6 +1204,13 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
   // and finish, where a single condition would be a claim they cannot make.
   const conditionMark = (code) => (code ? ` *${code}*` : '');
   let lines;
+
+  if (shape === 'moxfield' || shape === 'manabox') {
+    const copies = rows.reduce((sum, row) => sum + row.quantity, 0);
+    const cards = new Set(rows.map((row) => row.name)).size;
+    const text = shape === 'moxfield' ? moxfieldCsv(rows) : manaboxCsv(rows);
+    return { shape, text, lines: rows.length, cards, copies };
+  }
 
   if (shape === 'simple') {
     // Summed per card and finish. A Map preserves the ORDER BY above, so the
@@ -1162,6 +1251,142 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
     cards,
     copies,
   };
+}
+
+const MOXFIELD_COLUMNS = [
+  'Count', 'Tradelist Count', 'Name', 'Edition', 'Condition', 'Language', 'Foil',
+  'Tags', 'Last Modified', 'Collector Number', 'Alter', 'Proxy', 'Purchase Price',
+];
+
+// `printings.language` may hold a code (the column defaults to 'en');
+// Moxfield wants the name. Anything else passes through as stored.
+const MOXFIELD_LANGUAGES = {
+  en: 'English', es: 'Spanish', fr: 'French', de: 'German', it: 'Italian',
+  pt: 'Portuguese', ja: 'Japanese', ko: 'Korean', ru: 'Russian',
+  zhs: 'Chinese Simplified', zht: 'Chinese Traditional',
+};
+
+/**
+ * Rows as Moxfield's collection CSV, matching the header of a file exported
+ * from Moxfield itself — every field quoted, as theirs are.
+ *
+ * Moxfield has no "not recorded" condition, so an unrecorded copy goes out as
+ * Near Mint, which is also what Moxfield assumes for a new card. Tradelist
+ * Count is 0: an export is not a decision to offer the whole collection for
+ * trade. No `//` header — it would be read as a card row.
+ */
+function moxfieldCsv(rows) {
+  const quote = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const lines = rows.map((row) => [
+    row.quantity,
+    0,
+    row.name,
+    String(row.set_code).toLowerCase(),
+    conditionLabel(row.condition) || 'Near Mint',
+    MOXFIELD_LANGUAGES[row.language] || row.language || 'English',
+    row.is_foil ? 'foil' : '',
+    '',
+    row.updated_at ? `${row.updated_at}.000000` : '',
+    row.collector_number || '',
+    'False',
+    'False',
+    '',
+  ].map(quote).join(','));
+  return [MOXFIELD_COLUMNS.map(quote).join(','), ...lines].join('\n');
+}
+
+const MANABOX_COLUMNS = [
+  'Name', 'Set code', 'Set name', 'Collector number', 'Foil', 'Rarity', 'Quantity',
+  'ManaBox ID', 'Scryfall ID', 'Purchase price', 'Misprint', 'Altered', 'Signed',
+  'Condition', 'Language', 'Proxy', 'Purchase price currency', 'Added',
+];
+
+const MANABOX_CONDITIONS = {
+  NM: 'near_mint', LP: 'lightly_played', MP: 'moderately_played', HP: 'heavily_played', DMG: 'damaged',
+};
+
+/**
+ * Rows as ManaBox's collection CSV, matching the header of a file exported
+ * from ManaBox — quoted only where a field needs it, as theirs are.
+ *
+ * ManaBox ID is ManaBox's own catalogue number, which we do not have; the
+ * Scryfall ID beside it is what identifies the printing. Unrecorded condition
+ * goes out as near_mint (ManaBox has no "unknown"), and purchase price is
+ * blank because we do not record what was paid.
+ */
+function manaboxCsv(rows) {
+  const field = (value) => {
+    const text = String(value ?? '');
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  // SQLite's CURRENT_TIMESTAMP is UTC without a zone; ManaBox writes ISO with Z.
+  const iso = (stamp) => (stamp ? `${String(stamp).replace(' ', 'T')}.000Z` : '');
+  const lines = rows.map((row) => [
+    row.name,
+    String(row.set_code).toUpperCase(),
+    row.set_name || '',
+    row.collector_number || '',
+    row.is_foil ? 'foil' : 'normal',
+    row.rarity || '',
+    row.quantity,
+    '',
+    row.scryfall_id || '',
+    '',
+    'false',
+    'false',
+    'false',
+    MANABOX_CONDITIONS[row.condition] || 'near_mint',
+    row.language || 'en',
+    'false',
+    '',
+    iso(row.created_at),
+  ].map(field).join(','));
+  return [MANABOX_COLUMNS.join(','), ...lines].join('\n');
+}
+
+/**
+ * Regrade many rows at once: the chosen cards (`cardIds`), or the whole
+ * collection when `cardIds` is null.
+ *
+ * By default only copies with **no condition recorded** move. That is the
+ * "my collection is new, call it all Near Mint" case, and it must not undo
+ * grading someone already did by hand — a card they marked LP stays LP.
+ * `overwrite` regrades every row instead.
+ *
+ * Each row goes through `changeOwnedCondition`, the same path as the card
+ * page's dropdown, so merging and the audit trail behave identically; one
+ * `batchId` covers the lot so the audit page can show it as a unit.
+ */
+export function setConditionForCards(userId, { cardIds = null, to, overwrite = false } = {}) {
+  const dest = normalizeCondition(to, { strict: true });
+  const batchId = `set-condition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const ids = cardIds === null
+    ? null
+    : [...new Set(cardIds.map((id) => parseInt(id, 10)).filter(Number.isInteger))];
+  if (ids && ids.length === 0) return { rows: 0, copies: 0, batchId };
+
+  const rows = db.all(`
+    SELECT op.printing_id, op.is_foil, op.condition, op.quantity
+      FROM owned_printings op
+      JOIN printings p ON p.id = op.printing_id
+     WHERE op.user_id = ? AND op.quantity > 0 AND op.condition != ?
+       ${overwrite ? '' : "AND op.condition = ''"}
+       ${ids ? `AND p.card_id IN (${ids.map(() => '?').join(',')})` : ''}
+  `, [userId, dest, ...(ids || [])]);
+
+  let copies = 0;
+  db.transaction(() => {
+    for (const row of rows) {
+      changeOwnedCondition(userId, row.printing_id, !!row.is_foil, row.condition, dest, {
+        source: 'bulk_condition',
+        detail: { batchId },
+      });
+      copies += row.quantity;
+    }
+  });
+
+  return { rows: rows.length, copies, batchId };
 }
 
 /**
@@ -1255,16 +1480,28 @@ const BEST_OWNED_COPY = (column) => `(
  * committed count hands those copies back, and `in_deck` says which ones they
  * are so the ranking can prefer leaving them where they are.
  */
-export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId = null } = {}) {
+export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId = null, releaseDeckIds = [] } = {}) {
   // `available` is computed in an outer select because SQLite cannot see one
   // column alias from another expression in the same SELECT list, and both
   // `owned` and `committed` are needed to work it out.
-  const available = includeCommitted ? 'owned' : 'owned - committed';
+  // Lent copies come off in both modes. "Use cards in my other decks" is
+  // about borrowing from yourself; a copy on loan is in somebody else's
+  // hands, and a deck proposed around it cannot be sleeved.
+  const available = includeCommitted ? 'owned - lent' : 'owned - committed - lent';
 
   // Two clauses rather than one binding used twice: SQLite takes bindings
   // positionally here, and a clause that vanishes has to take its binding
   // with it.
   const notThisDeck = exceptDeckId == null ? '' : 'AND d.id != ?';
+
+  // Decks the user has said may be raided, for the in-between reading: a
+  // half-built deck whose cards were never pulled costs nothing to borrow
+  // from, while a sleeved one does. Their copies stop counting as committed,
+  // exactly like the deck being revised. Meaningless when everything is open.
+  const released = includeCommitted
+    ? []
+    : [...new Set((releaseDeckIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  const notReleased = released.length ? `AND d.id NOT IN (${released.map(() => '?').join(',')})` : '';
 
   return db.all(`
     SELECT *, ${available} AS available FROM (
@@ -1299,6 +1536,7 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
            AND dp.card_id = c.id
            AND ${deckPrioritySql('d')} <= ${DECK_PRIORITY.idea}
            ${notThisDeck}
+           ${notReleased}
       ), 0) AS committed,
       -- Copies of this card already in the deck being revised, mainboard and
       -- sideboard alike. Zero for every card when nothing is being revised.
@@ -1309,6 +1547,14 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
          WHERE dc.deck_id = ?
            AND dp.card_id = c.id
       ), 0)`} AS in_deck,
+      COALESCE((
+        SELECT SUM(cl.quantity)
+          FROM card_loans cl
+          JOIN printings lp ON lp.uuid = cl.printing_uuid
+         WHERE cl.lender_user_id = ?
+           AND lp.card_id = c.id
+           AND cl.status IN ${LIVE_LOANS}
+      ), 0) AS lent,
       COALESCE(SUM(op.quantity), 0) AS owned
     FROM cards c
     JOIN printings p ON p.card_id = c.id
@@ -1325,8 +1571,9 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
   // two deck ids are conditional and drop out together with their clauses.
   [
     userId, userId, userId,
-    userId, ...(exceptDeckId == null ? [] : [exceptDeckId]),
+    userId, ...(exceptDeckId == null ? [] : [exceptDeckId]), ...released,
     ...(exceptDeckId == null ? [] : [exceptDeckId]),
+    userId, // lent out
     userId,
   ]);
 }
@@ -1363,8 +1610,8 @@ const IS_BASIC_LAND = isBasicLandSql('c');
  *
  * Ends with an `availability` table holding one row per printing-and-finish,
  * carrying enough card detail to render a list without a second query.
- * Expects six leading parameters, in order:
- *   userId, userId, currentDeckId, currentDeckId, userId, userId
+ * Expects seven leading parameters, in order:
+ *   userId, userId, currentDeckId, currentDeckId, userId, userId (lent), userId
  */
 const AVAILABILITY_CTE = `
   WITH keys AS (
@@ -1384,6 +1631,17 @@ const AVAILABILITY_CTE = `
       JOIN decks d ON d.id = dc.deck_id
      WHERE d.user_id = ?
      GROUP BY dc.printing_id, dc.is_foil
+  ),
+  -- Copies lent out on a live loan. Still owned, but not in the box, so they
+  -- come off \`free\` the same way copies in other decks do — otherwise the
+  -- builder offers a card that is sitting in somebody else's deck.
+  lent AS (
+    SELECT lp.id AS printing_id, cl.is_foil, SUM(cl.quantity) AS lent
+      FROM card_loans cl
+      JOIN printings lp ON lp.uuid = cl.printing_uuid
+     WHERE cl.lender_user_id = ?
+       AND cl.status IN ${LIVE_LOANS}
+     GROUP BY lp.id, cl.is_foil
   ),
   availability AS (
     SELECT
@@ -1408,6 +1666,7 @@ const AVAILABILITY_CTE = `
       COALESCE(o.quantity, 0)     AS owned,
       COALESCE(u.committed, 0)    AS committed,
       COALESCE(u.in_this_deck, 0) AS in_this_deck,
+      COALESCE(l.lent, 0)         AS lent,
       CASE WHEN ${IS_BASIC_LAND} THEN 1 ELSE 0 END AS is_basic_land
     FROM keys k
     JOIN printings p ON p.id = k.printing_id
@@ -1416,13 +1675,15 @@ const AVAILABILITY_CTE = `
       ON o.user_id = ? AND o.printing_id = k.printing_id AND o.is_foil = k.is_foil
     LEFT JOIN usage u
       ON u.printing_id = k.printing_id AND u.is_foil = k.is_foil
+    LEFT JOIN lent l
+      ON l.printing_id = k.printing_id AND l.is_foil = k.is_foil
   )
 `;
 
 /** -1 never matches a real deck id, so a null deckId needs no NULL handling. */
 function availabilityParams(userId, deckId) {
   const currentDeck = deckId ?? -1;
-  return [userId, userId, currentDeck, currentDeck, userId, userId];
+  return [userId, userId, currentDeck, currentDeck, userId, userId, userId];
 }
 
 /** Shape one availability row for callers. */
@@ -1439,8 +1700,9 @@ function toAvailability(row) {
     owned: row.owned,
     committed: row.committed,
     inThisDeck: row.in_this_deck,
+    lent: row.lent || 0,
     // Negative means over-allocated across decks — reported, never blocked.
-    free: unlimited ? null : row.owned - row.committed - row.in_this_deck,
+    free: unlimited ? null : row.owned - row.committed - row.in_this_deck - (row.lent || 0),
     unlimited
   };
 }
@@ -1544,12 +1806,14 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
     subtype,
     text,
     ability,
+    rarity,
     colors = [],
     colorIdentity,
     maxCmc,
     onlyFree = false,
     format,
     role,
+    fitThemes = null,
     page = 1,
     limit = 60
   } = filters;
@@ -1568,6 +1832,12 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   if (type && type.trim() && type !== 'all') {
     where.push('type_line LIKE ?');
     params.push(`%${type}%`);
+  }
+
+  // Rarity of the printing, so a card is offered at the rarity it is held in.
+  if (rarity && rarity !== 'all') {
+    where.push('rarity = ?');
+    params.push(rarity);
   }
 
   const builderSubtypeFilter = subtypeFilterSql(subtype ? [subtype] : [], '');
@@ -1618,7 +1888,7 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   }
 
   if (onlyFree) {
-    where.push('(is_basic_land = 1 OR owned - committed - in_this_deck > 0)');
+    where.push('(is_basic_land = 1 OR owned - committed - in_this_deck - lent > 0)');
   }
 
   if (format && format.trim()) {
@@ -1667,6 +1937,13 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
 
   const offset = (page - 1) * limit;
 
+  if (fitThemes && fitThemes.length > 0) {
+    return fitFeed(db.all(
+      `${AVAILABILITY_CTE} SELECT * FROM availability ${whereSql}`,
+      [...baseParams, ...queryParams]
+    ), fitThemes, { page, limit });
+  }
+
   const rows = db.all(
     `${AVAILABILITY_CTE}
      SELECT * FROM availability
@@ -1677,23 +1954,93 @@ export function getBuilderInventory(userId, deckId, filters = {}) {
   );
 
   return {
-    items: rows.map((row) => ({
-      ...toAvailability(row),
-      manaCost: row.mana_cost,
-      cmc: row.cmc,
-      colors: row.colors,
-      colorIdentity: row.color_identity,
-      typeLine: row.type_line,
-      oracleText: row.oracle_text,
-      rarity: row.rarity,
-      imageUrl: row.image_url
-    })),
+    items: rows.map(builderItem),
     total,
     page,
     limit,
     totalPages: Math.max(1, Math.ceil(total / limit))
   };
 }
+
+/** The shape the builder panel renders one row as. */
+function builderItem(row) {
+  return {
+    ...toAvailability(row),
+    manaCost: row.mana_cost,
+    cmc: row.cmc,
+    colors: row.colors,
+    colorIdentity: row.color_identity,
+    typeLine: row.type_line,
+    oracleText: row.oracle_text,
+    rarity: row.rarity,
+    imageUrl: row.image_url
+  };
+}
+
+/**
+ * The panel's "fits this deck" order: owned cards scored against the deck's
+ * themes, best first.
+ *
+ * Scored the way the generator ranks a pool — the main theme counts double, so
+ * a card serving both themes beats one serving either — and with the reason
+ * spelled out per theme, because these are regular expressions over card text
+ * and the person adding the card should be able to see what was matched.
+ *
+ * One row per card, not per printing: six printings of Thought Scour are one
+ * suggestion. The printing kept is the one with the most copies free, so the
+ * plus button spends a copy that is actually spare. Cards already in this deck
+ * and cards fitting neither theme are left out — this is a list of what to
+ * add. Paginated here rather than in SQL because the order is computed here.
+ */
+function fitFeed(rows, themes, { page, limit }) {
+  const scored = new Map();
+
+  for (const row of rows) {
+    if (row.in_this_deck > 0 || row.is_basic_land) continue;
+
+    const card = { ...row, name: row.card_name };
+    const roles = themes.map((theme) => themeRole(card, theme));
+    const score = roles.reduce((sum, role, i) => sum + (role ? FIT_WEIGHT[role] * (i === 0 ? 2 : 1) : 0), 0);
+    if (score === 0) continue;
+
+    const item = builderItem(row);
+    const seen = scored.get(row.card_id);
+    if (seen && seen.item.free >= item.free) continue;
+
+    scored.set(row.card_id, {
+      score,
+      item: {
+        ...item,
+        fit: {
+          score,
+          reasons: themes
+            .map((theme, i) => (roles[i] ? { label: theme.label, role: roles[i] } : null))
+            .filter(Boolean)
+        }
+      }
+    });
+  }
+
+  const ordered = [...scored.values()].sort((a, b) =>
+    b.score - a.score
+    // A card with a spare copy before one that would have to come out of
+    // another deck.
+    || Number(b.item.free > 0) - Number(a.item.free > 0)
+    || (a.item.cmc ?? 0) - (b.item.cmc ?? 0)
+    || String(a.item.cardName).localeCompare(String(b.item.cardName)));
+
+  const total = ordered.length;
+  return {
+    items: ordered.slice((page - 1) * limit, page * limit).map((entry) => entry.item),
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit))
+  };
+}
+
+/** Same weights as synergyScore: a card that is both is worth most. */
+const FIT_WEIGHT = { both: 3, payoff: 2, enabler: 1 };
 
 /**
  * What a collection wipe would take, without taking it.

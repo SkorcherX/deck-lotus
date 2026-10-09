@@ -32,12 +32,34 @@
 import api from '../services/api.js';
 import { showToast, showError } from '../utils/ui.js';
 import { zoomButton } from '../utils/cardZoom.js';
+import { savedPool, savePool, saveRaidChoice, raidDeckIds, raidDecksHtml } from './raidDecks.js';
 
 let proposal = null;
 let commanders = [];
 let themes = [];
 let revisable = [];
 let wired = false;
+
+// The revised deck's own cards, and which of them are kept. Kept is reset
+// when the deck changes: a tick against one deck means nothing on another.
+let keepCards = [];
+let keepDeckId = null;
+const kept = new Set();
+
+// The revised deck's saved plan, and which deck it has already been applied
+// to — applied once, when the deck is picked, so it never fights the person
+// changing things afterwards.
+let deckPlan = null;
+let planAppliedFor = null;
+
+// Custom themes the page is carrying, as keys. Sent with every theme request
+// so they are measured in the current colours; replaced by the canonical keys
+// the server sends back, so a key here always matches a tile.
+let customKeys = [];
+
+/** A custom theme key from the two phrases — the server canonicalises it. */
+const rawCustomKey = (payoff, enabler) =>
+  `custom:${encodeURIComponent(payoff.trim())}|${encodeURIComponent(enabler.trim())}`;
 
 const $ = (id) => document.getElementById(id);
 
@@ -47,7 +69,28 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-const includeCommitted = () => Boolean($('generate-include-committed')?.checked);
+/**
+ * May the proposal use cards other decks hold? Off unless chosen, and the
+ * choice is remembered per browser (see raidDecks.js), shared with Mimic.
+ */
+const poolChoice = () =>
+  document.querySelector('input[name="generate-pool"]:checked')?.value || 'free';
+const includeCommitted = () => poolChoice() === 'all';
+
+function restorePoolChoice() {
+  const radio = document.querySelector(`input[name="generate-pool"][value="${savedPool()}"]`);
+  if (radio) radio.checked = true;
+}
+
+/** Deck ids whose cards count as free, or [] unless "decks I pick" is chosen. */
+const releaseDeckIds = () => (poolChoice() === 'picked' ? raidDeckIds(revisable) : []);
+
+function renderRaidDecks() {
+  const box = $('generate-raid-decks');
+  if (!box) return;
+  box.classList.toggle('hidden', poolChoice() !== 'picked');
+  box.innerHTML = raidDecksHtml(revisable, escapeHtml);
+}
 
 /** Is the page proposing a revision of an existing deck? */
 const isRevising = () =>
@@ -69,6 +112,36 @@ const isCommander = () => chosenFormat() === 'commander';
 /** The colours ticked, as a bare identity string. */
 const chosenColors = () => [...document.querySelectorAll('.generate-color:checked')]
   .map((box) => box.value).join('');
+
+/**
+ * Colours ticked beyond the deck's own, when revising. The deck's colours are
+ * shown ticked and locked, so only the extras count as a splash.
+ */
+const splashColors = () => [...document.querySelectorAll('.generate-splash:checked:not(:disabled)')]
+  .map((box) => box.value).join('');
+
+/**
+ * Show the deck's colours as fixed and the rest as splash options. Hidden for
+ * a commander deck: its identity is a rule of the format, not a choice.
+ */
+function renderSplash() {
+  const group = $('generate-splash-group');
+  if (!group) return;
+  const deck = revisingDeck();
+  const show = isRevising() && deck && !deck.commanderName;
+  group.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  const own = deck.colorIdentity || '';
+  document.querySelectorAll('.generate-splash').forEach((box) => {
+    const locked = own.includes(box.value);
+    box.disabled = locked;
+    if (locked) box.checked = true;
+    else if (box.dataset.deckId !== String(deck.id)) box.checked = false;
+    box.dataset.deckId = String(deck.id);
+    box.closest('label').title = locked ? 'Already in this deck' : 'Splash this colour';
+  });
+}
 
 /** The colours the commander gallery is being filtered down to. */
 const galleryColors = () => [...document.querySelectorAll('.generate-commander-color:checked')]
@@ -95,6 +168,240 @@ function applyFormat() {
 
   $('generate-revise-group')?.classList.toggle('hidden', !revising);
   renderRevisionNote();
+  renderSplash();
+  renderPlanNote();
+  loadKeepCards();
+}
+
+/**
+ * The deck's mainboard as a checklist. The commander and basics are left off:
+ * the commander is never proposed away, and basics are rebuilt every time.
+ */
+async function loadKeepCards() {
+  const group = $('generate-keep-group');
+  if (!group) return;
+  const deckId = revisingDeckId();
+  group.classList.toggle('hidden', !deckId);
+  if (!deckId || deckId === keepDeckId) return;
+
+  keepDeckId = deckId;
+  kept.clear();
+  keepCards = [];
+  deckPlan = null;
+  planAppliedFor = null;
+  renderKeepCards();
+  renderPlanNote();
+
+  try {
+    const { deck } = await api.getDeck(deckId);
+    if (keepDeckId !== deckId) return;
+    const byCard = new Map();
+    for (const row of deck.cards || []) {
+      if (row.board_type !== 'mainboard' || row.is_commander) continue;
+      if (/\bBasic\b/.test(row.type_line || '') && /\bLand\b/.test(row.type_line || '')) continue;
+      const seen = byCard.get(row.card_id);
+      if (seen) seen.quantity += row.quantity;
+      else {
+        byCard.set(row.card_id, {
+          cardId: row.card_id,
+          name: row.name,
+          quantity: row.quantity,
+          typeLine: row.type_line || '',
+          imageUrl: row.image_url || null,
+        });
+      }
+    }
+    keepCards = [...byCard.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+    // The plan's kept cards are names; tick whichever of them the deck still
+    // lists. One that has since left the deck simply is not offered.
+    deckPlan = deck.plan || null;
+    if (deckPlan) {
+      // A plan built on a custom theme brings it back as a tile.
+      for (const key of [deckPlan.themeKey, deckPlan.secondaryThemeKey]) {
+        if (key && key.startsWith('custom:') && !customKeys.includes(key)) customKeys.push(key);
+      }
+      const names = new Set(deckPlan.keep || []);
+      for (const c of keepCards) if (names.has(c.name)) kept.add(c.cardId);
+      if (deckPlan.secondaryShare && $('generate-share')) {
+        $('generate-share').value = String(Math.round(deckPlan.secondaryShare * 100));
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load the deck to keep cards from:', error);
+  }
+  renderKeepCards();
+  renderPlanNote();
+  // Themes may have loaded before the plan did; measure again with the kept
+  // cards in, so the plan's themes are offered and picked.
+  if (deckPlan) loadThemes();
+}
+
+/** A theme key as its label, from the themes on offer. */
+const themeLabel = (key) => themes.find((t) => t.key === key)?.label || key;
+
+/** What is saved for this deck, said back in words. */
+function renderPlanNote() {
+  const group = $('generate-plan-group');
+  const note = $('generate-plan-note');
+  if (!group || !note) return;
+  const show = isRevising() && Boolean(revisingDeckId());
+  group.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  if (!deckPlan) {
+    note.textContent = 'No plan saved for this deck yet. Saving one makes these choices '
+      + 'the starting point next time, and ranks "Fits this deck" in the deck builder by them.';
+    return;
+  }
+  const parts = [];
+  if (deckPlan.themeKey) {
+    parts.push(`built around ${themeLabel(deckPlan.themeKey)}`
+      + (deckPlan.secondaryThemeKey
+        ? ` with ${Math.round((deckPlan.secondaryShare ?? 1 / 3) * 100)}% ${themeLabel(deckPlan.secondaryThemeKey)}`
+        : ''));
+  }
+  if (deckPlan.keep?.length) parts.push(`keeping ${deckPlan.keep.length} card${deckPlan.keep.length === 1 ? '' : 's'}`);
+  note.textContent = `This deck's plan: ${parts.join(', ')}.`;
+}
+
+/**
+ * Add the typed theme as a tile and pick it: as the main theme when none is
+ * picked, otherwise as the second. Typing a theme is a statement that it is
+ * wanted, so it should not then have to be found and pressed as well.
+ */
+async function addCustomTheme() {
+  const payoff = $('generate-custom-payoff')?.value || '';
+  const enabler = $('generate-custom-enabler')?.value || '';
+  if (!payoff.trim()) {
+    showToast('Type what the payoff cards say first', 'warning');
+    return;
+  }
+
+  const before = new Set(customKeys);
+  customKeys = [...customKeys, rawCustomKey(payoff, enabler)];
+  await loadThemes();
+
+  const added = customKeys.find((key) => !before.has(key));
+  const tile = themes.find((t) => t.key === added);
+  if (!tile) {
+    showToast(added === undefined ? 'That theme is already on the list' : 'Could not read that theme', 'warning');
+    return;
+  }
+
+  if (!mainTheme()) selectThemes(added);
+  else if (mainTheme() !== added) selectThemes(mainTheme(), added);
+  resetResult();
+  $('generate-custom-payoff').value = '';
+  $('generate-custom-enabler').value = '';
+  showToast(tile.strength > 0
+    ? `Added — ${tile.payoffs} ${tile.payoffName} in these colours`
+    : 'Added, but nothing you own in these colours matches it yet', tile.strength > 0 ? 'success' : 'warning');
+}
+
+function removeCustomTheme(key) {
+  customKeys = customKeys.filter((k) => k !== key);
+  if (mainTheme() === key) selectThemes(secondTheme());
+  else if (secondTheme() === key) selectThemes(mainTheme());
+  resetResult();
+  loadThemes();
+}
+
+async function savePlan() {
+  const deckId = revisingDeckId();
+  if (!deckId) return;
+  const button = $('generate-save-plan');
+  if (button) button.disabled = true;
+  try {
+    const { plan } = await api.saveDeckPlan(deckId, {
+      themeKey: mainTheme() || null,
+      secondaryThemeKey: secondTheme() || null,
+      secondaryShare: secondTheme() ? secondShare() : null,
+      keep: keepCards.filter((c) => kept.has(c.cardId)).map((c) => c.name),
+    });
+    deckPlan = plan;
+    planAppliedFor = deckId;
+    renderPlanNote();
+    showToast(plan ? "Saved as this deck's plan" : 'Nothing chosen, so the plan was cleared', 'success');
+  } catch (error) {
+    showError(error.body?.error || error.message || 'Could not save the plan');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+/**
+ * The deck's cards as tiles, in a fixed alphabetical order.
+ *
+ * Ticking a card never moves it. It used to jump to the top of the list,
+ * which read as the card vanishing from under the pointer; now the tile stays
+ * put and lights up, and the "Keeping" chips above the grid are where the
+ * kept cards are gathered — always all of them, whatever the filter shows.
+ */
+function renderKeepCards() {
+  const list = $('generate-keep-list');
+  if (!list) return;
+  const filter = ($('generate-keep-filter')?.value || '').trim().toLowerCase();
+
+  const rows = keepCards.filter((c) => !filter || c.name.toLowerCase().includes(filter)
+    || c.typeLine.toLowerCase().includes(filter));
+
+  list.innerHTML = rows.length === 0
+    ? '<div class="generator-empty">No cards to show.</div>'
+    : rows.map((c) => `
+      <label class="generator-keep-tile${kept.has(c.cardId) ? ' is-kept' : ''}" data-card-id="${c.cardId}"
+             title="${escapeHtml(c.typeLine)}">
+        <span class="generator-keep-art">
+          ${c.imageUrl
+            ? `<img src="${escapeHtml(c.imageUrl)}" alt="" loading="lazy" />`
+            : `<span class="generator-keep-noart">${escapeHtml(c.name)}</span>`}
+          <input type="checkbox" class="generate-keep" value="${c.cardId}"
+                 aria-label="Keep ${escapeHtml(c.name)}" ${kept.has(c.cardId) ? 'checked' : ''} />
+          ${/* After the checkbox, never before: a label forwards its clicks to the
+             first control inside it, and with the magnifier first a click on the
+             tile opened the enlarged card instead of ticking it. */ ''}
+          ${zoomButton(c.imageUrl, c.name)}
+          <span class="generator-keep-badge">Kept</span>
+        </span>
+        <span class="generator-keep-name">${c.quantity > 1 ? `${c.quantity}&times; ` : ''}${escapeHtml(c.name)}</span>
+      </label>`).join('');
+
+  renderKeptSummary();
+}
+
+/** The kept cards, gathered above the grid, each one removable. */
+function renderKeptSummary() {
+  const chips = $('generate-keep-chips');
+  if (chips) {
+    const keptCards = keepCards.filter((c) => kept.has(c.cardId));
+    chips.innerHTML = keptCards.length === 0
+      ? '<span class="generator-note">Nothing kept yet — tick a card below.</span>'
+      : `<span class="generator-keep-chips-label">Keeping:</span>${keptCards.map((c) => `
+        <button type="button" class="generator-keep-chip" data-card-id="${c.cardId}"
+                title="Stop keeping ${escapeHtml(c.name)}">${escapeHtml(c.name)} <span aria-hidden="true">&times;</span></button>`).join('')}`;
+  }
+
+  const head = $('generate-keep-group')?.querySelector('label');
+  if (head) head.textContent = kept.size ? `Cards to keep (${kept.size})` : 'Cards to keep';
+}
+
+/**
+ * Tick or untick one card. Updates the one tile and the chips in place, so
+ * the grid does not re-render under the pointer or lose its scroll position.
+ */
+function setKept(cardId, on) {
+  if (on) kept.add(cardId); else kept.delete(cardId);
+
+  const tile = $('generate-keep-list')?.querySelector(`.generator-keep-tile[data-card-id="${cardId}"]`);
+  if (tile) {
+    tile.classList.toggle('is-kept', on);
+    const box = tile.querySelector('.generate-keep');
+    if (box) box.checked = on;
+  }
+  renderKeptSummary();
+  resetResult();
+  // Which themes the kept cards belong to has changed with them.
+  loadThemes();
 }
 
 /** What the chosen deck is, said back to the person who chose it. */
@@ -147,6 +454,9 @@ function pullGroupKey(colorIdentity) {
  * anywhere, and a fresh Generate starts it empty again.
  */
 let pulled = new Set();
+
+/** Swaps (by index into proposal.revision.swaps) the person has unticked. */
+let rejected = new Set();
 
 /** A stable key for a proposal row, since neither name nor printing alone is unique. */
 const pullKey = (c) => `${c.printingId ?? 'basic'}:${c.name}:${c.isFoil ? 'f' : 'n'}`;
@@ -208,6 +518,7 @@ async function loadRevisableDecks() {
   try {
     const data = await api.getRevisableDecks();
     revisable = data.decks || [];
+    renderRaidDecks();
 
     if (revisable.length === 0) {
       select.innerHTML = '<option value="">You have no decks to revise yet</option>';
@@ -222,6 +533,8 @@ async function loadRevisableDecks() {
         ${escapeHtml(deck.name)} — ${escapeHtml(deck.format || 'no format')}, ${deck.cards} cards
       </option>`).join('');
     if (revisable.some((d) => String(d.id) === String(chosen))) select.value = chosen;
+    renderSplash();
+    loadKeepCards();
   } catch (error) {
     console.error('Failed to load decks to revise:', error);
     select.innerHTML = '<option value="">Could not load your decks</option>';
@@ -232,7 +545,18 @@ function wire() {
   // Changing any input invalidates whatever is on screen: leaving a proposal
   // visible under a commander it was not built for is how somebody saves the
   // wrong deck.
-  $('generate-include-committed')?.addEventListener('change', async () => {
+  restorePoolChoice();
+  document.querySelectorAll('input[name="generate-pool"]').forEach((radio) => radio.addEventListener('change', async () => {
+    savePool(radio.value);
+    renderRaidDecks();
+    resetResult();
+    await reload();
+  }));
+
+  $('generate-raid-decks')?.addEventListener('change', async (event) => {
+    const box = event.target.closest('input[type="checkbox"]');
+    if (!box) return;
+    saveRaidChoice(box.value, box.checked);
     resetResult();
     await reload();
   });
@@ -251,10 +575,32 @@ function wire() {
     });
   });
 
+  $('generate-keep-filter')?.addEventListener('input', renderKeepCards);
+  $('generate-keep-list')?.addEventListener('change', (event) => {
+    const box = event.target.closest('.generate-keep');
+    if (!box) return;
+    setKept(Number(box.value), box.checked);
+  });
+
+  $('generate-keep-chips')?.addEventListener('click', (event) => {
+    const chip = event.target.closest('.generator-keep-chip');
+    if (!chip) return;
+    setKept(Number(chip.dataset.cardId), false);
+  });
+
   $('generate-revise-deck')?.addEventListener('change', async () => {
     resetResult();
     renderRevisionNote();
+    renderSplash();
+    loadKeepCards();
     await loadThemes();
+  });
+
+  document.querySelectorAll('.generate-splash').forEach((box) => {
+    box.addEventListener('change', async () => {
+      resetResult();
+      await loadThemes();
+    });
   });
 
   // Filtering the gallery is not choosing anything, so it redraws the tiles
@@ -295,9 +641,27 @@ function wire() {
   });
 
   $('generate-theme-list')?.addEventListener('click', (event) => {
+    const remove = event.target.closest('[data-remove-custom]');
+    if (remove) {
+      removeCustomTheme(remove.dataset.removeCustom);
+      return;
+    }
     const tile = event.target.closest('.generator-theme');
     if (!tile) return;
-    selectTheme(tile.dataset.themeKey || '');
+    toggleTheme(tile.dataset.themeKey || '');
+    resetResult();
+  });
+
+  $('generate-save-plan')?.addEventListener('click', savePlan);
+  $('generate-custom-add')?.addEventListener('click', addCustomTheme);
+  for (const id of ['generate-custom-payoff', 'generate-custom-enabler']) {
+    $(id)?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); addCustomTheme(); }
+    });
+  }
+
+  $('generate-share')?.addEventListener('input', () => {
+    renderShareNote();
     resetResult();
   });
 
@@ -328,7 +692,7 @@ async function loadCommanders() {
 
   gallery.innerHTML = '<div class="generator-empty">Loading your commanders…</div>';
   try {
-    const data = await api.getGeneratorCommanders(includeCommitted());
+    const data = await api.getGeneratorCommanders(includeCommitted(), releaseDeckIds());
     commanders = data.commanders || [];
 
     if (commanders.length === 0) {
@@ -430,14 +794,63 @@ function renderCommanders() {
 
 // --- Themes ----------------------------------------------------------------
 
-function selectTheme(key) {
-  const field = $('generate-theme');
-  if (field) field.value = key || '';
+const mainTheme = () => $('generate-theme')?.value || '';
+
+/** The second theme's share of the theme slots, as a fraction. */
+const secondShare = () => Number($('generate-share')?.value || 35) / 100;
+
+/** Said in words, because "35%" of something unnamed means little. */
+function renderShareNote() {
+  const note = $('generate-share-note');
+  if (!note) return;
+  const pct = Math.round(secondShare() * 100);
+  const words = pct <= 15 ? 'a few cards of it'
+    : pct <= 25 ? 'about a fifth of the theme cards'
+      : pct <= 40 ? 'about a third of the theme cards'
+        : 'about as many as the main theme';
+  note.textContent = `${pct}% — ${words}. Whatever it cannot fill goes back to the main theme.`;
+}
+const secondTheme = () => $('generate-theme-secondary')?.value || '';
+
+/** Set both picks and redraw which tile is which. */
+function selectThemes(main, second = '') {
+  const m = main || '';
+  // A second theme only means something beside a first, and never the same one.
+  const s = m && second !== m ? (second || '') : '';
+  if ($('generate-theme')) $('generate-theme').value = m;
+  if ($('generate-theme-secondary')) $('generate-theme-secondary').value = s;
+  // Only a second theme has a share to set.
+  $('generate-share-group')?.classList.toggle('hidden', !s);
+  renderShareNote();
+
   document.querySelectorAll('.generator-theme').forEach((tile) => {
-    const selected = (tile.dataset.themeKey || '') === (key || '');
-    tile.classList.toggle('selected', selected);
-    tile.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    const key = tile.dataset.themeKey || '';
+    const isMain = key === m;
+    const isSecond = Boolean(s) && key === s;
+    tile.classList.toggle('selected', isMain || isSecond);
+    tile.classList.toggle('secondary', isSecond);
+    tile.setAttribute('aria-pressed', isMain || isSecond ? 'true' : 'false');
+    const badge = tile.querySelector('.generator-theme-pick');
+    if (badge) {
+      badge.textContent = isMain && key ? (s ? 'Main' : '') : isSecond ? 'Second' : '';
+      badge.classList.toggle('hidden', !badge.textContent);
+    }
   });
+}
+
+/**
+ * A click on a theme tile. The first theme picked is the main one; a second
+ * becomes the smaller share; picking a third replaces the second. Pressing a
+ * chosen tile again takes it off, and the "let it choose" tile clears both.
+ */
+function toggleTheme(key) {
+  const main = mainTheme();
+  const second = secondTheme();
+  if (!key) return selectThemes('');
+  if (key === main) return selectThemes(second);
+  if (key === second) return selectThemes(main);
+  if (!main) return selectThemes(key);
+  return selectThemes(main, key);
 }
 
 async function loadThemes() {
@@ -467,8 +880,14 @@ async function loadThemes() {
       identity: revising ? '' : chosenColors(),
       format: revising ? (revisingDeck()?.format || '') : chosenFormat(),
       reviseDeckId: revisingDeckId(),
+      splash: revising ? splashColors() : '',
+      keepCardIds: revising ? [...kept] : [],
+      releaseDeckIds: releaseDeckIds(),
+      customThemes: customKeys,
     });
     themes = data.themes || [];
+    // The server's spelling of each custom key, which is what the tiles carry.
+    customKeys = themes.filter((t) => t.custom).map((t) => t.key);
     renderThemes();
   } catch (error) {
     console.error('Failed to load themes:', error);
@@ -515,6 +934,11 @@ function renderThemes() {
               aria-pressed="false">
         <div class="generator-theme-head">
           <span class="generator-theme-label">${escapeHtml(theme.label)}</span>
+          ${theme.custom ? '<span class="generator-theme-custom-tag">yours</span>' : ''}
+          <span class="generator-theme-pick hidden"></span>
+          ${theme.custom ? `<span role="button" tabindex="0" class="generator-theme-remove"
+                 data-remove-custom="${escapeHtml(theme.key)}" title="Remove this theme"
+                 aria-label="Remove this theme">&times;</span>` : ''}
           ${theme.viable
             ? ''
             // Named rather than hidden. A thin theme is still buildable and
@@ -527,6 +951,11 @@ function renderThemes() {
           <span><strong>${theme.enablers}</strong> ${escapeHtml(theme.enablerName)}</span>
           <span><strong>${theme.payoffs}</strong> ${escapeHtml(theme.payoffName)}</span>
         </div>
+        ${theme.keptMatches && theme.keptMatches.length ? `
+          <div class="generator-theme-kept">
+            Fits ${theme.keptMatches.length} of the cards you are keeping:
+            ${theme.keptMatches.slice(0, 4).map((n) => escapeHtml(n)).join(', ')}${theme.keptMatches.length > 4 ? '…' : ''}
+          </div>` : ''}
         ${theme.examples && theme.examples.length ? `
           <div class="generator-theme-examples">
             e.g. ${theme.examples.slice(0, 4).map((n) => escapeHtml(n)).join(', ')}
@@ -542,8 +971,28 @@ function renderThemes() {
   // Whatever was chosen before, if it is still on offer. A theme that has gone
   // (the colours moved) falls back to letting the generator choose rather than
   // silently keeping a key nothing here shows.
-  const chosen = $('generate-theme')?.value || '';
-  selectTheme(themes.some((t) => t.key === chosen) ? chosen : '');
+  const offered = (key) => themes.some((t) => t.key === key);
+  let main = offered(mainTheme()) ? mainTheme() : '';
+  let second = offered(secondTheme()) ? secondTheme() : '';
+
+  // A saved plan is applied once, when its deck is picked: it is the owner's
+  // own earlier answer, so it beats any guess below.
+  const deckId = revisingDeckId();
+  if (deckPlan && deckId && planAppliedFor !== deckId && keepDeckId === deckId) {
+    planAppliedFor = deckId;
+    if (offered(deckPlan.themeKey)) {
+      main = deckPlan.themeKey;
+      second = offered(deckPlan.secondaryThemeKey) ? deckPlan.secondaryThemeKey : '';
+    }
+  }
+
+  // Kept cards are a statement about what the deck is. When nothing has been
+  // picked yet, the theme most of them belong to is picked for them — offered,
+  // and one press away from being taken back.
+  if (!main && !second && themes[0]?.keptMatches?.length) main = themes[0].key;
+  if (!main) second = '';
+  selectThemes(main, second);
+  renderPlanNote();
 }
 
 // --- Generating ------------------------------------------------------------
@@ -576,13 +1025,19 @@ async function run() {
       // are what the proposal is built to.
       format: revising ? null : chosenFormat(),
       themeKey: $('generate-theme')?.value || null,
+      secondaryThemeKey: secondTheme() || null,
+      secondaryShare: secondTheme() ? secondShare() : null,
       includeCommitted: includeCommitted(),
+      releaseDeckIds: releaseDeckIds(),
       identity: revising ? null : (chosenColors() || null),
       reviseDeckId: revisingDeckId(),
+      splash: revising ? (splashColors() || null) : null,
+      keepCardIds: revising ? [...kept] : [],
     });
 
     proposal = data.proposal;
     pulled = new Set();
+    rejected = new Set();
     render(proposal);
 
     // Named after what it was built from, because a list of decks called
@@ -644,10 +1099,12 @@ function renderRevision(revision) {
         What this would change about ${escapeHtml(revision.deckName)}
       </div>
       <div class="generate-note">
-        ${revision.keptCount} cards stay as they are. Saving keeps
+        ${revision.keptCount} cards stay as they are${revision.kept?.length
+          ? `, including the ${revision.kept.length} you chose to keep` : ''}. Saving keeps
         ${escapeHtml(revision.deckName)} exactly as it is and creates a separate deck
         from this proposal, so nothing is lost if you disagree with it.
       </div>
+      ${revision.swaps ? renderSwaps(revision) : `
       <div class="generate-columns">
         <div>
           <div class="generate-head">Add (${revision.added.length})</div>
@@ -657,8 +1114,67 @@ function renderRevision(revision) {
           <div class="generate-head">Cut (${revision.cut.length})</div>
           <ul>${list(revision.cut) || '<li>Nothing comes out.</li>'}</ul>
         </div>
-      </div>
+      </div>`}
     </div>`;
+}
+
+/**
+ * The revision as swaps, each one a decision of its own.
+ *
+ * A swap is ticked to take it. Unticking keeps the old card: the saved deck
+ * gets the cut card back in place of the one that would have replaced it.
+ * Nothing about the proposal itself changes, so the reasons and the list
+ * below stay what the generator actually said.
+ */
+function renderSwaps(revision) {
+  const line = (row) => `${row.quantity}&times; ${escapeHtml(row.name)}`;
+  const swaps = revision.swaps.map((swap, i) => `
+    <li class="generate-swap${rejected.has(i) ? ' is-rejected' : ''}">
+      <label>
+        <input type="checkbox" class="generate-swap-toggle" data-swap="${i}" ${rejected.has(i) ? '' : 'checked'} />
+        <span class="generate-swap-cards">
+          <span class="generate-swap-cut">${line(swap.cut)}</span>
+          <span class="generate-swap-arrow" aria-label="replaced by">&rarr;</span>
+          <span class="generate-swap-add">${escapeHtml(swap.add.name)}</span>
+        </span>
+      </label>
+      <div class="generate-swap-why">${swap.why.map(escapeHtml).join(' · ')}</div>
+    </li>`).join('');
+
+  const rest = (rows, label) => rows.length ? `
+    <div>
+      <div class="generate-head">${label} (${rows.length})</div>
+      <ul>${rows.map((row) => `<li>${line(row)}</li>`).join('')}</ul>
+    </div>` : '';
+
+  return `
+    ${revision.swaps.length ? `
+      <div class="generate-head">Swaps (${revision.swaps.length})</div>
+      <div class="generate-note">Untick a swap to keep the card it would replace.</div>
+      <ul class="generate-swaps">${swaps}</ul>` : ''}
+    <div class="generate-columns">
+      ${rest(revision.unpairedAdded || [], 'Also added')}
+      ${rest(revision.unpairedCut || [], 'Also cut')}
+    </div>`;
+}
+
+/**
+ * The cards to save: the proposal, with every unticked swap undone — the
+ * replacement taken back out, the original put back in its own printing.
+ */
+function cardsToSave(cards) {
+  const swaps = proposal?.revision?.swaps || [];
+  const out = cards.map((c) => ({ ...c }));
+  for (const i of rejected) {
+    const swap = swaps[i];
+    if (!swap) continue;
+    const row = out.find((c) => c.name === swap.add.name && c.quantity > 0);
+    if (row) row.quantity -= swap.quantity;
+    out.push({
+      name: swap.cut.name, printingId: swap.cut.printingId, isFoil: swap.cut.isFoil, quantity: swap.quantity,
+    });
+  }
+  return out.filter((c) => c.quantity > 0);
 }
 
 function render(p) {
@@ -694,6 +1210,19 @@ function render(p) {
         <span class="generate-theme-evidence">
           Your collection has ${p.theme.enablers} ${escapeHtml(p.theme.enablerName || 'enablers')}
           and ${p.theme.payoffs} ${escapeHtml(p.theme.payoffName || 'payoffs')} in these colours.
+        </span>
+      </div>
+    ` : ''}
+
+    ${p.secondaryTheme ? `
+      <div class="generate-theme-note">
+        <strong>With a share of ${escapeHtml(p.secondaryTheme.label)}</strong>
+        — ${p.secondaryTheme.cards ?? 0} cards picked for it
+        (asked for ${Math.round((p.secondaryTheme.share ?? 1 / 3) * 100)}% of the theme slots).<br>
+        ${escapeHtml(p.secondaryTheme.blurb || '')}
+        <span class="generate-theme-evidence">
+          Your collection has ${p.secondaryTheme.enablers} ${escapeHtml(p.secondaryTheme.enablerName || 'enablers')}
+          and ${p.secondaryTheme.payoffs} ${escapeHtml(p.secondaryTheme.payoffName || 'payoffs')} in these colours.
         </span>
       </div>
     ` : ''}
@@ -737,6 +1266,7 @@ function render(p) {
               <li>
                 <span class="generate-card-cost">${l.quantity}&times;</span>
                 <span class="generate-card-name">${escapeHtml(l.name)}</span>
+                ${l.reason ? `<span class="generate-card-reason">${escapeHtml(l.reason)}</span>` : ''}
               </li>`).join('')}
           </ul>
         </div>
@@ -748,7 +1278,9 @@ function render(p) {
     <div class="generate-pool">
       Chosen from ${p.pool.cards} cards${p.pool.includeCommitted
         ? ', including cards currently in your other decks'
-        : ' that no other deck has claimed'}.
+        : p.pool.releasedDecks
+          ? `, including cards in the ${p.pool.releasedDecks === 1 ? 'deck' : `${p.pool.releasedDecks} decks`} you picked`
+          : ' that no other deck has claimed'}.
     </div>
   `;
 
@@ -759,6 +1291,7 @@ function render(p) {
   // proposal actually came up short on a role.
   $('generate-find-gaps')?.addEventListener('click', findGaps);
   wirePullChecklist();
+  wireSwaps();
 }
 
 /**
@@ -826,6 +1359,17 @@ function renderPullChecklist(p) {
     </details>`;
 }
 
+function wireSwaps() {
+  $('generate-result')?.querySelectorAll('.generate-swap-toggle').forEach((box) => {
+    box.addEventListener('change', () => {
+      const i = Number(box.dataset.swap);
+      if (box.checked) rejected.delete(i);
+      else rejected.add(i);
+      box.closest('.generate-swap')?.classList.toggle('is-rejected', !box.checked);
+    });
+  });
+}
+
 function wirePullChecklist() {
   const list = $('generate-result');
   if (!list) return;
@@ -875,6 +1419,7 @@ async function findGaps() {
       format: proposal?.format || chosenFormat(),
       themeKey: $('generate-theme')?.value || null,
       includeCommitted: includeCommitted(),
+      releaseDeckIds: releaseDeckIds(),
       identity: isRevising() ? (proposal?.colorIdentity || null) : (chosenColors() || null),
     });
 
@@ -990,7 +1535,7 @@ async function accept() {
       // of copies actually owned, rather than whatever printing a name lookup
       // happens to return first. The finish travels with the printing and
       // never on its own: they identify one row together.
-      cards: [
+      cards: cardsToSave([
         ...proposal.mainboard.map((c) => ({
           name: c.name, printingId: c.printingId, isFoil: c.isFoil, quantity: c.quantity,
         })),
@@ -1005,7 +1550,7 @@ async function accept() {
           isFoil: Boolean(l.isFoil),
           quantity: l.quantity,
         })),
-      ],
+      ]),
     });
 
     const missed = result.unresolved?.length

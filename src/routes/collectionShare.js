@@ -10,6 +10,7 @@ import {
   getSharedSets,
 } from '../services/collectionShareService.js';
 import { authenticate } from '../middleware/auth.js';
+import { RARITIES } from '../shared/rarities.js';
 
 const router = express.Router();
 
@@ -86,7 +87,7 @@ router.get('/public/:token', withOwner, (req, res) => {
 /** GET /api/collection-share/public/:token/inventory — same filters as /api/inventory, minus availability. */
 router.get('/public/:token/inventory', withOwner, (req, res, next) => {
   try {
-    const { name, colors, type, sets, sort, commander, page = 1, limit = 50 } = req.query;
+    const { name, colors, type, sets, sort, commander, rarity, page = 1, limit = 50 } = req.query;
 
     res.json(getSharedInventory(req.shareOwner.user_id, {
       names: name ? [].concat(name) : [],
@@ -95,6 +96,7 @@ router.get('/public/:token/inventory', withOwner, (req, res, next) => {
       sets: sets ? sets.split(',') : [],
       sort: sort || 'name',
       commander: commander || 'all',
+      rarity: RARITIES.includes(rarity) ? rarity : 'all',
       page: Math.max(1, parseInt(page, 10) || 1),
       limit: Math.min(PAGE_LIMIT_MAX, Math.max(1, parseInt(limit, 10) || 50)),
     }));

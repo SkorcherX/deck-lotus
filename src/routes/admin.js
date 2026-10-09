@@ -17,8 +17,10 @@ import { getAllUsers, updateUser, deleteUser, resetUserPassword } from '../servi
 import { getSettings, updateSettings } from '../services/settingsService.js';
 import { getInventory, getInventoryStats } from '../services/inventoryService.js';
 import { authenticate } from '../middleware/auth.js';
+import { RARITIES } from '../shared/rarities.js';
 import { normalizeCondition } from '../shared/conditions.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
+
 
 // 'all', 'unrecorded', or a condition code; anything else reads as 'all'
 // rather than an error, the way an unknown sort does.
@@ -462,6 +464,7 @@ router.get('/inventory', authenticate, requireAdmin, (req, res, next) => {
       availability,
       commander,
       condition,
+      rarity,
       page = 1,
       limit = 50
     } = req.query;
@@ -480,6 +483,7 @@ router.get('/inventory', authenticate, requireAdmin, (req, res, next) => {
       availability: availability || 'all',
       commander: commander || 'all',
       condition: normalizeConditionFilter(condition),
+      rarity: RARITIES.includes(rarity) ? rarity : 'all',
       page: parseInt(page),
       limit: parseInt(limit)
     };

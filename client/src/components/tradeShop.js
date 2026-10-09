@@ -44,7 +44,7 @@ const state = {
   totalPages: 1,
   viewMode: 'grid',
   showPrices: localStorage.getItem('inventoryShowPrices') === 'true',
-  filters: { name: '', sort: 'name', type: 'all', commander: 'all', colors: [] },
+  filters: { name: '', sort: 'name', type: 'all', commander: 'all', rarity: 'all', colors: [] },
   onDone: null,
 };
 
@@ -656,7 +656,7 @@ export function openTradeShop({
   state.declinedItemIds = declinedItemIds;
   state.cart = new Map();
   state.page = 1;
-  state.filters = { name: '', sort: 'name', type: 'all', commander: 'all', colors: [] };
+  state.filters = { name: '', sort: 'name', type: 'all', commander: 'all', rarity: 'all', colors: [] };
   state.onDone = onDone;
 
   document.getElementById('trade-shop-title').textContent = `${partner.username}'s collection`;
@@ -664,6 +664,7 @@ export function openTradeShop({
   document.getElementById('trade-shop-sort').value = 'name';
   document.getElementById('trade-shop-type').value = 'all';
   document.getElementById('trade-shop-commander').value = 'all';
+  document.getElementById('trade-shop-rarity').value = 'all';
   document.getElementById('trade-cart-note').value = '';
   document.getElementById('trade-cart-borrow').checked = false;
   document.querySelectorAll('#trade-shop-colors input[type="checkbox"]').forEach((box) => {
@@ -754,7 +755,7 @@ export function setupTradeShop() {
     reload();
   }, 300));
 
-  for (const [id, key] of [['trade-shop-sort', 'sort'], ['trade-shop-type', 'type'], ['trade-shop-commander', 'commander']]) {
+  for (const [id, key] of [['trade-shop-sort', 'sort'], ['trade-shop-type', 'type'], ['trade-shop-commander', 'commander'], ['trade-shop-rarity', 'rarity']]) {
     document.getElementById(id).addEventListener('change', (event) => {
       state.filters[key] = event.target.value;
       reload();

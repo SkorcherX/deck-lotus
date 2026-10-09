@@ -21,6 +21,7 @@ import {
   THEMES, MIN_VIABLE_STRENGTH,
   subtypesOf, withinColorIdentity, tribeTheme, themeRole,
   analyzeTheme, candidateTribes, rankThemes, viableThemes, synergyScore,
+  customTheme, customThemeKey,
 } from '../src/services/cardSynergyService.js';
 
 /** A card row shaped the way the cards table hands one over. */
@@ -278,5 +279,120 @@ describe('every theme explains itself', () => {
     const analyzed = analyzeTheme([], tribeTheme('Elf'));
     assert.equal(analyzed.blurb, tribeTheme('Elf').blurb);
     assert.equal(analyzed.payoffName, 'cards that name Elf');
+  });
+});
+
+/**
+ * Mill aimed at an opponent is a different plan from filling your own
+ * graveyard, and the two used to be one theme. A Dimir deck of Lhurgoyfs was
+ * scored as a graveyard deck on the strength of Maddening Cacophony, which
+ * puts nothing in the graveyard its creatures count.
+ */
+describe('self-mill and opponent mill are different themes', () => {
+  const sorcery = (name, oracle) => card(name, { type_line: 'Sorcery', subtypes: '', oracle_text: oracle });
+
+  const selfMill = sorcery("Stitcher's Supplier", "When Stitcher's Supplier enters the battlefield or dies, mill three cards.");
+  const opponentMill = sorcery('Maddening Cacophony', 'Each opponent mills eight cards.');
+  const eitherMill = sorcery('Thought Scour', 'Target player mills two cards. Draw a card.');
+  const bruvac = sorcery('Bruvac the Grandiloquent', 'If an opponent would mill one or more cards, they mill twice that many cards instead.');
+  const lhurgoyf = sorcery('Lhurgoyf', "Lhurgoyf's power is equal to the number of card types among cards in all graveyards.");
+  const aberration = sorcery('Consuming Aberration', "Consuming Aberration's power and toughness are each equal to the number of cards in your opponents' graveyards.");
+
+  test('milling yourself fills your graveyard; milling an opponent does not', () => {
+    assert.equal(THEMES.graveyard.enabler(selfMill), true);
+    assert.equal(THEMES.graveyard.enabler(opponentMill), false);
+    assert.equal(THEMES.graveyard.enabler(bruvac), false);
+    assert.equal(THEMES.mill.enabler(opponentMill), true);
+    assert.equal(THEMES.mill.enabler(selfMill), false);
+  });
+
+  test('"target player" can be pointed either way, so it counts for both', () => {
+    assert.equal(THEMES.graveyard.enabler(eitherMill), true);
+    assert.equal(THEMES.mill.enabler(eitherMill), true);
+  });
+
+  test('a creature counting all graveyards is a graveyard payoff', () => {
+    assert.equal(THEMES.graveyard.payoff(lhurgoyf), true);
+  });
+
+  test("a card counting the opponent's graveyard rewards milling them", () => {
+    assert.equal(THEMES.mill.payoff(aberration), true);
+    assert.equal(THEMES.mill.payoff(bruvac), true);
+    assert.equal(THEMES.graveyard.payoff(aberration), false);
+  });
+});
+
+/**
+ * A theme written as phrases of card text, for the plans the built-in
+ * themes do not cover.
+ */
+describe('a custom theme', () => {
+  const spell = (name, oracle, type_line = 'Instant') => card(name, { type_line, subtypes: '', oracle_text: oracle });
+  const lhurgoyf = spell('Lhurgoyf', 'Its power is equal to the number of cards in your graveyard.', 'Creature — Lhurgoyf');
+  const scour = spell('Thought Scour', 'Target player mills two cards. Draw a card.');
+  const consider = spell('Consider', 'Surveil 1. Draw a card.');
+  const shock = spell('Shock', 'Shock deals 2 damage to any target.');
+
+  test('payoffs and enablers come from their own phrases, commas as alternatives', () => {
+    const theme = customTheme(customThemeKey('cards in your graveyard', 'mill, surveil'));
+    assert.equal(themeRole(lhurgoyf, theme), 'payoff');
+    assert.equal(themeRole(scour, theme), 'enabler', '"mill" matches "mills"');
+    assert.equal(themeRole(consider, theme), 'enabler');
+    assert.equal(themeRole(shock, theme), null);
+  });
+
+  test('with one phrase every match is both halves, so it can have strength', () => {
+    const theme = customTheme(customThemeKey('draw a card'));
+    assert.equal(themeRole(scour, theme), 'both');
+    assert.equal(analyzeTheme([scour, consider, shock], theme).strength, 2);
+  });
+
+  test('the type line counts, so a type works as a phrase', () => {
+    const theme = customTheme(customThemeKey('lhurgoyf'));
+    assert.equal(themeRole(lhurgoyf, theme), 'both');
+  });
+
+  test('a phrase matches whole words, not inside other words', () => {
+    const theme = customTheme(customThemeKey('ill'));
+    assert.equal(themeRole(scour, theme), null, '"ill" is not inside "mills"');
+  });
+
+  test('the key is canonical, and a broken or empty one is no theme', () => {
+    assert.equal(customThemeKey('  Mill ,mill, SURVEIL '), customThemeKey('mill, surveil'));
+    assert.equal(customThemeKey('   '), null);
+    assert.equal(customTheme('custom:%E0%A4%A|x'), null);
+    assert.equal(customTheme('graveyard'), null);
+  });
+
+  test('regex characters in a phrase are text, not pattern', () => {
+    const counters = customTheme(customThemeKey('+1/+1 counter'));
+    assert.equal(themeRole(spell('Hardened Scales', 'Put a +1/+1 counter on target creature.'), counters), 'both');
+  });
+});
+
+describe('token swarm and go wide', () => {
+  const spell = (name, oracle) => card(name, { type_line: 'Instant', subtypes: '', oracle_text: oracle });
+  const treasure = spell('Big Score', 'As an additional cost, discard a card. Draw two cards and create two Treasure tokens.');
+  const raise = spell('Raise the Alarm', 'Create two 1/1 white Soldier creature tokens.');
+  const champion = card('Champion of the Parish', { cmc: 1, oracle_text: 'Whenever another Human you control enters, put a +1/+1 counter on this creature.' });
+  const ogre = card('Big Ogre', { cmc: 5, subtypes: 'Ogre', type_line: 'Creature — Ogre' });
+  const anthem = spell('Glorious Anthem', 'Creatures you control get +1/+1.');
+  const hoof = card('Craterhoof Behemoth', { cmc: 8, oracle_text: 'When this creature enters, creatures you control gain trample and get +X/+X until end of turn, where X is the number of creatures you control.' });
+
+  test('a Treasure maker is not a token-swarm enabler', () => {
+    assert.equal(themeRole(treasure, THEMES.tokens), null);
+    assert.equal(themeRole(raise, THEMES.tokens), 'enabler');
+  });
+
+  test('cheap creatures enable go wide; expensive ones do not', () => {
+    assert.equal(themeRole(champion, THEMES.goWide), 'enabler');
+    assert.equal(themeRole(raise, THEMES.goWide), 'enabler');
+    assert.equal(themeRole(ogre, THEMES.goWide), null);
+    assert.equal(themeRole(champion, THEMES.tokens), null, 'not a token maker');
+  });
+
+  test('anthems and mass pumps pay off a wide board', () => {
+    assert.equal(themeRole(anthem, THEMES.goWide), 'payoff');
+    assert.equal(themeRole(hoof, THEMES.goWide), 'payoff');
   });
 });

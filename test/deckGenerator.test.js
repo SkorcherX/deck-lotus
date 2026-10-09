@@ -18,9 +18,11 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  buildDeck, buildManaBase, colorDemands, landProduces, resolveTheme, isLegalIn,
+  buildDeck, buildManaBase, colorDemands, landProduces, resolveTheme, isLegalIn, clampShare,
+  MAX_SLOW_LANDS,
 } from '../src/services/deckGeneratorService.js';
 import { colorSourcesWanted, castingTurn } from '../src/config/deckProfiles.js';
+import { entersTapped } from '../src/services/cardRoleService.js';
 
 /** A pool row, shaped the way getGeneratorPool hands one over. */
 const card = (name, props = {}) => ({
@@ -537,5 +539,171 @@ describe('revising prefers what is already sleeved', () => {
     const pool = many(40, (i) => twin(`Card ${i}`));
     const deck = buildDeck(pool, { format: 'commander', identity: 'B' });
     assert.ok(deck.mainboard.length > 0);
+  });
+});
+
+/**
+ * A second theme: a Dimir deck that grows creatures off its own graveyard and
+ * also mills the opponent out. The main theme still leads; the second gets a
+ * real share; and cards that serve both are the first ones picked.
+ */
+describe('a second theme', () => {
+  const pool = () => [
+    ...graveyardCollection(),
+    ...many(12, (i) => card(`Opponent Miller ${i}`, {
+      oracle_text: 'Each opponent mills four cards.', type_line: 'Sorcery', subtypes: '',
+    })),
+    ...many(6, (i) => card(`Library Watcher ${i}`, {
+      oracle_text: "This gets +1/+1 for each card in your opponents' graveyards.",
+    })),
+    card('Both Ways', { oracle_text: 'Target player mills four cards.', type_line: 'Instant', subtypes: '' }),
+  ];
+
+  test('takes a share of the deck without taking it over', () => {
+    const deck = buildDeck(pool(), {
+      commander, format: 'commander', themeKey: 'graveyard', secondaryThemeKey: 'mill',
+    });
+    const fromSecond = deck.mainboard.filter((c) => /milling your opponent/.test(c.reason || ''));
+    const fromMain = deck.mainboard.filter((c) => /graveyard value/.test(c.reason || ''));
+
+    assert.equal(deck.secondaryTheme.key, 'mill');
+    assert.ok(fromSecond.length > 0, 'the second theme must get slots');
+    assert.ok(fromMain.length > fromSecond.length, 'the main theme must still lead');
+  });
+
+  test('a card serving both themes is chosen', () => {
+    const deck = buildDeck(pool(), {
+      commander, format: 'commander', themeKey: 'graveyard', secondaryThemeKey: 'mill',
+    });
+    assert.ok(deck.mainboard.some((c) => c.name === 'Both Ways'));
+  });
+
+  test('its share can be turned up or down, and is reported', () => {
+    const build = (secondaryShare) => buildDeck(pool(), {
+      commander, format: 'commander', themeKey: 'graveyard', secondaryThemeKey: 'mill', secondaryShare,
+    }).secondaryTheme;
+
+    const small = build(0.1);
+    const half = build(0.5);
+    assert.equal(small.share, 0.1);
+    assert.equal(half.share, 0.5);
+    assert.ok(half.cards > small.cards, `half (${half.cards}) should take more than a tenth (${small.cards})`);
+    assert.equal(build(undefined).share, 1 / 3, 'a third unless asked');
+  });
+
+  test('a share out of range is held to the range, not trusted', () => {
+    assert.equal(clampShare(0.9), 0.5);
+    assert.equal(clampShare(0), 0.1);
+    assert.equal(clampShare('nonsense'), 1 / 3);
+  });
+
+  test('the same theme twice, or a second with no first, is ignored', () => {
+    const same = buildDeck(pool(), { commander, format: 'commander', themeKey: 'graveyard', secondaryThemeKey: 'graveyard' });
+    assert.equal(same.secondaryTheme, null);
+    const alone = buildDeck(pool(), { commander, format: 'commander', secondaryThemeKey: 'mill' });
+    assert.notEqual(alone.secondaryTheme?.key, alone.theme?.key);
+  });
+});
+
+
+/**
+ * Lands that enter tapped, read from their wording, and capped in a
+ * generated deck because they cost the early turns.
+ */
+describe('tapped lands', () => {
+  const land = (name, oracle_text, type_line = 'Land') =>
+    card(name, { type_line, oracle_text, mana_cost: '', cmc: 0, color_identity: '', subtypes: '' });
+
+  const guildgate = land('Dimir Guildgate', 'This land enters tapped.\n{T}: Add {U} or {B}.', 'Land — Gate');
+  const triLand = land('Opulent Palace', 'This land enters tapped.\n{T}: Add {B}, {G}, or {U}.');
+  const checkLand = land('Drowned Catacomb', 'This land enters tapped unless you control an Island or a Swamp.\n{T}: Add {U} or {B}.');
+  const shock = land('Watery Grave', "As this land enters, you may pay 2 life. If you don't, it enters tapped.", 'Land — Island Swamp');
+  const slowLand = land('Shipwreck Marsh', 'This land enters tapped unless you control two or more other lands.\n{T}: Add {U} or {B}.');
+  const fastLand = land('Darkslick Shores', 'This land enters tapped unless you control two or fewer other lands.\n{T}: Add {U} or {B}.');
+  const wilds = land('Evolving Wilds', '{T}, Sacrifice this land: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.');
+  const delta = land('Polluted Delta', '{T}, Pay 1 life, Sacrifice this land: Search your library for an Island or Swamp card, put it onto the battlefield, then shuffle.');
+  const river = land('Underground River', '{T}: Add {C}.\n{T}: Add {U} or {B}. This land deals 1 damage to you.');
+
+  test('reads the three tiers from the wording', () => {
+    assert.equal(entersTapped(guildgate), 'always');
+    assert.equal(entersTapped(wilds), 'always', 'a fetch that puts its land in tapped');
+    assert.equal(entersTapped(slowLand), 'early');
+    assert.equal(entersTapped(checkLand), 'conditional');
+    assert.equal(entersTapped(shock), 'conditional');
+    assert.equal(entersTapped(fastLand), 'conditional', 'tapped late, not early');
+    assert.equal(entersTapped(river), null);
+    assert.equal(entersTapped(card('Not a land', { oracle_text: 'It enters tapped.' })), null);
+  });
+
+  test('a dual reads as both its colours, and a fetch as what it finds', () => {
+    assert.deepEqual([...landProduces(checkLand)].sort(), ['B', 'U']);
+    assert.deepEqual([...landProduces(triLand)].sort(), ['B', 'G', 'U']);
+    assert.deepEqual([...landProduces(delta)].sort(), ['B', 'U']);
+    assert.equal(landProduces(wilds).size, 5);
+  });
+
+  const build = (landPool, extra = {}) => buildManaBase({
+    spells: [...many(10, () => ({ mana_cost: '{1}{U}', cmc: 2 })), ...many(10, () => ({ mana_cost: '{1}{B}', cmc: 2 }))],
+    landPool,
+    landCount: 24,
+    deckSize: 60,
+    colorIdentity: 'UB',
+    format: 'modern',
+    ...extra,
+  });
+  const names = (result) => result.lands.filter((l) => !l.isBasic).map((l) => l.name);
+
+  test('an untapped dual beats a tapped one, and a tapped tri-land does not win on colours', () => {
+    const result = build([guildgate, triLand, checkLand, river], { landCount: 2 });
+    assert.deepEqual(names(result).sort(), ['Drowned Catacomb', 'Underground River']);
+  });
+
+  test('no more slow lands than the cap, and the deck is told why', () => {
+    const tapped = many(5, (i) => land(`Tapped Dual ${i}`, 'This land enters tapped.\n{T}: Add {U} or {B}.'));
+    const result = build(tapped);
+    assert.equal(names(result).length, MAX_SLOW_LANDS.default);
+    assert.equal(result.slowLands, 1);
+    assert.equal(result.total, 24, 'basics take their place');
+    assert.match(result.notes[0], /enter tapped/);
+
+    const commander = build(tapped, { format: 'commander', deckSize: 100, landCount: 36 });
+    assert.equal(names(commander).length, MAX_SLOW_LANDS.commander);
+  });
+
+  test('a kept slow land always goes in, and uses up the allowance', () => {
+    const result = build([slowLand, guildgate], { keep: [{ card: guildgate, quantity: 1 }] });
+    assert.deepEqual(names(result), ['Dimir Guildgate']);
+  });
+
+  test('a land making no colour gets in only by serving the theme', () => {
+    const field = land('Field of the Dead', 'This land enters tapped.\n{T}: Add {C}.\nWhenever this or another land you control enters, create a 2/2 black Zombie creature token.');
+    const passage = land("Rogue's Passage", "{T}: Add {C}.\n{4}, {T}: Target creature can't be blocked this turn.");
+    assert.deepEqual(names(build([field, passage])), [], 'nothing it does for this deck');
+    assert.deepEqual(names(build([field, passage], { themes: [resolveTheme('tokens', [])] })), ['Field of the Dead']);
+  });
+
+  test('every land says why it was picked', () => {
+    const result = build([checkLand, guildgate], { landCount: 3 });
+    assert.equal(result.lands.find((l) => l.name === 'Drowned Catacomb').reason, 'makes blue and black');
+    assert.equal(result.lands.find((l) => l.name === 'Dimir Guildgate').reason, 'makes blue and black · enters tapped');
+  });
+});
+
+describe('lands with strings attached', () => {
+  const land = (name, oracle_text) => card(name, { type_line: 'Land', oracle_text, mana_cost: '', cmc: 0, color_identity: '', subtypes: '' });
+
+  test('a commander-identity land is every colour in Commander and none elsewhere', () => {
+    const tower = land('Command Tower', "{T}: Add one mana of any color in your commander's color identity.");
+    assert.equal(landProduces(tower, 'commander').size, 5);
+    assert.equal(landProduces(tower, 'modern').size, 0);
+  });
+
+  test('restricted, borrowed and filtered rainbow mana is not a colour source', () => {
+    for (const text of [
+      '{T}: Add one mana of any color. Spend this mana only to cast a creature spell.',
+      '{T}: Add one mana of any color that a land an opponent controls could produce.',
+      '{T}: Add {C}.\n{1}, {T}: Add one mana of any color.',
+    ]) assert.equal(landProduces(land('Strings', text), 'commander').size, 0, text);
+    assert.equal(landProduces(land('City of Brass', '{T}: Add one mana of any color. This land deals 1 damage to you.')).size, 5);
   });
 });

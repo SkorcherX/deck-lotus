@@ -88,7 +88,7 @@ function fuzzyCardIds(normalizedQuery, limit) {
  * outright falls back to an edit-distance pass, so a typo still finds the
  * card.
  */
-export function searchCards(query, limit = 20, typeFilter = null) {
+export function searchCards(query, limit = 20, typeFilter = null, rarity = null) {
   if (!query || !query.trim()) {
     return [];
   }
@@ -103,11 +103,14 @@ export function searchCards(query, limit = 20, typeFilter = null) {
   // Optional card-type filter (used by the price-watch type filter) must apply to the
   // whole name-match group, hence the parenthesised OR block below.
   const typeClause = typeFilter ? 'AND c.type_line LIKE ?' : '';
+  // Rarity is the printing's, so a reprint shows only at the rarity asked for.
+  const rarityClause = rarity ? 'AND p.rarity = ?' : '';
 
   // Placeholder order: 4 for match_priority CASE, 4 for the WHERE name group,
-  // then [type filter], then LIMIT.
+  // then [type filter], [rarity filter], then LIMIT.
   const params = [prefix, infix, prefix, infix, infix, infix, infix, infix];
   if (typeFilter) params.push(`%${typeFilter}%`);
+  if (rarity) params.push(rarity);
   params.push(limit);
 
   let rows = db.all(
@@ -127,7 +130,7 @@ export function searchCards(query, limit = 20, typeFilter = null) {
          OR (c.name LIKE '%//%' AND c.name_normalized LIKE ?)
          OR EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name_normalized LIKE ?)
          OR EXISTS(SELECT 1 FROM card_foreign_data f WHERE f.card_name = c.name AND f.foreign_name LIKE '%//%' AND f.foreign_name_normalized LIKE ?)
-       ) ${typeClause}
+       ) ${typeClause} ${rarityClause}
      ORDER BY match_priority, c.name, p.set_code, p.collector_number
      LIMIT ?`,
     params
@@ -144,6 +147,7 @@ export function searchCards(query, limit = 20, typeFilter = null) {
       const rankCase = ids.map((_, index) => `WHEN ? THEN ${index}`).join(' ');
       const fuzzyParams = [...ids, ...ids];
       if (typeFilter) fuzzyParams.push(`%${typeFilter}%`);
+      if (rarity) fuzzyParams.push(rarity);
       fuzzyParams.push(limit);
 
       rows = db.all(
@@ -152,7 +156,7 @@ export function searchCards(query, limit = 20, typeFilter = null) {
          FROM cards c
          LEFT JOIN printings p ON p.card_id = c.id
          LEFT JOIN sets s ON p.set_code = s.code
-         WHERE c.id IN (${placeholders}) ${typeClause}
+         WHERE c.id IN (${placeholders}) ${typeClause} ${rarityClause}
          ORDER BY match_priority, c.name, p.set_code, p.collector_number
          LIMIT ?`,
         fuzzyParams
@@ -986,10 +990,21 @@ export function changeOwnedCondition(userId, printingId, isFoil, from, to, conte
   if (!have) throw new Error('Nothing to regrade: no copies held at that condition');
   if (src === dest) return { success: true, quantity: have, condition: dest };
 
-  const ctx = { source: context.source || 'card_page', actorUserId: context.actorUserId, detail: { via: 'regrade', from: src, to: dest } };
+  // `context.quantity` moves only that many — "1 of my 4 NM is really LP".
+  // Omitted, the whole row moves, which is what the card page always did.
+  const move = context.quantity === undefined ? have : parseInt(context.quantity, 10);
+  if (!Number.isInteger(move) || move < 1 || move > have) {
+    throw new Error(`Cannot regrade ${context.quantity} copies: ${have} held at that condition`);
+  }
+
+  const ctx = {
+    source: context.source || 'card_page',
+    actorUserId: context.actorUserId,
+    detail: { ...(context.detail || {}), via: 'regrade', from: src, to: dest },
+  };
   return db.transaction(() => {
-    setOwnedPrintingQuantity(userId, printingId, 0, isFoil, { ...ctx, condition: src });
-    return addOwnedPrintingQuantity(userId, printingId, have, isFoil, { ...ctx, condition: dest });
+    setOwnedPrintingQuantity(userId, printingId, have - move, isFoil, { ...ctx, condition: src });
+    return addOwnedPrintingQuantity(userId, printingId, move, isFoil, { ...ctx, condition: dest });
   });
 }
 

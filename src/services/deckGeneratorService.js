@@ -44,11 +44,12 @@
 import {
   isLand, isRamp, isCardAdvantage, isSelection,
   isCreatureRemoval, isPermanentRemoval, isSweeper, costPips, hasAlternativeCost,
+  entersTapped,
 } from './cardRoleService.js';
 
 import {
   THEMES, tribeTheme, synergyScore, themeRole,
-  withinColorIdentity, viableThemes, rankThemes,
+  withinColorIdentity, viableThemes, rankThemes, analyzeTheme, customTheme,
 } from './cardSynergyService.js';
 
 import { isBasicLand } from './basicLands.js';
@@ -87,6 +88,9 @@ const ROLE_PREDICATES = [
  * that were supposed to agree would eventually disagree, and the symptom
  * would be a shopping suggestion the generator then declines to use.
  */
+/** Each role's plain-English name, by code. */
+export const ROLE_LABEL_BY_CODE = Object.fromEntries(ROLE_PREDICATES.map(([code, label]) => [code, label]));
+
 export const ROLE_PREDICATE_BY_CODE = Object.fromEntries(
   ROLE_PREDICATES.map(([code, , matches]) => [code, matches])
 );
@@ -130,8 +134,10 @@ export function isLegalIn(card, format) {
  * says nothing else about mana — then from the text, which covers the rest.
  * The dual-land types are checked before the text because a fetchland's text
  * names lands it searches for rather than mana it makes.
+ *
+ * `format` matters for one family: lands tied to the commander's colours.
  */
-export function landProduces(card) {
+export function landProduces(card, format = null) {
   const produced = new Set();
   const typeLine = String(card.type_line || '');
 
@@ -141,14 +147,44 @@ export function landProduces(card) {
   if (produced.size > 0) return produced;
 
   const text = String(card.oracle_text || '');
-  // "{T}: Add {W}." and the many variants, including "Add one mana of any
-  // color", which is every colour at once.
+
+  // A fetch never says "Add", so it used to read as a colourless utility land
+  // and sort last. It makes whatever the land it finds makes: the basic types
+  // it names, or — for "a basic land card" — any colour the deck has basics of.
+  // "land" is optional: Polluted Delta asks for "an Island or Swamp card".
+  const fetch = text.match(/search your library for (?:an? |up to \w+ )?([^.]*?)\bcards?\b/i);
+  if (fetch) {
+    const named = fetch[1];
+    for (const [color, basic] of Object.entries(BASIC_FOR)) {
+      if (new RegExp(`\\b${basic}\\b`, 'i').test(named)) produced.add(color);
+    }
+    if (produced.size === 0 && /\bbasic\b/i.test(named)) for (const color of COLORS) produced.add(color);
+    if (produced.size > 0) return produced;
+  }
+
+  // "Add one mana of any color" is every colour at once — but only for the
+  // lands where it really is. Most of them come with strings, and reading them
+  // as rainbow sources ranked them above every real dual and put three Command
+  // Towers in a Modern deck:
+  //   - "in your commander's color identity" (Command Tower, Opal Palace,
+  //     Study Hall) is every colour in Commander and none anywhere else;
+  //   - "spend this mana only …" (Ancient Ziggurat, Unclaimed Territory) casts
+  //     some of the deck, not all of it;
+  //   - "could produce" (Exotic Orchard) depends on the opponent's lands;
+  //   - "{1}, {T}: Add …" (Cave of Temptation) is a filter, not a source.
+  // Those count as making nothing; a deck that wants one can keep it.
   if (/add one mana of any color|add one mana of any type/i.test(text)) {
+    const commanderOnly = /commander's color identity/i.test(text);
+    const strings = /spend this mana only|could produce|\{\d+\},\s*\{t\}[^.]*add one mana of any/i.test(text);
+    if (strings || (commanderOnly && format !== 'commander')) return produced;
     for (const color of COLORS) produced.add(color);
     return produced;
   }
-  for (const match of text.matchAll(/add[^.]{0,40}?\{([WUBRG])\}/gi)) {
-    produced.add(match[1].toUpperCase());
+  // Every symbol in each "Add …" clause, not just the first: a dual says
+  // "Add {U} or {B}", and reading one symbol per clause made every dual in
+  // the game look like a mono-coloured land.
+  for (const clause of text.matchAll(/\badd\b([^.]{0,60})/gi)) {
+    for (const symbol of clause[1].matchAll(/\{([WUBRG])\}/gi)) produced.add(symbol[1].toUpperCase());
   }
   return produced;
 }
@@ -223,12 +259,15 @@ export function colorDemands(cards, deckSize = 100, format = 'commander') {
  * because a revision that cannot replace a card with a better one is not a
  * revision.
  */
-function rankCandidates(cards, theme) {
+function rankCandidates(cards, theme, secondary = null) {
+  // With a second theme, fit is weighted two to one towards the main theme,
+  // so a card serving both outranks one serving either — those are the cards
+  // that hold a two-theme deck together rather than splitting it in half.
+  const fitOf = (card) => (theme ? synergyScore(card, theme) * 2 : 0)
+    + (secondary ? synergyScore(card, secondary) : 0);
   return [...cards].sort((a, b) => {
-    if (theme) {
-      const fit = synergyScore(b, theme) - synergyScore(a, theme);
-      if (fit !== 0) return fit;
-    }
+    const fit = fitOf(b) - fitOf(a);
+    if (fit !== 0) return fit;
 
     const sleeved = Math.sign(Number(b.in_deck) || 0) - Math.sign(Number(a.in_deck) || 0);
     if (sleeved !== 0) return sleeved;
@@ -244,11 +283,26 @@ function rankCandidates(cards, theme) {
   });
 }
 
+/**
+ * How much of the theme slots a second theme may take. Bounded on both sides:
+ * under a tenth it is a card or two and not a plan, and past half it is the
+ * main theme under another name — pick it as the main one instead.
+ */
+export const DEFAULT_SECONDARY_SHARE = 1 / 3;
+export const SECONDARY_SHARE_RANGE = [0.1, 0.5];
+
+export function clampShare(share) {
+  const n = Number(share);
+  if (!Number.isFinite(n)) return DEFAULT_SECONDARY_SHARE;
+  return Math.min(SECONDARY_SHARE_RANGE[1], Math.max(SECONDARY_SHARE_RANGE[0], n));
+}
+
 /** Resolve a theme key against the built-in themes and the pool's tribes. */
 export function resolveTheme(themeKey, pool) {
   if (!themeKey) return null;
   if (THEMES[themeKey]) return { key: themeKey, ...THEMES[themeKey] };
   if (String(themeKey).startsWith('tribe:')) return tribeTheme(String(themeKey).slice(6));
+  if (String(themeKey).startsWith('custom:')) return customTheme(String(themeKey));
 
   // A key naming a creature type directly, which is what a caller is likeliest
   // to send by hand.
@@ -271,6 +325,9 @@ export function buildDeck(pool, {
   themeKey = null,
   landCount = null,
   deckSize = null,
+  keep = [],
+  secondaryThemeKey = null,
+  secondaryShare = DEFAULT_SECONDARY_SHARE,
 } = {}) {
   const targets = getRoleTargets(format);
   const profile = getFormatProfile(format);
@@ -317,9 +374,15 @@ export function buildDeck(pool, {
     }
   }
 
-  const themeReport = theme
-    ? rankThemes(spellPool, { identity: colorIdentity }).find((t) => t.label === theme.label) || null
+  // A second theme only means something beside a first, and never the same one.
+  const secondary = theme && secondaryThemeKey && secondaryThemeKey !== theme.key
+    ? resolveTheme(secondaryThemeKey, spellPool)
     : null;
+  // Measured directly rather than looked up in rankThemes: a custom theme is
+  // in no ranking, and spellPool is already inside the deck's colours, which
+  // is all rankThemes would have filtered by.
+  const secondaryReport = secondary ? analyzeTheme(spellPool, secondary) : null;
+  const themeReport = theme ? analyzeTheme(spellPool, theme) : null;
 
   if (!theme) {
     notes.push(
@@ -361,13 +424,37 @@ export function buildDeck(pool, {
 
   // Role quotas first. These are what stop a themed deck from being a theme
   // and nothing else — a graveyard deck still has to answer a creature.
+  //
+  // Kept cards go in before any of it. They are the person's own judgement
+  // about what the deck is — usually the payoffs it was built around — and
+  // the heuristics below are not entitled to outrank that. Each one is still
+  // credited to every role it fills, so keeping three removal spells means
+  // the quota looks for fewer, not three more on top.
   const roleCounts = {};
+  for (const [code] of ROLE_PREDICATES) roleCounts[code] = 0;
+
+  const keptLands = [];
+  const keptMissing = [];
+  for (const wish of keep) {
+    const card = legal.find((c) => (wish.cardId != null && c.card_id === wish.cardId) || c.name === wish.name);
+    if (!card) { keptMissing.push(wish.name || String(wish.cardId)); continue; }
+    if (isLand(card)) { keptLands.push({ card, quantity: wish.quantity || 1 }); continue; }
+    const took = take(card, 'kept', wish.quantity || 1);
+    for (const [code, , matches] of ROLE_PREDICATES) if (matches(card)) roleCounts[code] += took;
+  }
+
+  if (keptMissing.length > 0) {
+    notes.push(
+      `Could not keep ${keptMissing.join(', ')}: not available in your collection, `
+      + 'or not legal in this format and these colours.'
+    );
+  }
+
   for (const [code, label, matches] of ROLE_PREDICATES) {
     const want = targets.roles[code] || 0;
-    roleCounts[code] = 0;
     if (want <= 0) continue;
 
-    for (const card of rankCandidates(spellPool.filter(matches), theme)) {
+    for (const card of rankCandidates(spellPool.filter(matches), theme, secondary)) {
       if (roleCounts[code] >= want || chosen.length >= spellSlots) break;
       if (copiesLeft(card) <= 0) continue;
       // As many copies as the quota still needs, so a format that allows
@@ -392,21 +479,27 @@ export function buildDeck(pool, {
   // than maximising either. Roughly two enablers per payoff: a deck of
   // payoffs has nothing to trigger them, and a deck of enablers has nothing to
   // reward it.
-  if (theme) {
-    const remaining = () => spellSlots - chosen.length;
+  const remaining = () => spellSlots - chosen.length;
+
+  /**
+   * Fill theme slots for one theme until only `leaveFree` are left, holding
+   * its enabler-to-payoff ratio as it goes.
+   */
+  const fillTheme = (t, leaveFree) => {
     const unchosen = () => spellPool.filter((card) => copiesLeft(card) > 0);
 
-    let enablers = chosen.filter((c) => ['enabler', 'both'].includes(themeRole(c, theme))).length;
-    let payoffs = chosen.filter((c) => ['payoff', 'both'].includes(themeRole(c, theme))).length;
+    let enablers = chosen.filter((c) => ['enabler', 'both'].includes(themeRole(c, t))).length;
+    let payoffs = chosen.filter((c) => ['payoff', 'both'].includes(themeRole(c, t))).length;
 
-    while (remaining() > 0) {
+    while (remaining() > leaveFree) {
       // Whichever half is further behind its share of the ratio gets the slot.
       const wantPayoff = payoffs * 2 <= enablers;
       const wanted = wantPayoff ? ['payoff', 'both'] : ['enabler', 'both'];
 
       const candidates = rankCandidates(
-        unchosen().filter((card) => wanted.includes(themeRole(card, theme))),
-        theme
+        unchosen().filter((card) => wanted.includes(themeRole(card, t))),
+        t === theme ? theme : secondary,
+        t === theme ? secondary : theme
       );
 
       const picked = candidates.find((card) => copiesLeft(card) > 0);
@@ -414,14 +507,27 @@ export function buildDeck(pool, {
 
       // A playset at a time here too, but capped so one card cannot swing the
       // enabler-to-payoff ratio four steps before it is looked at again.
-      const took = take(picked, `${theme.label} (${wantPayoff ? 'payoff' : 'enabler'})`, maxCopies);
+      const took = take(picked, `${t.label} (${wantPayoff ? 'payoff' : 'enabler'})`,
+        Math.min(maxCopies, remaining() - leaveFree));
       if (took === 0) break;
 
-      const role = themeRole(picked, theme);
+      const role = themeRole(picked, t);
       if (role === 'both') { enablers += took; payoffs += took; }
       else if (role === 'payoff') payoffs += took;
       else enablers += took;
     }
+  };
+
+  if (theme) {
+    // A second theme gets its share of what the role quotas left — a third
+    // unless asked otherwise, which is enough to be a real plan without the
+    // deck stopping being about the first. Whatever it cannot fill goes back
+    // to the main theme.
+    if (secondary) {
+      fillTheme(theme, Math.round(remaining() * clampShare(secondaryShare)));
+      fillTheme(secondary, 0);
+    }
+    fillTheme(theme, 0);
 
     if (spellSlots - chosen.length > 0) {
       shortfalls.push({
@@ -438,7 +544,7 @@ export function buildDeck(pool, {
 
   // Anything still empty is filled with the best cards left, so a thin
   // collection still gets a complete deck rather than a truncated one.
-  for (const card of rankCandidates(spellPool, theme)) {
+  for (const card of rankCandidates(spellPool, theme, secondary)) {
     if (chosen.length >= spellSlots) break;
     if (copiesLeft(card) <= 0) continue;
     take(card, 'filling out the deck', maxCopies);
@@ -464,6 +570,8 @@ export function buildDeck(pool, {
     colorIdentity,
     maxCopies,
     format,
+    keep: keptLands,
+    themes: [theme, secondary].filter(Boolean),
   });
 
   // --- Report --------------------------------------------------------------
@@ -502,6 +610,24 @@ export function buildDeck(pool, {
         strength: themeReport ? themeReport.strength : null,
       }
       : null,
+    secondaryTheme: secondary
+      ? {
+        key: secondary.key || null,
+        label: secondary.label,
+        blurb: secondary.blurb || '',
+        enablerName: secondary.enablerName || 'enablers',
+        payoffName: secondary.payoffName || 'payoffs',
+        tribe: secondary.tribe || null,
+        enablers: secondaryReport ? secondaryReport.enablers : null,
+        payoffs: secondaryReport ? secondaryReport.payoffs : null,
+        strength: secondaryReport ? secondaryReport.strength : null,
+        share: clampShare(secondaryShare),
+        // What it actually got, which can be less than its share when the
+        // collection runs out of its cards. Counted from the reasons, so cards
+        // that only landed there by filling out the deck are not claimed.
+        cards: chosen.filter((card) => String(reasons.get(card.name) || '').startsWith(`${secondary.label} (`)).length,
+      }
+      : null,
     mainboard: groupedSpells,
     lands: manaBase.lands,
     summary: {
@@ -513,7 +639,7 @@ export function buildDeck(pool, {
       curve: curveOf(chosen),
     },
     shortfalls: [...shortfalls, ...manaBase.shortfalls],
-    notes,
+    notes: [...notes, ...manaBase.notes],
   };
 }
 
@@ -566,10 +692,23 @@ function curveOf(cards) {
  * A land producing a colour the deck does not want is skipped: it is a
  * colourless land in this deck, and there is no reason to prefer it over a
  * basic that casts something.
+ *
+ * ── Tapped lands are capped, and the theme counts ─────────────────────────
+ *
+ * Ranking by colours alone put the land that enters tapped ahead of every
+ * untapped dual, because tri-lands and gain lands make more colours — so a
+ * collection with a few of them got a mana base that lost the first turns.
+ * Lands that are tapped early (see `entersTapped`) now cost points and are
+ * capped outright at MAX_SLOW_LANDS; a basic in their place casts the same
+ * spells on time. A land that serves the deck's theme gets points for it,
+ * and a land making no colour this deck uses is let in *only* for the theme:
+ * it takes a coloured source's slot, so it has to be doing something.
  */
 export function buildManaBase({
   spells, landPool, landCount, deckSize, colorIdentity, maxCopies = 1,
   format = 'commander',
+  keep = [],
+  themes = [],
 }) {
   const demands = colorDemands(spells, deckSize, format);
   const wantedColors = Object.keys(demands);
@@ -577,18 +716,38 @@ export function buildManaBase({
   const chosen = [];
   const taken = new Map();
 
+  const notes = [];
+  const reasons = new Map();
+  const maxSlow = MAX_SLOW_LANDS[format] ?? MAX_SLOW_LANDS.default;
+
   const useful = (card) => {
-    const produces = landProduces(card);
+    const produces = landProduces(card, format);
     return [...produces].filter((color) => wantedColors.includes(color)).length;
+  };
+  const themed = (card) => themes.filter((theme) => themeRole(card, theme));
+
+  /**
+   * A land's worth to this deck. Colours dominate — the job of a land is
+   * casting the spells — but no single colour outweighs being tapped early,
+   * which is why a tapped dual loses to an untapped one and a tapped tri-land
+   * does not automatically win either.
+   */
+  const score = (card) => {
+    const tapped = entersTapped(card);
+    return useful(card) * 3
+      + themed(card).length * 2
+      - (tapped === 'always' || tapped === 'early' ? 4 : tapped === 'conditional' ? 0.5 : 0);
   };
 
   const ranked = [...landPool]
-    .filter((card) => useful(card) > 0 || landProduces(card).size === 0)
+    // Eligible by doing something for this deck; ordered by score. Being
+    // tapped lowers a land's place and counts toward the cap, but does not
+    // disqualify it — Field of the Dead is tapped and is still the point of a
+    // lands deck.
+    .filter((card) => useful(card) > 0 || themed(card).length > 0)
     .sort((a, b) => {
-      // Most useful colours first; a land that makes no colour at all (a
-      // utility land) sorts last but is still ahead of nothing.
-      const byUse = useful(b) - useful(a);
-      if (byUse !== 0) return byUse;
+      const byScore = score(b) - score(a);
+      if (byScore !== 0) return byScore;
       // Same tiebreak as the spells: when revising, a land already in the deck
       // beats an equally useful one that is not, so the diff does not fill up
       // with mana-base churn nobody asked for.
@@ -597,15 +756,61 @@ export function buildManaBase({
       return String(a.name).localeCompare(String(b.name));
     });
 
+  const why = (card) => {
+    const makes = [...landProduces(card, format)].filter((c) => wantedColors.includes(c));
+    const parts = [];
+    if (makes.length) parts.push(`makes ${makes.map((c) => COLOR_NAMES[c]).join(' and ')}`);
+    for (const theme of themed(card)) parts.push(`part of ${theme.shortLabel || theme.label}`);
+    const tapped = entersTapped(card);
+    if (tapped === 'always' || tapped === 'early') parts.push(tapped === 'always' ? 'enters tapped' : 'tapped early');
+    return parts.join(' · ') || 'kept';
+  };
+
+  // Kept lands first, whatever colours they make: somebody keeping a land
+  // that taps for nothing this deck casts has a reason the colour count
+  // cannot see (a utility land, a graveyard land).
+  // Kept lands count toward the slow cap too — they were asked for, so they
+  // go in, but they use up the allowance before anything ranked does.
+  let slow = 0;
+  for (const { card, quantity } of keep) {
+    const limit = Math.min(maxCopies, card.available ?? 0, quantity);
+    while ((taken.get(card.name) || 0) < limit && chosen.length < landCount) {
+      chosen.push(card);
+      taken.set(card.name, (taken.get(card.name) || 0) + 1);
+      if (['always', 'early'].includes(entersTapped(card))) slow += 1;
+    }
+    reasons.set(card.name, `kept · ${why(card)}`);
+  }
+
+  const leftOutSlow = new Set();
   for (const card of ranked) {
     if (chosen.length >= landCount) break;
     const limit = Math.min(maxCopies, card.available ?? 0);
-    if ((taken.get(card.name) || 0) >= limit) continue;
-    chosen.push(card);
-    taken.set(card.name, (taken.get(card.name) || 0) + 1);
+    const isSlow = ['always', 'early'].includes(entersTapped(card));
+    while ((taken.get(card.name) || 0) < limit && chosen.length < landCount) {
+      // Named only when no copy got in — a second copy stopped at the cap is
+      // not a land left out of the deck.
+      if (isSlow && slow >= maxSlow) {
+        if (!taken.has(card.name)) leftOutSlow.add(card.name);
+        break;
+      }
+      chosen.push(card);
+      taken.set(card.name, (taken.get(card.name) || 0) + 1);
+      if (isSlow) slow += 1;
+    }
+    if (taken.has(card.name) && !reasons.has(card.name)) reasons.set(card.name, why(card));
   }
 
-  const nonbasics = groupByName(chosen, new Map());
+  if (leftOutSlow.size > 0) {
+    const names = [...leftOutSlow];
+    notes.push(
+      `Left out ${names.length} land${names.length === 1 ? '' : 's'} that enter${names.length === 1 ? 's' : ''} tapped `
+      + `early (${names.slice(0, 4).join(', ')}${names.length > 4 ? '…' : ''}): at most ${maxSlow} in a ${format} deck, `
+      + 'because a land that cannot be used the turn it is played costs the early turns. Basics took their place.'
+    );
+  }
+
+  const nonbasics = groupByName(chosen, reasons);
 
   // Basics, split by each colour's share of the demand.
   const basicSlots = Math.max(0, landCount - chosen.length);
@@ -650,7 +855,7 @@ export function buildManaBase({
   for (const color of wantedColors) sources[color] = 0;
 
   for (const land of chosen) {
-    for (const color of landProduces(land)) {
+    for (const color of landProduces(land, format)) {
       if (sources[color] != null) sources[color] += 1;
     }
   }
@@ -681,5 +886,15 @@ export function buildManaBase({
     sources,
     demands,
     shortfalls,
+    notes,
+    slowLands: slow,
   };
 }
+
+/**
+ * How many lands that enter tapped early a generated deck may run. One in a
+ * 60-card deck, where games are decided in the first turns; two in Commander,
+ * which is slower and has more land slots to absorb one. Kept lands count
+ * against it but are never refused.
+ */
+export const MAX_SLOW_LANDS = { commander: 2, default: 1 };

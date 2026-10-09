@@ -358,3 +358,65 @@ taken on GitHub — only do it when explicitly asked.
   `[SET]` or `(SET)`. The simple export is summed per card and finish and
   deliberately carries none. Inventory and export both take a `condition`
   filter: `all`, `unrecorded` (the `''` rows) or a code.
+- Regrading goes through `changeOwnedCondition` in `cardService.js`, which
+  takes an optional `context.quantity` to move only some of a row's copies
+  (the card page asks "how many?" when a row holds more than one). The
+  Inventory page's "Set Condition" (`setConditionForCards`,
+  `POST /api/inventory/set-condition`) runs it per row under one `batchId`
+  with source `bulk_condition`, and by default touches **only unrecorded
+  copies** — marking a new collection Near Mint must never undo grading done
+  by hand. `overwrite` is the explicit opt-out.
+- A deck's plan (`decks.plan`, migration 047, `src/services/deckPlanService.js`)
+  is one JSON column: `{ themeKey, secondaryThemeKey, secondaryShare, keep }`.
+  Kept cards are stored by **name**, never `card_id`, for the backup rule
+  above; the revise page ticks whichever of them the deck still lists. The
+  plan pre-fills the revise page once per deck pick and is the default for
+  "Fits this deck" (`deckFitThemes`) — an explicitly picked theme always
+  overrides it. A plan with no theme and no kept cards is stored as NULL, so
+  "has a plan" means somebody chose something. `backupService` carries it.
+- The generator's mana base (`buildManaBase`) caps lands that enter tapped
+  early at `MAX_SLOW_LANDS` (1, or 2 in Commander); kept lands count against
+  it but are never refused. `entersTapped` in `cardRoleService.js` sorts land
+  wording into `always` / `early` (slow lands, tapped fetches — both capped)
+  and `conditional` (shocks, check lands, fast lands — not capped). Lands are
+  scored on colours the deck wants, theme fit, and tapped-ness; a land making
+  no wanted colour gets in only by serving the theme. `landProduces` reads
+  every symbol in an "Add …" clause (duals), fetches as what they find, and
+  treats strings-attached rainbow mana — commander-identity outside
+  Commander, "spend this mana only", "could produce", paid filters — as no
+  colour at all.
+- Adding cards answers with their price: quick add returns `card` and
+  `bulkAddToInventory` returns `cards`, both from `describeAddedPrinting`
+  (priced like `OWNED_COPY_PRICE`; `price` is null, not 0, when unpriced).
+  The page colours them with `src/shared/priceBands.js`, which mirrors the
+  Android app's `PriceBand` thresholds — change one, change the other. The
+  `--price-band-*` tokens are locked across themes like rarity. On the
+  Inventory page, collection search is the primary field and quick add sits
+  behind the "Add cards" button (key `A`) on purpose: an always-open add box
+  in that spot got typed searches into it and added cards by accident.
+  The deck builder follows the same rule: "From Inventory" is the primary
+  control, and the any-card search sits behind an "Any card" button with a
+  label saying it is not from the collection. That search adds a card's
+  *first* printing, usually one nobody owns, so an always-open box filled
+  decks with cards that then had to be bought.
+- Mimic (`src/services/deckMimicService.js`, `POST /api/decks/generate/mimic`,
+  the deck builder's "Mimic" button) rebuilds an existing deck — usually an
+  imported list — card by card from the collection: owned copies first, then a
+  stand-in scored on shared role predicates, theme enabler/payoff sides, card
+  type, keywords, creature type, size and mana value, assigned globally like
+  `pairSwaps`. A stand-in sharing no role or theme is labelled `loose`, not
+  passed off as a match. The commander is never substituted. It writes nothing;
+  saving goes through `acceptProposal`, so the copy is a new `idea` and the
+  original is untouched. The core is pure, like the generator.
+- The pull list ("Pull cards" in the deck builder, `pullListService.js`,
+  `/api/decks/:id/pull-list`) is a checklist for taking a deck out of physical
+  storage, grouped by `groupPullRows` in `src/shared/pullLayout.js` the way the
+  shelves are arranged: section (printed colour — not identity — then
+  Multicolour, Colourless, Lands) → rarity → type, where the type split applies
+  only to the rarities each section lists in `users.pull_layout`. Default:
+  mono-colour and colourless split commons, Multicolour splits uncommons.
+  Creature wins the type, so an Artifact Creature files under Creature. Ticks
+  live in `deck_pull_progress`, keyed by `printing_uuid` with no FK (same
+  reason as `audit_log`) and change nothing in the deck or the collection.
+  `backupService` carries both. The generator's own in-memory checklist is for
+  unsaved proposals and is separate.

@@ -4,6 +4,7 @@ import { getDisruptionCounts, getDisruptions } from './tradeService.js';
 import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
 import { getDeckRecords, getDeckRecord } from './deckGameService.js';
 import { getDeckReadinessSummaries, getDeckReadiness } from './deckReadinessService.js';
+import { parsePlan } from './deckPlanService.js';
 
 /**
  * What the owner says the deck is for. Deliberately not the vocabulary the
@@ -147,6 +148,8 @@ export function getDeckById(deckId, userId) {
 
   return {
     ...deck,
+    // Parsed, so no caller ever handles the stored JSON.
+    plan: parsePlan(deck.plan),
     cards,
     // Cards that left this collection in a trade while the deck still lists
     // them. The deck is returned exactly as it stands — nothing is filtered

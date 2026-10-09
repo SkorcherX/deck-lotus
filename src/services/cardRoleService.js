@@ -121,7 +121,86 @@ export function isTurnOnePlay(card) {
   return hasAlternativeCost(card) || mvOf(card) <= 1;
 }
 
+/**
+ * How a land enters: 'always' tapped, tapped 'early' in the game, tapped only
+ * 'conditional'ly, or null for a land that comes in ready.
+ *
+ * A land that enters tapped costs the turn it is played on, and the early
+ * turns are where that hurts — a one-drop that cannot be cast on turn one is
+ * a different deck. So the line is drawn at what a land does on turns one to
+ * three, read from 706 lands' wording:
+ *
+ *   always       "This land enters tapped." — gain lands, tri-lands, bounce
+ *                lands; and fetches that put the land in tapped (Evolving
+ *                Wilds), which cost the same turn one step later.
+ *   early        tapped exactly when it hurts: slow lands ("unless you control
+ *                two or more other lands"), "if you were the starting player",
+ *                and Fabled Passage-style fetches that only untap later.
+ *   conditional  usually untapped, by choice or by board: shocks and reveal
+ *                lands ("If you don't, it enters tapped"), check lands
+ *                ("unless you control a Swamp"), fast lands ("If you control
+ *                two or more other lands" — tapped late, not early), and
+ *                "unless you have two or more opponents".
+ *
+ * 'always' and 'early' are the slow ones the generator caps.
+ */
+export function entersTapped(card) {
+  if (!isLand(card)) return null;
+  const text = effectText(card);
+
+  // Fetch lands: the land they find is what enters tapped.
+  // "land" is optional, as in landProduces: a Landscape asks for a "basic
+  // Swamp, Forest, or Island card".
+  if (/search your library for[^.]*\bcards?\b[^.]*put (it|that card|them) onto the battlefield tapped/.test(text)) {
+    return /untap (it|that land)/.test(text) ? 'early' : 'always';
+  }
+
+  const clause = text.match(/[^.]*\benters(?: the battlefield)? tapped[^.]*/)?.[0];
+  if (!clause) return null;
+  // A trigger about something else entering tapped, not this land.
+  if (/\bwhenever\b/.test(clause)) return null;
+
+  if (/if you don't/.test(clause)) return 'conditional';
+  if (/\bunless\b/.test(clause)) {
+    return /unless you control (two|three|four) or more (other )?(basic )?lands/.test(clause) ? 'early' : 'conditional';
+  }
+  if (/\bif you were the starting player\b/.test(clause)) return 'early';
+  if (/\bif\b/.test(clause)) return 'conditional';
+  return 'always';
+}
+
+/** Tapped on the turns that matter — what the generator caps. */
+export const isSlowLand = (card) => ['always', 'early'].includes(entersTapped(card));
+
 // --- Role predicates -------------------------------------------------------
+
+/**
+ * What an edict makes somebody else sacrifice, as the set of permanent types
+ * named — {'creature'} for Diabolic Edict, {'artifact', 'enchantment',
+ * 'creature'} for Pick Your Poison.
+ *
+ * An edict is removal the opponent aims: it gets around hexproof and
+ * indestructible and is the black removal spell, and none of it says "destroy
+ * target", so before this every one of them read as a card doing nothing —
+ * a revision called Pick Your Poison a card that "fills none of the roles".
+ *
+ * The subject is what makes it an edict. "Each opponent" and "target player"
+ * are; "you sacrifice" is a cost, and "whenever an opponent sacrifices" is a
+ * trigger, so neither is listed. One permanent apiece only: "each player
+ * sacrifices two creatures" is a sweeper and isSweeper already has it.
+ */
+const EDICT = /\b(?:target player|target opponent|each opponent|each other player|each player|that player|defending player|an opponent of your choice)\s+sacrifices\s+(?:a|an|one)\b([^.;•]{0,50})/g;
+const EDICT_NOUNS = ['creature', 'planeswalker', 'artifact', 'enchantment', 'battle', 'permanent', 'land'];
+
+export function edictTargets(card) {
+  const found = new Set();
+  for (const match of effectText(card).matchAll(EDICT)) {
+    for (const noun of EDICT_NOUNS) {
+      if (new RegExp(`\\b${noun}s?\\b`).test(match[1])) found.add(noun);
+    }
+  }
+  return found;
+}
 
 export function isPermission(card) {
   return /counter target/.test(effectText(card));
@@ -135,7 +214,8 @@ export function isCreatureRemoval(card) {
     // a combat trick, and counting it as removal let it fill a removal slot.
     || /target creature[^.]{0,30}gets -(\d+|x)\/-(?!0\b)(\d+|x)/.test(text)
     || /deals \d+ damage to (target creature|any target)/.test(text)
-    || /target creature.{0,40}(fights|its controller sacrifices)/.test(text);
+    || /target creature.{0,40}(fights|its controller sacrifices)/.test(text)
+    || ['creature', 'permanent'].some((noun) => edictTargets(card).has(noun));
 }
 
 /** Removal that reaches past creatures — the Part 6 lesson about Prismatic Ending. */
@@ -146,7 +226,8 @@ export function isPermanentRemoval(card) {
     || /return target (nonland )?permanent[^.]{0,30}to (its owner's|their owner's) hand/.test(text)
     // Tucking answers a permanent as completely as destroying it, and answers
     // the indestructible ones it cannot destroy — Chaos Warp is the staple.
-    || /shuffles? (it|target[^.]{0,30}permanent) into (their|its owner's|that player's) library/.test(text);
+    || /shuffles? (it|target[^.]{0,30}permanent) into (their|its owner's|that player's) library/.test(text)
+    || ['artifact', 'enchantment', 'planeswalker', 'battle', 'permanent'].some((noun) => edictTargets(card).has(noun));
 }
 
 /**
@@ -396,6 +477,13 @@ export function answerTargets(card) {
   if (isGraveyardHate(card)) found.add('graveyard');
   if (isPermission(card)) found.add('stack');
 
+  // Edicts name what they take. "A permanent" reaches everything a player
+  // controls, so it counts for every type, the same as "target permanent".
+  const edict = edictTargets(card);
+  for (const type of ['creature', 'artifact', 'enchantment', 'planeswalker', 'land']) {
+    if (edict.has(type) || edict.has('permanent')) found.add(type);
+  }
+
   // "Target permanent" and "target nonland permanent" reach nearly everything,
   // so they cover the categories a creature-only removal suite misses.
   if (/(destroy|exile) target[^.]{0,20}(nonland )?permanent/.test(text)) {
@@ -440,7 +528,10 @@ export const ROLE_FILTERS = {
         OR oracle_text LIKE '%destroy target permanent%'
         OR oracle_text LIKE '%exile target permanent%'
         OR oracle_text LIKE '%destroy target nonland permanent%'
-        OR oracle_text LIKE '%exile target nonland permanent%')`
+        OR oracle_text LIKE '%exile target nonland permanent%'
+        OR oracle_text LIKE '%sacrifices an artifact%'
+        OR oracle_text LIKE '%sacrifices an enchantment%'
+        OR oracle_text LIKE '%sacrifices a planeswalker%')`
   },
   'graveyard-hate': {
     label: 'graveyard hate',
@@ -460,7 +551,9 @@ export const ROLE_FILTERS = {
     sql: `(oracle_text LIKE '%counter target%'
         OR oracle_text LIKE '%destroy target%'
         OR oracle_text LIKE '%exile target%'
-        OR oracle_text LIKE '%discards%')`
+        OR oracle_text LIKE '%discards%'
+        OR oracle_text LIKE '%opponent sacrifices a%'
+        OR oracle_text LIKE '%player sacrifices a%')`
   },
   'instant-sorcery': {
     label: 'instants and sorceries',

@@ -524,6 +524,7 @@ const ACTION_LABELS = {
 const SOURCE_LABELS = {
   bulk_add: 'Bulk import',
   bulk_remove: 'Bulk remove',
+  bulk_condition: 'Set condition',
   quick_add: 'Quick add',
   card_page: 'Card page',
   deck_builder: 'Deck builder',

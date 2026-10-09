@@ -428,6 +428,17 @@ describe('revising a deck', () => {
     assert.ok(Array.isArray(revision.added) && Array.isArray(revision.cut));
   });
 
+  test('swaps plus what is left over account for every add and every cut', () => {
+    // Pointed at a different theme so the revision actually changes things.
+    const revision = proposeDeck(userId, { reviseDeckId: deckId, themeKey: 'tribe:Zombie' }).revision;
+    const total = (rows) => rows.reduce((sum, r) => sum + r.quantity, 0);
+    const swapped = total(revision.swaps);
+
+    assert.equal(swapped + total(revision.unpairedAdded), total(revision.added));
+    assert.equal(swapped + total(revision.unpairedCut), total(revision.cut));
+    for (const swap of revision.swaps) assert.ok(swap.why.length > 0, `${swap.cut.name} → ${swap.add.name} has no reason`);
+  });
+
   test('revising the deck it was built from keeps nearly all of it', () => {
     // The pool has not changed since the deck was made from it, so the
     // proposal should land back on the same cards. This is what the in_deck
@@ -436,6 +447,55 @@ describe('revising a deck', () => {
     const revision = proposeDeck(userId, { reviseDeckId: deckId }).revision;
     assert.ok(revision.keptCount > revision.added.length,
       'a revision of an unchanged collection must not be a rebuild');
+  });
+
+  test('a kept card stays in the revision whatever the heuristics think of it', () => {
+    // An expensive vanilla creature is the card every ranking puts last, so
+    // it is the one a revision would cut first — which is what keeping is for.
+    addCard('Kept Oddity', 'Creature — Horror', { cmc: 7, manaCost: '{6}{B}' });
+    const cardId = db.get(`SELECT id FROM cards WHERE name = 'Kept Oddity'`).id;
+    db.run(
+      `INSERT INTO deck_cards (deck_id, printing_id, quantity, board_type, is_sideboard, is_foil)
+       VALUES (?,?,1,'mainboard',0,0)`,
+      [deckId, printings['OWN:Kept Oddity']]
+    );
+
+    try {
+      const proposal = proposeDeck(userId, { reviseDeckId: deckId, keepCardIds: [cardId] });
+      const row = proposal.mainboard.find((c) => c.name === 'Kept Oddity');
+
+      assert.ok(row, 'the kept card must be in the proposal');
+      assert.equal(row.reason, 'kept');
+      assert.ok(!proposal.revision.cut.some((c) => c.name === 'Kept Oddity'));
+      assert.deepEqual(proposal.revision.kept, ['Kept Oddity']);
+    } finally {
+      db.run(`DELETE FROM deck_cards WHERE deck_id = ? AND printing_id = ?`,
+        [deckId, printings['OWN:Kept Oddity']]);
+    }
+  });
+
+  test('themes a kept card belongs to are offered first, naming it', () => {
+    const kept = db.get(
+      `SELECT c.id, c.name FROM deck_cards dc
+         JOIN printings p ON dc.printing_id = p.id
+         JOIN cards c ON p.card_id = c.id
+        WHERE dc.deck_id = ? AND c.name LIKE 'Reanimator%' LIMIT 1`,
+      [deckId]
+    );
+    assert.ok(kept, 'the fixture deck should hold a reanimation spell');
+
+    const plain = themeOptions(userId, null, { reviseDeckId: deckId });
+    assert.ok(plain.every((t) => t.keptMatches.length === 0));
+
+    const themes = themeOptions(userId, null, { reviseDeckId: deckId, keepCardIds: [kept.id] });
+    assert.equal(themes[0].key, 'graveyard');
+    assert.deepEqual(themes[0].keptMatches, [kept.name]);
+  });
+
+  test('keeping a card that is not in the deck is ignored, not an add', () => {
+    const outsider = db.get(`SELECT id FROM cards WHERE name = 'Kept Oddity'`).id;
+    const proposal = proposeDeck(userId, { reviseDeckId: deckId, keepCardIds: [outsider] });
+    assert.deepEqual(proposal.revision.kept, []);
   });
 
   test('a revision inherits the format and the commander it was not given', () => {
@@ -465,5 +525,253 @@ describe('revising a deck', () => {
     // Null rather than an empty diff, so a caller can tell "built from
     // scratch" apart from "revised and changed nothing".
     assert.equal(proposeDeck(userId, { commanderCardId }).revision, null);
+  });
+});
+
+/**
+ * A 60-card deck has no commander to take colours from, so a revision has to
+ * take them from the deck. Before this it took them from nowhere: a Dimir
+ * deck asked for graveyard value came back proposing every colour.
+ */
+describe('revising a deck without a commander', () => {
+  let deckId;
+
+  before(() => {
+    for (let i = 0; i < 10; i += 1) {
+      addCard(`Green Miller ${i}`, 'Creature — Elf', {
+        identity: 'G', manaCost: '{1}{G}',
+        oracle: 'When this creature enters, mill three cards. Return target creature card from your graveyard to your hand.',
+      });
+    }
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?, 'Dimir Mill', 'modern', 'idea')`, [userId]);
+    deckId = db.get(`SELECT id FROM decks WHERE name = 'Dimir Mill'`).id;
+    for (const name of ['Miller 0', 'Miller 1', 'Reanimator 0', 'Killer 0']) {
+      db.run(
+        `INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_foil) VALUES (?,?,4,0,0)`,
+        [deckId, printings[`OWN:${name}`]]
+      );
+    }
+  });
+
+  test('suggestions stay inside the colours the deck already plays', () => {
+    const proposal = proposeDeck(userId, { reviseDeckId: deckId, format: null, themeKey: 'graveyard' });
+    const offColour = proposal.revision.added.filter((c) => c.name.startsWith('Green'));
+    assert.deepEqual(offColour, []);
+  });
+
+  test('the theme counts are measured in those colours too', () => {
+    const themes = themeOptions(userId, null, { reviseDeckId: deckId, format: 'modern' });
+    assert.ok(themes.length > 0);
+    const full = themeOptions(userId, null, { format: 'modern' });
+    const gy = (list) => list.find((t) => t.key === 'graveyard');
+    assert.ok(gy(themes).enablers < gy(full).enablers, 'green enablers should not be counted');
+  });
+});
+
+describe('splashing a colour into a commanderless revision', () => {
+  test('the deck lists its own colours', () => {
+    const deck = revisableDecks(userId).find((d) => d.name === 'Dimir Mill');
+    assert.equal(deck.colorIdentity, 'B');
+  });
+
+  test('a splash lets that colour in, and only when asked', () => {
+    const deckId = db.get(`SELECT id FROM decks WHERE name = 'Dimir Mill'`).id;
+    const themes = (splash) => themeOptions(userId, null, { reviseDeckId: deckId, format: 'modern', splash })
+      .find((t) => t.key === 'graveyard');
+    assert.ok(themes('G').enablers > themes(null).enablers);
+    assert.equal(proposeDeck(userId, { reviseDeckId: deckId, format: null, splash: 'G' }).colorIdentity, 'BG');
+  });
+});
+
+/**
+ * "Fits this deck" in the builder's collection panel: the deck's own themes,
+ * read off its cards, rank what the user owns and has not yet put in it.
+ */
+describe('a custom theme', () => {
+  test('is offered first, measured, even when it matches nothing', async () => {
+    const { customThemeKey } = await import('../../src/services/cardSynergyService.js');
+    const hit = customThemeKey('from your graveyard', 'mill');
+    const miss = customThemeKey('venture into the dungeon');
+
+    const themes = themeOptions(userId, commanderCardId, { customThemeKeys: [hit, miss, hit] });
+    assert.equal(themes[0].key, hit);
+    assert.equal(themes[0].custom, true);
+    assert.ok(themes[0].payoffs >= 20 && themes[0].enablers >= 20, 'the Reanimators and Millers');
+    assert.equal(themes[1].key, miss);
+    assert.equal(themes[1].strength, 0);
+    assert.equal(themes.filter((t) => t.key === hit).length, 1, 'one tile per theme');
+  });
+
+  test('builds a deck with its cards, and says why', async () => {
+    const { customThemeKey } = await import('../../src/services/cardSynergyService.js');
+    const proposal = proposeDeck(userId, { commanderCardId, themeKey: customThemeKey('from your graveyard', 'mill') });
+    assert.match(proposal.theme.label, /your theme/);
+    assert.ok(proposal.theme.payoffs > 0);
+    assert.ok(proposal.mainboard.some((c) => /your theme/.test(c.reason || '')));
+  });
+
+  test('can be saved as a deck plan', async () => {
+    const { customThemeKey } = await import('../../src/services/cardSynergyService.js');
+    const { saveDeckPlan } = await import('../../src/services/deckPlanService.js');
+    db.run(`INSERT INTO decks (user_id, name, format) VALUES (?, 'Custom Plan Deck', 'modern')`, [userId]);
+    const deckId = db.get(`SELECT id FROM decks WHERE name = 'Custom Plan Deck'`).id;
+
+    const plan = saveDeckPlan(userId, deckId, { themeKey: customThemeKey('MILL ,  mill') });
+    assert.equal(plan.themeKey, customThemeKey('mill'), 'stored in its canonical form');
+    assert.equal(saveDeckPlan(userId, deckId, { themeKey: 'custom:%E0%A4%A' }), null, 'a broken key is not stored');
+  });
+});
+
+describe('cards that fit a deck', () => {
+  let deckId;
+  let getBuilderInventory;
+  let deckFitThemes;
+
+  before(async () => {
+    ({ getBuilderInventory } = await import('../../src/services/inventoryService.js'));
+    ({ deckFitThemes } = await import('../../src/services/deckProposalService.js'));
+
+    db.run(`INSERT INTO decks (user_id, name, format) VALUES (?, 'Fit Deck', 'modern')`, [userId]);
+    deckId = db.get(`SELECT id FROM decks WHERE name = 'Fit Deck'`).id;
+    const put = (name) => db.run(
+      `INSERT INTO deck_cards (deck_id, printing_id, quantity, board_type, is_sideboard, is_foil)
+       VALUES (?,?,1,'mainboard',0,0)`,
+      [deckId, printings[`OWN:${name}`]]
+    );
+    for (let i = 0; i < 4; i += 1) { put(`Miller ${i}`); put(`Reanimator ${i}`); }
+    put('Killer 0');
+  });
+
+  test('the deck is read as the theme its cards share', () => {
+    const { themes, options } = deckFitThemes(userId, deckId);
+    assert.equal(themes[0].key, 'graveyard');
+    assert.ok(options.some((o) => o.key === 'graveyard'));
+  });
+
+  test('owned cards that fit come back ranked, with their reasons, and nothing else', () => {
+    const { themes } = deckFitThemes(userId, deckId, { secondaryThemeKey: '' });
+    const feed = getBuilderInventory(userId, deckId, { fitThemes: themes, limit: 200 });
+    const names = feed.items.map((i) => i.cardName);
+
+    assert.ok(names.includes('Reanimator 10'), 'an unused payoff should be offered');
+    assert.ok(!names.includes('Reanimator 0'), 'a card already in the deck is not a suggestion');
+    assert.ok(!names.some((n) => n.startsWith('Killer')), 'a card fitting no theme is not a suggestion');
+    assert.equal(new Set(names).size, names.length, 'one row per card, not per printing');
+
+    const reanimator = feed.items.find((i) => i.cardName === 'Reanimator 10');
+    assert.deepEqual(reanimator.fit.reasons, [{ label: 'graveyard value', role: 'payoff' }]);
+
+    const scores = feed.items.map((i) => i.fit.score);
+    assert.deepEqual(scores, [...scores].sort((a, b) => b - a), 'best fit first');
+  });
+
+  test("a card outside the deck's colours is not offered, however well it fits", () => {
+    addCard('Red Reanimator', 'Sorcery', {
+      identity: 'R', manaCost: '{1}{R}',
+      oracle: 'Return target creature card from your graveyard to the battlefield.',
+    });
+    const fit = deckFitThemes(userId, deckId, { secondaryThemeKey: '' });
+    assert.equal(fit.identity, 'B');
+    assert.equal(fit.format, 'modern');
+
+    const feed = getBuilderInventory(userId, deckId, {
+      fitThemes: fit.themes, colorIdentity: fit.identity, limit: 200,
+    });
+    assert.ok(!feed.items.some((i) => i.cardName === 'Red Reanimator'));
+  });
+
+  test("a saved plan decides the themes, until one is picked by hand", async () => {
+    const { saveDeckPlan, getDeckPlan } = await import('../../src/services/deckPlanService.js');
+    try {
+      saveDeckPlan(userId, deckId, { themeKey: 'tribe:Zombie', secondaryThemeKey: 'graveyard', secondaryShare: 0.9, keep: ['Miller 0', 'Miller 0', 42] });
+      const plan = getDeckPlan(userId, deckId);
+      assert.equal(plan.secondaryShare, 0.5, 'the share is clamped on the way in');
+      assert.deepEqual(plan.keep, ['Miller 0'], 'kept names are deduplicated and non-strings dropped');
+
+      const planned = deckFitThemes(userId, deckId);
+      assert.equal(planned.fromPlan, true);
+      assert.deepEqual(planned.themes.map((t) => t.key), ['tribe:Zombie', 'graveyard']);
+
+      const picked = deckFitThemes(userId, deckId, { themeKey: 'graveyard' });
+      assert.equal(picked.fromPlan, false);
+      assert.equal(picked.themes[0].key, 'graveyard');
+    } finally {
+      assert.equal(saveDeckPlan(userId, deckId, null), null);
+    }
+    assert.equal(getDeckPlan(userId, deckId), null);
+  });
+
+  test('a plan with nothing chosen is stored as no plan', async () => {
+    const { saveDeckPlan } = await import('../../src/services/deckPlanService.js');
+    assert.equal(saveDeckPlan(userId, deckId, { themeKey: '', keep: [] }), null);
+    assert.equal(db.get('SELECT plan FROM decks WHERE id = ?', [deckId]).plan, null);
+  });
+
+  test("another user's deck is refused", () => {
+    db.run(`INSERT INTO users (username, email, password_hash) VALUES ('stranger','s@example.test','h')`);
+    const strangerId = db.get(`SELECT id FROM users WHERE username='stranger'`).id;
+    assert.throws(() => deckFitThemes(strangerId, deckId), /not one of yours/);
+  });
+});
+
+/**
+ * A copy on loan is owned but not in the box. The generator must not build
+ * a deck around it, and the builder's panel must not call it free.
+ */
+describe('cards lent out', () => {
+  let getGeneratorPool;
+  let getBuilderInventory;
+  let borrowerId;
+  const name = 'Killer 7';
+
+  before(async () => {
+    ({ getGeneratorPool, getBuilderInventory } = await import('../../src/services/inventoryService.js'));
+    db.run(`INSERT INTO users (username, email, password_hash) VALUES ('borrower','b@example.test','h')`);
+    borrowerId = db.get(`SELECT id FROM users WHERE username='borrower'`).id;
+  });
+
+  const lend = (quantity, status = 'active') => db.run(
+    `INSERT INTO card_loans (lender_user_id, borrower_user_id, printing_uuid, is_foil, quantity, card_name, status)
+     VALUES (?,?,?,0,?,?,?)`,
+    [userId, borrowerId, `uuid-OWN-${name}`.replace(/\s+/g, '-'), quantity, name, status]
+  );
+  const poolCopies = (opts) => getGeneratorPool(userId, opts).find((c) => c.name === name)?.available ?? 0;
+  const panelRow = () => getBuilderInventory(userId, null, { name, limit: 50 }).items.find((i) => i.cardName === name);
+
+  test('the generator and the panel count a live loan out', () => {
+    const before = poolCopies({ includeCommitted: true });
+    lend(1);
+    try {
+      assert.equal(poolCopies({ includeCommitted: true }), before - 1, 'even when other decks may be used');
+      const row = panelRow();
+      assert.equal(row.lent, 1);
+      assert.equal(row.free, row.owned - row.committed - row.inThisDeck - 1);
+    } finally {
+      db.run(`DELETE FROM card_loans WHERE card_name = ?`, [name]);
+    }
+  });
+
+  test('every copy on loan means the card is not proposed or offered as free at all', () => {
+    const owned = panelRow().owned;
+    lend(owned);
+    try {
+      assert.equal(poolCopies({ includeCommitted: true }), 0);
+      const onlyFree = getBuilderInventory(userId, null, { name, onlyFree: true, limit: 50 }).items;
+      assert.ok(!onlyFree.some((i) => i.cardName === name), '"Still available" leaves it out');
+    } finally {
+      db.run(`DELETE FROM card_loans WHERE card_name = ?`, [name]);
+    }
+  });
+
+  test('a returned or only-requested loan takes nothing', () => {
+    const before = poolCopies({ includeCommitted: true });
+    lend(2, 'returned');
+    lend(2, 'requested');
+    try {
+      assert.equal(poolCopies({ includeCommitted: true }), before);
+      assert.equal(panelRow().lent, 0);
+    } finally {
+      db.run(`DELETE FROM card_loans WHERE card_name = ?`, [name]);
+    }
   });
 });

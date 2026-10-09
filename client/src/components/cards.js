@@ -923,7 +923,7 @@ export async function showCardDetail(cardId) {
                         </button>
                         <label style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--text-secondary);">
                           Condition
-                          <select class="owned-condition-select" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-condition="${op.condition || ''}" title="TCGplayer condition — optional" style="font-size: 0.75rem; padding: 0.15rem 0.3rem; background: var(--bg-tertiary); color: var(--text); border: 1px solid var(--border-color); border-radius: 4px;">
+                          <select class="owned-condition-select" data-quantity="${op.quantity}" data-printing-id="${op.printing_id}" data-is-foil="${op.is_foil ? 1 : 0}" data-condition="${op.condition || ''}" title="TCGplayer condition — optional" style="font-size: 0.75rem; padding: 0.15rem 0.3rem; background: var(--bg-tertiary); color: var(--text); border: 1px solid var(--border-color); border-radius: 4px;">
                             ${conditionOptions(op.condition || '')}
                           </select>
                         </label>
@@ -1369,14 +1369,25 @@ export async function showCardDetail(cardId) {
       select.addEventListener('click', (e) => e.stopPropagation());
       select.addEventListener('change', async function(e) {
         e.stopPropagation();
+        const have = parseInt(this.dataset.quantity, 10) || 1;
+        let move = have;
+        if (have > 1) {
+          move = await askRegradeCount(have, this.value);
+          if (!move) {
+            this.value = this.dataset.condition || '';
+            return;
+          }
+        }
         try {
           await api.changeOwnedCondition(
             parseInt(this.dataset.printingId),
             this.dataset.isFoil === '1',
             this.dataset.condition || '',
-            this.value
+            this.value,
+            move < have ? move : undefined
           );
-          showToast(this.value ? `Marked ${this.value}` : 'Condition cleared', 'success', 2000);
+          const what = move < have ? `${move} of ${have}` : '';
+          showToast(this.value ? `Marked ${what ? what + ' ' : ''}${this.value}` : 'Condition cleared', 'success', 2000);
           await showCardDetail(cardId);
         } catch (error) {
           showError('Failed to change condition: ' + error.message);
@@ -1967,4 +1978,51 @@ function conditionOptions(selected) {
   return [`<option value=""${selected ? '' : ' selected'}>—</option>`]
     .concat(CONDITIONS.map((c) => `<option value="${c.code}"${c.code === selected ? ' selected' : ''}>${c.code} · ${c.label}</option>`))
     .join('');
+}
+
+/**
+ * How many of a row's copies to regrade — "1 of my 4 NM is really LP".
+ * Resolves to a count, or null when cancelled. Defaults to all of them, so
+ * pressing Enter keeps the old whole-row behaviour.
+ */
+function askRegradeCount(have, to) {
+  return new Promise((resolve) => {
+    const label = conditionLabel(to) || 'not recorded';
+    const overlay = document.createElement('div');
+    overlay.className = 'modal';
+    overlay.innerHTML = `
+      <div class="modal-content modal-sm">
+        <h2 style="margin-bottom: 0.75rem;">How many?</h2>
+        <p style="margin-bottom: 0.75rem;">You hold ${have} copies here. How many should become <strong>${label}</strong>?</p>
+        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+          <input id="regrade-count" type="number" min="1" max="${have}" value="${have}" style="width: 6rem;" />
+          <span>of ${have}</span>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" data-act="cancel">Cancel</button>
+          <button class="btn btn-primary" data-act="ok">Change</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#regrade-count');
+    input.select();
+    input.focus();
+
+    const done = (val) => { overlay.remove(); resolve(val); };
+    const submit = () => {
+      const n = parseInt(input.value, 10);
+      if (!Number.isInteger(n) || n < 1 || n > have) {
+        input.focus();
+        return;
+      }
+      done(n);
+    };
+    overlay.querySelector('[data-act="ok"]').addEventListener('click', submit);
+    overlay.querySelector('[data-act="cancel"]').addEventListener('click', () => done(null));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) done(null); });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submit();
+      if (e.key === 'Escape') done(null);
+    });
+  });
 }

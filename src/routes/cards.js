@@ -18,6 +18,8 @@ import {
   getCardOwnershipAndUsage,
 } from '../services/cardService.js';
 import { authenticate } from '../middleware/auth.js';
+import { AUDIT_SOURCES } from '../services/auditService.js';
+import { RARITIES } from '../shared/rarities.js';
 
 const router = express.Router();
 
@@ -58,13 +60,18 @@ router.get('/browse', authenticate, (req, res, next) => {
  */
 router.get('/search', authenticate, (req, res, next) => {
   try {
-    const { q, limit, type } = req.query;
+    const { q, limit, type, rarity } = req.query;
 
     if (!q || q.length < 2) {
       return res.json({ cards: [] });
     }
 
-    const cards = searchCards(q, limit ? parseInt(limit) : 20, type || null);
+    const cards = searchCards(
+      q,
+      limit ? parseInt(limit) : 20,
+      type || null,
+      RARITIES.includes(rarity) ? rarity : null
+    );
     res.json({ cards });
   } catch (error) {
     next(error);
@@ -267,7 +274,7 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
   try {
     const printingId = parseInt(req.params.printingId);
     const userId = req.user.id;
-    const { quantity, isFoil = false, expectedQuantity } = req.body;
+    const { quantity, isFoil = false, expectedQuantity, source } = req.body;
     // Optional. Present (even as '') means "this condition's row"; absent
     // means the total across conditions, which is what the page always sent.
     const hasCondition = Object.prototype.hasOwnProperty.call(req.body, 'condition');
@@ -277,7 +284,9 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
     }
 
     const result = setOwnedPrintingQuantity(userId, printingId, parseInt(quantity), isFoil, {
-      source: 'card_page',
+      // The Inventory page's Undo comes through here too; it says so, so the
+      // history shows a quick add and its undo side by side.
+      source: AUDIT_SOURCES.includes(source) ? source : 'card_page',
       expectedQuantity,
       ...(hasCondition ? { condition: req.body.condition ?? '' } : {}),
     });
@@ -296,11 +305,13 @@ router.post('/printings/:printingId/quantity', authenticate, (req, res, next) =>
  * POST /api/cards/printings/:printingId/condition
  * Regrade one row: every copy of this printing and finish held at `from`
  * moves to `to`, merging with a row already there. '' is "not recorded".
+ * Optional `quantity` moves only that many of them.
  */
 router.post('/printings/:printingId/condition', authenticate, (req, res, next) => {
   try {
-    const { isFoil = false, from = '', to = '' } = req.body || {};
-    res.json(changeOwnedCondition(req.user.id, parseInt(req.params.printingId, 10), !!isFoil, from, to));
+    const { isFoil = false, from = '', to = '', quantity } = req.body || {};
+    res.json(changeOwnedCondition(req.user.id, parseInt(req.params.printingId, 10), !!isFoil, from, to,
+      quantity === undefined || quantity === null ? {} : { quantity }));
   } catch (error) {
     if (/condition|Nothing to/i.test(error.message)) return res.status(400).json({ error: error.message });
     next(error);

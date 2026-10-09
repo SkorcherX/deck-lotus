@@ -1,9 +1,11 @@
 import { parseCardLine } from '../../../src/shared/cardLines.js';
+import { CONDITIONS } from '../../../src/shared/conditions.js';
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, confirmDialog, debounce } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
 import { zoomButton } from '../utils/cardZoom.js';
 import { IMPORT_SOURCES, getImportSource } from './importSources.js';
+import { priceBand, PRICE_BANDS, UNKNOWN_BAND } from '../../../src/shared/priceBands.js';
 
 // 54 = 9 rows of 6 at the grid's usual column count, so a full page ends on
 // a complete row instead of trailing off mid-row.
@@ -40,6 +42,7 @@ let filters = {
   availability: 'all',
   commander: 'all',
   condition: 'all',
+  rarity: 'all',
 };
 let showPrices = localStorage.getItem('inventoryShowPrices') === 'true';
 // Endless scroll replaces the pager: pages are appended as the reader reaches
@@ -69,6 +72,11 @@ export function setupInventory() {
   window.addEventListener('page:inventory', async () => {
     await setupAdminUserFilter();
     await Promise.all([loadOwnedSetOptions(), loadSubtypeOptions(), loadInventoryData()]);
+    // Search is the page's first job, so it takes the cursor — but only with
+    // a real pointer: on a phone, focus throws the keyboard over the list.
+    if (window.matchMedia?.('(pointer: fine)').matches) {
+      document.getElementById('inventory-search')?.focus({ preventScroll: true });
+    }
   });
 
   // Setup filter listeners
@@ -82,6 +90,7 @@ export function setupInventory() {
 
   // Setup export modal
   setupExportModal();
+  setupSetConditionButtons();
 
   // Setup quick search
   setupQuickSearch();
@@ -160,6 +169,16 @@ function setupFilterListeners() {
     });
   }
 
+  // Rarity (of the printing owned, so a reprint can count at either)
+  const raritySelect = document.getElementById('inventory-rarity');
+  if (raritySelect) {
+    raritySelect.addEventListener('change', (e) => {
+      filters.rarity = e.target.value;
+      currentPage = 1;
+      loadInventoryData();
+    });
+  }
+
   // Commander eligibility
   const commanderSelect = document.getElementById('inventory-commander');
   if (commanderSelect) {
@@ -208,7 +227,7 @@ function setupSearchChips() {
       set: 'Filter by set code, press Enter...',
       subtype: 'Creature type, e.g. Elf, Dragon...',
       text: 'Card text, e.g. draw card or "target player draws"',
-    }[mode.value] || 'Filter by name...';
+    }[mode.value] || 'Search your collection...';
     // Each suggestion list is only useful in its own mode; leaving the set
     // list attached in name mode offers set codes while typing a card name.
     const list = { set: 'inventory-set-codes', subtype: 'inventory-subtypes' }[mode.value];
@@ -642,6 +661,8 @@ function setupQuickSearch() {
 
   if (!searchInput || !resultsContainer) return;
 
+  setupQuickAddToggle(searchInput, resultsContainer);
+
   searchInput.addEventListener('input', (e) => {
     const query = e.target.value.trim();
 
@@ -680,6 +701,50 @@ function setupQuickSearch() {
     if (resultsContainer.innerHTML.trim()) {
       resultsContainer.classList.remove('hidden');
     }
+  });
+}
+
+/**
+ * The "Add cards" button opens the add box and puts the cursor in it; pressing
+ * it again (or Escape in the box) closes it. `A` opens it from anywhere on the
+ * Inventory page that is not already a text field.
+ */
+function setupQuickAddToggle(searchInput, resultsContainer) {
+  const toggle = document.getElementById('inventory-quick-add-toggle');
+  const panel = document.getElementById('inventory-quick-add-panel');
+  if (!toggle || !panel) return;
+
+  const setOpen = (open) => {
+    panel.classList.toggle('hidden', !open);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.classList.toggle('is-active', open);
+    if (open) {
+      searchInput.focus();
+    } else {
+      searchInput.value = '';
+      resultsContainer.classList.add('hidden');
+      resultsContainer.innerHTML = '';
+      closePrintingFlyout();
+    }
+  };
+
+  toggle.addEventListener('click', () => setOpen(panel.classList.contains('hidden')));
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      setOpen(false);
+      toggle.focus();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'a' && e.key !== 'A') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    if (document.querySelector('.modal:not(.hidden)')) return;
+    if (!toggle.offsetParent) return; // Inventory page not showing
+    e.preventDefault();
+    setOpen(true);
   });
 }
 
@@ -865,8 +930,20 @@ async function quickAddPrinting(printingId, isFoil = false) {
     // click ever lands on the wrong row again, a count that jumped the wrong
     // way is what makes it visible.
     const total = result?.quantity;
-    const noun = isFoil ? 'Foil card added' : 'Card added';
-    showToast(total ? `${noun} — you now have ${total}` : `${noun} to inventory!`, 'success');
+    const card = result?.card;
+    const band = priceBand(card?.price);
+    const what = card
+      ? `${isFoil ? 'foil ' : ''}${card.name} (${card.setCode.toUpperCase()} #${card.collectorNumber || '?'})`
+      : (isFoil ? 'foil card' : 'card');
+    const price = card ? (card.price != null ? ` — ${formatUsd(card.price)}` : ' — no price') : '';
+    const have = total ? ` · you now have ${total}` : '';
+    // The price is the moment people wait for, so the toast carries it in its
+    // band's colour, the way the phone pulses on a scan. It also stays up
+    // longer and offers Undo: a quick add is one click, and so is the mistake.
+    showToast(`Added ${what}${price}${have}`, 'success', 8000, {
+      className: `toast-price price-band-${band.key}`,
+      action: total ? { label: 'Undo', onClick: () => undoQuickAdd(printingId, isFoil, result) } : undefined,
+    });
 
     // Refresh inventory data
     await loadInventoryData();
@@ -883,6 +960,85 @@ async function quickAddPrinting(printingId, isFoil = false) {
   } catch (error) {
     showError('Failed to add card: ' + error.message);
   }
+}
+
+/**
+ * Take back the one copy a quick add just added.
+ *
+ * Sets the row the add landed on back by one, guarded by `expectedQuantity`:
+ * if the row has moved since (another tab, the phone), it answers 409 and the
+ * undo says so rather than taking a copy somebody else just added.
+ */
+async function undoQuickAdd(printingId, isFoil, result) {
+  try {
+    await api.setOwnedPrintingQuantity(printingId, result.quantity - 1, isFoil, {
+      expectedQuantity: result.quantity,
+      condition: result.condition ?? '',
+      source: 'quick_add',
+    });
+    showToast('Add undone', 'info');
+    await loadInventoryData();
+  } catch (error) {
+    showError(error.status === 409
+      ? 'That card changed after it was added, so the add was not undone. Adjust it from the card page.'
+      : 'Failed to undo: ' + error.message);
+  }
+}
+
+function formatUsd(value) {
+  return `$${Number(value).toFixed(2)}`;
+}
+
+/**
+ * The receipt for a bulk add: every line that landed, most valuable first,
+ * each marked in its price band, with a total and a count per band on top.
+ * The bands are the companion app's, so a box sorted on the phone and a list
+ * pasted here read the same.
+ */
+function renderAddReceipt(cards) {
+  if (!cards?.length) return '';
+  const rows = cards
+    .map((card) => ({
+      ...card,
+      band: priceBand(card.price),
+      lineValue: card.price == null ? null : card.price * card.quantity,
+    }))
+    .sort((a, b) => (b.price ?? -1) - (a.price ?? -1) || a.name.localeCompare(b.name));
+
+  const total = rows.reduce((sum, row) => sum + (row.lineValue ?? 0), 0);
+  const unpriced = rows.filter((row) => row.price == null).reduce((n, row) => n + row.quantity, 0);
+  const counts = new Map();
+  for (const row of rows) counts.set(row.band.key, (counts.get(row.band.key) || 0) + row.quantity);
+
+  const bandChips = [...PRICE_BANDS, UNKNOWN_BAND]
+    .filter((band) => counts.get(band.key))
+    .map((band) => `<span class="receipt-band-chip price-band-${band.key}"><span class="price-band-dot"></span>${band.label} <strong>${counts.get(band.key)}</strong></span>`)
+    .join('');
+
+  return `
+    <div class="add-receipt">
+      <div class="add-receipt-head">
+        <div>
+          <div class="add-receipt-title"><i class="ph ph-receipt"></i> Receipt</div>
+          <div class="add-receipt-sub">${rows.length} line${rows.length === 1 ? '' : 's'}${unpriced ? ` · ${unpriced} without a price` : ''}</div>
+        </div>
+        <div class="add-receipt-total">${formatUsd(total)}</div>
+      </div>
+      <div class="add-receipt-bands">${bandChips}</div>
+      <ol class="add-receipt-lines">
+        ${rows.map((row) => `
+          <li class="add-receipt-line price-band-${row.band.key}" title="${escapeHtml(row.band.label)}">
+            <span class="price-band-dot"></span>
+            <span class="add-receipt-qty">${row.quantity}×</span>
+            <span class="add-receipt-name">${escapeHtml(row.name)}${row.isFoil ? ' <i class="ph ph-sparkle add-receipt-foil" title="Foil"></i>' : ''}</span>
+            <span class="add-receipt-set">${escapeHtml((row.setCode || '').toUpperCase())} #${escapeHtml(row.collectorNumber || '?')}${row.condition ? ` · ${escapeHtml(row.condition)}` : ''}</span>
+            <span class="add-receipt-price">${row.price == null ? '—' : formatUsd(row.price)}${row.isFoil && row.priceType === 'normal' ? '<span class="add-receipt-note" title="No foil price; this is the normal price">*</span>' : ''}</span>
+            <span class="add-receipt-value">${row.lineValue == null ? '' : formatUsd(row.lineValue)}</span>
+          </li>
+        `).join('')}
+      </ol>
+    </div>
+  `;
 }
 
 function setupBulkActions() {
@@ -975,6 +1131,105 @@ function setupBulkActions() {
       await showAddToDeckModal();
     });
   }
+}
+
+function setupSetConditionButtons() {
+  // Toolbar: no selection needed, so it opens on the whole collection.
+  document.getElementById('inventory-set-condition-btn')
+    ?.addEventListener('click', () => showSetConditionModal());
+  // Selection bar: opens on the ticked cards.
+  document.getElementById('inventory-set-condition-selected')
+    ?.addEventListener('click', () => showSetConditionModal());
+}
+
+/**
+ * Regrade many cards at once (POST /inventory/set-condition).
+ *
+ * Defaults are chosen for "my collection is new, call it Near Mint": whole
+ * collection when nothing is ticked, Near Mint, and only copies with no
+ * condition recorded — so grading already done by hand is never undone
+ * unless the box saying so is ticked.
+ */
+function showSetConditionModal() {
+  const selected = selectMode ? [...selectedCards] : [];
+  const hasSelection = selected.length > 0;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 460px;">
+      <span class="modal-close" data-act="close">&times;</span>
+      <h2 style="margin-bottom: 1rem;">Set Condition</h2>
+      <div class="form-group">
+        <label for="set-condition-to">Condition</label>
+        <select id="set-condition-to" class="filter-select" style="width: 100%;">
+          ${CONDITIONS.map((c) => `<option value="${c.code}">${c.label}</option>`).join('')}
+          <option value="">Not recorded (clear)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="display: flex; align-items: baseline; gap: 0.5rem; font-weight: normal;">
+          <input type="radio" name="set-condition-scope" value="selected" style="width: auto; flex: none;"
+                 ${hasSelection ? 'checked' : 'disabled'} />
+          <span>The <strong>${selected.length}</strong> selected card${selected.length === 1 ? '' : 's'}${hasSelection ? '' : ' (use Select to tick some)'}</span>
+        </label>
+        <label style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.5rem; font-weight: normal;">
+          <input type="radio" name="set-condition-scope" value="all" style="width: auto; flex: none;"
+                 ${hasSelection ? '' : 'checked'} />
+          <span>My <strong>whole collection</strong></span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label style="display: flex; align-items: baseline; gap: 0.5rem; font-weight: normal;">
+          <input type="checkbox" id="set-condition-overwrite" style="width: auto; flex: none;" />
+          <span>Also change copies that already have a condition.
+          Left unticked, only copies with no condition recorded change.</span>
+        </label>
+      </div>
+      <p style="color: var(--text-secondary); font-size: 0.875rem;">
+        Every copy of each card is changed. To regrade just some copies, use the
+        Condition dropdown on the card's page.
+      </p>
+      <button data-act="apply" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Apply</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector('[data-act="close"]').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+  modal.querySelector('[data-act="apply"]').addEventListener('click', async () => {
+    const to = modal.querySelector('#set-condition-to').value;
+    const all = modal.querySelector('input[name="set-condition-scope"]:checked')?.value === 'all';
+    const overwrite = modal.querySelector('#set-condition-overwrite').checked;
+    const label = CONDITIONS.find((c) => c.code === to)?.label || 'not recorded';
+
+    if (all && overwrite) {
+      const ok = await confirmDialog({
+        title: 'Regrade everything?',
+        message: `Every copy in your collection will be marked <strong>${label}</strong>, including ones you have already graded.`,
+        confirmText: 'Regrade all',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+
+    try {
+      showLoading();
+      const result = await api.setInventoryCondition({ to, cardIds: all ? undefined : selected, all, overwrite });
+      close();
+      if (!all) selectedCards.clear();
+      await loadInventoryData();
+      hideLoading();
+      showToast(result.copies
+        ? `Marked ${result.copies} ${result.copies === 1 ? 'copy' : 'copies'} ${label}`
+        : 'Nothing to change — those copies already have a condition', result.copies ? 'success' : 'warning');
+    } catch (error) {
+      hideLoading();
+      showError('Failed to set condition: ' + error.message);
+    }
+  });
 }
 
 async function showAddToDeckModal() {
@@ -1113,6 +1368,7 @@ function setupExportModal() {
     try {
       const result = await api.exportInventory(selectedShape(), conditionSelect?.value || 'all');
       textarea.value = result.text;
+      if (downloadBtn) downloadBtn.textContent = ['moxfield', 'manabox'].includes(result.shape) ? 'Download .csv' : 'Download .txt';
       summary.textContent = `${result.cards} cards, ${result.copies} copies, ${result.lines} lines`;
     } catch (error) {
       console.error('Failed to export inventory:', error);
@@ -1145,11 +1401,12 @@ function setupExportModal() {
 
   downloadBtn?.addEventListener('click', () => {
     if (!textarea.value) return;
-    const blob = new Blob([textarea.value], { type: 'text/plain' });
+    const csv = ['moxfield', 'manabox'].includes(selectedShape());
+    const blob = new Blob([textarea.value], { type: csv ? 'text/csv' : 'text/plain' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `collection-${new Date().toISOString().slice(0, 10)}.txt`;
+    link.download = `collection-${new Date().toISOString().slice(0, 10)}.${csv ? 'csv' : 'txt'}`;
     link.click();
     URL.revokeObjectURL(url);
   });
@@ -1328,6 +1585,7 @@ function setupBulkAddModal() {
         resultDiv.classList.remove('hidden');
         resultDiv.innerHTML = `
           <div style="color: var(--success);">Added ${result.added} cards to inventory</div>
+          ${renderAddReceipt(result.cards)}
           ${result.failed > 0 ? `
             <div style="color: var(--danger); margin-top: 0.5rem;">
               Failed: ${result.failed}
@@ -1712,7 +1970,8 @@ function hasActiveFilters() {
     (filters.type && filters.type !== 'all') ||
     filters.availability !== 'all' ||
     filters.commander !== 'all' ||
-    filters.condition !== 'all'
+    filters.condition !== 'all' ||
+    filters.rarity !== 'all'
   );
 }
 

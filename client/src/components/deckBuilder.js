@@ -13,6 +13,8 @@ import {
 import { setupDeckRecord, renderDeckRecordLabel } from './deckRecord.js';
 import { renderDisruptionBanner } from './trades.js';
 import { zoomButton } from '../utils/cardZoom.js';
+import { openMimic } from './deckMimic.js';
+import { openPullList } from './deckPull.js';
 import { EXPORT_FORMATS, formatDeckExport, exportFilename } from '../utils/deckExport.js';
 
 // Mana Pool's /search page 404s, but /card/{slug} goes straight to the
@@ -31,6 +33,7 @@ let searchTimeout = null;
 // own dimension.
 let currentFilter = { cmc: null, color: null, ownership: null, produces: null };
 let deckFilterQuery = ''; // Name filter for deck cards
+let deckFilterRarity = 'all'; // Rarity of the printing the deck lists
 let exampleHand = []; // Current example hand
 let activeTab = 'mainboard'; // Track which tab is currently active ('mainboard', 'sideboard', or 'maybeboard')
 let pricingMode = false; // Track if pricing mode is enabled
@@ -60,6 +63,20 @@ function isTouchDevice() {
 }
 
 export function setupDeckBuilder() {
+  // The any-card search is closed until asked for; see the note above it in
+  // index.html. Opening the collection panel closes it, so only one way of
+  // adding cards is open at a time.
+  const anyCardToggle = document.getElementById('any-card-toggle');
+  const anyCardPanel = document.getElementById('any-card-panel');
+  const setAnyCardOpen = (open) => {
+    anyCardPanel.classList.toggle('hidden', !open);
+    anyCardToggle.setAttribute('aria-expanded', String(open));
+    anyCardToggle.classList.toggle('is-open', open);
+    if (open) document.getElementById('card-search').focus();
+  };
+  anyCardToggle.addEventListener('click', () => setAnyCardOpen(anyCardPanel.classList.contains('hidden')));
+  document.getElementById('inventory-panel-toggle').addEventListener('click', () => setAnyCardOpen(false));
+
   const cardSearch = document.getElementById('card-search');
   const searchResults = document.getElementById('search-results');
   const saveDeckBtn = document.getElementById('save-deck-btn');
@@ -108,7 +125,8 @@ export function setupDeckBuilder() {
     }
 
     try {
-      const result = await api.searchCards(query);
+      const rarity = document.getElementById('card-search-rarity')?.value;
+      const result = await api.searchCards(query, 20, null, rarity);
       displaySearchResults(result.cards);
     } catch (error) {
       console.error('Search error:', error);
@@ -117,6 +135,11 @@ export function setupDeckBuilder() {
 
   cardSearch.addEventListener('input', (e) => {
     debouncedSearch(e.target.value);
+  });
+
+  // Changing rarity re-runs whatever is already typed.
+  document.getElementById('card-search-rarity')?.addEventListener('change', () => {
+    debouncedSearch(cardSearch.value);
   });
 
   // Deck filter search
@@ -131,6 +154,11 @@ export function setupDeckBuilder() {
     } else {
       deckFilterClear.classList.add('hidden');
     }
+    renderDeckCards();
+  });
+
+  document.getElementById('deck-filter-rarity')?.addEventListener('change', (e) => {
+    deckFilterRarity = e.target.value;
     renderDeckCards();
   });
 
@@ -426,6 +454,9 @@ export function setupDeckBuilder() {
   });
 
   // Check Legality button
+  document.getElementById('pull-list-btn').addEventListener('click', () => openPullList(currentDeck));
+  document.getElementById('mimic-deck-btn').addEventListener('click', () => openMimic(currentDeck));
+
   document.getElementById('check-legality-btn').addEventListener('click', () => {
     if (!currentDeck || !currentDeck.cards || currentDeck.cards.length === 0) {
       showToast('Add some cards first', 'warning');
@@ -803,13 +834,21 @@ function renderDeckCards() {
   let maybeboardCards = currentDeck.cards.filter(isMaybeboardCard);
 
   // Apply filters
-  const hasFilter = currentFilter.cmc !== null || currentFilter.color !== null || currentFilter.ownership !== null || currentFilter.produces !== null || deckFilterQuery;
+  const hasFilter = currentFilter.cmc !== null || currentFilter.color !== null || currentFilter.ownership !== null || currentFilter.produces !== null || deckFilterQuery || deckFilterRarity !== 'all';
 
   // Apply name filter
   if (deckFilterQuery) {
     mainboardCards = mainboardCards.filter(c => c.name.toLowerCase().includes(deckFilterQuery));
     sideboardCards = sideboardCards.filter(c => c.name.toLowerCase().includes(deckFilterQuery));
     maybeboardCards = maybeboardCards.filter(c => c.name.toLowerCase().includes(deckFilterQuery));
+  }
+
+  // Rarity of the printing in the deck, not of the card in general.
+  if (deckFilterRarity !== 'all') {
+    const atRarity = (c) => (c.rarity || '').toLowerCase() === deckFilterRarity;
+    mainboardCards = mainboardCards.filter(atRarity);
+    sideboardCards = sideboardCards.filter(atRarity);
+    maybeboardCards = maybeboardCards.filter(atRarity);
   }
 
   if (currentFilter.cmc !== null) {
@@ -867,6 +906,9 @@ function renderDeckCards() {
       currentFilter.color = null;
       currentFilter.ownership = null;
       currentFilter.produces = null;
+      deckFilterRarity = 'all';
+      const raritySelect = document.getElementById('deck-filter-rarity');
+      if (raritySelect) raritySelect.value = 'all';
       renderDeckCards();
       // Re-render stats to clear highlighted segments
       loadDeckStats();
@@ -1143,29 +1185,15 @@ function setupCardControls() {
       }
     });
 
-    // Add hover preview (only on non-touch devices)
-    if (!isTouchDevice()) {
-      item.addEventListener('mouseenter', (e) => {
-        // Don't show preview if hovering over commander button
-        if (e.target.closest('.commander-toggle-btn')) return;
-
-        const img = item.querySelector('.deck-card-image, .deck-card-image-compact');
-        if (img && img.src) {
-          showCardPreview(img.src, e);
-        }
+    // Hover preview (only on non-touch devices), from the thumbnail alone:
+    // over the whole row it opened while reading the name or reaching for
+    // the quantity buttons, and covered the rows below.
+    const thumb = item.querySelector('.deck-card-image, .deck-card-image-compact');
+    if (!isTouchDevice() && thumb) {
+      thumb.addEventListener('mouseenter', () => {
+        if (thumb.src) showCardPreview(thumb);
       });
-
-      item.addEventListener('mouseleave', () => {
-        hideCardPreview();
-      });
-
-      // Prevent preview when hovering over commander button
-      const commanderBtn = item.querySelector('.commander-toggle-btn');
-      if (commanderBtn) {
-        commanderBtn.addEventListener('mouseenter', () => {
-          hideCardPreview();
-        });
-      }
+      thumb.addEventListener('mouseleave', hideCardPreview);
     }
   });
 
@@ -1877,39 +1905,45 @@ function downloadExport() {
   showToast(`Saved ${link.download}`, 'success', 2000);
 }
 
-let lastMouseX = 0;
-let lastMouseY = 0;
+/**
+ * Show the large card image over the thumbnail being hovered, bottom edges
+ * lined up, kept inside the window. It used to sit at the far edge of the screen,
+ * away from the card it belonged to, which meant looking across the page to
+ * see it. The preview ignores the pointer, so covering the thumbnail does not
+ * end the hover that opened it.
+ */
+const PREVIEW_WIDTH = 250;
+const PREVIEW_HEIGHT = Math.round(PREVIEW_WIDTH * 680 / 488);
+const PREVIEW_MARGIN = 8;
 
-// Track mouse position globally
-document.addEventListener('mousemove', (e) => {
-  lastMouseX = e.clientX;
-  lastMouseY = e.clientY;
-});
-
-function showCardPreview(imageSrc, event) {
+function showCardPreview(thumb) {
   const preview = document.getElementById('card-preview');
   const img = document.getElementById('card-preview-img');
 
-  // Use large image if available
-  const largeImageSrc = imageSrc.replace('/normal/', '/large/') || imageSrc;
-  img.src = largeImageSrc;
-
-  // Position preview away from mouse
-  // If mouse is on left half of screen, show preview on right
-  // If mouse is on right half, show preview on left
-  const screenWidth = window.innerWidth;
-  const screenHeight = window.innerHeight;
-
-  if (lastMouseX < screenWidth / 2) {
-    // Mouse on left, show preview on right
-    preview.style.left = 'auto';
-    preview.style.right = '20px';
-  } else {
-    // Mouse on right, show preview on left
-    preview.style.left = '20px';
-    preview.style.right = 'auto';
+  // The thumbnail is already loaded, so it shows at once; the large image
+  // replaces it when it arrives. Setting the large one directly left the
+  // *previous* card on screen until the download finished — over the top of
+  // the card being hovered, which read as the wrong card.
+  const large = thumb.src.replace('/normal/', '/large/');
+  img.src = thumb.src;
+  img.dataset.want = large;
+  if (large !== thumb.src) {
+    const loader = new Image();
+    loader.onload = () => { if (img.dataset.want === large) img.src = large; };
+    loader.src = large;
   }
 
+  // Grows up and to the right from the thumbnail: its bottom-left corner sits
+  // on the thumbnail's, so it covers the rows above (already read) and never
+  // the names below. Pushed back inside the window where there is no room.
+  const box = thumb.getBoundingClientRect();
+  const clamp = (value, max) => Math.min(Math.max(PREVIEW_MARGIN, value), max - PREVIEW_MARGIN);
+  const left = clamp(box.left, window.innerWidth - PREVIEW_WIDTH);
+  const top = clamp(box.bottom - PREVIEW_HEIGHT, window.innerHeight - PREVIEW_HEIGHT);
+
+  preview.style.left = `${left}px`;
+  preview.style.top = `${top}px`;
+  preview.style.right = 'auto';
   preview.classList.remove('hidden');
 }
 
@@ -2825,7 +2859,7 @@ function renderExampleHand() {
       cardEl.addEventListener('mouseenter', (e) => {
         const img = cardEl.querySelector('img');
         if (img && img.src) {
-          showCardPreview(img.src, e);
+          showCardPreview(img);
         }
       });
 

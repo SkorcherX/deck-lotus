@@ -32,7 +32,7 @@ const printings = {};
 /** Wipe every table a restore is supposed to refill, leaving reference data. */
 function wipeUserData() {
   for (const table of [
-    'deck_card_disruptions', 'deck_games', 'deck_cards', 'deck_shares', 'decks',
+    'deck_card_disruptions', 'deck_games', 'deck_pull_progress', 'deck_cards', 'deck_shares', 'decks',
     'trade_items', 'trades', 'api_keys', 'owned_cards', 'owned_printings',
     'shopping_list_items', 'found_cards', 'collection_shares', 'price_watches', 'audit_log',
     'collection_value_snapshots',
@@ -106,6 +106,11 @@ before(async () => {
     [deckId, userId]);
   db.run(`INSERT INTO deck_games (deck_id, user_id, result, played_at) VALUES (?,?,'loss','2026-08-02')`,
     [deckId, userId]);
+
+  db.run(`INSERT INTO deck_pull_progress (deck_id, printing_uuid, is_foil, pulled) VALUES (?,?,1,2)`,
+    [deckId, 'pull-uuid-1']);
+  db.run(`UPDATE users SET pull_layout = ? WHERE id = ?`,
+    [JSON.stringify({ splitByType: { W: ['common', 'uncommon'] } }), userId]);
 
   db.run(`INSERT INTO trades (from_user_id, to_user_id, status, note) VALUES (?,?,'pending','swap')`,
     [userId, partnerId]);
@@ -186,6 +191,17 @@ describe('backup and restore round trip', () => {
     assert.equal(db.get(`SELECT status FROM decks WHERE id = ?`, [deckId]).status, 'ready');
   });
 
+  test("a deck's saved plan comes back", () => {
+    const plan = JSON.stringify({ themeKey: 'graveyard', secondaryThemeKey: 'mill', secondaryShare: 0.25, keep: ['Sol Ring'] });
+    db.run(`UPDATE decks SET plan = ? WHERE id = ?`, [plan, deckId]);
+
+    const backup = createBackup();
+    wipeUserData();
+    restoreBackup(backup, { overwrite: false });
+
+    assert.deepEqual(JSON.parse(db.get(`SELECT plan FROM decks WHERE id = ?`, [deckId]).plan), JSON.parse(plan));
+  });
+
   test('the wanted list, found pile and price watches come back', () => {
     const backup = createBackup();
     wipeUserData();
@@ -216,6 +232,18 @@ describe('backup and restore round trip', () => {
 
     const games = db.all(`SELECT result FROM deck_games ORDER BY played_at`);
     assert.deepEqual(games.map((g) => g.result), ['win', 'loss']);
+  });
+
+  test('pull progress and the storage layout come back', () => {
+    const backup = createBackup();
+    wipeUserData();
+    db.run(`UPDATE users SET pull_layout = NULL`);
+    restoreBackup(backup, { overwrite: false });
+
+    const row = db.get(`SELECT printing_uuid, is_foil, pulled FROM deck_pull_progress`);
+    assert.deepEqual({ ...row }, { printing_uuid: 'pull-uuid-1', is_foil: 1, pulled: 2 });
+    const layout = JSON.parse(db.get(`SELECT pull_layout FROM users WHERE id = ?`, [userId]).pull_layout);
+    assert.deepEqual(layout.splitByType.W, ['common', 'uncommon']);
   });
 
   test('trades, their items and the disruption they caused all return', () => {

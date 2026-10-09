@@ -36,9 +36,13 @@ import {
 } from '../services/printingOptimizerService.js';
 import {
   commanderOptions, themeOptions, proposeDeck, acceptProposal, revisableDecks,
-  suggestForGaps, addGapsToShoppingList,
+  suggestForGaps, addGapsToShoppingList, mimicFromCollection,
 } from '../services/deckProposalService.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.js';
+import { saveDeckPlan } from '../services/deckPlanService.js';
+import {
+  getPullList, setPulled, resetPulled, getPullLayout, savePullLayout,
+} from '../services/pullListService.js';
 
 const router = express.Router();
 
@@ -91,6 +95,16 @@ router.post('/', authenticate, (req, res, next) => {
  */
 
 /**
+ * Decks the generator may take cards from when other decks are otherwise off
+ * limits. Accepts an array or a comma-separated string; ownership is enforced
+ * by the pool query, which only counts the caller's own decks.
+ */
+function releaseIds(value) {
+  const raw = Array.isArray(value) ? value : String(value || '').split(',');
+  return raw.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 500);
+}
+
+/**
  * GET /api/decks/generate/commanders
  * Commanders in the collection, to choose between.
  */
@@ -101,6 +115,7 @@ router.get('/generate/commanders', authenticate, (req, res, next) => {
         // Absent means on: see the note on getGeneratorPool about why the
         // permissive reading is the useful default here.
         includeCommitted: req.query.includeCommitted !== 'false',
+        releaseDeckIds: releaseIds(req.query.releaseDeckIds),
       }),
     });
   } catch (error) {
@@ -137,10 +152,19 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
         // was changed, which left the two halves of one screen disagreeing
         // about what omitting the flag meant.
         includeCommitted: req.query.includeCommitted !== 'false',
+        releaseDeckIds: releaseIds(req.query.releaseDeckIds),
         // A 60-card format has no commander to take colours from.
         identity: req.query.identity || null,
         format: req.query.format || 'commander',
         reviseDeckId: req.query.reviseDeckId ? Number(req.query.reviseDeckId) : null,
+        // Extra colours a commanderless revision may reach into.
+        splash: req.query.splash || null,
+        // Custom theme keys the page is carrying (see customTheme). Repeated
+        // as ?customTheme=…&customTheme=… since each key holds commas.
+        customThemeKeys: [].concat(req.query.customTheme || []).map(String).slice(0, 4),
+        // Comma-separated card ids a revision is keeping, so the themes they
+        // belong to can be offered first.
+        keepCardIds: String(req.query.keepCardIds || '').split(',').map(Number).filter((n) => Number.isFinite(n) && n > 0),
       }),
     });
   } catch (error) {
@@ -155,7 +179,7 @@ router.get('/generate/themes', authenticate, (req, res, next) => {
 router.post('/generate', authenticate, (req, res, next) => {
   try {
     const {
-      commanderCardId, format, themeKey, includeCommitted, landCount, identity, reviseDeckId,
+      commanderCardId, format, themeKey, secondaryThemeKey, secondaryShare, includeCommitted, landCount, identity, reviseDeckId, splash, keepCardIds, releaseDeckIds,
     } = req.body || {};
 
     res.json({
@@ -165,10 +189,16 @@ router.post('/generate', authenticate, (req, res, next) => {
         // falls back to commander for everything else.
         format: format || (reviseDeckId == null ? 'commander' : null),
         themeKey: themeKey || null,
+        secondaryThemeKey: secondaryThemeKey || null,
+        // Clamped in the generator; absent means its default.
+        secondaryShare: secondaryShare == null ? undefined : Number(secondaryShare),
         includeCommitted: includeCommitted !== false,
+        releaseDeckIds: releaseIds(releaseDeckIds),
         landCount: landCount == null ? null : Number(landCount),
         identity: identity || null,
         reviseDeckId: reviseDeckId == null ? null : Number(reviseDeckId),
+        splash: splash || null,
+        keepCardIds: Array.isArray(keepCardIds) ? keepCardIds.map(Number).filter(Number.isFinite) : [],
       }),
     });
   } catch (error) {
@@ -190,13 +220,14 @@ router.post('/generate', authenticate, (req, res, next) => {
  */
 router.post('/generate/gaps', authenticate, (req, res, next) => {
   try {
-    const { commanderCardId, format, themeKey, includeCommitted, identity } = req.body || {};
+    const { commanderCardId, format, themeKey, includeCommitted, identity, releaseDeckIds } = req.body || {};
 
     res.json(suggestForGaps(req.user.id, {
       commanderCardId: commanderCardId == null ? null : Number(commanderCardId),
       format: format || 'commander',
       themeKey: themeKey || null,
       includeCommitted: includeCommitted !== false,
+      releaseDeckIds: releaseIds(releaseDeckIds),
       identity: identity || null,
     }));
   } catch (error) {
@@ -226,6 +257,29 @@ router.post('/generate/gaps/shopping-list', authenticate, (req, res, next) => {
 });
 
 /**
+ * POST /api/decks/generate/mimic
+ * Rebuild one of your decks from your own collection, with stand-ins for the
+ * cards you do not own. Writes nothing; save through /generate/accept.
+ */
+router.post('/generate/mimic', authenticate, (req, res, next) => {
+  try {
+    const { deckId, includeCommitted, releaseDeckIds } = req.body || {};
+    if (deckId == null) return res.status(400).json({ error: 'deckId is required' });
+    res.json({
+      mimic: mimicFromCollection(req.user.id, Number(deckId), {
+        includeCommitted: includeCommitted !== false,
+        releaseDeckIds: releaseIds(releaseDeckIds),
+      }),
+    });
+  } catch (error) {
+    if (/not one of yours|no mainboard/i.test(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
  * POST /api/decks/generate/accept
  * Save a proposal as a real deck, with status 'idea'.
  */
@@ -245,6 +299,65 @@ router.post('/generate/accept', authenticate, (req, res, next) => {
     });
     res.status(201).json(result);
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET/PUT /api/decks/pull-layout
+ * How the caller's physical storage is arranged, for grouping pull lists.
+ * Declared before `/:id` for the same reason as /generate.
+ */
+router.get('/pull-layout', authenticate, (req, res, next) => {
+  try {
+    res.json({ layout: getPullLayout(req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/pull-layout', authenticate, (req, res, next) => {
+  try {
+    res.json({ layout: savePullLayout(req.user.id, req.body?.layout) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/decks/:id/pull-list
+ * The cards to take out of storage for this deck, with pull progress.
+ */
+router.get('/:id/pull-list', authenticate, (req, res, next) => {
+  try {
+    res.json(getPullList(req.user.id, Number(req.params.id)));
+  } catch (error) {
+    if (/not one of yours/.test(error.message)) return res.status(404).json({ error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/decks/:id/pull-list/progress  { uuid, isFoil, pulled }
+ * DELETE /api/decks/:id/pull-list/progress — start again
+ * Changes nothing in the deck or the collection.
+ */
+router.put('/:id/pull-list/progress', authenticate, (req, res, next) => {
+  try {
+    const { uuid, isFoil, pulled } = req.body || {};
+    res.json(setPulled(req.user.id, Number(req.params.id), { uuid, isFoil: Boolean(isFoil), pulled }));
+  } catch (error) {
+    if (/not one of yours/.test(error.message)) return res.status(404).json({ error: error.message });
+    if (/required/.test(error.message)) return res.status(400).json({ error: error.message });
+    next(error);
+  }
+});
+
+router.delete('/:id/pull-list/progress', authenticate, (req, res, next) => {
+  try {
+    res.json(resetPulled(req.user.id, Number(req.params.id)));
+  } catch (error) {
+    if (/not one of yours/.test(error.message)) return res.status(404).json({ error: error.message });
     next(error);
   }
 });
@@ -272,6 +385,24 @@ router.get('/:id', authenticate, (req, res, next) => {
  * PUT /api/decks/:id
  * Update deck
  */
+/**
+ * PUT /api/decks/:id/plan
+ * Save what the deck is built around: { themeKey, secondaryThemeKey,
+ * secondaryShare, keep: [card names] }, or { plan: null } to clear it.
+ */
+router.put('/:id/plan', authenticate, (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const plan = 'plan' in body && body.plan === null ? null : body;
+    res.json({ plan: saveDeckPlan(req.user.id, parseInt(req.params.id, 10), plan) });
+  } catch (error) {
+    if (/not one of yours/i.test(error.message)) {
+      return res.status(404).json({ error: 'Deck not found' });
+    }
+    next(error);
+  }
+});
+
 router.put('/:id', authenticate, (req, res, next) => {
   try {
     const deckId = parseInt(req.params.id);

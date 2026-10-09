@@ -49,6 +49,8 @@ export const AUDIT_ACTIONS = {
 export const AUDIT_SOURCES = [
   'bulk_add',
   'bulk_remove',
+  // "Set condition" on the Inventory page, many rows at once (batchId'd).
+  'bulk_condition',
   'quick_add',
   'card_page',
   'deck_builder',

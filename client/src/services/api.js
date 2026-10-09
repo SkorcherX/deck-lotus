@@ -126,9 +126,10 @@ class ApiClient {
   }
 
   // Card methods
-  async searchCards(query, limit = 20, type = null) {
+  async searchCards(query, limit = 20, type = null, rarity = null) {
     const params = new URLSearchParams({ q: query, limit });
     if (type) params.append('type', type);
+    if (rarity && rarity !== 'all') params.append('rarity', rarity);
     return this.request(`/cards/search?${params}`);
   }
 
@@ -192,21 +193,21 @@ class ApiClient {
   //
   // `condition` is optional: send it (even '') to set that condition's row,
   // leave it out to set the total across conditions as before.
-  async setOwnedPrintingQuantity(printingId, quantity, isFoil = false, { expectedQuantity, condition } = {}) {
+  async setOwnedPrintingQuantity(printingId, quantity, isFoil = false, { expectedQuantity, condition, source } = {}) {
     return this.request(`/cards/printings/${printingId}/quantity`, {
       method: 'POST',
       body: JSON.stringify({
-        quantity, isFoil, expectedQuantity,
+        quantity, isFoil, expectedQuantity, source,
         ...(condition === undefined ? {} : { condition }),
       }),
     });
   }
 
   /** Move one row's copies from one condition to another ('' = not recorded). */
-  async changeOwnedCondition(printingId, isFoil, from, to) {
+  async changeOwnedCondition(printingId, isFoil, from, to, quantity) {
     return this.request(`/cards/printings/${printingId}/condition`, {
       method: 'POST',
-      body: JSON.stringify({ isFoil, from, to }),
+      body: JSON.stringify({ isFoil, from, to, ...(quantity ? { quantity } : {}) }),
     });
   }
 
@@ -589,6 +590,7 @@ class ApiClient {
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
     if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
+    if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
 
@@ -623,6 +625,7 @@ class ApiClient {
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
     if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
+    if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
 
@@ -635,12 +638,21 @@ class ApiClient {
     return this.request(`/admin/inventory/stats?${params}`);
   }
 
-  async searchForInventoryAdd(query) {
-    return this.request(`/inventory/search?q=${encodeURIComponent(query)}`);
+  async searchForInventoryAdd(query, rarity = null) {
+    const params = new URLSearchParams({ q: query });
+    if (rarity && rarity !== 'all') params.append('rarity', rarity);
+    return this.request(`/inventory/search?${params}`);
   }
 
   async getInventorySets() {
     return this.request('/inventory/sets');
+  }
+
+  async setInventoryCondition({ to, cardIds, all = false, overwrite = false }) {
+    return this.request('/inventory/set-condition', {
+      method: 'POST',
+      body: JSON.stringify({ to, cardIds, all, overwrite }),
+    });
   }
 
   async exportInventory(shape = 'precise', condition = 'all') {
@@ -690,8 +702,10 @@ class ApiClient {
   // --- The deck generator ---------------------------------------------------
   // Generating writes nothing; only acceptGeneratedDeck creates anything.
 
-  async getGeneratorCommanders(includeCommitted = true) {
-    return this.request(`/decks/generate/commanders?includeCommitted=${includeCommitted}`);
+  async getGeneratorCommanders(includeCommitted = true, releaseDeckIds = []) {
+    const params = new URLSearchParams({ includeCommitted: String(includeCommitted) });
+    if (releaseDeckIds.length) params.set('releaseDeckIds', releaseDeckIds.join(','));
+    return this.request(`/decks/generate/commanders?${params}`);
   }
 
   async getRevisableDecks() {
@@ -708,7 +722,19 @@ class ApiClient {
     // A revision measures its themes against a pool that includes the deck's
     // own cards, so the id travels with the question.
     if (extra.reviseDeckId) params.set('reviseDeckId', extra.reviseDeckId);
+    if (extra.splash) params.set('splash', extra.splash);
+    if (extra.releaseDeckIds && extra.releaseDeckIds.length) params.set('releaseDeckIds', extra.releaseDeckIds.join(','));
+    if (extra.keepCardIds && extra.keepCardIds.length) params.set('keepCardIds', extra.keepCardIds.join(','));
+    // Repeated rather than joined: a custom theme's key holds commas.
+    for (const key of extra.customThemes || []) params.append('customTheme', key);
     return this.request(`/decks/generate/themes?${params}`);
+  }
+
+  async saveDeckPlan(deckId, plan) {
+    return this.request(`/decks/${deckId}/plan`, {
+      method: 'PUT',
+      body: JSON.stringify(plan === null ? { plan: null } : plan),
+    });
   }
 
   async generateDeck(options) {
@@ -732,6 +758,35 @@ class ApiClient {
     });
   }
 
+  async getPullList(deckId) {
+    return this.request(`/decks/${deckId}/pull-list`);
+  }
+
+  async setPullProgress(deckId, payload) {
+    return this.request(`/decks/${deckId}/pull-list/progress`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async resetPullProgress(deckId) {
+    return this.request(`/decks/${deckId}/pull-list/progress`, { method: 'DELETE' });
+  }
+
+  async savePullLayout(layout) {
+    return this.request('/decks/pull-layout', {
+      method: 'PUT',
+      body: JSON.stringify({ layout }),
+    });
+  }
+
+  async mimicDeck(payload) {
+    return this.request('/decks/generate/mimic', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async acceptGeneratedDeck(payload) {
     return this.request('/decks/generate/accept', {
       method: 'POST',
@@ -744,11 +799,12 @@ class ApiClient {
     return this.request(`/decks/${deckId}/rules${query}`);
   }
 
-  async getBuilderInventory({ deckId, name, type, subtype, text, ability, colors, maxCmc, onlyFree, format, colorIdentity, role, page = 1, limit = 60 } = {}) {
+  async getBuilderInventory({ deckId, name, type, subtype, text, ability, rarity, colors, maxCmc, onlyFree, format, colorIdentity, role, fit = false, fitTheme = '', fitSecondary = null, page = 1, limit = 60 } = {}) {
     const params = new URLSearchParams();
     if (deckId) params.set('deckId', deckId);
     if (name) params.set('name', name);
     if (type && type !== 'all') params.set('type', type);
+    if (rarity && rarity !== 'all') params.set('rarity', rarity);
     if (subtype && subtype.trim()) params.set('subtype', subtype.trim());
     if (text && text.trim()) params.set('text', text.trim());
     if (ability) params.set('ability', ability);
@@ -757,6 +813,12 @@ class ApiClient {
     if (onlyFree) params.set('onlyFree', 'true');
     if (format) params.set('format', format);
     if (role) params.set('role', role);
+    if (fit) {
+      params.set('fit', 'true');
+      if (fitTheme) params.set('fitTheme', fitTheme);
+      // '' means "no second theme", so it is sent; null means "read it off the deck".
+      if (fitSecondary !== null && fitSecondary !== undefined) params.set('fitSecondary', fitSecondary);
+    }
     // An empty string is meaningful here: a colourless commander confines the
     // deck to colourless cards, so it must be sent rather than dropped.
     if (colorIdentity !== null && colorIdentity !== undefined) params.set('colorIdentity', colorIdentity);

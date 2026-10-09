@@ -47,6 +47,9 @@
 
 import { effectText, isCreature, isLand, isInstantOrSorcery, isArtifact } from './cardRoleService.js';
 
+// "create two 1/1 white Soldier creature tokens", but not Treasure or Clue.
+const makesCreatureTokens = (text) => /create[^.]{0,60}creature tokens?/.test(text);
+
 const typeOf = (card) => String(card.type_line || '').toLowerCase();
 
 /**
@@ -99,6 +102,26 @@ export function withinColorIdentity(card, identity) {
  * regexes match is worse than one with no text at all, and here the two are
  * impossible to edit separately by accident.
  */
+/**
+ * Who a mill effect is aimed at. Opponent-only phrasings ("target opponent
+ * mills", "each opponent mills") are a win condition, not a way to fill your
+ * own graveyard; a bare "mill three cards" is you. "Target player" and "each
+ * player" can be either, and count as both.
+ */
+const OPPONENT_MILL = /(target opponent|each opponent|that player|defending player|an opponent|they)\s+(would\s+)?mills?\b[^.]*/g;
+const EITHER_MILL = /(target player|each player)\s+mills?\b/;
+
+export function millsOpponent(text) {
+  return new RegExp(OPPONENT_MILL.source).test(text) || EITHER_MILL.test(text);
+}
+
+export function millsYou(text) {
+  if (EITHER_MILL.test(text)) return true;
+  // What is left once the opponent-only phrasings are cut out: any mill still
+  // in the text is one the card's controller does to themselves.
+  return /\bmill(s|ed)?\b/.test(text.replace(OPPONENT_MILL, ' '));
+}
+
 export const THEMES = {
   aristocrats: {
     label: 'sacrifice and death triggers',
@@ -149,7 +172,7 @@ export const THEMES = {
     payoffName: 'cards that use your graveyard',
     enabler: (card) => {
       const text = effectText(card);
-      return /\bmill(s|ed)?\b/.test(text)
+      return millsYou(text)
         || /put[^.]{0,50}into your graveyard/.test(text)
         || /discard (a|your|two|three) card/.test(text)
         || /\b(surveil|dredge|self-mill)\b/.test(text);
@@ -160,23 +183,80 @@ export const THEMES = {
         || /from your graveyard to the battlefield/.test(text)
         || /for each[^.]{0,40}in your graveyard/.test(text)
         || /cards? in your graveyard/.test(text)
+        // Lhurgoyf and its kin count every graveyard, yours included, so they
+        // grow off self-mill exactly as a "your graveyard" card does.
+        || /(cards?|card types) (among cards )?in all graveyards/.test(text)
         || /\b(delve|escape|flashback|disturb|unearth|embalm|eternalize|threshold|delirium)\b/.test(text);
+    },
+  },
+
+  // Split from graveyard value, which used to count every mill card as one of
+  // its enablers. Milling an opponent is a way to win — they lose drawing from
+  // an empty library — and does nothing for a creature that counts your own
+  // graveyard, so a deck mixing the two was scored as one plan while half of
+  // it worked against the other half. "Target player mills" can be pointed
+  // either way and counts for both.
+  mill: {
+    label: 'milling your opponent',
+    blurb: "You win by emptying your opponent's library instead of their life total. Most of the deck puts their cards into their graveyard a few at a time; the rest rewards you for it, or makes sure they run out first.",
+    enablerName: 'ways to mill an opponent',
+    payoffName: "cards that reward an opponent's full graveyard",
+    enabler: (card) => millsOpponent(effectText(card)),
+    payoff: (card) => {
+      const text = effectText(card);
+      return /cards? in (an opponent's|target opponent's|that player's|their|your opponents'|each opponent's) graveyards?/.test(text)
+        || /library has (no|twenty or fewer|ten or fewer) cards/.test(text)
+        || /(if|whenever) (an opponent|a player|one or more opponents) would mill/.test(text)
+        || /whenever (an opponent|a player|one or more opponents) mills?/.test(text)
+        || /cards? (is|are) put into (an opponent's|a player's|their) graveyard from (their|a) library/.test(text)
+        || /from (an opponent's|their) graveyard/.test(text);
     },
   },
 
   tokens: {
     label: 'token swarm',
     blurb: 'Quantity over quality. You make lots of small creature tokens, then play the cards that make a wide board frightening — anthems, effects counting your creatures, ways to cash the whole team in at once.',
-    enablerName: 'ways to make tokens',
+    enablerName: 'ways to make creature tokens',
     payoffName: 'cards that reward a wide board',
-    enabler: (card) => /create[^.]{0,50}token/.test(effectText(card)),
+    // Creature tokens only: "create a Treasure token" is ramp, and used to
+    // count as a token-swarm enabler.
+    enabler: (card) => makesCreatureTokens(effectText(card)),
     payoff: (card) => {
       const text = effectText(card);
       return /whenever[^.]{0,50}token[^.]{0,30}(enters|attacks)/.test(text)
         || /tokens? you control (get|have)/.test(text)
         || /for each (creature|token) you control/.test(text)
         || /creatures you control get \+\d+\/\+\d+/.test(text)
+        || /twice that many[^.]{0,30}tokens/.test(text)
         || /\b(convoke|populate)\b/.test(text);
+    },
+  },
+
+  // Token swarm is one way to go wide; this is the other. The bodies are
+  // cheap creatures cast two a turn as often as tokens, so the enabler is
+  // "a creature costing 2 or less" as well as a token maker. The payoffs
+  // overlap with token swarm on purpose — anthems reward either board.
+  goWide: {
+    label: 'go wide',
+    blurb: 'Lots of cheap creatures, fast. The deck is packed with one- and two-drops and token makers so the board fills in the first few turns, then an anthem or a mass pump turns a crowd of small bodies into lethal damage.',
+    enablerName: 'cheap creatures and creature-token makers',
+    payoffName: 'cards that reward having many creatures',
+    enabler: (card) => (isCreature(card) && (Number(card.cmc) || 0) <= 2)
+      || makesCreatureTokens(effectText(card)),
+    // The part of the enabler that is about what a card does rather than what
+    // it costs. Mimic reads this so that two cheap creatures are not called a
+    // theme match on mana value alone.
+    textEnabler: (card) => makesCreatureTokens(effectText(card)),
+    payoff: (card) => {
+      const text = effectText(card);
+      return /creatures you control get \+\d+\/\+\d+/.test(text)
+        || /other creatures you control get/.test(text)
+        || /creatures you control (gain|have)[^.]{0,40}(trample|double strike|first strike|vigilance)/.test(text)
+        || /for each (other )?(creature|token) you control/.test(text)
+        || /whenever (a|another|one or more)( other)?( nontoken)? creatures? (you control )?enters?/.test(text)
+        || /whenever (you attack|one or more creatures you control attack)/.test(text)
+        || /(three|four|five) or more creatures/.test(text)
+        || /\b(battalion|raid|mentor|convoke|coven)\b/.test(text);
     },
   },
 
@@ -309,6 +389,103 @@ const MIN_TRIBE_CREATURES = 8;
  * miss a lord that words itself unusually; the cost of that is a tribe scoring
  * lower than it deserves, which is the safe direction to be wrong in.
  */
+/**
+ * A theme written by the person building the deck, from phrases of card text.
+ *
+ * The built-in themes are a small fixed set; any deck plan they do not cover
+ * — "cards in your graveyard", "whenever you cycle", "Equipment" — could not
+ * be asked for at all. So a theme can be two phrases: what the payoffs say,
+ * and (optionally) what the cards feeding them say. Commas separate
+ * alternatives, so "mill, surveil" is either.
+ *
+ * Matched as whole words, case-insensitively, against the same self-reference
+ * -stripped, reminder-free text every other theme reads, plus the type line,
+ * so "Equipment" and "Zombie" work as phrases too. With one phrase, every
+ * match counts as both halves: there is nothing else to pair it with, and the
+ * min(enablers, payoffs) strength would otherwise always be zero.
+ *
+ * The phrases live in the key itself — `custom:<payoff>|<enabler>`,
+ * URI-encoded — so a custom theme travels through every place that already
+ * carries a theme key, deck plans included, without anything new to store.
+ */
+const CUSTOM_PREFIX = 'custom:';
+const MAX_PHRASES = 5;
+
+function phrasesOf(text) {
+  return [...new Set(String(text || '')
+    .split(',')
+    .map((p) => p.trim().toLowerCase().replace(/\s+/g, ' '))
+    .filter((p) => p.length >= 2 && p.length <= 60))]
+    .slice(0, MAX_PHRASES);
+}
+
+function phraseMatcher(phrases) {
+  if (phrases.length === 0) return null;
+  const patterns = phrases.map((phrase) => {
+    const body = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+    // Word edges only where the phrase starts or ends with a word character,
+    // so "+1/+1" still matches inside "+1/+1 counter". A phrase ending in a
+    // word also takes the usual endings: somebody typing "mill" means "mills"
+    // and "milled" too, and Thought Scour says "mills".
+    return new RegExp(`${/^\w/.test(phrase) ? '\\b' : ''}${body}${/\w$/.test(phrase) ? '(?:s|es|ed|ing)?\\b' : ''}`);
+  });
+  return (card) => {
+    const text = `${effectText(card)}\n${String(card.type_line || '').toLowerCase()}`;
+    return patterns.some((pattern) => pattern.test(text));
+  };
+}
+
+/** The key for a custom theme, or null when the payoff phrase is empty. */
+export function customThemeKey(payoffText, enablerText = '') {
+  const payoff = phrasesOf(payoffText);
+  if (payoff.length === 0) return null;
+  const enabler = phrasesOf(enablerText);
+  return `${CUSTOM_PREFIX}${encodeURIComponent(payoff.join(', '))}|${encodeURIComponent(enabler.join(', '))}`;
+}
+
+export const isCustomThemeKey = (key) => typeof key === 'string' && key.startsWith(CUSTOM_PREFIX);
+
+/** A custom theme from its key, or null when the key does not parse. */
+export function customTheme(key) {
+  if (!isCustomThemeKey(key) || key.length > 600) return null;
+  const [rawPayoff, rawEnabler = ''] = key.slice(CUSTOM_PREFIX.length).split('|');
+  let payoffText;
+  let enablerText;
+  try {
+    payoffText = decodeURIComponent(rawPayoff);
+    enablerText = decodeURIComponent(rawEnabler);
+  } catch {
+    return null;
+  }
+
+  const payoff = phrasesOf(payoffText);
+  const enabler = phrasesOf(enablerText);
+  if (payoff.length === 0) return null;
+
+  const quote = (list) => list.map((p) => `“${p}”`).join(' or ');
+  const payoffMatches = phraseMatcher(payoff);
+  const enablerMatches = enabler.length ? phraseMatcher(enabler) : payoffMatches;
+
+  return {
+    // Rebuilt from the cleaned phrases, so two spellings of one theme share a key.
+    key: customThemeKey(payoffText, enablerText),
+    label: enabler.length ? `your theme: ${quote(payoff)} fed by ${quote(enabler)}` : `your theme: ${quote(payoff)}`,
+    // For sentences that name the theme in passing — a swap's reason — where
+    // the full phrase list would be most of the sentence.
+    shortLabel: 'your theme',
+    blurb: enabler.length
+      ? `Your own theme. The deck is built around cards whose text says ${quote(payoff)}, `
+        + `fed by cards that say ${quote(enabler)}. Matched on the words alone, so check the examples.`
+      : `Your own theme. The deck is built around cards whose text says ${quote(payoff)}. `
+        + 'With one phrase every match counts as both halves. Matched on the words alone, so check the examples.',
+    enablerName: enabler.length ? `cards that say ${quote(enabler)}` : `cards that say ${quote(payoff)}`,
+    payoffName: enabler.length ? `cards that say ${quote(payoff)}` : 'of them, counted as both halves',
+    custom: { payoff, enabler },
+    enabler: enablerMatches,
+    payoff: payoffMatches,
+  };
+}
+
 export function tribeTheme(subtype) {
   const name = String(subtype);
   const needle = name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
