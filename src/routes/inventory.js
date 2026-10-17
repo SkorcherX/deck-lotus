@@ -99,6 +99,7 @@ router.get('/', authenticate, (req, res, next) => {
       commander: commander || 'all',
       condition: normalizeConditionFilter(condition),
       rarity: RARITIES.includes(rarity) ? rarity : 'all',
+      minCopies: Math.max(0, parseInt(req.query.minCopies, 10) || 0),
       page: parseInt(page),
       limit: parseInt(limit)
     };

@@ -147,6 +147,7 @@ export function getInventory(userIds, filters = {}) {
     commander = 'all', // 'all', 'eligible'
     condition = 'all', // 'all', 'unrecorded', or a code: NM, LP, MP, HP, DMG
     rarity = 'all', // 'all' or an MTGJSON rarity: common, uncommon, rare, mythic, special, bonus
+    minCopies = 0, // only cards owned at least this many times (all printings, finishes, conditions)
     page = 1,
     limit = 50
   } = filters;
@@ -359,6 +360,17 @@ export function getInventory(userIds, filters = {}) {
     countSql += clause;
     params.push(...scope.params);
     countParams.push(...scope.params);
+  }
+
+  // Copy-count filter: "which cards do I have more than a playset of".
+  // Counted per card across every printing, finish and condition — the same
+  // total_owned the row shows — so it agrees with the number on screen.
+  if (minCopies > 0) {
+    const clause = ` AND ${ownedTotalSql(scope.clause)} >= ?`;
+    sql += clause;
+    countSql += clause;
+    params.push(...scope.params, minCopies);
+    countParams.push(...scope.params, minCopies);
   }
 
   // Get total count

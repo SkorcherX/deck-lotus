@@ -45,6 +45,7 @@ let filters = {
   commander: 'all',
   condition: 'all',
   rarity: 'all',
+  minCopies: 0,
 };
 let showPrices = localStorage.getItem('inventoryShowPrices') === 'true';
 // Endless scroll replaces the pager: pages are appended as the reader reaches
@@ -166,6 +167,21 @@ function setupFilterListeners() {
   if (conditionSelect) {
     conditionSelect.addEventListener('change', (e) => {
       filters.condition = e.target.value;
+      currentPage = 1;
+      loadInventoryData();
+    });
+  }
+
+  // Copies: at least N owned. Picking "5+" also sorts by quantity, since the
+  // question it answers is "what have I got too many of".
+  const copiesSelect = document.getElementById('inventory-min-copies');
+  if (copiesSelect) {
+    copiesSelect.addEventListener('change', (e) => {
+      filters.minCopies = parseInt(e.target.value, 10) || 0;
+      if (filters.minCopies > 1 && sortSelect && filters.sort === 'name') {
+        filters.sort = 'quantity';
+        sortSelect.value = 'quantity';
+      }
       currentPage = 1;
       loadInventoryData();
     });
@@ -1984,7 +2000,8 @@ function hasActiveFilters() {
     filters.availability !== 'all' ||
     filters.commander !== 'all' ||
     filters.condition !== 'all' ||
-    filters.rarity !== 'all'
+    filters.rarity !== 'all' ||
+    filters.minCopies > 0
   );
 }
 
