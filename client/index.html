@@ -488,6 +488,7 @@
                               every time something was missing. Pressing it
                               opens the breakdown underneath.
                             -->
+                            <div class="deck-status-chips">
                             <button
                                 id="deck-readiness-chip"
                                 class="deck-readiness-chip hidden"
@@ -495,6 +496,16 @@
                                 aria-expanded="false"
                                 aria-controls="deck-readiness-panel"
                             ></button>
+                            <!-- Commander decks only: the bracket floor its card list allows. -->
+                            <button
+                                id="deck-bracket-chip"
+                                class="deck-readiness-chip hidden"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="deck-bracket-panel"
+                                title="The lowest Commander bracket this card list allows"
+                            ></button>
+                            </div>
                             <div style="display: flex; gap: 0.5rem;">
                                 <button id="pull-list-btn" class="btn btn-secondary" title="Checklist for taking this deck's cards out of your storage">
                                     <i class="ph ph-check-square-offset btn-icon"></i>
@@ -518,6 +529,7 @@
                     <!-- Cards traded away that this deck still lists, awaiting a decision -->
                     <div id="deck-traded-banner" class="hidden" style="margin: 0 0 0.75rem;"></div>
                     <div id="deck-readiness-panel" class="hidden" style="margin: 0 0 0.75rem;"></div>
+                    <div id="deck-bracket-panel" class="hidden" style="margin: 0 0 0.75rem;"></div>
 
                     <div class="deck-builder-content">
                         <!-- Deck List -->

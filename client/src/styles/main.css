@@ -1451,6 +1451,31 @@ select option {
   white-space: nowrap;
 }
 
+/* Readiness and the Commander bracket share the gap in the price row. */
+.deck-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* The bracket floor is information, not an alert: no warning colour, and the
+   breakdown uses the neutral accent. */
+.deck-readiness-chip[data-state="bracket"] { border-left: 3px solid var(--primary); }
+.deck-bracket-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.deck-bracket-note {
+  margin: 0 0 0.6rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
 .deck-readiness-chip:hover {
   border-color: var(--border-strong);
 }
@@ -1478,7 +1503,8 @@ select option {
   padding: 0.85rem 1rem;
 }
 
-.deck-readiness-banner[data-state="needs_assembly"] {
+.deck-readiness-banner[data-state="needs_assembly"],
+.deck-readiness-banner[data-state="bracket"] {
   border-left-color: var(--primary);
 }
 

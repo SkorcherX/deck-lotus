@@ -428,3 +428,17 @@ taken on GitHub — only do it when explicitly asked.
   reason as `audit_log`) and change nothing in the deck or the collection.
   `backupService` carries both. The generator's own in-memory checklist is for
   unsaved proposals and is separate.
+- Commander brackets (`src/shared/commanderBrackets.js`, import-free) report
+  a **floor**, not a rating: the lowest bracket the card list allows, from
+  Game Changers (`cards.is_game_changer`, migration 049, filled from MTGJSON's
+  `isGameChanger` by the import), mass land denial and extra turns. A deck
+  that trips nothing reads "Bracket 1–2" because those differ by intent.
+  Interpretations follow the Red String write-up: blanket spell taxes count as
+  MLD, 1–2 extra turns is bracket 2, 3 is bracket 3, more is chaining, and a
+  short named list of chaining cards is bracket 4 alone. The text filters were
+  swept over every Commander-legal card; the near-misses that sweep found are
+  pinned in `test/commanderBrackets.test.js` — re-run the sweep before
+  loosening a pattern. `computeBracket` already takes a `combos` input for the
+  Commander Spellbook step (late = 8+ mana). `getDeck` reports
+  `gameChangersKnown: false` until a sync has filled the column, so an
+  unsynced install does not show a clean bill.

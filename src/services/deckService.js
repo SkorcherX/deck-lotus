@@ -5,6 +5,7 @@ import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
 import { getDeckRecords, getDeckRecord } from './deckGameService.js';
 import { getDeckReadinessSummaries, getDeckReadiness } from './deckReadinessService.js';
 import { parsePlan } from './deckPlanService.js';
+import { computeBracket } from '../shared/commanderBrackets.js';
 
 /**
  * What the owner says the deck is for. Deliberately not the vocabulary the
@@ -129,6 +130,7 @@ export function getDeckById(deckId, userId) {
       c.power,
       c.toughness,
       c.loyalty,
+      c.is_game_changer,
       (SELECT CASE WHEN oc.id IS NOT NULL THEN 1 ELSE 0 END FROM owned_cards oc WHERE oc.user_id = ? AND oc.card_id = c.id LIMIT 1) as is_owned
      FROM deck_cards dc
      JOIN printings p ON dc.printing_id = p.id
@@ -159,7 +161,20 @@ export function getDeckById(deckId, userId) {
     // Derived, never stored: a cached readiness count and the collection it
     // came from can disagree, and then neither can be trusted.
     readiness: getDeckReadiness(userId, deckId),
+    bracket: deck.format === 'commander' ? getDeckBracket(cards) : null,
   };
+}
+
+/**
+ * The Commander bracket floor, derived from the cards already loaded.
+ *
+ * `gameChangersKnown` is false until a card sync has filled
+ * `cards.is_game_changer` — without it a deck full of Game Changers would
+ * read as bracket 1–2, which is worse than saying nothing.
+ */
+function getDeckBracket(cards) {
+  const known = Boolean(db.get(`SELECT 1 AS x FROM cards WHERE is_game_changer = 1 LIMIT 1`));
+  return { ...computeBracket(cards), gameChangersKnown: known };
 }
 
 /**

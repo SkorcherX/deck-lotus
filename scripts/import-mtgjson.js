@@ -189,6 +189,7 @@ async function importCards(sourceDb, targetDb) {
       c.type, c.text, c.power, c.toughness, c.loyalty, c.keywords,
       c.isReserved, c.edhrecRank, c.edhrecSaltiness, c.originalReleaseDate,
       c.subtypes, c.supertypes, c.types, c.leadershipSkills, c.layout,
+      c.isGameChanger,
       cl.alchemy, cl.brawl, cl.commander, cl.duel, cl.future,
       cl.gladiator, cl.historic, cl.legacy, cl.modern, cl.oathbreaker,
       cl.oldschool, cl.pauper, cl.paupercommander, cl.penny, cl.pioneer,
@@ -205,8 +206,8 @@ async function importCards(sourceDb, targetDb) {
       type_line, oracle_text, power, toughness, loyalty,
       keywords, legalities, is_reserved, edhrec_rank,
       subtypes, supertypes, types, leadership_skills,
-      edhrec_saltiness, first_printing, layout
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      edhrec_saltiness, first_printing, layout, is_game_changer
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertMany = targetDb.transaction((cards) => {
@@ -321,7 +322,8 @@ async function importCards(sourceDb, targetDb) {
         leadershipSkills,
         card.edhrecSaltiness,
         card.originalReleaseDate,
-        card.layout
+        card.layout,
+        card.isGameChanger ? 1 : 0
       );
     }
   });

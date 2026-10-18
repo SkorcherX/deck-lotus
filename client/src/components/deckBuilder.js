@@ -215,6 +215,8 @@ export function setupDeckBuilder() {
   // The shortfall alert in the price row opens its own breakdown.
   document.getElementById('deck-readiness-chip')
     ?.addEventListener('click', toggleReadinessPanel);
+  document.getElementById('deck-bracket-chip')
+    ?.addEventListener('click', () => toggleChipPanel('deck-bracket-chip', 'deck-bracket-panel'));
 
   // Buy Deck Modal
   buyDeckBtn.addEventListener('click', () => {
@@ -608,6 +610,7 @@ async function loadDeck(deckId) {
     // teardown. Derived on every read, so it cannot disagree with the
     // collection it came from.
     renderReadinessPanel(currentDeck.readiness);
+    renderBracketPanel(currentDeck.bracket);
 
     // Render deck cards
     renderDeckCards();
@@ -724,6 +727,60 @@ function renderReadinessPanel(readiness) {
 }
 
 /**
+ * The Commander bracket floor and what set it.
+ *
+ * A floor, not a rating: it counts Game Changers, mass land denial and extra
+ * turns, which is all a card list can show. The chip says "Bracket 3+" and the
+ * breakdown names the cards responsible, because the cards are what you would
+ * change to play a bracket lower.
+ */
+function renderBracketPanel(bracket) {
+  const panel = document.getElementById('deck-bracket-panel');
+  const chip = document.getElementById('deck-bracket-chip');
+  if (!panel || !chip) return;
+
+  panel.classList.add('hidden');
+  chip.classList.remove('is-open');
+  chip.setAttribute('aria-expanded', 'false');
+
+  if (!bracket) {
+    chip.classList.add('hidden');
+    chip.innerHTML = '';
+    panel.innerHTML = '';
+    return;
+  }
+
+  chip.classList.remove('hidden');
+  chip.dataset.state = 'bracket';
+  chip.innerHTML = `
+    <span class="deck-bracket-label"><i class="ph ph-shield"></i> ${escapeHtml(bracket.label)}</span>
+    <i class="ph ph-caret-down deck-readiness-chip-caret"></i>
+  `;
+
+  const notes = [
+    'The lowest bracket this card list allows. Bracket 1 and 2 differ by intent, and a deck can belong higher than its list requires — play where it fits.',
+  ];
+  if (!bracket.gameChangersKnown) {
+    notes.push('Game Changers are not counted yet: they arrive with the next card data sync.');
+  }
+
+  const groups = bracket.reasons.map((r) => `
+    <div class="deck-readiness-group">
+      <h4>Bracket ${r.bracket}: ${escapeHtml(r.note)}</h4>
+      <ul>${r.cards.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>
+    </div>`);
+
+  panel.innerHTML = `
+    <div class="deck-readiness-banner" data-state="bracket">
+      ${notes.map((n) => `<p class="deck-bracket-note">${escapeHtml(n)}</p>`).join('')}
+      ${groups.length
+        ? `<div class="deck-readiness-groups">${groups.join('')}</div>`
+        : '<p class="deck-bracket-note">No Game Changers, mass land denial or extra turns.</p>'}
+    </div>
+  `;
+}
+
+/**
  * Open or close the breakdown.
  *
  * Closed on every load, including after a save: it is reference material for
@@ -731,8 +788,12 @@ function renderReadinessPanel(readiness) {
  * describing.
  */
 function toggleReadinessPanel() {
-  const panel = document.getElementById('deck-readiness-panel');
-  const chip = document.getElementById('deck-readiness-chip');
+  toggleChipPanel('deck-readiness-chip', 'deck-readiness-panel');
+}
+
+function toggleChipPanel(chipId, panelId) {
+  const panel = document.getElementById(panelId);
+  const chip = document.getElementById(chipId);
   if (!panel || !panel.innerHTML) return;
 
   const open = panel.classList.toggle('hidden') === false;
