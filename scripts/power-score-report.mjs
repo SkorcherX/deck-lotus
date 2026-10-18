@@ -9,60 +9,36 @@
  * there. When deck_games has enough Commander games, win rate joins the
  * table and becomes the better check.
  *
- * Read-only. Usage:
+ * Reads only. Usage:
  *   node scripts/power-score-report.mjs [path/to/deck-lotus.db]
  */
-import Database from 'better-sqlite3';
-import { scoreDeck } from '../src/shared/powerScore.js';
-import { isBasicLand } from '../src/services/basicLands.js';
+import path from 'node:path';
 
-const dbPath = process.argv[2] || process.env.DATABASE_PATH || 'data/deck-lotus.db';
-const db = new Database(dbPath, { readonly: true });
-
-// Lowest USD price for the card across all printings: TCGplayer and Card
-// Kingdom (Cardmarket is EUR). Normal first; a foil-only card falls back to
-// its foil price.
-const cardRow = db.prepare(`
-  SELECT c.name, c.cmc, c.type_line, c.supertypes, c.edhrec_rank,
-    (SELECT MIN(pr.price) FROM printings p JOIN prices pr ON pr.printing_uuid = p.uuid
-      WHERE p.card_id = c.id AND pr.provider IN ('tcgplayer','cardkingdom')
-        AND pr.price_type = 'normal' AND pr.price > 0) AS normal_price,
-    (SELECT MIN(pr.price) FROM printings p JOIN prices pr ON pr.printing_uuid = p.uuid
-      WHERE p.card_id = c.id AND pr.provider IN ('tcgplayer','cardkingdom')
-        AND pr.price_type = 'foil' AND pr.price > 0) AS foil_price
-  FROM cards c WHERE c.name = ?
-`);
+// The service reads through the app's connection, which opens DATABASE_PATH;
+// it has to be set before that module loads. Nothing here writes.
+process.env.DATABASE_PATH = path.resolve(
+  process.argv[2] || process.env.DATABASE_PATH || 'data/deck-lotus.db'
+);
+const { default: db, getDb } = await import('../src/db/connection.js');
+const raw = getDb();
+const { scoreCardIds } = await import('../src/services/powerScoreService.js');
 
 // Double-faced cards are stored under "Front // Back"; lists often name the
 // front face alone.
-const fullName = db.prepare(`SELECT name FROM cards WHERE name LIKE ? LIMIT 1`);
-
-const cache = new Map();
-function lookup(name) {
-  if (!cache.has(name)) {
-    const full = fullName.get(`${name} // %`)?.name;
-    cache.set(name, cardRow.get(name) || (full && cardRow.get(full)) || null);
+const byName = new Map();
+function cardId(name) {
+  if (!byName.has(name)) {
+    const row = db.get(`SELECT id FROM cards WHERE name = ?`, [name])
+      || db.get(`SELECT id FROM cards WHERE name LIKE ? LIMIT 1`, [`${name} // %`]);
+    byName.set(name, row?.id ?? null);
   }
-  return cache.get(name);
+  return byName.get(name);
 }
 
 function score(names) {
-  const rows = [];
-  let missing = 0;
-  for (const [name, quantity] of names) {
-    const c = lookup(name);
-    if (!c) { missing++; continue; }
-    rows.push({
-      name: c.name,
-      cmc: c.cmc,
-      quantity,
-      isLand: /\bLand\b/.test(c.type_line || ''),
-      isBasicLand: isBasicLand(c),
-      price: c.normal_price ?? c.foil_price,
-      edhrecRank: c.edhrec_rank,
-    });
-  }
-  return { ...scoreDeck(rows), missing };
+  const entries = names.map(([name, quantity]) => ({ cardId: cardId(name), quantity }));
+  const missing = entries.filter((e) => e.cardId == null).length;
+  return { ...scoreCardIds(entries), missing };
 }
 
 const fmt = (r) => [
@@ -78,13 +54,13 @@ const header = 'power  score  impact  avgMV  tip   eff';
 // ── Your decks ──────────────────────────────────────────────────────────────
 console.log('\nYOUR COMMANDER DECKS');
 console.log(`${header}  games  deck`);
-const decks = db.prepare(`SELECT d.id, d.name, d.status FROM decks d WHERE d.format = 'commander'`).all();
-const deckCards = db.prepare(`
+const decks = db.all(`SELECT d.id, d.name, d.status FROM decks d WHERE d.format = 'commander'`);
+const deckCards = raw.prepare(`
   SELECT c.name, SUM(dc.quantity) AS quantity FROM deck_cards dc
   JOIN printings p ON p.id = dc.printing_id JOIN cards c ON c.id = p.card_id
   WHERE dc.deck_id = ? AND (dc.board_type = 'mainboard' OR dc.is_commander = 1 OR dc.board_type IS NULL AND dc.is_sideboard = 0)
   GROUP BY c.name`);
-const games = db.prepare(`SELECT COUNT(*) AS n, SUM(result = 'win') AS w FROM deck_games WHERE deck_id = ?`);
+const games = raw.prepare(`SELECT COUNT(*) AS n, SUM(result = 'win') AS w FROM deck_games WHERE deck_id = ?`);
 for (const d of decks) {
   const r = score(deckCards.all(d.id).map((x) => [x.name, x.quantity]));
   const g = games.get(d.id);
@@ -93,10 +69,10 @@ for (const d of decks) {
 }
 
 // ── Precons, by year ────────────────────────────────────────────────────────
-const precons = db.prepare(`
+const precons = raw.prepare(`
   SELECT id, name, set_code, substr(release_date, 1, 4) AS year FROM precon_decks
   WHERE type = 'Commander Deck' ORDER BY release_date`).all();
-const preconCards = db.prepare(`
+const preconCards = raw.prepare(`
   SELECT card_name AS name, SUM(quantity) AS quantity FROM precon_deck_cards
   WHERE precon_deck_id = ? AND is_sideboard = 0 GROUP BY card_name`);
 const byYear = new Map();

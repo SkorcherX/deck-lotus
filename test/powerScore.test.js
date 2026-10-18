@@ -1,8 +1,20 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import {
-  priceRating, popularityRating, powerLevel, scoreDeck,
+  priceRating, popularityRating, powerLevel, scoreDeck, bracketFromPower,
 } from '../src/shared/powerScore.js';
+
+describe('bracketFromPower', () => {
+  test('a typical precon suggests nothing above its floor', () => {
+    assert.equal(bracketFromPower(5.5), null);
+  });
+  test('thresholds', () => {
+    assert.equal(bracketFromPower(6.5), 3);
+    assert.equal(bracketFromPower(8), 4);
+    assert.equal(bracketFromPower(9.5), 5);
+    assert.equal(bracketFromPower(10), 5);
+  });
+});
 
 /**
  * The curves are read off published charts, so the points themselves are

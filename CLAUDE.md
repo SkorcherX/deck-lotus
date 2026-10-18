@@ -454,3 +454,16 @@ taken on GitHub — only do it when explicitly asked.
   template-free combos with a decisive result; total mana is Spellbook's
   `manaValueNeeded` plus the mana value of pieces that must start on the
   battlefield, which it leaves out. `SPELLBOOK_URL` overrides the endpoint.
+- The power score (`src/shared/powerScore.js`, `powerScoreService.js`)
+  follows Red String: per-card Impact = price rating + popularity rating
+  (lowest USD price across printings, TCGplayer/Card Kingdom, normal then
+  foil; `edhrec_rank`), basics ignored, scaled by an Efficiency built from
+  average mana value and the 65% tipping point, then mapped through their
+  power curve. The three curves are read off their charts; `EFFICIENCY`,
+  `SCORE_SCALE` and `BRACKET_FROM_POWER` are ours, tuned with
+  `node scripts/power-score-report.mjs [db]` against the stored precons
+  (modern median ≈ 5–6, i.e. bracket 2) and a reference cEDH list (10). Re-run
+  that report after touching any of them. The report goes through the same
+  service as the page, so they cannot price a card differently. The score
+  only ever **raises** the recommended bracket above the rule-based floor,
+  never lowers it, and it says nothing about 1 vs 2.

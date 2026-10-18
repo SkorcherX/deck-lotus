@@ -66,6 +66,20 @@ export const EFFICIENCY = {
 };
 export const SCORE_SCALE = { base: 0.6, perEfficiency: 0.02 };
 
+/**
+ * Power level → the bracket it suggests, highest threshold first. Below the
+ * last one the score suggests nothing: it never pulls a deck *down*, and
+ * telling 1 from 2 is about intent. Calibrated on the stored precons — a
+ * modern precon (median 5–6) is bracket 2, as Wizards place them; the
+ * strongest (6.5–7.2) reach 3; the reference cEDH list is 10.
+ */
+export const BRACKET_FROM_POWER = [[9.5, 5], [8, 4], [6.5, 3]];
+
+export function bracketFromPower(power) {
+  const hit = BRACKET_FROM_POWER.find(([min]) => power >= min);
+  return hit ? hit[1] : null;
+}
+
 export function priceRating(price) {
   if (price == null || !(price >= 0)) return 0;
   return interpolate(PRICE_CURVE, Math.min(price, 100));

@@ -733,19 +733,24 @@ function renderReadinessPanel(readiness) {
 /**
  * The Commander bracket floor and what set it.
  *
- * A floor, not a rating: it counts Game Changers, mass land denial and extra
- * turns, which is all a card list can show. The chip says "Bracket 3+" and the
- * breakdown names the cards responsible, because the cards are what you would
- * change to play a bracket lower.
+ * Two numbers. The floor counts Game Changers, mass land denial, extra turns
+ * and combos — what a card list can show — and the breakdown names the cards
+ * responsible, because those are what you would change to play lower. The
+ * power score can raise the recommendation above the floor for a deck that
+ * dodges every rule and still plays hard; it never lowers it.
+ *
+ * `keepOpen` is for the redraw when a combo lookup lands: closing the panel
+ * under someone reading it would be worse than the stale line it replaces.
  */
-function renderBracketPanel(bracket) {
+function renderBracketPanel(bracket, { keepOpen = false } = {}) {
   const panel = document.getElementById('deck-bracket-panel');
   const chip = document.getElementById('deck-bracket-chip');
   if (!panel || !chip) return;
 
-  panel.classList.add('hidden');
-  chip.classList.remove('is-open');
-  chip.setAttribute('aria-expanded', 'false');
+  const open = keepOpen && !panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  chip.classList.toggle('is-open', open);
+  chip.setAttribute('aria-expanded', String(open));
 
   if (!bracket) {
     chip.classList.add('hidden');
@@ -756,13 +761,39 @@ function renderBracketPanel(bracket) {
 
   chip.classList.remove('hidden');
   chip.dataset.state = 'bracket';
+  const power = bracket.power;
+  const raised = bracket.recommended > bracket.minBracket;
+  // Short on purpose: it shares a row with the readiness chip on a phone.
+  const chipBracket = bracket.reasons.length || raised
+    ? `Bracket ${bracket.recommended}${raised ? '' : '+'}`
+    : 'Bracket 1–2';
   chip.innerHTML = `
-    <span class="deck-bracket-label"><i class="ph ph-shield"></i> ${escapeHtml(bracket.label)}</span>
+    <span class="deck-bracket-label"><i class="ph ph-shield"></i> ${escapeHtml(chipBracket)}${power ? ` · Power ${power.powerLevel.toFixed(1)}` : ''}</span>
     <i class="ph ph-caret-down deck-readiness-chip-caret"></i>
   `;
 
+  const powerSection = power ? `
+    <div class="deck-bracket-power">
+      <h4>Power ${power.powerLevel.toFixed(1)} <span>· score ${Math.round(power.score)}</span></h4>
+      <p class="deck-bracket-note">
+        ${raised
+          ? `Recommended: <strong>${escapeHtml(bracket.recommendedLabel)}</strong>. The card list allows ${escapeHtml(bracket.label)}, but its power score plays like a higher bracket.`
+          : `Recommended: <strong>${escapeHtml(bracket.recommendedLabel)}</strong>.`}
+        Score compares decks better than the 1–10 does — it is the number to talk about with your playgroup.
+      </p>
+      <p class="deck-bracket-note">
+        Card impact ${Math.round(power.impact)} (price + popularity) ·
+        average mana value ${power.avgCmc.toFixed(2)} ·
+        tipping point ${power.tippingPoint} mana ·
+        efficiency ${power.efficiency.toFixed(1)}/10
+      </p>
+      <p class="deck-bracket-note">Carrying the most impact: ${power.topCards
+        .map((c) => `${escapeHtml(c.name)} (${c.impact.toFixed(1)})`).join(', ')}.</p>
+      <p class="deck-bracket-note">It cannot see synergy, combos or how the deck is built — it compares real decks, it does not judge them.</p>
+    </div>` : '';
+
   const notes = [
-    'The lowest bracket this card list allows. Bracket 1 and 2 differ by intent, and a deck can belong higher than its list requires — play where it fits.',
+    'Minimum bracket: the lowest this card list allows. Bracket 1 and 2 differ by intent — play where the deck fits.',
   ];
   if (!bracket.gameChangersKnown) {
     notes.push('Game Changers are not counted yet: they arrive with the next card data sync.');
@@ -783,6 +814,7 @@ function renderBracketPanel(bracket) {
 
   panel.innerHTML = `
     <div class="deck-readiness-banner" data-state="bracket">
+      ${powerSection}
       ${notes.map((n) => `<p class="deck-bracket-note">${escapeHtml(n)}</p>`).join('')}
       ${groups.length
         ? `<div class="deck-readiness-groups">${groups.join('')}</div>`
@@ -807,10 +839,10 @@ async function refreshBracketCombos(deckId, bracket) {
     const fresh = await api.lookupDeckCombos(deckId);
     if (currentDeckId !== deckId) return;
     currentDeck.bracket = fresh;
-    renderBracketPanel(fresh);
+    renderBracketPanel(fresh, { keepOpen: true });
   } catch {
     if (currentDeckId !== deckId) return;
-    renderBracketPanel({ ...bracket, combosStatus: 'failed' });
+    renderBracketPanel({ ...bracket, combosStatus: 'failed' }, { keepOpen: true });
   }
 }
 

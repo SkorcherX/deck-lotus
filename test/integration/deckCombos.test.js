@@ -97,6 +97,15 @@ describe('deck combo cache', () => {
     assert.equal(deck.bracket.minBracket, 4);
   });
 
+  test('the bracket carries a power score and never recommends below its floor', () => {
+    const { bracket } = getDeckById(deckId, userId);
+    assert.equal(typeof bracket.power.powerLevel, 'number');
+    assert.ok(bracket.power.topCards.length > 0);
+    // Three unpriced, unranked cards: no power to speak of, so the floor
+    // (an early combo, bracket 4) is the recommendation.
+    assert.equal(bracket.recommended, bracket.minBracket);
+  });
+
   test('a failed lookup caches nothing', async () => {
     globalThis.fetch = async () => ({ ok: false, status: 503, json: async () => ({}) });
     await assert.rejects(refreshDeckCombos(deckId, getDeckById(deckId, userId).cards), /503/);

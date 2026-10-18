@@ -5,8 +5,10 @@ import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
 import { getDeckRecords, getDeckRecord } from './deckGameService.js';
 import { getDeckReadinessSummaries, getDeckReadiness } from './deckReadinessService.js';
 import { parsePlan } from './deckPlanService.js';
-import { computeBracket } from '../shared/commanderBrackets.js';
+import { computeBracket, BRACKET_LABELS } from '../shared/commanderBrackets.js';
+import { bracketFromPower } from '../shared/powerScore.js';
 import { getCachedCombos } from './comboService.js';
+import { scoreDeckCards } from './powerScoreService.js';
 
 /**
  * What the owner says the deck is for. Deliberately not the vocabulary the
@@ -180,8 +182,30 @@ export function getDeckById(deckId, userId) {
 export function getDeckBracket(deckId, cards) {
   const known = Boolean(db.get(`SELECT 1 AS x FROM cards WHERE is_game_changer = 1 LIMIT 1`));
   const { status, combos } = getCachedCombos(deckId, cards);
+  const floor = computeBracket(cards, { combos });
+
+  // The score can only raise the bracket: it catches decks that dodge every
+  // listed requirement and still play at a high level. Never below the floor.
+  const power = scoreDeckCards(cards);
+  const suggested = bracketFromPower(power.powerLevel);
+  const recommended = suggested && suggested > floor.minBracket ? suggested : floor.minBracket;
+
   return {
-    ...computeBracket(cards, { combos }),
+    ...floor,
+    recommended,
+    recommendedLabel: recommended === floor.minBracket
+      ? floor.label
+      : `Bracket ${recommended} · ${BRACKET_LABELS[recommended]}`,
+    power: {
+      powerLevel: power.powerLevel,
+      score: power.score,
+      impact: power.impact,
+      avgCmc: power.avgCmc,
+      tippingPoint: power.tippingPoint,
+      efficiency: power.efficiency,
+      // What is carrying the number; the full list is the deck itself.
+      topCards: power.cards.slice(0, 10),
+    },
     gameChangersKnown: known,
     combosStatus: status,
   };
