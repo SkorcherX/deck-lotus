@@ -11,77 +11,79 @@
 ## Features
 
 ### Deck Building
-- **Intuitive Deck Builder** — real-time search with autocomplete as you type
-- **Multiple Boards** — mainboard, sideboard, and maybeboard support
-- **Commander Support** — mark commanders, color identity displayed automatically
-- **Multiple Printings** — choose specific card art, set, and foil version per card
-- **Printing Optimizer** — automatically find the cheapest or most thematic set for your entire deck
-- **Deck Statistics** — live mana curve, type distribution, color breakdown, and estimated value
-- **Format Support** — Commander, Standard, Modern, Pioneer, Legacy, Vintage, Pauper
-- **Drag & Drop** — reorder cards between boards
-- **Layout Views** — full card, compact, and ultra-compact views
+- **Deck Builder** — "From Inventory" search is the main way to add cards; an "Any card" search adds cards you don't own (marked as not from your collection)
+- **Boards** — mainboard, sideboard and maybeboard, with drag & drop between them
+- **Commander Support** — mark commanders; colour identity is shown automatically
+- **Printings & Finishes** — pick the exact set, art and foil for each card; foil and non-foil copies are tracked separately
+- **Printing Optimizer** — switch a whole deck to the cheapest or most thematic printings
+- **Deck Statistics** — mana curve, type and colour breakdown, average and median mana value, the total mana needed to cast every non-land card, and estimated value
+- **Format Rules** — Commander, Standard, Modern, Pioneer, Legacy, Vintage and Pauper. "Check Legality" runs locally against the card database; "Validate Deck" asks Mana Pool
+- **Deck Status** — ready, building, idea or retired. A deck only competes for cards with decks at least as committed as it is, so an idea deck never makes a sleeved deck look short
+- **Readiness** — each deck shows whether your collection can build it, with a per-card breakdown of what is missing, lent out or held by another deck. Basic lands are always free
+- **Win/Loss Record** — log games against a deck; totals are worked out from the log
+- **Pull List** — a checklist for pulling a deck's cards out of storage, grouped the way your shelves are sorted (colour → rarity → type, configurable)
+- **Precon Detection** — decks that are still mostly a preconstructed product get their advisor warnings folded behind one line
+- **Layout Views** — full card, compact and ultra-compact
 
-### Mana Pool Integration
-- **Cart Optimizer** — find the cheapest combination of sellers for your deck or shopping list across four strategies:
-  - **Lowest Total Price** — minimize spend
-  - **Fewest Packages** — minimize shipping costs
-  - **Balanced** — balance between price and convenience
-  - **Gathered Shipping Only** — sellers offering combined shipping
-- **Deck Validator** — check any deck for format legality via Mana Pool (Commander, Standard, Modern, Pioneer, Legacy, Vintage, Pauper)
-- **Buy Links** — every card in the deck builder and shopping list has a direct "Buy on Mana Pool" link
-- **Price Monitoring** — watch card prices and get notified when they hit your target
+### Deck Generator & Advisor
+- **Generate from your collection** — pick a commander and theme (plus an optional second theme) and get a deck built from cards you own, mana base included
+- **Revise a deck** — keep the cards you choose and fill the gaps; a deck's plan (themes and kept cards) is saved with it
+- **Mimic** — rebuild an existing or imported list card by card from your collection, using owned copies first and similar cards second. Loose matches are labelled as such
+- **Fill the gaps** — send what a generated deck is missing straight to the shopping list
+- Nothing is saved until you accept a proposal; it saves as a new `idea` deck
 
-### Price Monitoring & Alerts
-- **Price Watches** — set a target price and condition (NM/LP/MP/HP/DM) for any card
-- **Automated Checks** — prices polled on a configurable schedule (default: every 6 hours)
-- **Push Notifications** — instant alerts via [ntfy](https://ntfy.sh) when a card hits your target price
-- **Price History Charts** — beautiful Chart.js line graphs showing price over time with your target threshold overlaid
-- **Smart Alerting** — won't re-notify more than once per 24 hours for the same watch
-- **Watch Management** — pause, resume, expire, and delete watches from a single dashboard
-- **Card Autocomplete** — instant card name search when adding a watch
+### Collection
+- **Inventory** — quantity per printing, finish and (optionally) condition (NM/LP/MP/HP/DMG)
+- **Quick Add & Bulk Add** — quick add sits behind the "Add cards" button (key `A`); bulk add takes pasted lists by name or by set code + collector number. Added cards show their price, colour-coded by value
+- **CardCastle Import** — import singles and sealed product from a CardCastle CSV
+- **Filters** — colour (exactly or at most the picked colours), set, rarity, condition, copies owned, availability (free, in decks, lent out)
+- **Set Condition in bulk** — grade many cards at once; only ungraded copies are changed unless you choose to overwrite
+- **Remove & Recover** — removing cards in bulk needs a typed confirmation, and every removal can be rebuilt into a Bulk Add list from the audit page
+- **Inventory Export** — a simple export, or a precise one that keeps printing, foil and condition so it can be pasted back in
+- **Sealed Product** — track boxes, bundles and precons as lots, priced from MTGJSON with optional overrides
+- **Forgiving Search** — punctuation and accents optional, typos still match, foreign names included
+- **Card Browser** — filter by colour, type, mana value, set, subtype and rarity; card detail shows every printing with prices, legality and rulings
+
+### Household: Trades, Loans & Sharing
+- **Trades** — propose a trade, or send a shopping request and let the other person pick what they want back. Accepting moves both collections in one step, so the household total never drifts. Owners can decline individual cards
+- **Loans** — lend a card without giving it away. It stays in the lender's collection but counts toward the borrower's decks until it is returned
+- **Deck disruptions** — when a trade or a returned loan leaves a deck short, the deck owner is told and chooses to remove the card or keep it listed
+- **Partner Browsing** — browse another user's collection to shop from it, without ever seeing their decks
+- **Collection Sharing** — a read-only public link to your collection for someone without an account; regenerate it to cut off the old link
+- **Deck Sharing** — public read-only deck links that anyone can view and copy to their own account
 
 ### Shopping List
-- **Cross-Deck Aggregation** — see every card you need across all your decks in one list, organized by set
-- **Mana Pool Optimizer** — run the optimizer directly from the shopping list to get a ready-to-buy cart
-- **Per-Card Buy Links** — one-click links to Mana Pool search for every card
-- **Filters** — price range, rarity, color, set search, and budget mode
-- **Session Tracking** — mark cards as "found" or "skip" during an LGS visit
-- **Export** — export the full shopping list as formatted text
+- **Cross-Deck Aggregation** — everything your decks need, plus cards you want on their own, merged per card and grouped by set
+- **Mana Pool Optimizer** — turn the list into a ready-to-buy cart
+- **Filters** — price range, rarity, colour, set and budget mode
+- **Found it!** — tick cards off at the store or out of a bulk box. Found cards go to a pile you review at home and add to the collection with the right printing
+- **Export** — the full list as text
 
-### Card Browsing & Inventory
-- **Advanced Card Browser** — filter by color, type, CMC range, set, subtype, and rarity
-- **Inventory Management** — track cards you own with quantity per printing
-- **Bulk Add** — paste a list by card name, or by set code and collector number
-- **Forgiving Search** — punctuation and accents are optional, and typos still
-  match, in both the deck builder and inventory search (foreign names included)
-- **Owned Card Badges** — see which cards in your decks you already own
-- **Card Detail Modal** — all printings with prices, artist, set, legality, and rulings
-- **Hover Previews** — full card image on hover throughout the app
+### Import & Export
+- **Deck import** from Moxfield, Archidekt, Arena, MTGO and plain text, including the nameless `1 FDN 1` set-and-number form. Lines that can't be matched are listed rather than failing the import
+- **Deck export** to Moxfield, Archidekt, EDHREC/Deckstats, MTG Arena, MTGO and plain text — copy or download as `.txt`
 
-### Deck Import & Export
-- **Import from** Moxfield, MTG Arena, MTGO, and plain text formats
-- **Export to** Moxfield (with set codes), Arena, MTGO, and plain text
-- **Smart Parser** — auto-detects set codes in brackets or parentheses
-- **Shared Deck Import** — one-click import of any publicly shared deck
+### Prices, Alerts & Analytics
+- **Daily price refresh** from MTGJSON, separate from the weekly card data sync
+- **Price Watches** — set a target price and condition; checked on a schedule (default every 6 hours) with Chart.js history graphs
+- **Push Notifications** via [ntfy](https://ntfy.sh) for price hits, trades and loans — configured and tested from Settings
+- **Analytics** — collection value over time, activity timeline, set completion, colour and rarity make-up, top cards, biggest price movers, idle cards, and trade/loan totals. Admins can view a household combined
+- **Audit Log** — every collection change with its source (quick add, import, trade, loan, …), filterable, with whole imports selectable as a batch
 
-### Deck Sharing
-- **Public Links** — generate a unique read-only URL for any deck
-- **No Account Required** — anyone with the link can view the deck
-- **Import Shared Decks** — viewers can save a copy to their own account
+### Mana Pool Integration
+Needs both `MANAPOOL_USER_EMAIL` and `MANAPOOL_API_TOKEN`.
+- **Cart Optimizer** — lowest total price, fewest packages, balanced, or gathered shipping only
+- **Deck Validator** — format legality via Mana Pool
+- **Buy Links** — "Buy on Mana Pool" throughout the deck builder and shopping list
 
-### User Management
-- **Multi-User** — each user has their own decks, inventory, and price watches
-- **JWT Authentication** — secure token-based auth with refresh tokens
-- **API Keys** — generate named API keys for external integrations
-- **Gravatar Support** — profile pictures via Gravatar with colorful initials fallback
-- **User Statistics** — deck count, card count, shared decks, and API keys at a glance
+### Android Companion App
+The in-browser scanner has been replaced by the [deck-lotus-android](https://github.com/SkorcherX/deck-lotus-android) app, which scans cards with the phone camera and adds them through this server's `/api/scan/*` and `/api/inventory/bulk-add` endpoints.
 
-### Admin Tools
-- **User Management** — view, promote/demote, and delete users
-- **Backup & Restore** — export and restore all user data as JSON
-- **Database Sync** — manually trigger MTGJSON card data and pricing refresh
-- **Auto-Sync** — card data updated daily at 3 AM automatically
-- **Safe Reimport** — `FORCE_REIMPORT` clears card data but preserves all user decks via UUIDs
+### Accounts, Themes & Admin
+- **Multi-User** — each user has their own decks, collection, watches and settings; JWT auth with refresh tokens; named API keys
+- **Themes** — selectable per user, plus a Theme Forge wizard (`/tools/theme-forge.html`) for making new ones
+- **Admin** — manage users, toggle registration, trigger syncs, and back up / restore all user data (on demand or on a schedule)
+- **Maintenance Notice** — users get a five-minute warning and a notice while the weekly card data rebuild runs, so an empty-looking collection isn't mistaken for data loss
 
 ---
 
@@ -106,8 +108,8 @@ services:
       # Both are required together; setting only one leaves the integration disabled
       - MANAPOOL_USER_EMAIL=
       - MANAPOOL_API_TOKEN=
-      # Optional — enables push notifications for price alerts
-      - NTFY_TOPIC=
+      # Recommended — the timezone the sync schedule is read in
+      - SYNC_TIMEZONE=America/Los_Angeles
     volumes:
       - ./deck-lotus-data:/app/data
     restart: unless-stopped
@@ -217,10 +219,14 @@ docker compose up -d --build
 | `MANAPOOL_API_TOKEN` | — | No | Enables price monitoring, cart optimizer, and deck validator. Generate at [manapool.com/seller/settings/integrations](https://manapool.com/seller/settings/integrations) |
 | `TCGPLAYER_CLIENT_ID` | — | No | TCGPlayer API fallback (keys no longer publicly issued) |
 | `TCGPLAYER_CLIENT_SECRET` | — | No | TCGPlayer API fallback |
-| `NTFY_URL` | `https://ntfy.sh` | No | ntfy server URL for push notifications |
-| `NTFY_TOPIC` | — | No | ntfy topic name for price alert push notifications |
-| `NTFY_TOKEN` | — | No | ntfy access token, for protected topics on a self-hosted server |
-| `PRICE_CHECK_SCHEDULE` | `0 */6 * * *` | No | Cron expression for price check frequency |
+| `NTFY_URL` | `https://ntfy.sh` | No | ntfy server URL. Fallback only — the value in Settings wins |
+| `NTFY_TOPIC` | — | No | ntfy topic. Fallback only — the value in Settings wins |
+| `NTFY_TOKEN` | — | No | ntfy access token, for protected topics. Fallback only |
+| `PRICE_CHECK_SCHEDULE` | `0 */6 * * *` | No | Cron for price watch checks. Fallback only — editable in Settings |
+| `SYNC_TIMEZONE` | `TZ`, else UTC | **Recommended** | Timezone for the sync schedule (e.g. `America/Los_Angeles`). Without it, "3 AM" means 3 AM UTC |
+| `BACKUP_TIMEZONE` | `SYNC_TIMEZONE` | No | Timezone for scheduled backups |
+| `REGISTRATION_ENABLED` | (Settings) | No | `false` forces sign-up off regardless of Settings |
+| `DISABLE_SCHEDULED_JOBS` | `false` | No | `true` turns off syncs and price checks (test/CI) |
 | `ADMIN_USERNAME` | — | No | Username for initial admin account |
 | `ADMIN_EMAIL` | — | No | Email for initial admin account |
 | `ADMIN_PASSWORD` | — | No | Password for initial admin account |
@@ -243,6 +249,16 @@ With the token set you get:
 - Cart optimizer in the buy modal and shopping list
 - Deck legality validator
 - Per-card buy links throughout the app
+
+### Scheduled jobs
+
+| Job | When | What it touches |
+|---|---|---|
+| MTGJSON card data sync | Sundays 3:00 AM (warning at 2:55) | Rebuilds cards, printings and sealed catalog; user data is backed up and restored by UUID |
+| Price refresh | Daily 4:00 AM | `prices` only, plus value snapshots and price history for owned cards |
+| Price watch checks | `PRICE_CHECK_SCHEDULE` / Settings | Watches only |
+
+Times are in `SYNC_TIMEZONE`; startup logs the zone it resolved.
 
 ### Price alert notifications (ntfy)
 
@@ -566,6 +582,21 @@ All admin endpoints require admin privileges.
 | `POST` | `/api/admin/restore` | Restore from backup |
 | `GET` | `/api/admin/backups` | List saved backup files |
 
+### Other endpoints
+
+| Area | Base path | Main routes |
+|---|---|---|
+| Deck generator | `/api/decks/generate` | `GET commanders`, `GET themes`, `POST /`, `POST gaps`, `POST mimic`, `POST accept` |
+| Deck extras | `/api/decks/:id` | `GET/PUT/DELETE pull-list…`, `PUT plan`, `GET/POST/PUT/DELETE games` |
+| Trades | `/api/trades` | list, `partners`, `partners/:userId/inventory`, `preview`, `request`, `:id/counter`, `:id/accept`, `:id/decline`, `:id/cancel`, `disruptions` |
+| Loans | `/api/loans` | list, `request`, `:id/:action` |
+| Sealed | `/api/sealed` | CRUD, `catalog`, `import` (CardCastle CSV) |
+| Analytics | `/api/analytics` | `summary`, `timeline`, `value-history`, `sets`, `colors`, `composition`, `top-cards`, `set-completion`, `deck-use`, `trades-loans`, `movers` |
+| Audit log | `/api/audit` | list, `filters` |
+| Collection share | `/api/collection-share` | `GET/POST/DELETE /`, `regenerate`; public read-only under `public/:token` |
+| Scanner (Android) | `/api/scan` | `POST resolve`, `shortfall`, `commit` |
+| Maintenance | `/api/system/maintenance` | Sync notice state (no auth) |
+
 ---
 
 ## Project Structure
@@ -574,7 +605,7 @@ All admin endpoints require admin privileges.
 deck-lotus/
 ├── src/
 │   ├── db/
-│   │   ├── migrations/            # 017 database migrations
+│   │   ├── migrations/            # 48 database migrations
 │   │   ├── connection.js
 │   │   └── index.js
 │   ├── middleware/
@@ -589,6 +620,12 @@ deck-lotus/
 │   │   ├── inventory.js
 │   │   ├── priceMonitoring.js
 │   │   ├── manapool.js            # Mana Pool proxy routes
+│   │   ├── trades.js / loans.js   # Household trades and loans
+│   │   ├── sealed.js              # Sealed product
+│   │   ├── analytics.js / audit.js
+│   │   ├── collectionShare.js     # Public read-only collection link
+│   │   ├── scan.js                # Android companion app endpoints
+│   │   ├── system.js              # Maintenance status (unauthenticated)
 │   │   └── admin.js
 │   └── services/
 │       ├── authService.js
@@ -599,7 +636,11 @@ deck-lotus/
 │       ├── tcgplayerService.js    # TCGPlayer fallback
 │       ├── priceMonitoringService.js
 │       ├── notificationService.js # ntfy integration
-│       └── syncService.js
+│       ├── deckGeneratorService.js / deckMimicService.js
+│       ├── deckReadinessService.js / shoppingService.js
+│       ├── tradeService.js / loanService.js
+│       ├── backupService.js / auditService.js
+│       └── syncService.js         # Weekly card sync + daily price sync
 ├── client/
 │   ├── src/
 │   │   ├── components/
@@ -631,7 +672,7 @@ deck-lotus/
 
 **Frontend** — Vanilla JavaScript (ES6+), Vite, Chart.js (price history charts), Phosphor Icons
 
-**Data** — MTGJSON (card data, synced weekly), Mana Pool API (live prices, optimizer, validator)
+**Data** — MTGJSON (card data weekly, prices daily, sealed product catalog), Mana Pool API (optimizer, validator, live listings)
 
 ---
 
@@ -639,7 +680,7 @@ deck-lotus/
 
 Admins can export and restore all user data from Settings → Backup & Restore.
 
-Backups include: users, decks, deck cards, API keys, and share tokens. Card database data is excluded — it auto-imports from MTGJSON.
+Backups (format version 2) include every user-scoped table: users, decks and their cards, the collection with foil and condition, trades, loans, sealed lots, deck plans and records, pull-list progress, shopping and found lists, value snapshots, API keys and share links. Card and printing data is excluded — it is rebuilt from MTGJSON — so cards are stored by name and printings by UUID, which survive the rebuild. Backups can also run on a schedule.
 
 Restores can **merge** (keeps existing data, adds backup data) or **overwrite** (replaces everything). Deck integrity is maintained via stable UUIDs.
 
