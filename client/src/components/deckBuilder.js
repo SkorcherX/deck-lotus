@@ -2381,7 +2381,8 @@ function renderStats(stats) {
   const avgWithLands = totalCards > 0 ? (totalManaValue / totalCards).toFixed(2) : 0;
 
   // Calculate without lands
-  const nonLandCards = mainboardCards.filter(c => !c.type_line || !c.type_line.includes('Land'));
+  // Judged on the front face: a spell // land MDFC is cast as the spell.
+  const nonLandCards = mainboardCards.filter(c => !c.type_line || !c.type_line.split(' // ')[0].includes('Land'));
   const nonLandTotal = nonLandCards.reduce((sum, c) => sum + c.quantity, 0);
   const nonLandManaValue = nonLandCards.reduce((sum, c) => {
     const actualCMC = calculateActualCMC(c);
@@ -2530,7 +2531,7 @@ function renderStats(stats) {
         <div class="mana-stats" style="margin-top: 1rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px; font-size: 0.875rem; line-height: 1.6;">
           <div>The average mana value of your main deck is <strong>${avgWithLands}</strong> with lands and <strong>${avgWithoutLands}</strong> without lands.</div>
           <div style="margin-top: 0.25rem;">The median mana value of your main deck is <strong>${medianWithLands}</strong> with lands and <strong>${medianWithoutLands}</strong> without lands.</div>
-          <div style="margin-top: 0.25rem;">This deck's total mana value is <strong>${totalManaValue}</strong>.</div>
+          <div style="margin-top: 0.25rem;">Casting every non-land card in the main deck takes <strong>${nonLandManaValue}</strong> mana in total (lands count as 0).</div>
         </div>
       </div>
     `;
