@@ -442,3 +442,15 @@ taken on GitHub — only do it when explicitly asked.
   Commander Spellbook step (late = 8+ mana). `getDeck` reports
   `gameChangersKnown: false` until a sync has filled the column, so an
   unsynced install does not show a clean bill.
+- Bracket combos come from Commander Spellbook's `find-my-combos`, per deck
+  and on demand (`src/services/comboService.js`), not from their bulk export
+  (~700 MB). `deck_combo_cache` (migration 050) holds the filtered answer
+  keyed by a hash of the played card names; it is a cache, so backupService
+  does not carry it. Reading a deck never calls out: `getDeck` folds in
+  whatever is cached and reports `combosStatus` (`current`/`stale`/`none`),
+  and the deck page POSTs `/api/decks/:id/combos` when it is not current. The
+  in-place refresh after adding cards deliberately does not look up — that
+  would be a request per click. `src/shared/comboFilter.js` keeps two-card,
+  template-free combos with a decisive result; total mana is Spellbook's
+  `manaValueNeeded` plus the mana value of pieces that must start on the
+  battlefield, which it leaves out. `SPELLBOOK_URL` overrides the endpoint.

@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getUserDecks,
   getDeckById,
+  getDeckBracket,
   createDeck,
   updateDeck,
   deleteDeck,
@@ -26,6 +27,7 @@ import {
   getDeckRecord,
 } from '../services/deckGameService.js';
 import { checkFormatRules } from '../services/formatRulesService.js';
+import { refreshDeckCombos } from '../services/comboService.js';
 import { getDeckPrice } from '../services/pricingService.js';
 import { parseDeckList, importDeck } from '../services/importService.js';
 import {
@@ -358,6 +360,29 @@ router.delete('/:id/pull-list/progress', authenticate, (req, res, next) => {
     res.json(resetPulled(req.user.id, Number(req.params.id)));
   } catch (error) {
     if (/not one of yours/.test(error.message)) return res.status(404).json({ error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * POST /api/decks/:id/combos
+ * Look the deck's combos up on Commander Spellbook, cache them, and return
+ * the bracket recomputed with them. A POST because it calls out and writes
+ * the cache; reading a deck never does either.
+ */
+router.post('/:id/combos', authenticate, async (req, res, next) => {
+  try {
+    const deckId = Number(req.params.id);
+    const deck = getDeckById(deckId, req.user.id);
+    if (!deck) return res.status(404).json({ error: 'Deck not found' });
+    if (deck.format !== 'commander') return res.status(400).json({ error: 'Brackets apply to Commander decks' });
+    try {
+      await refreshDeckCombos(deckId, deck.cards);
+    } catch (error) {
+      return res.status(502).json({ error: `Combo lookup failed: ${error.message}` });
+    }
+    res.json(getDeckBracket(deckId, deck.cards));
+  } catch (error) {
     next(error);
   }
 });

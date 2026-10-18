@@ -94,6 +94,9 @@ export function setupDeckBuilder() {
       const result = await api.getDeck(currentDeckId);
       currentDeck = result.deck;
       renderDeckCards();
+      // Local rules only: a Spellbook lookup per card added would be one
+      // request per click. Combos catch up the next time the deck is opened.
+      renderBracketPanel(currentDeck.bracket);
       await loadDeckStats();
       // Returned so a caller that must act on the refreshed rows — naming a
       // commander it has just added, say — does not have to re-fetch.
@@ -611,6 +614,7 @@ async function loadDeck(deckId) {
     // collection it came from.
     renderReadinessPanel(currentDeck.readiness);
     renderBracketPanel(currentDeck.bracket);
+    refreshBracketCombos(deckId, currentDeck.bracket);
 
     // Render deck cards
     renderDeckCards();
@@ -763,6 +767,13 @@ function renderBracketPanel(bracket) {
   if (!bracket.gameChangersKnown) {
     notes.push('Game Changers are not counted yet: they arrive with the next card data sync.');
   }
+  if (bracket.combosStatus === 'checking') {
+    notes.push('Checking Commander Spellbook for two-card combos…');
+  } else if (bracket.combosStatus === 'failed') {
+    notes.push('Commander Spellbook could not be reached, so two-card combos are not counted. Reopen the deck to try again.');
+  } else if (bracket.combosStatus === 'stale') {
+    notes.push('Combos are from before the last change to this list.');
+  }
 
   const groups = bracket.reasons.map((r) => `
     <div class="deck-readiness-group">
@@ -775,9 +786,32 @@ function renderBracketPanel(bracket) {
       ${notes.map((n) => `<p class="deck-bracket-note">${escapeHtml(n)}</p>`).join('')}
       ${groups.length
         ? `<div class="deck-readiness-groups">${groups.join('')}</div>`
-        : '<p class="deck-bracket-note">No Game Changers, mass land denial or extra turns.</p>'}
+        : `<p class="deck-bracket-note">No Game Changers, mass land denial, extra turns${bracket.combosStatus === 'current' ? ' or two-card combos' : ''}.</p>`}
+      <p class="deck-bracket-note">Combo data from <a href="https://commanderspellbook.com" target="_blank" rel="noopener">Commander Spellbook</a>.</p>
     </div>
   `;
+}
+
+/**
+ * Bring the combo half of the bracket up to date.
+ *
+ * Reading the deck only uses cached combos, so the page loads without waiting
+ * on Spellbook; when the cache is missing or older than the list, this asks
+ * for a lookup and redraws the bracket when it lands. If the user has moved to
+ * another deck by then, the answer is dropped — it is about the old one.
+ */
+async function refreshBracketCombos(deckId, bracket) {
+  if (!bracket || bracket.combosStatus === 'current') return;
+  renderBracketPanel({ ...bracket, combosStatus: 'checking' });
+  try {
+    const fresh = await api.lookupDeckCombos(deckId);
+    if (currentDeckId !== deckId) return;
+    currentDeck.bracket = fresh;
+    renderBracketPanel(fresh);
+  } catch {
+    if (currentDeckId !== deckId) return;
+    renderBracketPanel({ ...bracket, combosStatus: 'failed' });
+  }
 }
 
 /**

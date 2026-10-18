@@ -220,6 +220,11 @@ class ApiClient {
     return this.request(`/decks/${id}`);
   }
 
+  /** Commander Spellbook lookup; returns the recomputed bracket. */
+  async lookupDeckCombos(id) {
+    return this.request(`/decks/${id}/combos`, { method: 'POST' });
+  }
+
   async createDeck(name, format, description, status) {
     return this.request('/decks', {
       method: 'POST',

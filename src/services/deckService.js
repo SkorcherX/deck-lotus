@@ -6,6 +6,7 @@ import { getDeckRecords, getDeckRecord } from './deckGameService.js';
 import { getDeckReadinessSummaries, getDeckReadiness } from './deckReadinessService.js';
 import { parsePlan } from './deckPlanService.js';
 import { computeBracket } from '../shared/commanderBrackets.js';
+import { getCachedCombos } from './comboService.js';
 
 /**
  * What the owner says the deck is for. Deliberately not the vocabulary the
@@ -161,7 +162,7 @@ export function getDeckById(deckId, userId) {
     // Derived, never stored: a cached readiness count and the collection it
     // came from can disagree, and then neither can be trusted.
     readiness: getDeckReadiness(userId, deckId),
-    bracket: deck.format === 'commander' ? getDeckBracket(cards) : null,
+    bracket: deck.format === 'commander' ? getDeckBracket(deckId, cards) : null,
   };
 }
 
@@ -171,10 +172,19 @@ export function getDeckById(deckId, userId) {
  * `gameChangersKnown` is false until a card sync has filled
  * `cards.is_game_changer` — without it a deck full of Game Changers would
  * read as bracket 1–2, which is worse than saying nothing.
+ *
+ * Combos come from the Spellbook cache only — reading a deck never waits on
+ * an outside service. `combosStatus` tells the page whether to ask for a
+ * fresh lookup (see comboService.js).
  */
-function getDeckBracket(cards) {
+export function getDeckBracket(deckId, cards) {
   const known = Boolean(db.get(`SELECT 1 AS x FROM cards WHERE is_game_changer = 1 LIMIT 1`));
-  return { ...computeBracket(cards), gameChangersKnown: known };
+  const { status, combos } = getCachedCombos(deckId, cards);
+  return {
+    ...computeBracket(cards, { combos }),
+    gameChangersKnown: known,
+    combosStatus: status,
+  };
 }
 
 /**
