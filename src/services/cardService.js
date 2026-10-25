@@ -315,6 +315,7 @@ export function browseCards(filters = {}) {
     cmcMin = null,
     cmcMax = null,
     onlyOwned = false,
+    missingFromSet = null,
     userId = null,
     limit = 50,
     offset = 0
@@ -335,8 +336,25 @@ export function browseCards(filters = {}) {
   const needsSetJoin = (setsArray && setsArray.length > 0) || needsRarityJoin;
   const needsOwnedJoin = onlyOwned && userId;
 
+  // "What am I missing from this set" — the same count set completion makes
+  // on the Analytics page: a card is missing when the user owns no copy of a
+  // printing *from that set*, whatever they hold from other sets. Anything
+  // looser and the list would not add up to the progress bar's "X / Y".
+  const missingSet = missingFromSet && userId ? String(missingFromSet) : null;
+  const missingSql = missingSet
+    ? ` AND EXISTS (SELECT 1 FROM printings ps WHERE ps.card_id = c.id AND ps.set_code = ?)
+        AND NOT EXISTS (SELECT 1 FROM owned_printings op JOIN printings pm ON pm.id = op.printing_id
+                         WHERE pm.card_id = c.id AND pm.set_code = ? AND op.user_id = ? AND op.quantity > 0)`
+    : '';
+  const missingParams = missingSet ? [missingSet, missingSet, userId] : [];
+
+  // With one set in view, show that set's art rather than whichever printing
+  // comes first — the point of looking at a set is to see its cards.
+  const artSet = missingSet || (setsArray.length === 1 ? setsArray[0] : null);
+  const artOrder = artSet ? `ORDER BY (p.set_code = ?) DESC, CAST(p.collector_number AS INTEGER)` : '';
+
   let sql = `SELECT DISTINCT c.id, c.name, c.mana_cost, c.cmc, c.colors, c.type_line, c.oracle_text,
-             (SELECT p.image_url FROM printings p WHERE p.card_id = c.id AND p.image_url IS NOT NULL LIMIT 1) as image_url`;
+             (SELECT p.image_url FROM printings p WHERE p.card_id = c.id AND p.image_url IS NOT NULL ${artOrder} LIMIT 1) as image_url`;
 
   // Add owned status to query
   if (userId) {
@@ -378,6 +396,7 @@ export function browseCards(filters = {}) {
              WHERE 1=1`;
 
   const params = [];
+  if (artSet) params.push(artSet);
 
   // Add userId param if needed
   if (userId) {
@@ -466,6 +485,9 @@ export function browseCards(filters = {}) {
     params.push(cmcMax);
   }
 
+  sql += missingSql;
+  params.push(...missingParams);
+
   // Get total count for pagination - build count query from scratch
   let countSql = `SELECT COUNT(DISTINCT c.id) as total FROM cards c`;
 
@@ -552,6 +574,9 @@ export function browseCards(filters = {}) {
     countSql += ` AND c.cmc <= ?`;
     countParams.push(cmcMax);
   }
+
+  countSql += missingSql;
+  countParams.push(...missingParams);
 
   const countResult = db.get(countSql, countParams);
   const total = countResult ? countResult.total : 0;

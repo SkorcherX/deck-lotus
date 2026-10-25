@@ -33,6 +33,17 @@ export function setupAnalytics() {
   });
   document.addEventListener('theme:changed', () => { if (data) renderCharts(); });
 
+  // Missing cards are listed on Browse Cards, with art, rather than here.
+  document.getElementById('analytics-page')?.addEventListener('click', (e) => {
+    const link = e.target.closest('.analytics-missing-link');
+    if (!link) return;
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent('cards:missing-from-set', {
+      detail: { code: link.dataset.set, name: link.dataset.name },
+    }));
+    window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'cards' } }));
+  });
+
   document.querySelectorAll('[data-analytics-toggle]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const [key, value] = btn.dataset.analyticsToggle.split(':');
@@ -801,8 +812,17 @@ function completionRow(r) {
       <div class="analytics-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${r.percent}">
         <div style="width: ${Math.min(100, r.percent)}%"></div>
       </div>
-      <div class="analytics-progress-num">${count(r.owned)} / ${count(r.total)} <b>${r.percent.toFixed(1)}%</b></div>
+      <div class="analytics-progress-num">${count(r.owned)} / ${count(r.total)} <b>${r.percent.toFixed(1)}%</b>${missingLink(r)}</div>
     </div>`;
+}
+
+// Browse Cards answers "missing" for the signed-in user only, so the link is
+// offered only while the page is showing that user's own collection — in a
+// household or another user's view it would list a different collection's gaps.
+function missingLink(r) {
+  if (scopeUserIds || r.owned >= r.total) return '';
+  return ` <a href="#" class="analytics-missing-link" data-set="${escapeHtml(r.code)}" data-name="${escapeHtml(r.name)}"
+    title="Show the cards you are missing from this set">${count(r.total - r.owned)} missing</a>`;
 }
 
 function renderCompletion() {

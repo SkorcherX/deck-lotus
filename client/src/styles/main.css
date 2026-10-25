@@ -7085,6 +7085,8 @@ body.maintenance-locked #app {
 
 .cards-want-summary-link:hover { text-decoration: underline; }
 
+.cards-missing-clear { margin-left: auto; white-space: nowrap; }
+
 .cards-want-unpriced { color: var(--text-muted); }
 
 /* The want button, once the card is on the list. */
@@ -9118,6 +9120,14 @@ body.maintenance-locked #app {
 }
 
 .analytics-progress-num b { color: var(--text); margin-left: 0.3rem; }
+
+.analytics-missing-link {
+  margin-left: 0.5rem;
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.analytics-missing-link:hover { text-decoration: underline; }
 
 @media (max-width: 600px) {
   .analytics-progress-row { grid-template-columns: minmax(0, 1fr) auto; }

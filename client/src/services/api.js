@@ -145,6 +145,7 @@ class ApiClient {
     if (filters.cmcMin !== null && filters.cmcMin !== undefined) params.append('cmcMin', filters.cmcMin);
     if (filters.cmcMax !== null && filters.cmcMax !== undefined) params.append('cmcMax', filters.cmcMax);
     if (filters.onlyOwned) params.append('onlyOwned', filters.onlyOwned);
+    if (filters.missingFromSet) params.append('missingFromSet', filters.missingFromSet);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
     return this.request(`/cards/browse?${params}`);

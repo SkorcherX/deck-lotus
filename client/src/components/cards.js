@@ -15,7 +15,10 @@ let currentFilters = {
   subtypes: [],
   cmcMin: null,
   cmcMax: null,
-  onlyOwned: false
+  onlyOwned: false,
+  // { code, name } while showing what the user lacks from one set — reached
+  // from Set Completion on the Analytics page.
+  missingFromSet: null
 };
 let allSets = [];
 let allSubtypes = [];
@@ -150,6 +153,19 @@ export function setupCards() {
   });
 
   // Load cards when page is shown
+  window.addEventListener('cards:missing-from-set', (e) => {
+    currentFilters.missingFromSet = e.detail;
+    currentFilters.sort = 'name';
+    if (sortSelect) sortSelect.value = 'name';
+    currentPage = 1;
+  });
+
+  document.getElementById('cards-missing-clear')?.addEventListener('click', () => {
+    currentFilters.missingFromSet = null;
+    currentPage = 1;
+    loadCards();
+  });
+
   window.addEventListener('page:cards', () => {
     loadCards();
     refreshWantSummary();
@@ -441,6 +457,7 @@ async function loadCards() {
       cmcMin: currentFilters.cmcMin,
       cmcMax: currentFilters.cmcMax,
       onlyOwned: currentFilters.onlyOwned,
+      missingFromSet: currentFilters.missingFromSet?.code,
       page: currentPage,
       limit: 50
     };
@@ -453,12 +470,23 @@ async function loadCards() {
 
     const result = await api.browseCards(filters);
     renderCards(result.cards || []);
+    paintMissingBanner(result.total);
     updatePagination(result.page, result.totalPages, result.total);
     hideLoading();
   } catch (error) {
     hideLoading();
     console.error('Failed to load cards:', error);
   }
+}
+
+function paintMissingBanner(total) {
+  const banner = document.getElementById('cards-missing-banner');
+  if (!banner) return;
+  const m = currentFilters.missingFromSet;
+  banner.classList.toggle('hidden', !m);
+  if (!m) return;
+  document.getElementById('cards-missing-text').textContent =
+    `Missing from ${m.name} (${m.code}): ${total} card${total === 1 ? '' : 's'}`;
 }
 
 function renderCards(cards) {

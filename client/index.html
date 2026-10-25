@@ -1074,6 +1074,15 @@
                     <a href="#" data-page="shopping" class="cards-want-summary-link">Open shopping list</a>
                 </div>
 
+                <!-- Shown while listing one set's missing cards (from Analytics). -->
+                <div id="cards-missing-banner" class="cards-want-summary cards-missing-banner hidden">
+                    <i class="ph ph-puzzle-piece"></i>
+                    <span id="cards-missing-text"></span>
+                    <button type="button" id="cards-missing-clear" class="btn btn-sm btn-secondary cards-missing-clear">
+                        <i class="ph ph-x"></i> Show all cards
+                    </button>
+                </div>
+
                 <div id="cards-grid" class="cards-grid"></div>
                 <div id="pagination" class="pagination">
                     <button id="prev-page" class="btn btn-secondary" disabled>
