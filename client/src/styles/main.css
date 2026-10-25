@@ -9642,7 +9642,7 @@ body.pull-list-open { overflow: hidden; }
   align-items: center;
   justify-content: center;
   background: var(--bg-secondary);
-  color: var(--text-primary);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   cursor: pointer;
