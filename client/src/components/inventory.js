@@ -858,14 +858,21 @@ async function showPrintingsFlyout(cardId, anchorEl) {
     flyout.className = 'printing-flyout';
     flyout.innerHTML = `
       <div class="printing-flyout-header">
-        <input type="text" class="printing-flyout-search" placeholder="Filter by set..." autocomplete="off">
-        <span class="printing-flyout-count">${printings.length} printings</span>
-        <label class="printing-flyout-qty" title="How many copies to add">
-          Qty <input type="number" class="printing-qty-input" value="1" min="1" max="999" step="1">
-        </label>
-        <label class="printing-flyout-foil" title="Add the foil version of this printing">
-          <input type="checkbox" class="printing-foil-checkbox"> <i class="ph ph-sparkle"></i> Foil
-        </label>
+        <div class="printing-flyout-search-row">
+          <input type="text" class="printing-flyout-search" placeholder="Filter by set..." autocomplete="off">
+          <span class="printing-flyout-count">${printings.length} printings</span>
+        </div>
+        <div class="printing-flyout-controls">
+          <div class="printing-flyout-qty" title="How many copies to add">
+            <span class="printing-flyout-label">Qty</span>
+            <button type="button" class="printing-qty-step" data-step="-1" aria-label="One fewer"><i class="ph ph-minus"></i></button>
+            <input type="number" class="printing-qty-input" value="1" min="1" max="999" step="1" aria-label="Quantity">
+            <button type="button" class="printing-qty-step" data-step="1" aria-label="One more"><i class="ph ph-plus"></i></button>
+          </div>
+          <label class="printing-flyout-foil" title="Add the foil version of this printing">
+            <input type="checkbox" class="printing-foil-checkbox"> <i class="ph ph-sparkle"></i> Foil
+          </label>
+        </div>
       </div>
       <div class="printing-flyout-list">
         ${printings.map(p => `
@@ -916,6 +923,15 @@ async function showPrintingsFlyout(cardId, anchorEl) {
     setTimeout(() => searchInput.focus(), 50);
 
     // Add handlers for adding printings
+    flyout.querySelectorAll('.printing-qty-step').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const input = flyout.querySelector('.printing-qty-input');
+        const n = (parseInt(input.value, 10) || 1) + Number(btn.dataset.step);
+        input.value = Math.min(999, Math.max(1, n));
+      });
+    });
+
     const isFoilChecked = () => flyout.querySelector('.printing-foil-checkbox')?.checked ?? false;
     // Blank or nonsense reads as 1 rather than refusing the click.
     const chosenQuantity = () => {

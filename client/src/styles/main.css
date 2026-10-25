@@ -5962,9 +5962,20 @@ body.maintenance-locked #app {
   padding: 0.75rem;
   border-bottom: 1px solid var(--border);
   display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--bg-tertiary);
+}
+
+.printing-flyout-search-row,
+.printing-flyout-controls {
+  display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: var(--bg-tertiary);
+}
+
+.printing-flyout-controls {
+  justify-content: space-between;
 }
 
 .printing-flyout-search {
@@ -6172,10 +6183,14 @@ body.maintenance-locked #app {
 .printing-flyout-foil {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.8rem;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -6184,10 +6199,19 @@ body.maintenance-locked #app {
 .printing-flyout-foil input {
   cursor: pointer;
   margin: 0;
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--primary);
 }
 
 .printing-flyout-foil:hover {
-  color: var(--text-primary);
+  border-color: var(--primary);
+}
+
+.printing-flyout-foil:has(input:checked) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-accent);
 }
 
 
@@ -9603,16 +9627,44 @@ body.pull-list-open { overflow: hidden; }
 .printing-flyout-qty {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
+  gap: 0.35rem;
 }
-.printing-flyout-qty input {
-  width: 3.5rem;
-  padding: 0.15rem 0.3rem;
-  background: var(--bg-tertiary);
+.printing-flyout-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-right: 0.15rem;
+}
+.printing-qty-step {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+.printing-qty-step:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.printing-flyout-qty input {
+  width: 3rem;
+  height: 2rem;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: var(--bg-secondary);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  -moz-appearance: textfield;
+}
+.printing-flyout-qty input::-webkit-outer-spin-button,
+.printing-flyout-qty input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
