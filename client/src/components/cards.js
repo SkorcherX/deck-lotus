@@ -5,6 +5,27 @@ import { toggleOwnership, ownershipToggleAttrs, paintOwnershipToggle } from '../
 import { zoomButton } from '../utils/cardZoom.js';
 
 let currentPage = 1;
+let totalPages = 1;
+// Same switch as the Inventory page's, remembered separately: someone may want
+// endless scroll for browsing and a pager for their own collection.
+let endlessScroll = readEndlessPref();
+let loadingMore = false;
+// Set while the first page of a fresh list is on its way. A scroll in that
+// window must not ask for "page 2" of the list being replaced.
+let loadingFresh = false;
+let loadSeq = 0;
+// Random order has to hold still between pages, or page 2 is a fresh shuffle
+// that repeats some of page 1 and never shows others. A new seed is drawn
+// whenever the list starts over.
+let randomSeed = newSeed();
+
+function newSeed() {
+  return Math.floor(Math.random() * 1e6) + 1;
+}
+
+function readEndlessPref() {
+  try { return localStorage.getItem('cardsEndlessScroll') === 'true'; } catch { return false; }
+}
 let currentFilters = {
   name: '',
   colors: [],
@@ -138,6 +159,8 @@ export function setupCards() {
     currentPage = 1;
     await loadCards();
   });
+
+  setupEndlessScroll();
 
   // Pagination
   prevBtn.addEventListener('click', async () => {
@@ -442,9 +465,18 @@ function renderSubtypeList(subtypes) {
   });
 }
 
-async function loadCards() {
+async function loadCards({ append = false } = {}) {
+  // Any load that is not "the next page" starts the list over.
+  if (!append) randomSeed = newSeed();
+  const seq = ++loadSeq;
   try {
-    showLoading();
+    if (append) {
+      loadingMore = true;
+      updateScrollSentinel();
+    } else {
+      loadingFresh = true;
+      showLoading();
+    }
 
     const filters = {
       name: currentFilters.name && currentFilters.name.trim() ? currentFilters.name : undefined,
@@ -452,6 +484,7 @@ async function loadCards() {
       type: currentFilters.type !== 'all' ? currentFilters.type : undefined,
       rarities: currentFilters.rarities.length > 0 ? currentFilters.rarities.join(',') : undefined,
       sort: currentFilters.sort,
+      seed: currentFilters.sort === 'random' ? randomSeed : undefined,
       sets: currentFilters.sets.length > 0 ? currentFilters.sets.join(',') : undefined,
       subtypes: currentFilters.subtypes.length > 0 ? currentFilters.subtypes.join(',') : undefined,
       cmcMin: currentFilters.cmcMin,
@@ -469,13 +502,87 @@ async function loadCards() {
     console.log('API filters after processing:', filters);
 
     const result = await api.browseCards(filters);
-    renderCards(result.cards || []);
+    // A filter change while a page was in flight makes that page stale.
+    if (seq !== loadSeq) return;
+    totalPages = result.totalPages || 1;
+    renderCards(result.cards || [], { append });
     paintMissingBanner(result.total);
     updatePagination(result.page, result.totalPages, result.total);
-    hideLoading();
   } catch (error) {
-    hideLoading();
+    if (append && seq === loadSeq) currentPage -= 1;
     console.error('Failed to load cards:', error);
+  } finally {
+    if (!append) hideLoading();
+    if (append) loadingMore = false;
+    if (!append && seq === loadSeq) loadingFresh = false;
+    updateScrollSentinel();
+    // A short page can leave the sentinel on screen, where the observer will
+    // not fire again by itself.
+    if (endlessScroll && seq === loadSeq) requestAnimationFrame(fillViewport);
+  }
+}
+
+// Endless scroll, the same shape as the Inventory page's: a sentinel below
+// the grid fetches the next page as it comes within sight.
+function setupEndlessScroll() {
+  const btn = document.getElementById('cards-endless-toggle');
+  if (btn) {
+    setEndlessScroll(endlessScroll, { reload: false });
+    btn.addEventListener('click', () => setEndlessScroll(!endlessScroll));
+  }
+
+  const sentinel = document.getElementById('cards-scroll-sentinel');
+  if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+  new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) loadNextPage();
+  }, { rootMargin: '600px' }).observe(sentinel);
+}
+
+function fillViewport() {
+  const sentinel = document.getElementById('cards-scroll-sentinel');
+  if (!sentinel || sentinel.classList.contains('hidden')) return;
+  if (sentinel.getBoundingClientRect().top <= window.innerHeight + 600) loadNextPage();
+}
+
+function loadNextPage() {
+  if (!endlessScroll || loadingMore || loadingFresh || currentPage >= totalPages) return;
+  if (document.getElementById('cards-page')?.classList.contains('hidden')) return;
+  currentPage += 1;
+  loadCards({ append: true });
+}
+
+function setEndlessScroll(next, { reload = true } = {}) {
+  endlessScroll = next;
+  try { localStorage.setItem('cardsEndlessScroll', String(next)); } catch { /* private window */ }
+
+  const btn = document.getElementById('cards-endless-toggle');
+  if (btn) {
+    btn.classList.toggle('active', next);
+    btn.setAttribute('aria-pressed', String(next));
+    btn.title = next ? 'Endless scroll on' : 'Endless scroll off';
+  }
+  // A pager under an endless list says "Page 3 of 7" beneath seven pages.
+  document.getElementById('pagination')?.classList.toggle('hidden', next);
+
+  if (reload) {
+    currentPage = 1;
+    loadCards();
+  } else {
+    updateScrollSentinel();
+  }
+}
+
+function updateScrollSentinel() {
+  const sentinel = document.getElementById('cards-scroll-sentinel');
+  if (!sentinel) return;
+  sentinel.classList.toggle('hidden', !endlessScroll);
+  if (!endlessScroll) return;
+  if (loadingMore) {
+    sentinel.innerHTML = '<i class="ph ph-circle-notch"></i> Loading more cards...';
+  } else if (currentPage >= totalPages) {
+    sentinel.innerHTML = currentPage > 1 ? "That's everything." : '';
+  } else {
+    sentinel.innerHTML = '';
   }
 }
 
@@ -489,14 +596,18 @@ function paintMissingBanner(total) {
     `Missing from ${m.name} (${m.code}): ${total} card${total === 1 ? '' : 's'}`;
 }
 
-function renderCards(cards) {
-  const cardsGrid = document.getElementById('cards-grid');
+function renderCards(cards, { append = false } = {}) {
+  const grid = document.getElementById('cards-grid');
 
   if (cards.length === 0) {
-    cardsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--text-secondary);">No cards found</div>';
+    if (append) return;
+    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--text-secondary);">No cards found</div>';
     return;
   }
 
+  // Tiles are built and wired in a detached holder, then moved into the grid,
+  // so appending a page wires only its own tiles and never doubles a handler.
+  const cardsGrid = document.createElement('div');
   cardsGrid.innerHTML = cards.map(card => `
     <div class="card-item" data-card-id="${card.id}" draggable="true" style="position: relative;">
       <!--
@@ -608,6 +719,9 @@ function renderCards(cards) {
       await toggleCardOwnership(cardId, btn);
     });
   });
+
+  if (!append) grid.innerHTML = '';
+  grid.append(...cardsGrid.children);
 
   // Setup drag and drop
   setupBrowseDragAndDrop();
@@ -1846,7 +1960,8 @@ async function setupBrowseDragAndDrop() {
   }
 
   // Setup drag events on card items
-  document.querySelectorAll('.card-item[draggable="true"]').forEach(item => {
+  document.querySelectorAll('.card-item[draggable="true"]:not([data-drag-bound])').forEach(item => {
+    item.dataset.dragBound = '1';
     item.addEventListener('dragstart', async (e) => {
       // Don't allow drag if clicking the quick-add button
       if (e.target.classList.contains('quick-add-btn')) {

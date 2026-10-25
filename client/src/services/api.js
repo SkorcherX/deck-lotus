@@ -140,6 +140,7 @@ class ApiClient {
     if (filters.type) params.append('type', filters.type);
     if (filters.rarities) params.append('rarities', filters.rarities);
     if (filters.sort) params.append('sort', filters.sort);
+    if (filters.seed) params.append('seed', filters.seed);
     if (filters.sets) params.append('sets', filters.sets); // Already a string from frontend
     if (filters.subtypes) params.append('subtypes', filters.subtypes); // Already a string from frontend
     if (filters.cmcMin !== null && filters.cmcMin !== undefined) params.append('cmcMin', filters.cmcMin);

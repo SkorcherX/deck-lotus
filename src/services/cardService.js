@@ -310,6 +310,7 @@ export function browseCards(filters = {}) {
     type,
     rarities = [],
     sort = 'random',
+    seed = null,
     sets = [],
     subtypes = [],
     cmcMin = null,
@@ -603,7 +604,15 @@ export function browseCards(filters = {}) {
       break;
     case 'random':
     default:
-      sql += ` ORDER BY RANDOM()`;
+      // A seeded shuffle holds still across pages, so paging (or endless
+      // scroll) walks one order instead of reshuffling on every request.
+      // Without a seed it is a fresh shuffle, as before.
+      if (Number.isInteger(seed) && seed > 0) {
+        sql += ` ORDER BY ((c.id * ?) % 1000003), c.id`;
+        params.push(seed);
+      } else {
+        sql += ` ORDER BY RANDOM()`;
+      }
       break;
   }
 

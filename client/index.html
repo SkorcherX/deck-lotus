@@ -1059,6 +1059,14 @@
                                 </span>
                             </label>
                         </div>
+                        <div class="filter-field">
+                            <label class="field-label">Scrolling</label>
+                            <div class="view-toggle">
+                                <button id="cards-endless-toggle" class="btn-icon" title="Endless scroll off" aria-pressed="false">
+                                    <i class="ph ph-infinity"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <!--
@@ -1084,6 +1092,8 @@
                 </div>
 
                 <div id="cards-grid" class="cards-grid"></div>
+                <!-- Endless scroll: fetches the next page when it scrolls into view -->
+                <div id="cards-scroll-sentinel" class="inventory-scroll-sentinel hidden"></div>
                 <div id="pagination" class="pagination">
                     <button id="prev-page" class="btn btn-secondary" disabled>
                         Previous
