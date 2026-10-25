@@ -9553,3 +9553,66 @@ body.pull-list-open { overflow: hidden; }
   width: fit-content;
   min-width: 7.5rem;
 }
+
+/* Deck builder: rarity pip on each row and the rarity breakdown in the stats panel. */
+.deck-rarity-pip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  font-size: 0.625rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.deck-rarity-pip.rarity-special,
+.deck-rarity-pip.rarity-bonus,
+.deck-rarity-pip.rarity-unknown,
+.rarity-breakdown-segment.rarity-special,
+.rarity-breakdown-segment.rarity-bonus,
+.rarity-breakdown-segment.rarity-unknown {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.rarity-breakdown-bar {
+  display: flex;
+  height: 1.5rem;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.rarity-breakdown-segment { cursor: pointer; transition: filter 0.15s; }
+.rarity-breakdown-segment:hover { filter: brightness(1.15); }
+.rarity-breakdown-segment.filtered { box-shadow: inset 0 0 0 2px var(--primary); }
+.rarity-breakdown-legend { margin-top: 0.75rem; display: grid; gap: 0.25rem; font-size: 0.875rem; }
+.rarity-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.rarity-breakdown-row:hover { background: var(--bg-tertiary); }
+.rarity-breakdown-row.filtered { color: var(--primary); font-weight: 600; }
+.rarity-breakdown-name { text-transform: capitalize; flex: 1; }
+.rarity-breakdown-count { color: var(--text-secondary); }
+
+.printing-flyout-qty {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.printing-flyout-qty input {
+  width: 3.5rem;
+  padding: 0.15rem 0.3rem;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}

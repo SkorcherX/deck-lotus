@@ -860,6 +860,9 @@ async function showPrintingsFlyout(cardId, anchorEl) {
       <div class="printing-flyout-header">
         <input type="text" class="printing-flyout-search" placeholder="Filter by set..." autocomplete="off">
         <span class="printing-flyout-count">${printings.length} printings</span>
+        <label class="printing-flyout-qty" title="How many copies to add">
+          Qty <input type="number" class="printing-qty-input" value="1" min="1" max="999" step="1">
+        </label>
         <label class="printing-flyout-foil" title="Add the foil version of this printing">
           <input type="checkbox" class="printing-foil-checkbox"> <i class="ph ph-sparkle"></i> Foil
         </label>
@@ -914,12 +917,17 @@ async function showPrintingsFlyout(cardId, anchorEl) {
 
     // Add handlers for adding printings
     const isFoilChecked = () => flyout.querySelector('.printing-foil-checkbox')?.checked ?? false;
+    // Blank or nonsense reads as 1 rather than refusing the click.
+    const chosenQuantity = () => {
+      const n = parseInt(flyout.querySelector('.printing-qty-input')?.value, 10);
+      return Number.isInteger(n) && n >= 1 ? n : 1;
+    };
 
     flyout.querySelectorAll('.printing-add-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const printingId = parseInt(btn.dataset.printingId);
-        await quickAddPrinting(printingId, isFoilChecked());
+        await quickAddPrinting(printingId, isFoilChecked(), chosenQuantity());
       });
     });
 
@@ -927,9 +935,9 @@ async function showPrintingsFlyout(cardId, anchorEl) {
     flyout.querySelectorAll('.printing-flyout-item').forEach(item => {
       item.addEventListener('click', async (e) => {
         // Toggling the foil checkbox must not also add the card
-        if (e.target.closest('.printing-add-btn') || e.target.closest('.printing-flyout-foil')) return;
+        if (e.target.closest('.printing-add-btn') || e.target.closest('.printing-flyout-foil') || e.target.closest('.printing-flyout-qty')) return;
         const printingId = parseInt(item.dataset.printingId);
-        await quickAddPrinting(printingId, isFoilChecked());
+        await quickAddPrinting(printingId, isFoilChecked(), chosenQuantity());
       });
     });
 
@@ -951,10 +959,10 @@ function closePrintingFlyout() {
 // row, so a mis-click lands here. It used to call setOwnedPrintingQuantity with
 // a hardcoded 1 — an *absolute* quantity — which turned five owned copies into
 // one and then said "Card added to inventory!". Adding one copy is what both
-// affordances read as, so it adds one copy.
-async function quickAddPrinting(printingId, isFoil = false) {
+// affordances read as, so it adds copies — one unless the flyout's Qty says more.
+async function quickAddPrinting(printingId, isFoil = false, quantity = 1) {
   try {
-    const result = await api.quickAddToInventory(printingId, 1, isFoil);
+    const result = await api.quickAddToInventory(printingId, quantity, isFoil);
     // The new total, not just "added": the number is the confirmation. If a
     // click ever lands on the wrong row again, a count that jumped the wrong
     // way is what makes it visible.
@@ -969,9 +977,10 @@ async function quickAddPrinting(printingId, isFoil = false) {
     // The price is the moment people wait for, so the toast carries it in its
     // band's colour, the way the phone pulses on a scan. It also stays up
     // longer and offers Undo: a quick add is one click, and so is the mistake.
-    showToast(`Added ${what}${price}${have}`, 'success', 8000, {
+    const count = quantity > 1 ? `${quantity}× ` : '';
+    showToast(`Added ${count}${what}${price}${have}`, 'success', 8000, {
       className: `toast-price price-band-${band.key}`,
-      action: total ? { label: 'Undo', onClick: () => undoQuickAdd(printingId, isFoil, result) } : undefined,
+      action: total ? { label: 'Undo', onClick: () => undoQuickAdd(printingId, isFoil, result, quantity) } : undefined,
     });
 
     // Refresh inventory data
@@ -992,15 +1001,15 @@ async function quickAddPrinting(printingId, isFoil = false) {
 }
 
 /**
- * Take back the one copy a quick add just added.
+ * Take back the copies a quick add just added.
  *
  * Sets the row the add landed on back by one, guarded by `expectedQuantity`:
  * if the row has moved since (another tab, the phone), it answers 409 and the
  * undo says so rather than taking a copy somebody else just added.
  */
-async function undoQuickAdd(printingId, isFoil, result) {
+async function undoQuickAdd(printingId, isFoil, result, quantity = 1) {
   try {
-    await api.setOwnedPrintingQuantity(printingId, result.quantity - 1, isFoil, {
+    await api.setOwnedPrintingQuantity(printingId, Math.max(0, result.quantity - quantity), isFoil, {
       expectedQuantity: result.quantity,
       condition: result.condition ?? '',
       source: 'quick_add',

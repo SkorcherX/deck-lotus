@@ -163,6 +163,7 @@ export function setupDeckBuilder() {
   document.getElementById('deck-filter-rarity')?.addEventListener('change', (e) => {
     deckFilterRarity = e.target.value;
     renderDeckCards();
+    if (currentDeck) renderRarityBreakdown(currentDeck.cards.filter(isMainboardCard));
   });
 
   deckFilterClear.addEventListener('click', () => {
@@ -1180,6 +1181,7 @@ function renderCardItem(card) {
         <span class="card-quantity-badge">${card.quantity}</span>
         <div class="deck-card-info-ultra-compact">
           <span class="card-name">${card.name}</span>
+          ${rarityPip(card)}
           <span class="card-mana">${formatMana(card.mana_cost || '')}</span>
         </div>
         ${zoomButton(card.image_url, card.name, { className: 'inline-glass' })}
@@ -1229,6 +1231,7 @@ function renderCardItem(card) {
              onerror="this.style.display='none'">
         <div class="deck-card-info-compact">
           <span class="card-name">${card.name}</span>
+          ${rarityPip(card)}
           <span class="card-mana">${formatMana(card.mana_cost || '')}</span>
         </div>
         <div class="deck-card-controls">
@@ -1266,7 +1269,7 @@ function renderCardItem(card) {
            alt="${card.name}"
            onerror="this.style.display='none'">
       <div class="deck-card-info">
-        <div class="card-name">${card.name}</div>
+        <div class="card-name">${card.name} ${rarityPip(card)}</div>
         <div class="card-type">${card.type_line || ''}</div>
         <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
           ${pricingMode
@@ -2488,11 +2491,69 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+const RARITY_ORDER = ['common', 'uncommon', 'rare', 'mythic', 'special', 'bonus'];
+
+/** One-letter rarity pip for a deck row; the full word is in the tooltip. */
+function rarityPip(card) {
+  const rarity = (card.rarity || '').toLowerCase();
+  if (!rarity) return '';
+  return `<span class="deck-rarity-pip rarity-${rarity}" title="${rarity}">${rarity[0].toUpperCase()}</span>`;
+}
+
+/**
+ * Rarity composition of the main deck, by copies, drawn like the mana curve.
+ * Clicking a segment drives the same rarity filter as the dropdown above the list.
+ */
+function renderRarityBreakdown(mainboardCards) {
+  const el = document.getElementById('rarity-distribution');
+  if (!el) return;
+  const counts = {};
+  for (const c of mainboardCards) {
+    const r = (c.rarity || 'unknown').toLowerCase();
+    counts[r] = (counts[r] || 0) + c.quantity;
+  }
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    el.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 1rem;">No cards in deck</div>';
+    return;
+  }
+  const keys = Object.keys(counts).sort((a, b) => {
+    const ia = RARITY_ORDER.indexOf(a), ib = RARITY_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  const pct = (k) => (counts[k] / total) * 100;
+  el.innerHTML = `
+    <div class="rarity-breakdown-bar">
+      ${keys.map(k => `<div class="rarity-breakdown-segment rarity-${k} ${deckFilterRarity === k ? 'filtered' : ''}" data-rarity="${k}" style="width: ${pct(k)}%;" title="${k}: ${counts[k]} cards (${pct(k).toFixed(1)}%)"></div>`).join('')}
+    </div>
+    <div class="rarity-breakdown-legend">
+      ${keys.map(k => `
+        <div class="rarity-breakdown-row ${deckFilterRarity === k ? 'filtered' : ''}" data-rarity="${k}">
+          <span class="deck-rarity-pip rarity-${k}">${k[0].toUpperCase()}</span>
+          <span class="rarity-breakdown-name">${k}</span>
+          <span class="rarity-breakdown-count">${counts[k]} · ${pct(k).toFixed(0)}%</span>
+        </div>`).join('')}
+    </div>
+  `;
+  el.querySelectorAll('[data-rarity]').forEach(node => {
+    node.addEventListener('click', () => {
+      const r = node.dataset.rarity;
+      if (!RARITY_ORDER.includes(r)) return;
+      deckFilterRarity = deckFilterRarity === r ? 'all' : r;
+      const select = document.getElementById('deck-filter-rarity');
+      if (select) select.value = deckFilterRarity;
+      renderDeckCards();
+      renderRarityBreakdown(currentDeck.cards.filter(isMainboardCard));
+    });
+  });
+}
+
 function renderStats(stats) {
 
   // Calculate statistics for mana values
   const mainboardCards = currentDeck.cards.filter(isMainboardCard);
   const totalCards = mainboardCards.reduce((sum, c) => sum + c.quantity, 0);
+  renderRarityBreakdown(mainboardCards);
 
   // Calculate owned percentage
   const ownedCards = mainboardCards.filter(c => c.is_owned).reduce((sum, c) => sum + c.quantity, 0);
