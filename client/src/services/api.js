@@ -137,6 +137,10 @@ class ApiClient {
     const params = new URLSearchParams();
     if (filters.name) params.append('name', filters.name);
     if (filters.colors) params.append('colors', filters.colors); // Already a string from frontend
+    if (filters.colorMode) params.append('colorMode', filters.colorMode);
+    if (filters.text) params.append('text', filters.text);
+    if (filters.ability) params.append('ability', filters.ability);
+    if (filters.commander) params.append('commander', filters.commander);
     if (filters.type) params.append('type', filters.type);
     if (filters.rarities) params.append('rarities', filters.rarities);
     if (filters.sort) params.append('sort', filters.sort);

@@ -7,6 +7,7 @@ import {
 import { ROLE_FILTERS } from './cardRoleService.js';
 import { themeRole } from './cardSynergyService.js';
 import { colorFilterSql } from '../utils/colorFilter.js';
+import { COMMANDER_ELIGIBLE_SQL } from '../utils/commanderEligible.js';
 import { subtypeFilterSql } from '../utils/subtypeFilter.js';
 import { cardTextFilterSql } from '../utils/cardTextFilter.js';
 import { isBasicLandSql } from './basicLands.js';
@@ -75,10 +76,6 @@ export function describeAddedPrinting(printingId, isFoil, quantity) {
 // A card can lead a Commander deck if it's a legendary creature, or its
 // Oracle text explicitly grants that (backgrounds' partners, some
 // planeswalkers, etc.). Expects `c` (cards) to be in scope.
-const COMMANDER_ELIGIBLE_SQL = `(
-  (c.type_line LIKE '%Legendary%' AND c.type_line LIKE '%Creature%')
-  OR c.oracle_text LIKE '%can be your commander%'
-)`;
 
 // How many copies of a card the scope owns, and how many of those are
 // committed to decks. Both are used twice over — once as a displayed column,

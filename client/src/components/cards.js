@@ -36,6 +36,10 @@ let currentFilters = {
   subtypes: [],
   cmcMin: null,
   cmcMax: null,
+  colorMode: 'includes',
+  text: '',
+  ability: '',
+  commander: 'all',
   onlyOwned: false,
   // { code, name } while showing what the user lacks from one set — reached
   // from Set Completion on the Analytics page.
@@ -119,6 +123,36 @@ export function setupCards() {
       currentPage = 1;
       await loadCards();
     });
+  });
+
+  // The card-level filters Inventory also has — same values, same server rules.
+  document.getElementById('filter-color-mode')?.addEventListener('change', (e) => {
+    currentFilters.colorMode = e.target.value;
+    // The mode means nothing until a colour is picked; no reload to show it.
+    if (currentFilters.colors.length === 0) return;
+    currentPage = 1;
+    loadCards();
+  });
+
+  const debouncedText = debounce(() => {
+    currentPage = 1;
+    loadCards();
+  }, 400);
+  document.getElementById('filter-text')?.addEventListener('input', (e) => {
+    currentFilters.text = e.target.value;
+    debouncedText();
+  });
+
+  document.getElementById('filter-ability')?.addEventListener('change', (e) => {
+    currentFilters.ability = e.target.value;
+    currentPage = 1;
+    loadCards();
+  });
+
+  document.getElementById('filter-commander')?.addEventListener('change', (e) => {
+    currentFilters.commander = e.target.value;
+    currentPage = 1;
+    loadCards();
   });
 
   // CMC filters
@@ -481,6 +515,10 @@ async function loadCards({ append = false } = {}) {
     const filters = {
       name: currentFilters.name && currentFilters.name.trim() ? currentFilters.name : undefined,
       colors: currentFilters.colors.length > 0 ? currentFilters.colors.join(',') : undefined,
+      colorMode: currentFilters.colors.length > 0 && currentFilters.colorMode !== 'includes' ? currentFilters.colorMode : undefined,
+      text: currentFilters.text.trim() || undefined,
+      ability: currentFilters.ability || undefined,
+      commander: currentFilters.commander !== 'all' ? currentFilters.commander : undefined,
       type: currentFilters.type !== 'all' ? currentFilters.type : undefined,
       rarities: currentFilters.rarities.length > 0 ? currentFilters.rarities.join(',') : undefined,
       sort: currentFilters.sort,

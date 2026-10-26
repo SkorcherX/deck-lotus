@@ -5,6 +5,9 @@ import {
   rankFuzzyCandidates
 } from '../utils/cardNameMatch.js';
 import { recordInventoryChange } from './auditService.js';
+import { colorFilterSql } from '../utils/colorFilter.js';
+import { cardTextFilterSql } from '../utils/cardTextFilter.js';
+import { COMMANDER_ELIGIBLE_SQL } from '../utils/commanderEligible.js';
 import { normalizeCondition, REMOVAL_ORDER } from '../shared/conditions.js';
 
 // Ceiling on how many near-miss candidates the edit-distance pass considers,
@@ -315,6 +318,10 @@ export function browseCards(filters = {}) {
     subtypes = [],
     cmcMin = null,
     cmcMax = null,
+    colorMode = 'includes',
+    text = '',
+    ability = '',
+    commander = 'all',
     onlyOwned = false,
     missingFromSet = null,
     userId = null,
@@ -328,6 +335,19 @@ export function browseCards(filters = {}) {
   const subtypesArray = Array.isArray(subtypes) ? subtypes : [];
 
   const raritiesArray = Array.isArray(rarities) ? rarities : [];
+
+  const cardFilters = { sql: '', params: [] };
+  const colorFilter = colorFilterSql(colorsArray, 'c', colorMode);
+  if (colorFilter.clause) {
+    cardFilters.sql += ` AND ${colorFilter.clause}`;
+    cardFilters.params.push(...colorFilter.params);
+  }
+  const textFilter = cardTextFilterSql(text, ability ? [ability] : [], 'c');
+  if (textFilter.clause) {
+    cardFilters.sql += ` AND ${textFilter.clause}`;
+    cardFilters.params.push(...textFilter.params);
+  }
+  if (commander === 'eligible') cardFilters.sql += ` AND ${COMMANDER_ELIGIBLE_SQL}`;
 
   console.log('Browse cards filters:', { name, colors: colorsArray, type, rarities: raritiesArray, sort, sets: setsArray, subtypes: subtypesArray, cmcMin, cmcMax, limit, offset });
 
@@ -415,33 +435,11 @@ export function browseCards(filters = {}) {
     params.push(`%${name}%`);
   }
 
-  // Color filter - cards that contain ALL selected colors (based on actual colors, not color identity)
-  if (colorsArray && colorsArray.length > 0) {
-    // Check if colorless (C) is in the filter
-    const hasColorless = colorsArray.includes('C');
-    const actualColors = colorsArray.filter(c => c !== 'C');
-
-    if (hasColorless && actualColors.length === 0) {
-      // Only colorless selected - show cards with no colors
-      sql += ` AND (c.colors IS NULL OR c.colors = '' OR c.colors = '[]')`;
-    } else if (hasColorless && actualColors.length > 0) {
-      // Colorless AND other colors - show cards matching colors OR colorless cards
-      sql += ` AND (`;
-      const colorConditions = [];
-      actualColors.forEach(color => {
-        colorConditions.push(`c.colors LIKE ?`);
-        params.push(`%${color}%`);
-      });
-      sql += colorConditions.join(' AND ');
-      sql += ` OR c.colors IS NULL OR c.colors = '' OR c.colors = '[]')`;
-    } else {
-      // Only actual colors selected
-      actualColors.forEach(color => {
-        sql += ` AND c.colors LIKE ?`;
-        params.push(`%${color}%`);
-      });
-    }
-  }
+  // Colour, ability, rules text and commander filters — the same predicates
+  // the Inventory page uses, so a filter means the same thing on both pages.
+  // Built once and appended to the main and count queries alike.
+  sql += cardFilters.sql;
+  params.push(...cardFilters.params);
 
   // Type filter
   if (type && type.trim() && type !== 'all') {
@@ -513,28 +511,8 @@ export function browseCards(filters = {}) {
     countParams.push(`%${name}%`);
   }
 
-  if (colorsArray && colorsArray.length > 0) {
-    const hasColorless = colorsArray.includes('C');
-    const actualColors = colorsArray.filter(c => c !== 'C');
-
-    if (hasColorless && actualColors.length === 0) {
-      countSql += ` AND (c.colors IS NULL OR c.colors = '' OR c.colors = '[]')`;
-    } else if (hasColorless && actualColors.length > 0) {
-      countSql += ` AND (`;
-      const colorConditions = [];
-      actualColors.forEach(color => {
-        colorConditions.push(`c.colors LIKE ?`);
-        countParams.push(`%${color}%`);
-      });
-      countSql += colorConditions.join(' AND ');
-      countSql += ` OR c.colors IS NULL OR c.colors = '' OR c.colors = '[]')`;
-    } else {
-      actualColors.forEach(color => {
-        countSql += ` AND c.colors LIKE ?`;
-        countParams.push(`%${color}%`);
-      });
-    }
-  }
+  countSql += cardFilters.sql;
+  countParams.push(...cardFilters.params);
 
   if (type && type.trim() && type !== 'all') {
     countSql += ` AND c.type_line LIKE ?`;

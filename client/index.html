@@ -1024,6 +1024,41 @@
                                     ></span>
                                 </label>
                             </div>
+                            <select autocomplete="off" id="filter-color-mode" class="filter-select color-mode-select" aria-label="How colours match" title="Includes: has these colours, maybe others. Exactly: these colours and no others. At most: castable in these colours, colourless included.">
+                                <option value="includes">Includes</option>
+                                <option value="exactly">Exactly</option>
+                                <option value="atmost">At most</option>
+                            </select>
+                        </div>
+                        <div class="filter-field">
+                            <label class="field-label">Card Text</label>
+                            <input autocomplete="off" type="text" id="filter-text" class="filter-select" placeholder='e.g. draw card or "target player"' title="Words must all appear in the rules text; quote a phrase to match it as written" />
+                        </div>
+                        <div class="filter-field">
+                            <label class="field-label">Ability</label>
+                            <select autocomplete="off" id="filter-ability" class="filter-select" title="Cards that do this">
+                                <option value="">Any ability</option>
+                                <option value="draw">Card draw</option>
+                                <option value="discard">Discard</option>
+                                <option value="mill">Mill</option>
+                                <option value="removal">Removal</option>
+                                <option value="wipe">Board wipe</option>
+                                <option value="counter">Counterspell</option>
+                                <option value="ramp">Ramp</option>
+                                <option value="tutor">Tutor</option>
+                                <option value="selection">Scry / surveil</option>
+                                <option value="lifegain">Lifegain</option>
+                                <option value="tokens">Makes tokens</option>
+                                <option value="recursion">Graveyard recursion</option>
+                                <option value="sacrifice">Sacrifice outlet</option>
+                            </select>
+                        </div>
+                        <div class="filter-field">
+                            <label class="field-label">Commander</label>
+                            <select autocomplete="off" id="filter-commander" class="filter-select">
+                                <option value="all">All Cards</option>
+                                <option value="eligible">Commander Eligible</option>
+                            </select>
                         </div>
                         <div class="filter-field">
                             <label class="field-label">Sets</label>
