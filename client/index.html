@@ -913,192 +913,202 @@
                     >
                         <i class="ph ph-x"></i>
                     </button>
-                    <div class="filter-bar">
-                        <div class="filter-field">
-                            <label class="field-label">Sort By</label>
-                            <select autocomplete="off" id="filter-sort" class="filter-select">
-                                <option value="random">Random</option>
-                                <option value="name">Alphabetical</option>
-                                <option value="cmc">Mana Value</option>
-                                <option value="color">Color</option>
-                                <option value="price">
-                                    Price (High to Low)
-                                </option>
-                            </select>
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Card Type</label>
-                            <select autocomplete="off" id="filter-types" class="filter-select">
-                                <option value="all">All Types</option>
-                                <option value="Creature">Creature</option>
-                                <option value="Instant">Instant</option>
-                                <option value="Sorcery">Sorcery</option>
-                                <option value="Enchantment">Enchantment</option>
-                                <option value="Artifact">Artifact</option>
-                                <option value="Planeswalker">
-                                    Planeswalker
-                                </option>
-                                <option value="Land">Land</option>
-                            </select>
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Rarity</label>
-                            <div id="filter-rarity" class="rarity-filter-group" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                <label class="rarity-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="common" />
-                                    <span class="rarity-checkbox-box rarity-c">C</span>
-                                </label>
-                                <label class="rarity-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="uncommon" />
-                                    <span class="rarity-checkbox-box rarity-u">U</span>
-                                </label>
-                                <label class="rarity-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="rare" />
-                                    <span class="rarity-checkbox-box rarity-r">R</span>
-                                </label>
-                                <label class="rarity-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="mythic" />
-                                    <span class="rarity-checkbox-box rarity-m">M</span>
-                                </label>
+                    <div class="filter-bar filter-bar-rows">
+                        <!-- What the card is and does; the text box takes the slack, view toggles last. -->
+                        <div class="filter-row">
+                            <div class="filter-field">
+                                <label class="field-label">Sort By</label>
+                                <select autocomplete="off" id="filter-sort" class="filter-select">
+                                    <option value="random">Random</option>
+                                    <option value="name">Alphabetical</option>
+                                    <option value="cmc">Mana Value</option>
+                                    <option value="color">Color</option>
+                                    <option value="price">
+                                        Price (High to Low)
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Card Type</label>
+                                <select autocomplete="off" id="filter-types" class="filter-select">
+                                    <option value="all">All Types</option>
+                                    <option value="Creature">Creature</option>
+                                    <option value="Instant">Instant</option>
+                                    <option value="Sorcery">Sorcery</option>
+                                    <option value="Enchantment">Enchantment</option>
+                                    <option value="Artifact">Artifact</option>
+                                    <option value="Planeswalker">
+                                        Planeswalker
+                                    </option>
+                                    <option value="Land">Land</option>
+                                </select>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Ability</label>
+                                <select autocomplete="off" id="filter-ability" class="filter-select" title="Cards that do this">
+                                    <option value="">Any ability</option>
+                                    <option value="draw">Card draw</option>
+                                    <option value="discard">Discard</option>
+                                    <option value="mill">Mill</option>
+                                    <option value="removal">Removal</option>
+                                    <option value="wipe">Board wipe</option>
+                                    <option value="counter">Counterspell</option>
+                                    <option value="ramp">Ramp</option>
+                                    <option value="tutor">Tutor</option>
+                                    <option value="selection">Scry / surveil</option>
+                                    <option value="lifegain">Lifegain</option>
+                                    <option value="tokens">Makes tokens</option>
+                                    <option value="recursion">Graveyard recursion</option>
+                                    <option value="sacrifice">Sacrifice outlet</option>
+                                </select>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Commander</label>
+                                <select autocomplete="off" id="filter-commander" class="filter-select">
+                                    <option value="all">All Cards</option>
+                                    <option value="eligible">Commander Eligible</option>
+                                </select>
+                            </div>
+                            <div class="filter-field filter-field-grow">
+                                <label class="field-label">Card Text</label>
+                                <input autocomplete="off" type="text" id="filter-text" class="filter-input" placeholder='e.g. draw card or "target player"' title="Words must all appear in the rules text; quote a phrase to match it as written" />
+                            </div>
+                            <div class="filter-row-end">
+                                <div class="filter-field">
+                                    <label class="field-label">Collection</label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off"
+                                            type="checkbox"
+                                            id="filter-owned"
+                                            value="owned"
+                                        />
+                                        <span
+                                            class="color-checkbox-box"
+                                            style="
+                                                padding: 0.5rem 1rem;
+                                                min-width: auto;
+                                            "
+                                        >
+                                            <i class="ph ph-check-square"></i>
+                                            <span style="margin-left: 0.25rem"
+                                                >Owned Only</span
+                                            >
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="filter-field">
+                                    <label class="field-label">Scrolling</label>
+                                    <div class="view-toggle">
+                                        <button id="cards-endless-toggle" class="btn-icon" title="Endless scroll off" aria-pressed="false">
+                                            <i class="ph ph-infinity"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="filter-field">
-                            <label class="field-label">CMC</label>
-                            <div class="cmc-range">
-                                <input autocomplete="off"
-                                    type="number"
-                                    id="filter-cmc-min"
-                                    class="input-narrow"
-                                    placeholder="Min"
-                                    min="0"
-                                    max="20"
-                                />
-                                <span>-</span>
-                                <input autocomplete="off"
-                                    type="number"
-                                    id="filter-cmc-max"
-                                    class="input-narrow"
-                                    placeholder="Max"
-                                    min="0"
-                                    max="20"
-                                />
+                        <!-- Colour, rarity, cost and where it was printed. -->
+                        <div class="filter-row">
+                            <div class="filter-field">
+                                <label class="field-label">Colors</label>
+                                <div class="color-field-controls">
+                                <div id="filter-colors" class="color-filter-group">
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="W" />
+                                        <span class="color-checkbox-box"
+                                            ><i class="ms ms-w ms-cost"></i
+                                        ></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="U" />
+                                        <span class="color-checkbox-box"
+                                            ><i class="ms ms-u ms-cost"></i
+                                        ></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="B" />
+                                        <span class="color-checkbox-box"
+                                            ><i class="ms ms-b ms-cost"></i
+                                        ></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="R" />
+                                        <span class="color-checkbox-box"
+                                            ><i class="ms ms-r ms-cost"></i
+                                        ></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="G" />
+                                        <span class="color-checkbox-box"
+                                            ><i class="ms ms-g ms-cost"></i
+                                        ></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="C" />
+                                        <span class="color-checkbox-box"
+                                            ><i class="ms ms-c ms-cost"></i
+                                        ></span>
+                                    </label>
+                                </div>
+                                <select autocomplete="off" id="filter-color-mode" class="filter-select color-mode-select" aria-label="How colours match" title="Includes: has these colours, maybe others. Exactly: these colours and no others. At most: castable in these colours, colourless included.">
+                                    <option value="includes">Includes</option>
+                                    <option value="exactly">Exactly</option>
+                                    <option value="atmost">At most</option>
+                                </select>
+                                </div>
                             </div>
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Colors</label>
-                            <div id="filter-colors" class="color-filter-group">
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="W" />
-                                    <span class="color-checkbox-box"
-                                        ><i class="ms ms-w ms-cost"></i
-                                    ></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="U" />
-                                    <span class="color-checkbox-box"
-                                        ><i class="ms ms-u ms-cost"></i
-                                    ></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="B" />
-                                    <span class="color-checkbox-box"
-                                        ><i class="ms ms-b ms-cost"></i
-                                    ></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="R" />
-                                    <span class="color-checkbox-box"
-                                        ><i class="ms ms-r ms-cost"></i
-                                    ></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="G" />
-                                    <span class="color-checkbox-box"
-                                        ><i class="ms ms-g ms-cost"></i
-                                    ></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="C" />
-                                    <span class="color-checkbox-box"
-                                        ><i class="ms ms-c ms-cost"></i
-                                    ></span>
-                                </label>
+                            <div class="filter-field">
+                                <label class="field-label">Rarity</label>
+                                <div id="filter-rarity" class="rarity-filter-group" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                    <label class="rarity-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="common" />
+                                        <span class="rarity-checkbox-box rarity-c">C</span>
+                                    </label>
+                                    <label class="rarity-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="uncommon" />
+                                        <span class="rarity-checkbox-box rarity-u">U</span>
+                                    </label>
+                                    <label class="rarity-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="rare" />
+                                        <span class="rarity-checkbox-box rarity-r">R</span>
+                                    </label>
+                                    <label class="rarity-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="mythic" />
+                                        <span class="rarity-checkbox-box rarity-m">M</span>
+                                    </label>
+                                </div>
                             </div>
-                            <select autocomplete="off" id="filter-color-mode" class="filter-select color-mode-select" aria-label="How colours match" title="Includes: has these colours, maybe others. Exactly: these colours and no others. At most: castable in these colours, colourless included.">
-                                <option value="includes">Includes</option>
-                                <option value="exactly">Exactly</option>
-                                <option value="atmost">At most</option>
-                            </select>
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Card Text</label>
-                            <input autocomplete="off" type="text" id="filter-text" class="filter-select" placeholder='e.g. draw card or "target player"' title="Words must all appear in the rules text; quote a phrase to match it as written" />
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Ability</label>
-                            <select autocomplete="off" id="filter-ability" class="filter-select" title="Cards that do this">
-                                <option value="">Any ability</option>
-                                <option value="draw">Card draw</option>
-                                <option value="discard">Discard</option>
-                                <option value="mill">Mill</option>
-                                <option value="removal">Removal</option>
-                                <option value="wipe">Board wipe</option>
-                                <option value="counter">Counterspell</option>
-                                <option value="ramp">Ramp</option>
-                                <option value="tutor">Tutor</option>
-                                <option value="selection">Scry / surveil</option>
-                                <option value="lifegain">Lifegain</option>
-                                <option value="tokens">Makes tokens</option>
-                                <option value="recursion">Graveyard recursion</option>
-                                <option value="sacrifice">Sacrifice outlet</option>
-                            </select>
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Commander</label>
-                            <select autocomplete="off" id="filter-commander" class="filter-select">
-                                <option value="all">All Cards</option>
-                                <option value="eligible">Commander Eligible</option>
-                            </select>
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Sets</label>
-                            <button id="filter-sets-btn" class="btn btn-secondary">
-                                <span id="selected-sets-count">All Sets</span>
-                            </button>
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Subtypes</label>
-                            <button id="filter-subtypes-btn" class="btn btn-secondary">
-                                <span id="selected-subtypes-count">All Subtypes</span>
-                            </button>
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Collection</label>
-                            <label class="color-checkbox">
-                                <input autocomplete="off"
-                                    type="checkbox"
-                                    id="filter-owned"
-                                    value="owned"
-                                />
-                                <span
-                                    class="color-checkbox-box"
-                                    style="
-                                        padding: 0.5rem 1rem;
-                                        min-width: auto;
-                                    "
-                                >
-                                    <i class="ph ph-check-square"></i>
-                                    <span style="margin-left: 0.25rem"
-                                        >Owned Only</span
-                                    >
-                                </span>
-                            </label>
-                        </div>
-                        <div class="filter-field">
-                            <label class="field-label">Scrolling</label>
-                            <div class="view-toggle">
-                                <button id="cards-endless-toggle" class="btn-icon" title="Endless scroll off" aria-pressed="false">
-                                    <i class="ph ph-infinity"></i>
+                            <div class="filter-field">
+                                <label class="field-label">CMC</label>
+                                <div class="cmc-range">
+                                    <input autocomplete="off"
+                                        type="number"
+                                        id="filter-cmc-min"
+                                        class="input-narrow"
+                                        placeholder="Min"
+                                        min="0"
+                                        max="20"
+                                    />
+                                    <span>-</span>
+                                    <input autocomplete="off"
+                                        type="number"
+                                        id="filter-cmc-max"
+                                        class="input-narrow"
+                                        placeholder="Max"
+                                        min="0"
+                                        max="20"
+                                    />
+                                </div>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Sets</label>
+                                <button id="filter-sets-btn" class="btn btn-secondary">
+                                    <span id="selected-sets-count">All Sets</span>
+                                </button>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Subtypes</label>
+                                <button id="filter-subtypes-btn" class="btn btn-secondary">
+                                    <span id="selected-subtypes-count">All Subtypes</span>
                                 </button>
                             </div>
                         </div>
