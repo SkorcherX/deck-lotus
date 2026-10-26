@@ -136,6 +136,22 @@ describe('analytics', () => {
     assert.equal(bbb.percent, 66.67);
   });
 
+  test('a regrade is not counted as cards in or out', () => {
+    // Set Condition writes each regrade as a pair: out of one condition row,
+    // into another. Neither half is a card arriving or leaving.
+    const regrade = (delta) => db.run(
+      `INSERT INTO audit_log (user_id, actor_user_id, entity_type, action, source, quantity_delta, created_at, detail)
+       VALUES (?, ?, 'inventory', 'inventory.set', 'bulk_condition', ?, '2026-03-05 10:00:00', ?)`,
+      [userId, userId, delta, JSON.stringify({ via: 'regrade', from: '', to: 'NM' })]
+    );
+    regrade(-7);
+    regrade(7);
+
+    const t = analytics.getTimeline(userId);
+    assert.deepEqual(t.months.find((m) => m.month === '2026-03'), { month: '2026-03', added: 3, removed: 0 });
+    assert.equal(t.bySource.find((r) => r.source === 'bulk_condition'), undefined);
+  });
+
   test('daily activity is only the days something happened', () => {
     audit(4, new Date().toISOString().slice(0, 10) + ' 09:00:00');
     const days = analytics.getDailyActivity(userId);

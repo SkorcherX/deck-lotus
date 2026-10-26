@@ -53,6 +53,7 @@ export function getSummary(userIds) {
     SELECT COALESCE(SUM(CASE WHEN quantity_delta > 0 THEN quantity_delta ELSE 0 END), 0) AS added
       FROM audit_log
      WHERE user_id IN ${s.in} AND entity_type = 'inventory'
+       AND ${NOT_A_REGRADE}
        AND created_at >= datetime('now', '-30 days')
   `, s.ids);
 
@@ -65,6 +66,13 @@ export function getSummary(userIds) {
     addedLast30Days: recent.added,
   };
 }
+
+// A regrade moves copies between condition rows of one printing, and the
+// audit log records it as a removal from one row and an add to the other —
+// the right record for the Audit page, which shows them as condition changes,
+// but not cards in or out. Counted here, "Set Condition" over a collection read
+// as thousands of cards added and removed on one day.
+const NOT_A_REGRADE = `COALESCE(json_extract(detail, '$.via'), '') <> 'regrade'`;
 
 /**
  * Cards in and out, by month, from the audit log.
@@ -83,6 +91,7 @@ export function getTimeline(userIds) {
            SUM(CASE WHEN quantity_delta < 0 THEN -quantity_delta ELSE 0 END) AS removed
       FROM audit_log
      WHERE user_id IN ${s.in} AND entity_type = 'inventory' AND quantity_delta IS NOT NULL
+       AND ${NOT_A_REGRADE}
      GROUP BY month
      ORDER BY month
   `, s.ids);
@@ -93,6 +102,7 @@ export function getTimeline(userIds) {
            SUM(CASE WHEN quantity_delta < 0 THEN -quantity_delta ELSE 0 END) AS removed
       FROM audit_log
      WHERE user_id IN ${s.in} AND entity_type = 'inventory' AND quantity_delta IS NOT NULL
+       AND ${NOT_A_REGRADE}
      GROUP BY source
      ORDER BY added DESC
   `, s.ids);
@@ -247,6 +257,7 @@ export function getDailyActivity(userIds) {
            SUM(CASE WHEN quantity_delta < 0 THEN -quantity_delta ELSE 0 END) AS removed
       FROM audit_log
      WHERE user_id IN ${s.in} AND entity_type = 'inventory' AND quantity_delta IS NOT NULL
+       AND ${NOT_A_REGRADE}
        AND created_at >= date('now', '-371 days')
      GROUP BY date(created_at)
      ORDER BY date
