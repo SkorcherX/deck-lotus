@@ -8,6 +8,7 @@ import {
   resolveBulkAddItems,
   resolveBulkRemoveItems,
   getAvailability,
+  getSellableInventory,
   getBuilderInventory,
   getOwnedSets,
   exportInventory,
@@ -369,6 +370,18 @@ router.get('/availability', authenticate, (req, res, next) => {
     );
 
     res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/inventory/sellable
+ * Owned rows with the copies free to sell, for ManaSlinger.
+ */
+router.get('/sellable', authenticate, (req, res, next) => {
+  try {
+    res.json({ items: getSellableInventory(req.user.id) });
   } catch (error) {
     next(error);
   }

@@ -16,6 +16,7 @@ import { recordInventoryChange } from './auditService.js';
 import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
 import { normalizeCondition, conditionLabel } from '../shared/conditions.js';
 import { takeOwnedCopies, changeOwnedCondition } from './cardService.js';
+import { splitFreeAcrossConditions } from './sellableSplit.js';
 
 const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
 
@@ -2223,4 +2224,57 @@ export function removeCardsFromCollection(userId, cardIds, context = {}) {
     removedCopies,
     batchId,
   };
+}
+
+/**
+ * Every owned row with what can be sold from it, for an outside storefront
+ * (ManaSlinger). One entry per printing, finish and condition, carrying the
+ * Scryfall ID marketplaces key on. `sellable` is the row's share of the
+ * printing's free copies — never cards a deck needs or a friend has on loan.
+ */
+export function getSellableInventory(userId) {
+  const rows = db.all(`
+    SELECT op.printing_id, op.is_foil, op.condition, op.quantity,
+           c.name, p.set_code, s.name AS set_name, p.collector_number,
+           p.rarity, p.scryfall_id, p.language, p.finishes, p.image_url
+      FROM owned_printings op
+      JOIN printings p ON p.id = op.printing_id
+      JOIN cards c ON c.id = p.card_id
+      LEFT JOIN sets s ON s.code = p.set_code
+     WHERE op.user_id = ? AND op.quantity > 0
+  `, [userId]);
+
+  const availability = getAvailabilityMap(userId);
+  const groups = new Map();
+  for (const row of rows) {
+    const key = availabilityKey(row.printing_id, row.is_foil === 1);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+
+  const items = [];
+  for (const [key, group] of groups) {
+    const entry = availability.get(key);
+    // Basic lands report free as null (unlimited); every owned copy is free.
+    const free = entry?.free ?? group.reduce((n, r) => n + r.quantity, 0);
+    for (const row of splitFreeAcrossConditions(group, free)) {
+      items.push({
+        printingId: row.printing_id,
+        isFoil: row.is_foil === 1,
+        condition: row.condition,
+        quantity: row.quantity,
+        sellable: row.sellable,
+        name: row.name,
+        setCode: row.set_code,
+        setName: row.set_name,
+        collectorNumber: row.collector_number,
+        rarity: row.rarity,
+        scryfallId: row.scryfall_id,
+        language: row.language,
+        finishes: row.finishes,
+        imageUrl: row.image_url,
+      });
+    }
+  }
+  return items;
 }
