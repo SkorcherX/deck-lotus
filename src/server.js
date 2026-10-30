@@ -27,6 +27,7 @@ import auditRoutes from './routes/audit.js';
 import analyticsRoutes from './routes/analytics.js';
 import collectionShareRoutes from './routes/collectionShare.js';
 import sealedRoutes from './routes/sealed.js';
+import edhrecRoutes from './routes/edhrec.js';
 import { setupDailySync } from './services/syncService.js';
 import { setupPriceMonitoringSchedule } from './services/priceMonitoringService.js';
 import { initScheduledBackups } from './services/backupService.js';
@@ -89,6 +90,7 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/collection-share', collectionShareRoutes);
 app.use('/api/sealed', sealedRoutes);
+app.use('/api/edhrec', edhrecRoutes);
 
 // SPA catch-all route (MUST be last)
 //

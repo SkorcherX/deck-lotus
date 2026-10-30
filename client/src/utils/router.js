@@ -35,6 +35,7 @@ export const ROUTES = [
   ['trade-shop', '/trades/shop'],
   ['loans', '/loans'],
   ['sealed', '/sealed'],
+  ['edhrec', '/edhrec'],
   ['price-monitoring', '/price-monitoring'],
   ['settings', '/settings'],
   ['audit', '/audit'],

@@ -163,6 +163,10 @@
                             <i class="ph ph-package nav-icon"></i>
                             <span class="nav-text">Sealed</span>
                         </a>
+                        <a href="#" data-page="edhrec" class="nav-link" title="EDHREC Lookup">
+                            <i class="ph ph-list-magnifying-glass nav-icon"></i>
+                            <span class="nav-text">EDHREC</span>
+                        </a>
                         <a href="#" data-page="price-monitoring" class="nav-link" title="Price Watch">
                             <i class="ph ph-bell-ringing nav-icon"></i>
                             <span class="nav-text">Price Watch</span>
@@ -2407,6 +2411,19 @@
                         <button id="trade-cart-keep-shopping" class="btn btn-secondary">Keep shopping</button>
                     </div>
                 </div>
+            </div>
+
+            <div id="edhrec-page" class="page hidden">
+                <div class="page-header">
+                    <h2>EDHREC Lookup</h2>
+                </div>
+
+                <form id="edhrec-form" class="edhrec-form" autocomplete="off">
+                    <input autocomplete="off" name="q" type="text" placeholder="Commander name, or paste an edhrec.com/commanders/… URL" required />
+                    <button type="submit" class="btn btn-primary"><i class="ph ph-magnifying-glass btn-icon"></i> Look up</button>
+                </form>
+
+                <div id="edhrec-result"></div>
             </div>
 
             <div id="sealed-page" class="page hidden">

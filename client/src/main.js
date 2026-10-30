@@ -18,6 +18,7 @@ import { setupTrades, refreshTradeBadge } from './components/trades.js';
 import { setupTradeShop } from './components/tradeShop.js';
 import { setupLoans, refreshLoanBadge } from './components/loans.js';
 import { setupSealed } from './components/sealed.js';
+import { setupEdhrec } from './components/edhrec.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
 import { initTheme, currentTheme, applyTheme } from './utils/theme.js';
@@ -226,6 +227,9 @@ class App {
       case 'sealed':
         window.dispatchEvent(new CustomEvent('page:sealed'));
         break;
+      case 'edhrec':
+        window.dispatchEvent(new CustomEvent('page:edhrec'));
+        break;
       case 'price-monitoring':
         window.dispatchEvent(new CustomEvent('page:price-monitoring'));
         break;
@@ -346,6 +350,7 @@ class App {
     setupTradeShop();
     setupLoans();
     setupSealed();
+    setupEdhrec();
     setupSharedDeck();
     setupCollectionShare();
   }

@@ -467,3 +467,14 @@ taken on GitHub — only do it when explicitly asked.
   service as the page, so they cannot price a card differently. The score
   only ever **raises** the recommended bracket above the rule-based floor,
   never lowers it, and it says nothing about 1 vs 2.
+- The EDHREC lookup (`src/services/edhrecService.js`, `/api/edhrec`, the
+  "EDHREC" page) reads the undocumented JSON EDHREC's own site loads
+  (`json.edhrec.com/pages/commanders/<slug>.json`; `EDHREC_URL` overrides).
+  There is no official API, so parsing lives in the import-free
+  `src/shared/edhrecPage.js` and is defensive. Pages are cached a day per slug
+  in `edhrec_cache` (migration 051) by card **name** — a cache, not user data,
+  so backupService does not carry it — and a stale copy is served when EDHREC
+  is unreachable. Ownership is counted like the Inventory page (available =
+  owned − in decks − lent out) and basic lands count as had. "New idea deck"
+  imports the picks with the commander on top and sets status `idea`, so it
+  never contests a real deck's cards.
