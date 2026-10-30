@@ -9,6 +9,7 @@ import {
   resolveBulkRemoveItems,
   getAvailability,
   getSellableInventory,
+  recordSales,
   getBuilderInventory,
   getOwnedSets,
   exportInventory,
@@ -382,6 +383,23 @@ router.get('/availability', authenticate, (req, res, next) => {
 router.get('/sellable', authenticate, (req, res, next) => {
   try {
     res.json({ items: getSellableInventory(req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/sold
+ * Take sold copies out of the collection. Body: { items: [{ scryfallId,
+ * isFoil, condition, quantity }], reference }.
+ */
+router.post('/sold', authenticate, (req, res, next) => {
+  try {
+    const { items, reference } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0 || items.length > BULK_ITEM_LIMIT) {
+      return res.status(400).json({ error: `items must be an array of 1-${BULK_ITEM_LIMIT}` });
+    }
+    res.json(recordSales(req.user.id, items, { reference: reference ? String(reference).slice(0, 200) : null }));
   } catch (error) {
     next(error);
   }

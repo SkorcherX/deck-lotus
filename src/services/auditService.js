@@ -71,6 +71,8 @@ export const AUDIT_SOURCES = [
   // wrong printing, which one produced the row is the first thing worth
   // knowing. Collapsing them into 'scan' throws that away.
   'scanner',
+  // Cards sold through a marketplace (ManaSlinger → Mana Pool).
+  'sale',
   'api',
 ];
 

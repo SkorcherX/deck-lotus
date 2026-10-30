@@ -2278,3 +2278,66 @@ export function getSellableInventory(userId) {
   }
   return items;
 }
+
+/**
+ * Take sold copies out of the collection (ManaSlinger, after a Mana Pool
+ * order). Each item names the printing by Scryfall ID with finish and the
+ * condition it was listed at.
+ *
+ * Copies come from that condition first, then from unrecorded copies — an
+ * unrecorded copy is what ManaSlinger lists under an assumed condition. Never
+ * from another recorded condition: that would be a different card than the
+ * one sold. Whatever cannot be found is reported as a shortfall rather than
+ * failing the batch, because the sale has already happened.
+ */
+export function recordSales(userId, items, { reference = null } = {}) {
+  const results = [];
+
+  db.transaction(() => {
+    for (const item of items) {
+      const quantity = Math.max(0, parseInt(item.quantity, 10) || 0);
+      const isFoil = Boolean(item.isFoil);
+      const condition = normalizeCondition(item.condition || '', { strict: true });
+      const printing = db.get(
+        `SELECT p.id FROM printings p
+          WHERE p.scryfall_id = ?
+          ORDER BY EXISTS (SELECT 1 FROM owned_printings op
+                            WHERE op.printing_id = p.id AND op.user_id = ? AND op.is_foil = ?) DESC, p.id
+          LIMIT 1`,
+        [item.scryfallId, userId, isFoil ? 1 : 0]
+      );
+
+      if (!printing) {
+        results.push({ ...item, taken: 0, shortfall: quantity, error: 'Unknown Scryfall ID' });
+        continue;
+      }
+
+      let left = quantity;
+      const taken = [];
+      for (const from of [...new Set([condition, ''])]) {
+        if (left <= 0) break;
+        const have = db.get(
+          `SELECT quantity FROM owned_printings
+            WHERE user_id = ? AND printing_id = ? AND is_foil = ? AND condition = ?`,
+          [userId, printing.id, isFoil ? 1 : 0, from]
+        )?.quantity || 0;
+        const n = Math.min(have, left);
+        if (!n) continue;
+        taken.push(...takeOwnedCopies(userId, printing.id, isFoil, n, {
+          condition: from,
+          source: 'sale',
+          detail: reference ? { reference } : null,
+        }));
+        left -= n;
+      }
+
+      results.push({ ...item, printingId: printing.id, taken: quantity - left, shortfall: left, from: taken });
+    }
+  });
+
+  return {
+    items: results,
+    taken: results.reduce((n, r) => n + r.taken, 0),
+    shortfall: results.reduce((n, r) => n + r.shortfall, 0),
+  };
+}
