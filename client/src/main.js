@@ -19,6 +19,7 @@ import { setupTradeShop } from './components/tradeShop.js';
 import { setupLoans, refreshLoanBadge } from './components/loans.js';
 import { setupSealed } from './components/sealed.js';
 import { setupEdhrec } from './components/edhrec.js';
+import { setupNavMenu, setActiveNav } from './components/navMenu.js';
 import { setupUserMenu } from './components/userMenu.js';
 import { showLoading, hideLoading } from './utils/ui.js';
 import { initTheme, currentTheme, applyTheme } from './utils/theme.js';
@@ -193,13 +194,8 @@ class App {
       page.classList.remove('hidden');
     }
 
-    // Update nav links
-    document.querySelectorAll('.nav-link').forEach(link => {
-      link.classList.remove('active');
-      if (link.dataset.page === pageName) {
-        link.classList.add('active');
-      }
-    });
+    // Update nav: the page in its menu, its group in the row.
+    setActiveNav(pageName);
 
     // Trigger page-specific logic
     switch (pageName) {
@@ -297,14 +293,8 @@ class App {
   }
 
   setupNavigation() {
-    // Nav links
-    document.querySelectorAll('.nav-link').forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const page = link.dataset.page;
-        this.showPage(page);
-      });
-    });
+    // Nav groups and every page link in them (navMenu.js).
+    setupNavMenu((page) => this.showPage(page));
 
     this.setupNavOverflowHint();
 

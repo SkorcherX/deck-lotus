@@ -9736,3 +9736,53 @@ body.pull-list-open { overflow: hidden; }
 .edhrec-busy { color: var(--warning, var(--text-secondary)); }
 .edhrec-missing { color: var(--text-secondary); }
 .edhrec-row-owned td:nth-child(2) { font-weight: 500; }
+
+/* Grouped nav (navMenu.js). A split group is the page link plus a caret; the
+   pair reads as one control, so they share a background on hover/active. */
+.nav-group { display: flex; align-items: center; flex-shrink: 0; scroll-snap-align: start; border-radius: var(--radius-md); }
+.nav-group-toggle { background: none; border: none; cursor: pointer; font: inherit; font-weight: 500; font-size: var(--text-sm); }
+.nav-group-main { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 0.5rem; }
+.nav-caret {
+  display: flex; align-items: center; align-self: stretch;
+  padding: 0 0.4rem; background: none; border: none; cursor: pointer;
+  color: var(--text-secondary); border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  transition: color var(--transition), background var(--transition);
+}
+.nav-caret:hover, .nav-group.open .nav-caret { color: var(--text); background: var(--bg-tertiary); }
+.nav-caret-icon { font-size: 0.8rem; opacity: 0.7; transition: transform var(--transition); }
+.nav-group.open .nav-caret-icon, .nav-group.open .nav-caret i { transform: rotate(180deg); }
+.nav-group.open .nav-group-toggle { color: var(--text); background: var(--bg-tertiary); }
+/* The split group lights up as one piece when any of its pages is current. */
+.nav-group.active:has(.nav-group-main) { background: var(--primary-soft); box-shadow: inset 0 -2px 0 var(--highlight); }
+.nav-group.active .nav-group-main { color: var(--primary-light); background: none; box-shadow: none; }
+.nav-group.active .nav-caret { color: var(--primary-light); }
+
+.nav-menu {
+  position: fixed; z-index: 1000; min-width: 12rem;
+  display: flex; flex-direction: column; padding: 0.35rem;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius-md); box-shadow: 0 12px 30px rgb(var(--scrim-rgb) / 0.45);
+}
+.nav-menu.hidden { display: none; }
+.nav-menu-item {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.55rem 0.75rem; border-radius: var(--radius-sm, 6px);
+  color: var(--text-secondary); text-decoration: none; font-weight: 500; font-size: var(--text-sm); white-space: nowrap;
+}
+.nav-menu-item:hover, .nav-menu-item:focus-visible { color: var(--text); background: var(--bg-tertiary); outline: none; }
+.nav-menu-item.active { color: var(--primary-light); background: var(--primary-soft); }
+.nav-menu-item .nav-icon { font-size: 18px; }
+
+/* At phone width the labels are gone and five groups have to fit beside the
+   brand and avatar without scrolling. The menu-only buttons drop their caret
+   (the icon alone opens the menu); split groups keep theirs, since it is the
+   only way to their other pages. */
+@media (max-width: 768px) {
+  .nav-container { gap: var(--space-2); padding: 0 var(--space-3); }
+  .nav-links { gap: 0.15rem; }
+  .nav-group-main { padding-left: 0.45rem; padding-right: 0.15rem; }
+  .nav-group-toggle { padding: 0.5rem 0.45rem; }
+  .nav-group-toggle .nav-caret-icon { display: none; }
+  .nav-caret { padding: 0 0.25rem; }
+  .nav-menu-item { padding: 0.7rem 0.85rem; }
+}

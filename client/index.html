@@ -132,53 +132,107 @@
                             style="height: 40px"
                         />
                     </div>
+                    <!-- Grouped navigation. Decks and Collection are split buttons: the
+                         label goes straight to the page used most, the caret opens the
+                         rest. The menus are moved to <body> by navMenu.js so the row's
+                         scroll container and fade mask cannot clip them. -->
                     <div class="nav-links">
-                        <a href="#" data-page="decks" class="nav-link active" title="My Decks">
-                            <i class="ph ph-cards nav-icon"></i>
-                            <span class="nav-text">My Decks</span>
-                        </a>
-                        <a href="#" data-page="cards" class="nav-link" title="Browse Cards">
-                            <i class="ph ph-magnifying-glass nav-icon"></i>
-                            <span class="nav-text">Browse Cards</span>
-                        </a>
-                        <a href="#" data-page="shopping" class="nav-link" title="Shopping">
-                            <i class="ph ph-shopping-cart nav-icon"></i>
-                            <span class="nav-text">Shopping</span>
-                        </a>
-                        <a href="#" data-page="inventory" class="nav-link" title="Inventory">
-                            <i class="ph ph-archive nav-icon"></i>
-                            <span class="nav-text">Inventory</span>
-                        </a>
-                        <a href="#" data-page="trades" class="nav-link" title="Trades">
-                            <i class="ph ph-arrows-left-right nav-icon"></i>
-                            <span class="nav-text">Trades</span>
-                            <span id="trade-pending-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:var(--success-bright);color:var(--on-accent);"></span>
-                        </a>
-                        <a href="#" data-page="loans" class="nav-link" title="Loaned &amp; Borrowed">
-                            <i class="ph ph-hand-arrow-up nav-icon"></i>
-                            <span class="nav-text">Loans</span>
-                            <span id="loan-action-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:var(--success-bright);color:var(--on-accent);"></span>
-                        </a>
-                        <a href="#" data-page="sealed" class="nav-link" title="Sealed Product">
-                            <i class="ph ph-package nav-icon"></i>
-                            <span class="nav-text">Sealed</span>
-                        </a>
-                        <a href="#" data-page="edhrec" class="nav-link" title="EDHREC Lookup">
-                            <i class="ph ph-list-magnifying-glass nav-icon"></i>
-                            <span class="nav-text">EDHREC</span>
-                        </a>
-                        <a href="#" data-page="price-monitoring" class="nav-link" title="Price Watch">
-                            <i class="ph ph-bell-ringing nav-icon"></i>
-                            <span class="nav-text">Price Watch</span>
-                        </a>
-                        <a href="#" data-page="analytics" class="nav-link" title="Analytics">
-                            <i class="ph ph-chart-bar nav-icon"></i>
-                            <span class="nav-text">Analytics</span>
-                        </a>
-                        <a href="#" data-page="audit" class="nav-link" title="Audit Log">
-                            <i class="ph ph-scroll nav-icon"></i>
-                            <span class="nav-text">Audit Log</span>
-                        </a>
+                        <div class="nav-group" data-group="decks">
+                            <a href="#" data-page="decks" class="nav-link nav-group-main" title="Decks">
+                                <i class="ph ph-cards nav-icon"></i>
+                                <span class="nav-text">Decks</span>
+                            </a>
+                            <button type="button" class="nav-caret" aria-haspopup="menu" aria-expanded="false" aria-label="More decks pages" title="More decks pages">
+                                <i class="ph ph-caret-down"></i>
+                            </button>
+                            <div class="nav-menu hidden" role="menu" aria-label="Decks">
+                                <a href="#" data-page="decks" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-cards nav-icon"></i>
+                                    <span>My Decks</span>
+                                </a>
+                                <a href="#" data-page="edhrec" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-list-magnifying-glass nav-icon"></i>
+                                    <span>EDHREC Lookup</span>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="nav-group" data-group="collection">
+                            <a href="#" data-page="inventory" class="nav-link nav-group-main" title="Collection">
+                                <i class="ph ph-archive nav-icon"></i>
+                                <span class="nav-text">Collection</span>
+                            </a>
+                            <button type="button" class="nav-caret" aria-haspopup="menu" aria-expanded="false" aria-label="More collection pages" title="More collection pages">
+                                <i class="ph ph-caret-down"></i>
+                            </button>
+                            <div class="nav-menu hidden" role="menu" aria-label="Collection">
+                                <a href="#" data-page="inventory" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-archive nav-icon"></i>
+                                    <span>Inventory</span>
+                                </a>
+                                <a href="#" data-page="sealed" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-package nav-icon"></i>
+                                    <span>Sealed</span>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="nav-group" data-group="market">
+                            <button type="button" class="nav-link nav-group-toggle" aria-haspopup="menu" aria-expanded="false" title="Market">
+                                <i class="ph ph-storefront nav-icon"></i>
+                                <span class="nav-text">Market</span>
+                                <i class="ph ph-caret-down nav-caret-icon"></i>
+                            </button>
+                            <div class="nav-menu hidden" role="menu" aria-label="Market">
+                                <a href="#" data-page="shopping" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-shopping-cart nav-icon"></i>
+                                    <span>Shopping</span>
+                                </a>
+                                <a href="#" data-page="price-monitoring" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-bell-ringing nav-icon"></i>
+                                    <span>Price Watch</span>
+                                </a>
+                                <a href="#" data-page="cards" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-magnifying-glass nav-icon"></i>
+                                    <span>Browse Cards</span>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="nav-group" data-group="sharing">
+                            <button type="button" class="nav-link nav-group-toggle" aria-haspopup="menu" aria-expanded="false" title="Sharing">
+                                <i class="ph ph-handshake nav-icon"></i>
+                                <span class="nav-text">Sharing</span>
+                                <span id="sharing-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:var(--success-bright);color:var(--on-accent);"></span>
+                                <i class="ph ph-caret-down nav-caret-icon"></i>
+                            </button>
+                            <div class="nav-menu hidden" role="menu" aria-label="Sharing">
+                                <a href="#" data-page="trades" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-arrows-left-right nav-icon"></i>
+                                    <span>Trades</span>
+                                    <span id="trade-pending-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:var(--success-bright);color:var(--on-accent);"></span>
+                                </a>
+                                <a href="#" data-page="loans" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-hand-arrow-up nav-icon"></i>
+                                    <span>Loans</span>
+                                    <span id="loan-action-badge" class="hidden" style="margin-left:0.35rem;font-size:0.7rem;padding:0.05rem 0.35rem;border-radius:999px;background:var(--success-bright);color:var(--on-accent);"></span>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="nav-group" data-group="insights">
+                            <button type="button" class="nav-link nav-group-toggle" aria-haspopup="menu" aria-expanded="false" title="Insights">
+                                <i class="ph ph-chart-bar nav-icon"></i>
+                                <span class="nav-text">Insights</span>
+                                <i class="ph ph-caret-down nav-caret-icon"></i>
+                            </button>
+                            <div class="nav-menu hidden" role="menu" aria-label="Insights">
+                                <a href="#" data-page="analytics" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-chart-bar nav-icon"></i>
+                                    <span>Analytics</span>
+                                </a>
+                                <a href="#" data-page="audit" class="nav-menu-item" role="menuitem">
+                                    <i class="ph ph-scroll nav-icon"></i>
+                                    <span>Audit Log</span>
+                                </a>
+                            </div>
+                        </div>
                     </div>
                     <div class="user-menu">
                             <button
