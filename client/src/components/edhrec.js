@@ -1,6 +1,7 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, showToast } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
+import { TYPES, typeOf } from '../../../src/shared/pullLayout.js';
 
 /**
  * The EDHREC page: type a commander, see the cards EDHREC says its decks run,
@@ -10,9 +11,36 @@ import { showCardDetail } from './cards.js';
  *
  * The server caches each commander for a day (src/services/edhrecService.js);
  * Refresh asks EDHREC again.
+ *
+ * Cards are shown in sections by type, filed the way the pull list files them
+ * (pullLayout.js: Creature wins, so an Artifact Creature is a creature), and
+ * sorted within each section. Hovering a name shows the card.
  */
 
-let state = { data: null, query: '', filter: 'all', category: 'all', sort: 'inclusion', picked: new Set() };
+let state = {
+  data: null, query: '', filter: 'all', category: 'all',
+  sort: 'inclusion', desc: true, grouped: true, picked: new Set(),
+};
+
+const RARITY_RANK = { common: 1, uncommon: 2, rare: 3, mythic: 4, special: 5 };
+
+// Each sort's natural first direction: the most-played, most synergistic,
+// rarest and dearest first; mana value and name low to high.
+const SORTS = {
+  inclusion: { label: 'Inclusion', desc: true, value: (c) => c.inclusion ?? -1 },
+  synergy: { label: 'Synergy', desc: true, value: (c) => c.synergy ?? -2 },
+  cmc: { label: 'Mana value', desc: false, value: (c) => c.cmc ?? 99 },
+  rarity: { label: 'Rarity', desc: true, value: (c) => RARITY_RANK[c.rarity] ?? 0 },
+  price: { label: 'Price', desc: true, value: (c) => c.price ?? -1 },
+  have: { label: 'Have', desc: true, value: (c) => (c.isBasic ? 1e6 : c.available * 1000 + c.owned) },
+  name: { label: 'Name', desc: false, value: (c) => c.name },
+};
+
+const SECTION_LABELS = {
+  creature: 'Creatures', planeswalker: 'Planeswalkers', battle: 'Battles', instant: 'Instants',
+  sorcery: 'Sorceries', artifact: 'Artifacts', enchantment: 'Enchantments', land: 'Lands',
+  other: 'Other', unknown: 'Not in the card database',
+};
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => (
@@ -33,19 +61,68 @@ const FILTERS = {
 };
 
 function visibleCards() {
-  const { data, filter, category, sort } = state;
+  const { data, filter, category, sort, desc } = state;
   if (!data) return [];
   const inCategory = category === 'all'
     ? null
     : new Set(data.categories.find((c) => c.tag === category)?.names || []);
   const rows = data.cards.filter((c) => FILTERS[filter](c) && (!inCategory || inCategory.has(c.name)));
-  const by = {
-    inclusion: (a, b) => (b.inclusion ?? 0) - (a.inclusion ?? 0),
-    synergy: (a, b) => (b.synergy ?? -1) - (a.synergy ?? -1),
-    price: (a, b) => (b.price ?? 0) - (a.price ?? 0),
-    name: (a, b) => a.name.localeCompare(b.name),
-  }[sort];
-  return by ? [...rows].sort(by) : rows;
+  const value = (SORTS[sort] || SORTS.inclusion).value;
+  const dir = desc ? -1 : 1;
+  // Ties fall back to inclusion, then name, so equal mana values still read
+  // most-played first.
+  return [...rows].sort((a, b) => {
+    const x = value(a);
+    const y = value(b);
+    const primary = typeof x === 'string' ? x.localeCompare(y) : x - y;
+    return primary * dir
+      || (b.inclusion ?? 0) - (a.inclusion ?? 0)
+      || a.name.localeCompare(b.name);
+  });
+}
+
+/** Rows split into type sections in TYPES order; cards the database lacks last. */
+function sections(rows) {
+  if (!state.grouped) return [{ key: 'all', label: null, rows }];
+  const byType = new Map();
+  for (const c of rows) {
+    const key = c.matched ? typeOf(c) : 'unknown';
+    if (!byType.has(key)) byType.set(key, []);
+    byType.get(key).push(c);
+  }
+  return [...TYPES.map((t) => t.key), 'unknown']
+    .filter((key) => byType.has(key))
+    .map((key) => ({ key, label: SECTION_LABELS[key], rows: byType.get(key) }));
+}
+
+function rarityCell(c) {
+  if (!c.rarity) return '';
+  const letter = c.rarity === 'special' ? 'S' : c.rarity[0].toUpperCase();
+  return `<span class="rarity-badge rarity-${c.rarity} edhrec-rarity" title="${escapeHtml(c.rarity)}">${letter}</span>`;
+}
+
+function sortHeader(key, text, cls = '', title = '') {
+  const on = state.sort === key;
+  const arrow = on ? `<i class="ph ph-caret-${state.desc ? 'down' : 'up'}"></i>` : '';
+  const sort = on ? (state.desc ? 'descending' : 'ascending') : 'none';
+  return `<th class="${cls} edhrec-sortable${on ? ' sorted' : ''}" data-sort="${key}"${title ? ` title="${escapeHtml(title)}"` : ''} aria-sort="${sort}">${text}${arrow}</th>`;
+}
+
+function rowHtml(c) {
+  return `
+    <tr class="${FILTERS.owned(c) ? 'edhrec-row-owned' : ''}">
+      <td><input type="checkbox" data-pick="${escapeHtml(c.name)}" ${state.picked.has(c.name) ? 'checked' : ''} /></td>
+      <td>${c.cardId
+        ? `<a href="#" class="edhrec-card" data-card-id="${c.cardId}" data-image="${escapeHtml(c.imageUrl || '')}">${escapeHtml(c.name)}</a>`
+        : escapeHtml(c.name)}</td>
+      <td class="num">${c.cmc ?? ''}</td>
+      <td class="edhrec-center">${rarityCell(c)}</td>
+      <td class="edhrec-muted">${escapeHtml(c.category)}</td>
+      <td class="num">${pct(c.inclusion)}</td>
+      <td class="num">${signedPct(c.synergy)}</td>
+      <td class="num">${ownedCell(c)}</td>
+      <td class="num">${c.isBasic ? '—' : money(c.price)}</td>
+    </tr>`;
 }
 
 function ownedCell(c) {
@@ -59,6 +136,7 @@ function ownedCell(c) {
 }
 
 function render() {
+  hidePreview();
   const el = document.getElementById('edhrec-result');
   const { data } = state;
   if (!data) {
@@ -69,6 +147,7 @@ function render() {
   const s = data.summary;
   const rows = visibleCards();
   const allPicked = rows.length > 0 && rows.every((c) => state.picked.has(c.name));
+  const groups = sections(rows);
 
   el.innerHTML = `
     <div class="edhrec-head">
@@ -104,9 +183,13 @@ function render() {
         <option value="all">All categories</option>
         ${data.categories.map((c) => `<option value="${escapeHtml(c.tag)}" ${state.category === c.tag ? 'selected' : ''}>${escapeHtml(c.header)} (${c.names.length})</option>`).join('')}
       </select>
-      <select data-control="sort">
-        ${['inclusion', 'synergy', 'price', 'name'].map((k) => `<option value="${k}" ${state.sort === k ? 'selected' : ''}>Sort: ${k}</option>`).join('')}
+      <select data-control="sort" aria-label="Sort by">
+        ${Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${state.sort === k ? 'selected' : ''}>Sort: ${v.label}</option>`).join('')}
       </select>
+      <button type="button" class="btn btn-sm btn-secondary" data-action="direction" title="Reverse the order">
+        <i class="ph ph-sort-${state.desc ? 'descending' : 'ascending'}"></i> ${state.desc ? 'High → low' : 'Low → high'}
+      </button>
+      <label class="edhrec-toggle"><input type="checkbox" data-action="grouped" ${state.grouped ? 'checked' : ''} /> Sections by type</label>
     </div>
 
     <div class="edhrec-actions">
@@ -127,30 +210,85 @@ function render() {
       <table class="sealed-table edhrec-table">
         <thead><tr>
           <th><input type="checkbox" data-action="pick-all" ${allPicked ? 'checked' : ''} title="Pick every card shown" /></th>
-          <th>Card</th><th>Category</th>
-          <th class="num" title="Share of this commander's decks that run it">Inclusion</th>
-          <th class="num" title="How much more often than in other decks of these colours">Synergy</th>
-          <th class="num" title="Free to use / owned">Have</th>
-          <th class="num">Price</th>
+          ${sortHeader('name', 'Card')}
+          ${sortHeader('cmc', 'MV', 'num', 'Mana value')}
+          ${sortHeader('rarity', 'Rarity', 'edhrec-center', 'Lowest rarity it has been printed at')}
+          <th>Category</th>
+          ${sortHeader('inclusion', 'Inclusion', 'num', "Share of this commander's decks that run it")}
+          ${sortHeader('synergy', 'Synergy', 'num', 'How much more often than in other decks of these colours')}
+          ${sortHeader('have', 'Have', 'num', 'Free to use / owned')}
+          ${sortHeader('price', 'Price', 'num')}
         </tr></thead>
-        <tbody>
-          ${rows.map((c) => `
-            <tr class="${FILTERS.owned(c) ? 'edhrec-row-owned' : ''}">
-              <td><input type="checkbox" data-pick="${escapeHtml(c.name)}" ${state.picked.has(c.name) ? 'checked' : ''} /></td>
-              <td>${c.cardId
-                ? `<a href="#" class="edhrec-card" data-card-id="${c.cardId}">${escapeHtml(c.name)}</a>`
-                : escapeHtml(c.name)}</td>
-              <td class="edhrec-muted">${escapeHtml(c.category)}</td>
-              <td class="num">${pct(c.inclusion)}</td>
-              <td class="num">${signedPct(c.synergy)}</td>
-              <td class="num">${ownedCell(c)}</td>
-              <td class="num">${c.isBasic ? '—' : money(c.price)}</td>
-            </tr>`).join('')}
-        </tbody>
+        ${groups.map((g) => {
+          const groupPicked = g.rows.every((c) => state.picked.has(c.name));
+          const head = g.label
+            ? `<tr class="edhrec-section">
+                <td><input type="checkbox" data-pick-section="${g.key}" ${groupPicked ? 'checked' : ''} title="Pick every card in this section" /></td>
+                <td colspan="8">${escapeHtml(g.label)} <span class="edhrec-muted">${g.rows.length}</span></td>
+              </tr>`
+            : '';
+          return `<tbody>${head}${g.rows.map(rowHtml).join('')}</tbody>`;
+        }).join('')}
       </table>
       ${rows.length ? '' : '<div class="sealed-empty">No cards match this filter.</div>'}
     </div>
   `;
+}
+
+/**
+ * Pick a sort. A header pressed twice reverses it; anything newly picked
+ * starts in its natural direction.
+ */
+function setSort(key, fromHeader) {
+  if (!SORTS[key]) return;
+  if (fromHeader && state.sort === key) state.desc = !state.desc;
+  else { state.sort = key; state.desc = SORTS[key].desc; }
+  render();
+}
+
+// The hover preview shares the deck builder's #card-preview element. It sits
+// beside the name rather than over it, so the row stays readable, and it
+// ignores the pointer so it never steals the hover that opened it.
+const PREVIEW_WIDTH = 250;
+const PREVIEW_HEIGHT = Math.round(PREVIEW_WIDTH * 680 / 488);
+const isTouch = () => ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+function showPreview(link) {
+  const url = link.dataset.image;
+  const preview = document.getElementById('card-preview');
+  const img = document.getElementById('card-preview-img');
+  if (!url || !preview || !img) return;
+
+  // The normal image may already be cached and shows at once; the large one
+  // replaces it when it arrives, unless the pointer has moved on by then.
+  const large = url.replace('/normal/', '/large/');
+  img.src = url;
+  img.dataset.want = large;
+  if (large !== url) {
+    const loader = new Image();
+    loader.onload = () => { if (img.dataset.want === large) img.src = large; };
+    loader.src = large;
+  }
+
+  const box = link.getBoundingClientRect();
+  const margin = 8;
+  let left = box.right + 16;
+  if (left + PREVIEW_WIDTH > window.innerWidth - margin) left = box.left - PREVIEW_WIDTH - 16;
+  left = Math.max(margin, left);
+  const top = Math.min(
+    Math.max(margin, box.top + box.height / 2 - PREVIEW_HEIGHT / 2),
+    window.innerHeight - PREVIEW_HEIGHT - margin
+  );
+  preview.style.left = `${left}px`;
+  preview.style.top = `${top}px`;
+  preview.style.right = 'auto';
+  preview.classList.remove('hidden');
+}
+
+function hidePreview() {
+  document.getElementById('card-preview')?.classList.add('hidden');
+  const img = document.getElementById('card-preview-img');
+  if (img) delete img.dataset.want;
 }
 
 async function lookup(query, refresh = false) {
@@ -238,17 +376,48 @@ export function setupEdhrec() {
       return;
     }
 
+    const header = e.target.closest('[data-sort]');
+    if (header) { setSort(header.dataset.sort, true); return; }
+
     const action = e.target.closest('[data-action]')?.dataset.action;
     if (action === 'refresh') lookup(state.query, true);
+    else if (action === 'direction') { state.desc = !state.desc; render(); }
     else if (action === 'shopping') addToShopping();
     else if (action === 'deck') createDeck();
     else if (action === 'copy') copyList();
     else if (action === 'clear') { state.picked.clear(); render(); }
   });
 
+  if (!isTouch()) {
+    result.addEventListener('mouseover', (e) => {
+      const link = e.target.closest('.edhrec-card');
+      if (link && !link.contains(e.relatedTarget)) showPreview(link);
+    });
+    result.addEventListener('mouseout', (e) => {
+      const link = e.target.closest('.edhrec-card');
+      if (link && !link.contains(e.relatedTarget)) hidePreview();
+    });
+  }
+  // A scroll or a page change would leave the preview pointing at nothing.
+  window.addEventListener('scroll', hidePreview, { passive: true });
+  window.addEventListener('page:leave', hidePreview);
+
   result.addEventListener('change', (e) => {
     const control = e.target.dataset.control;
+    if (control === 'sort') { setSort(e.target.value, false); return; }
     if (control) { state[control] = e.target.value; render(); return; }
+
+    if (e.target.dataset.action === 'grouped') { state.grouped = e.target.checked; render(); return; }
+
+    const section = e.target.dataset.pickSection;
+    if (section) {
+      const group = sections(visibleCards()).find((g) => g.key === section);
+      for (const c of group?.rows || []) {
+        if (e.target.checked) state.picked.add(c.name); else state.picked.delete(c.name);
+      }
+      render();
+      return;
+    }
 
     if (e.target.dataset.action === 'pick-all') {
       for (const c of visibleCards()) {

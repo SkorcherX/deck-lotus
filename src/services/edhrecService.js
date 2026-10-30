@@ -92,8 +92,16 @@ function ownershipFor(userId, names) {
   const exact = db.prepare(`SELECT id FROM cards WHERE name = ? LIMIT 1`);
   const frontFace = db.prepare(`SELECT id FROM cards WHERE name >= ? AND name < ? ORDER BY name LIMIT 1`);
   const counts = db.prepare(`
-    SELECT c.id AS card_id, c.name, c.type_line, c.mana_cost,
+    SELECT c.id AS card_id, c.name, c.type_line, c.mana_cost, c.cmc,
       ${isBasicLandSql('c')} AS is_basic,
+      (SELECT p.image_url FROM printings p WHERE p.card_id = c.id AND p.image_url IS NOT NULL LIMIT 1) AS image_url,
+      -- The card's lowest rarity in print: a card that was ever a common is
+      -- a common to anyone hunting for a copy. Special/bonus only when it has
+      -- never been printed as anything else.
+      (SELECT CASE MIN(CASE p.rarity WHEN 'common' THEN 1 WHEN 'uncommon' THEN 2 WHEN 'rare' THEN 3
+                                     WHEN 'mythic' THEN 4 ELSE 5 END)
+                WHEN 1 THEN 'common' WHEN 2 THEN 'uncommon' WHEN 3 THEN 'rare' WHEN 4 THEN 'mythic' ELSE 'special' END
+         FROM printings p WHERE p.card_id = c.id) AS rarity,
       (SELECT COALESCE(SUM(op.quantity), 0) FROM owned_printings op JOIN printings p ON op.printing_id = p.id
         WHERE op.user_id = @u AND p.card_id = c.id) AS owned,
       (SELECT COALESCE(SUM(dc.quantity), 0) FROM deck_cards dc JOIN printings p ON dc.printing_id = p.id
@@ -136,6 +144,9 @@ export async function getCommanderRecommendations(userId, input, { refresh = fal
       matched: true,
       typeLine: row.type_line,
       manaCost: row.mana_cost,
+      cmc: row.cmc,
+      rarity: row.rarity,
+      imageUrl: row.image_url,
       isBasic: !!row.is_basic,
       price: row.price ?? null,
       owned: row.owned,
