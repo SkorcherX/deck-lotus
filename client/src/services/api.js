@@ -713,6 +713,17 @@ class ApiClient {
     return this.request('/sealed/import', { method: 'POST', body: JSON.stringify({ csv }) });
   }
 
+  // EDHREC lookup
+  async getEdhrecCommander(q, refresh = false) {
+    const params = new URLSearchParams({ q });
+    if (refresh) params.set('refresh', '1');
+    return this.request(`/edhrec/commander?${params}`);
+  }
+
+  async createEdhrecDeck(body) {
+    return this.request('/edhrec/deck', { method: 'POST', body: JSON.stringify(body) });
+  }
+
   async bulkAddToInventory(items) {
     return this.request('/inventory/bulk-add', {
       method: 'POST',
