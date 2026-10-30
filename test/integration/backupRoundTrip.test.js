@@ -372,4 +372,40 @@ describe('version 1 backups', () => {
     assert.equal(db.get(`SELECT status FROM decks WHERE id = ?`, [deckId]).status, 'building');
     assert.equal(db.get(`SELECT bulk_price_threshold FROM users WHERE id = ?`, [userId]).bulk_price_threshold, 1.0);
   });
+
+  test('a scoped restore cannot reach past its own user', () => {
+    // A non-admin restore is an uploaded file, so it is treated as hostile:
+    // here it claims to be the partner, makes itself admin, brings an API key,
+    // and carries a deck id that belongs to someone else.
+    db.run(`INSERT INTO decks (user_id, name, format) VALUES (?, 'Partner Deck', 'commander')`, [partnerId]);
+    const partnerDeckId = db.get(`SELECT id FROM decks WHERE name='Partner Deck'`).id;
+
+    const backup = createBackup(userId);
+    backup.data.users = backup.data.users.map((u) => ({ ...u, is_admin: 1, password_hash: 'forged' }));
+    backup.data.owned_printings = backup.data.owned_printings.map((r) => ({ ...r, user_id: userId }));
+    backup.data.decks = backup.data.decks.map((d) => ({ ...d, id: partnerDeckId }));
+    backup.data.deck_cards = backup.data.deck_cards.map((c) => ({ ...c, deck_id: partnerDeckId }));
+    backup.data.found_cards.push({ ...backup.data.found_cards[0], user_id: partnerId });
+
+    const keysBefore = db.get(`SELECT COUNT(*) c FROM api_keys`).c;
+    const results = restoreBackup(backup, { overwrite: false, userId });
+
+    const owner = db.get(`SELECT is_admin, password_hash FROM users WHERE id = ?`, [userId]);
+    assert.deepEqual({ ...owner }, { is_admin: 0, password_hash: 'hash-owner' });
+    assert.equal(db.get(`SELECT COUNT(*) c FROM api_keys`).c, keysBefore, 'no key may come from the file');
+    assert.equal(results.trades, 0);
+    assert.equal(results.card_loans, 0);
+    assert.equal(results.collection_shares, 0);
+
+    const partnerDeck = db.get(`SELECT user_id, name FROM decks WHERE id = ?`, [partnerDeckId]);
+    assert.deepEqual({ ...partnerDeck }, { user_id: partnerId, name: 'Partner Deck' }, 'partner deck replaced');
+    assert.equal(db.get(`SELECT COUNT(*) c FROM deck_cards WHERE deck_id = ?`, [partnerDeckId]).c, 0);
+
+    const restored = db.get(`SELECT id FROM decks WHERE user_id = ? AND name = 'Test Deck' ORDER BY id DESC`, [userId]);
+    assert.ok(restored.id !== partnerDeckId);
+    assert.ok(db.get(`SELECT COUNT(*) c FROM deck_cards WHERE deck_id = ?`, [restored.id]).c > 0);
+
+    assert.equal(db.get(`SELECT COUNT(*) c FROM found_cards WHERE user_id = ?`, [partnerId]).c, 0,
+      'a row claiming another user must land on the caller');
+  });
 });

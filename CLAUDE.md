@@ -219,6 +219,12 @@ taken on GitHub — only do it when explicitly asked.
   `test/integration/backupRoundTrip.test.js` backs up, wipes and restores, and
   is the only thing that catches this class of bug — a backup that never gets
   restored looks perfect.
+  A non-admin restore (`restoreBackup` with `userId`) treats the file as
+  hostile: every `user_id` is forced to the caller, row ids are dropped so
+  SQLite assigns fresh ones (decks via `deckIdMap`), and users, API keys,
+  share tokens, trades and loans are admin-restore only. Server-side backup
+  files are admin-only too. A new table added to the restore must go through
+  `owner()`/`rowId()`, or a crafted file can overwrite another user's row.
 - A deck's status is a claim on cards, not just a label. `deckPriority.js`
   ranks them ready(1) > building(2) > idea(3) > retired(4), and a deck's cards
   are contested **only by decks at least as committed as it is**. Without this

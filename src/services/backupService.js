@@ -381,25 +381,24 @@ export function restoreBackup(backupData, options = {}) {
 
   const restore = db.transaction(() => {
     if (overwrite && userId) {
-      db.prepare('DELETE FROM api_keys WHERE user_id = ?').run(userId);
+      // api_keys are left alone: scoped restores don't bring keys back. So
+      // are trades, loans and the collection link, for the same reason they
+      // are not restored below — they would come back empty.
       db.prepare('DELETE FROM owned_cards WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM owned_printings WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM shopping_list_items WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM found_cards WHERE user_id = ?').run(userId);
-      db.prepare('DELETE FROM collection_shares WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM price_watches WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM audit_log WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM collection_value_snapshots WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM owned_sealed WHERE user_id = ?').run(userId);
-      db.prepare('DELETE FROM trades WHERE from_user_id = ? OR to_user_id = ?').run(userId, userId);
-      db.prepare('DELETE FROM card_loans WHERE lender_user_id = ? OR borrower_user_id = ?').run(userId, userId);
       db.prepare('DELETE FROM deck_games WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM deck_pull_progress WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
       db.prepare('DELETE FROM deck_card_disruptions WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
       db.prepare('DELETE FROM deck_cards WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
       db.prepare('DELETE FROM deck_shares WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)').run(userId);
       db.prepare('DELETE FROM decks WHERE user_id = ?').run(userId);
-      // Don't delete the user itself, just update it
+      // The user row itself is never touched by a scoped restore
     } else if (overwrite && !userId) {
       db.prepare('DELETE FROM deck_card_disruptions').run();
       db.prepare('DELETE FROM deck_games').run();
@@ -461,6 +460,19 @@ export function restoreBackup(backupData, options = {}) {
       }
     };
 
+    // ---- Scoped restores ---------------------------------------------------
+    //
+    // A non-admin restore is an uploaded file, so nothing in it is trusted to
+    // say whose row it is or which row it replaces: every user_id is forced to
+    // the caller, and row ids are dropped (`rowId`) so SQLite assigns fresh
+    // ones — an INSERT OR REPLACE carrying a crafted id would otherwise
+    // overwrite another user's row. Anything that is a credential or reaches
+    // another user (the user row itself, API keys, share tokens, trades,
+    // loans) is admin-restore only.
+    const scoped = userId != null;
+    const owner = (row) => (scoped ? userId : row.user_id);
+    const rowId = (id) => (scoped ? null : id);
+
     // ---- Users -----------------------------------------------------------
     const insertUser = db.prepare(`
       INSERT OR REPLACE INTO users (id, username, email, password_hash, is_admin, theme,
@@ -469,7 +481,9 @@ export function restoreBackup(backupData, options = {}) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    restoreRows('users', usersToRestore, (user) => {
+    // Taking is_admin/password_hash from an uploaded file would let anyone
+    // promote themselves or change their credentials.
+    restoreRows('users', scoped ? [] : usersToRestore, (user) => {
       insertUser.run(
         user.id,
         user.username,
@@ -498,7 +512,8 @@ export function restoreBackup(backupData, options = {}) {
       VALUES (?, ?, ?, ?, ?, ?)
     `);
 
-    restoreRows('api_keys', (backupData.data.api_keys || []).filter(mine), (key) => {
+    // An uploaded key_hash must not become a credential.
+    restoreRows('api_keys', scoped ? [] : (backupData.data.api_keys || []).filter(mine), (key) => {
       insertApiKey.run(key.id, key.user_id, key.key_hash, key.name, key.last_used, key.created_at);
     }, (k) => `API key ${k.name}`);
 
@@ -514,7 +529,7 @@ export function restoreBackup(backupData, options = {}) {
         results.errors.push(`Card "${row.card_name}" not found in database`);
         return false;
       }
-      insertOwnedCard.run(row.user_id, cardId, row.quantity, row.created_at, row.updated_at);
+      insertOwnedCard.run(owner(row), cardId, row.quantity, row.created_at, row.updated_at);
     }, (r) => `Owned card ${r.card_name}`);
 
     const insertOwnedPrinting = db.prepare(`
@@ -529,7 +544,7 @@ export function restoreBackup(backupData, options = {}) {
         return false;
       }
       insertOwnedPrinting.run(
-        row.user_id, printingId, row.quantity, row.is_foil ? 1 : 0,
+        owner(row), printingId, row.quantity, row.is_foil ? 1 : 0,
         // Backups from before conditions existed carry none: unrecorded.
         normalizeCondition(row.condition),
         row.created_at, row.updated_at
@@ -549,7 +564,7 @@ export function restoreBackup(backupData, options = {}) {
         return false;
       }
       insertWanted.run(
-        row.id, row.user_id, printingId, row.quantity, row.is_foil ? 1 : 0,
+        rowId(row.id), owner(row), printingId, row.quantity, row.is_foil ? 1 : 0,
         row.note, row.created_at, row.updated_at
       );
     }, (r) => `Wanted card ${r.printing_uuid}`);
@@ -567,7 +582,7 @@ export function restoreBackup(backupData, options = {}) {
         results.errors.push(`Card "${row.card_name}" not found (found pile)`);
         return false;
       }
-      insertFound.run(row.id, row.user_id, cardId, row.card_name, row.quantity, row.created_at);
+      insertFound.run(rowId(row.id), owner(row), cardId, row.card_name, row.quantity, row.created_at);
     }, (r) => `Found card ${r.card_name}`);
 
     // One link per user, and the token is unique across users, so REPLACE on
@@ -577,7 +592,8 @@ export function restoreBackup(backupData, options = {}) {
       VALUES (?, ?, ?, ?)
     `);
 
-    restoreRows('collection_shares', (backupData.data.collection_shares || []).filter(mine), (row) => {
+    // An uploaded token could take over someone else's link.
+    restoreRows('collection_shares', scoped ? [] : (backupData.data.collection_shares || []).filter(mine), (row) => {
       insertCollectionShare.run(row.id, row.user_id, row.share_token, row.created_at);
     }, (r) => `Collection share for user ${r.user_id}`);
 
@@ -590,7 +606,7 @@ export function restoreBackup(backupData, options = {}) {
 
     restoreRows('price_watches', (backupData.data.price_watches || []).filter(mine), (row) => {
       insertWatch.run(
-        row.id, row.user_id, row.card_name, row.max_price, row.condition ?? 'any', row.notes,
+        rowId(row.id), owner(row), row.card_name, row.max_price, row.condition ?? 'any', row.notes,
         row.is_active ?? 1, row.expires_at, row.last_checked, row.last_price,
         row.last_notified, row.created_at, row.set_code, row.set_name
       );
@@ -604,18 +620,23 @@ export function restoreBackup(backupData, options = {}) {
 
     const decks = (backupData.data.decks || []).filter(mine);
 
+    // Backup deck id -> deck id in this database. Scoped restores get fresh
+    // ids, so everything hanging off a deck goes through this map.
+    const deckIdMap = new Map();
+
     restoreRows('decks', decks, (deck) => {
-      insertDeck.run(
-        deck.id, deck.user_id, deck.name, deck.format, deck.description,
+      const info = insertDeck.run(
+        rowId(deck.id), owner(deck), deck.name, deck.format, deck.description,
         deck.status || 'building',
         // Absent from backups made before migration 047.
         deck.plan ?? null,
         deck.created_at, deck.updated_at
       );
+      deckIdMap.set(deck.id, scoped ? Number(info.lastInsertRowid) : deck.id);
     }, (d) => `Deck ${d.name}`);
 
-    const restoredDeckIds = decks.map(d => d.id);
-    const inDeck = (row) => restoredDeckIds.includes(row.deck_id);
+    const inDeck = (row) => deckIdMap.has(row.deck_id);
+    const deckIdOf = (row) => deckIdMap.get(row.deck_id);
 
     const insertDeckCard = db.prepare(`
       INSERT OR REPLACE INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander,
@@ -635,7 +656,7 @@ export function restoreBackup(backupData, options = {}) {
        // verbatim now fails the CHECK rather than landing a contradictory row.
       const boardType = row.board_type || 'mainboard';
       insertDeckCard.run(
-        row.deck_id, printingId, row.quantity,
+        deckIdOf(row), printingId, row.quantity,
         boardType === 'sideboard' ? 1 : 0, row.is_commander,
         // Version 1 backups have no finish. Non-foil is the safe assumption:
         // it is what the deck builder defaults to, and the alternative marks
@@ -651,7 +672,8 @@ export function restoreBackup(backupData, options = {}) {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
-    restoreRows('deck_shares', (backupData.data.deck_shares || []).filter(inDeck), (share) => {
+    // An uploaded share_token could clobber someone else's link.
+    restoreRows('deck_shares', scoped ? [] : (backupData.data.deck_shares || []).filter(inDeck), (share) => {
       insertDeckShare.run(
         share.id, share.deck_id, share.user_id, share.share_token,
         share.is_active, share.created_at, share.expires_at
@@ -666,7 +688,7 @@ export function restoreBackup(backupData, options = {}) {
 
     restoreRows('deck_games', (backupData.data.deck_games || []).filter(inDeck), (game) => {
       insertGame.run(
-        game.id, game.deck_id, game.user_id, game.result, game.played_at, game.opponent,
+        rowId(game.id), deckIdOf(game), owner(game), game.result, game.played_at, game.opponent,
         game.opponent_deck, game.format, game.notes, game.created_at
       );
     }, () => 'Deck game');
@@ -677,7 +699,7 @@ export function restoreBackup(backupData, options = {}) {
     `);
 
     restoreRows('deck_pull_progress', (backupData.data.deck_pull_progress || []).filter(inDeck), (row) => {
-      insertPull.run(row.deck_id, row.printing_uuid, row.is_foil ? 1 : 0, row.pulled, row.updated_at);
+      insertPull.run(deckIdOf(row), row.printing_uuid, row.is_foil ? 1 : 0, row.pulled, row.updated_at);
     }, (row) => `Pull progress ${row.printing_uuid}`);
 
     // ---- Trades ----------------------------------------------------------
@@ -697,7 +719,9 @@ export function restoreBackup(backupData, options = {}) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const trades = (backupData.data.trades || []).filter(
+    // Trades and loans name another user, so an uploaded file could invent
+    // one against them: admin restores only.
+    const trades = scoped ? [] : (backupData.data.trades || []).filter(
       (t) => restoredUserIds.includes(t.from_user_id) || restoredUserIds.includes(t.to_user_id)
     );
     const restoredTradeIds = [];
@@ -745,7 +769,7 @@ export function restoreBackup(backupData, options = {}) {
 
     const restoredLoanIds = [];
 
-    restoreRows('card_loans', (backupData.data.card_loans || []).filter(
+    restoreRows('card_loans', scoped ? [] : (backupData.data.card_loans || []).filter(
       (l) => restoredUserIds.includes(l.lender_user_id) || restoredUserIds.includes(l.borrower_user_id)
     ), (loan) => {
       if (!haveUser(loan.lender_user_id) || !haveUser(loan.borrower_user_id)) {
@@ -777,7 +801,7 @@ export function restoreBackup(backupData, options = {}) {
         return false;
       }
       insertDisruption.run(
-        row.id, row.deck_id,
+        rowId(row.id), deckIdOf(row),
         // The trade may have been skipped above; the disruption still matters
         // without it, so it is kept and merely loses its link.
         restoredTradeIds.includes(row.trade_id) ? row.trade_id : null,
@@ -805,7 +829,7 @@ export function restoreBackup(backupData, options = {}) {
 
     restoreRows('audit_log', (backupData.data.audit_log || []).filter(mine), (row) => {
       insertAudit.run(
-        row.id, row.user_id, row.actor_user_id, row.entity_type, row.action, row.source,
+        rowId(row.id), owner(row), row.actor_user_id, row.entity_type, row.action, row.source,
         row.printing_id ?? null,
         row.printing_uuid, row.card_name, row.set_code, row.collector_number, row.is_foil,
         row.quantity_before, row.quantity_after, row.quantity_delta,
@@ -822,7 +846,7 @@ export function restoreBackup(backupData, options = {}) {
     restoreRows('collection_value_snapshots',
       (backupData.data.collection_value_snapshots || []).filter(mine), (row) => {
         insertSnapshot.run(
-          row.id, row.user_id, row.snapshot_date, row.total_value,
+          rowId(row.id), owner(row), row.snapshot_date, row.total_value,
           row.total_cards, row.unique_cards, row.created_at
         );
       }, () => 'Value snapshot');
@@ -836,7 +860,7 @@ export function restoreBackup(backupData, options = {}) {
 
     restoreRows('owned_sealed', (backupData.data.owned_sealed || []).filter(mine), (row) => {
       insertSealed.run(
-        row.id, row.user_id, row.sealed_uuid, row.name, row.set_name, row.set_code,
+        rowId(row.id), owner(row), row.sealed_uuid, row.name, row.set_name, row.set_code,
         row.category, row.quantity, row.cost_paid, row.reference_price, row.reference_price_date,
         row.price_override, row.notes, row.acquired_at, row.created_at, row.updated_at
       );
@@ -942,10 +966,25 @@ export function listBackups() {
 }
 
 /**
+ * Resolve a backup filename to a path inside BACKUP_DIR.
+ * Only plain `*.json` names are accepted, so `../` and absolute paths can't escape.
+ */
+function resolveBackupPath(filename) {
+  if (typeof filename !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(filename)) {
+    throw new Error('Invalid backup filename');
+  }
+  const filepath = path.resolve(BACKUP_DIR, filename);
+  if (path.dirname(filepath) !== path.resolve(BACKUP_DIR)) {
+    throw new Error('Invalid backup filename');
+  }
+  return filepath;
+}
+
+/**
  * Load a backup file by filename
  */
 export function loadBackupFile(filename) {
-  const filepath = path.join(BACKUP_DIR, filename);
+  const filepath = resolveBackupPath(filename);
   if (!fs.existsSync(filepath)) {
     throw new Error(`Backup file not found: ${filename}`);
   }
@@ -956,7 +995,7 @@ export function loadBackupFile(filename) {
  * Delete a backup file
  */
 export function deleteBackupFile(filename) {
-  const filepath = path.join(BACKUP_DIR, filename);
+  const filepath = resolveBackupPath(filename);
   if (!fs.existsSync(filepath)) {
     throw new Error(`Backup file not found: ${filename}`);
   }

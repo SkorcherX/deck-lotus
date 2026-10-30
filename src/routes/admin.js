@@ -290,7 +290,7 @@ router.post('/restore', authenticate, (req, res, next) => {
  * GET /api/admin/backups
  * List all available backup files
  */
-router.get('/backups', authenticate, (req, res, next) => {
+router.get('/backups', authenticate, requireAdmin, (req, res, next) => {
   try {
     const backups = listBackups();
     res.json({ backups });
@@ -303,7 +303,7 @@ router.get('/backups', authenticate, (req, res, next) => {
  * GET /api/admin/backups/:filename
  * Download a specific backup file
  */
-router.get('/backups/:filename', authenticate, (req, res, next) => {
+router.get('/backups/:filename', authenticate, requireAdmin, (req, res, next) => {
   try {
     const { filename } = req.params;
     const backup = loadBackupFile(filename);
@@ -320,7 +320,7 @@ router.get('/backups/:filename', authenticate, (req, res, next) => {
  * DELETE /api/admin/backups/:filename
  * Delete a backup file
  */
-router.delete('/backups/:filename', authenticate, (req, res, next) => {
+router.delete('/backups/:filename', authenticate, requireAdmin, (req, res, next) => {
   try {
     const { filename } = req.params;
     deleteBackupFile(filename);
@@ -334,7 +334,7 @@ router.delete('/backups/:filename', authenticate, (req, res, next) => {
  * POST /api/admin/backup/create
  * Manually create a scheduled backup
  */
-router.post('/backup/create', authenticate, (req, res, next) => {
+router.post('/backup/create', authenticate, requireAdmin, (req, res, next) => {
   try {
     const result = createScheduledBackup();
     res.json({ success: true, ...result });
@@ -348,7 +348,7 @@ router.post('/backup/create', authenticate, (req, res, next) => {
  * Restore from a backup file in the backups directory
  * Body: { filename: string, overwrite: boolean }
  */
-router.post('/restore-from-file', authenticate, (req, res, next) => {
+router.post('/restore-from-file', authenticate, requireAdmin, (req, res, next) => {
   try {
     const { filename, overwrite = false } = req.body;
 
@@ -358,13 +358,7 @@ router.post('/restore-from-file', authenticate, (req, res, next) => {
 
     const backup = loadBackupFile(filename);
 
-    // Admins can restore all users, regular users only their own data
-    const restoreUserId = req.user.is_admin ? null : req.user.id;
-
-    const results = restoreBackup(backup, {
-      overwrite,
-      userId: restoreUserId
-    });
+    const results = restoreBackup(backup, { overwrite });
 
     res.json({
       success: true,
@@ -380,7 +374,7 @@ router.post('/restore-from-file', authenticate, (req, res, next) => {
  * GET /api/admin/backup-config
  * Get backup schedule configuration
  */
-router.get('/backup-config', authenticate, (req, res, next) => {
+router.get('/backup-config', authenticate, requireAdmin, (req, res, next) => {
   try {
     const config = getBackupConfig();
     res.json(config);

@@ -3112,6 +3112,7 @@
                             <button
                                 id="create-backup-now-btn"
                                 class="btn btn-secondary"
+                                style="display: none"
                             >
                                 Create Backup Now
                             </button>
@@ -3123,6 +3124,8 @@
                             style="display: none"
                         />
 
+                        <!-- Server-side backups (admin only) -->
+                        <div id="server-backups-admin" style="display: none">
                         <!-- Backup Schedule Configuration -->
                         <div style="margin-top: 2rem; padding: 1.5rem; background: var(--bg-tertiary); border-radius: 8px;">
                             <h4 style="margin-bottom: 1rem;">Automatic Backup Schedule</h4>
@@ -3192,6 +3195,7 @@
                             <div id="backups-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
                                 <!-- Backups will be populated here -->
                             </div>
+                        </div>
                         </div>
                     </section>
 
