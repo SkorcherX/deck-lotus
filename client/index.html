@@ -1455,169 +1455,220 @@
                     <div id="inventory-type-breakdown" class="inventory-type-breakdown"></div>
                 </div>
 
-                <!-- Filters -->
+                <!--
+                  Filters. Laid out exactly like the Browse page's filter bar —
+                  same fields, same order, same two rows — so the two pages
+                  read as one control. Inventory adds a third row for what only
+                  a collection has, and defaults to sorting by name.
+                -->
                 <div class="inventory-filters">
-                    <div class="inventory-filter-row">
-                        <div class="filter-group">
-                            <label>Sort By</label>
-                            <select autocomplete="off" id="inventory-sort" class="filter-select">
-                                <option value="name">Name</option>
-                                <option value="quantity">Quantity</option>
-                                <option value="cmc">Mana Value</option>
-                                <option value="color">Color</option>
-                                <option value="type">Type</option>
-                                <option value="price_desc">Price: High to Low</option>
-                                <option value="price_asc">Price: Low to High</option>
-                                <!-- Deliberately not offered on the partner
-                                     browse: when somebody else acquired a card
-                                     is theirs to know, and the shop only needs
-                                     to know what they have. -->
-                                <option value="added_desc">Recently Added</option>
-                                <option value="added_asc">Oldest Added</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Ability</label>
-                            <select autocomplete="off" id="inventory-ability" class="filter-select" title="Cards that do this">
-                                <option value="">Any ability</option>
-                                <option value="draw">Card draw</option>
-                                <option value="discard">Discard</option>
-                                <option value="mill">Mill</option>
-                                <option value="removal">Removal</option>
-                                <option value="wipe">Board wipe</option>
-                                <option value="counter">Counterspell</option>
-                                <option value="ramp">Ramp</option>
-                                <option value="tutor">Tutor</option>
-                                <option value="selection">Scry / surveil</option>
-                                <option value="lifegain">Lifegain</option>
-                                <option value="tokens">Makes tokens</option>
-                                <option value="recursion">Graveyard recursion</option>
-                                <option value="sacrifice">Sacrifice outlet</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Card Type</label>
-                            <select autocomplete="off" id="inventory-type" class="filter-select">
-                                <option value="all">All Types</option>
-                                <option value="Creature">Creature</option>
-                                <option value="Instant">Instant</option>
-                                <option value="Sorcery">Sorcery</option>
-                                <option value="Enchantment">Enchantment</option>
-                                <option value="Artifact">Artifact</option>
-                                <option value="Planeswalker">Planeswalker</option>
-                                <option value="Land">Land</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Availability</label>
-                            <select autocomplete="off" id="inventory-availability" class="filter-select">
-                                <option value="all">All Cards</option>
-                                <option value="available">Available Only</option>
-                                <option value="in_decks">In Decks Only</option>
-                                <option value="lent_out">Lent Out</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Condition</label>
-                            <select autocomplete="off" id="inventory-condition" class="filter-select" title="TCGplayer condition">
-                                <option value="all">Any Condition</option>
-                                <option value="NM">Near Mint</option>
-                                <option value="LP">Lightly Played</option>
-                                <option value="MP">Moderately Played</option>
-                                <option value="HP">Heavily Played</option>
-                                <option value="DMG">Damaged</option>
-                                <option value="unrecorded">Not recorded</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Copies</label>
-                            <select autocomplete="off" id="inventory-min-copies" class="filter-select" title="Total copies owned, across printings and finishes">
-                                <option value="0">Any Count</option>
-                                <option value="2">2 or more</option>
-                                <option value="4">4 or more</option>
-                                <option value="5">Over 4 (prune?)</option>
-                                <option value="8">8 or more</option>
-                                <option value="10">10 or more</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Rarity</label>
-                            <select autocomplete="off" id="inventory-rarity" class="filter-select">
-                                <option value="all">Any Rarity</option>
-                                <option value="common">Common</option>
-                                <option value="uncommon">Uncommon</option>
-                                <option value="rare">Rare</option>
-                                <option value="mythic">Mythic</option>
-                                <option value="special">Special</option>
-                                <option value="bonus">Bonus</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Commander</label>
-                            <select autocomplete="off" id="inventory-commander" class="filter-select">
-                                <option value="all">All Cards</option>
-                                <option value="eligible">Commander Eligible</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Colors</label>
-                            <div id="inventory-colors" class="color-filter-group">
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="W" />
-                                    <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="U" />
-                                    <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="B" />
-                                    <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="R" />
-                                    <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="G" />
-                                    <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
-                                </label>
-                                <label class="color-checkbox">
-                                    <input autocomplete="off" type="checkbox" value="C" />
-                                    <span class="color-checkbox-box"><i class="ms ms-c ms-cost"></i></span>
-                                </label>
+                    <div class="filter-bar filter-bar-rows">
+                        <!-- What the card is and does; the text box takes the slack, view toggles last. -->
+                        <div class="filter-row">
+                            <div class="filter-field">
+                                <label class="field-label">Sort By</label>
+                                <select autocomplete="off" id="inventory-sort" class="filter-select">
+                                    <option value="name">Alphabetical</option>
+                                    <option value="cmc">Mana Value</option>
+                                    <option value="color">Color</option>
+                                    <option value="price_desc">Price (High to Low)</option>
+                                    <option value="price_asc">Price (Low to High)</option>
+                                    <option value="quantity">Quantity</option>
+                                    <option value="type">Type</option>
+                                    <!-- Deliberately not offered on the partner
+                                         browse: when somebody else acquired a card
+                                         is theirs to know, and the shop only needs
+                                         to know what they have. -->
+                                    <option value="added_desc">Recently Added</option>
+                                    <option value="added_asc">Oldest Added</option>
+                                </select>
                             </div>
-                            <select autocomplete="off" id="inventory-color-mode" class="filter-select color-mode-select" aria-label="How colours match" title="Includes: has these colours, maybe others. Exactly: these colours and no others. At most: castable in these colours, colourless included.">
-                                <option value="includes">Includes</option>
-                                <option value="exactly">Exactly</option>
-                                <option value="atmost">At most</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Prices</label>
-                            <div class="view-toggle">
-                                <button id="inventory-price-toggle" class="btn-icon" title="Show prices" aria-pressed="false">
-                                    <i class="ph ph-currency-dollar"></i>
-                                </button>
+                            <div class="filter-field">
+                                <label class="field-label">Card Type</label>
+                                <select autocomplete="off" id="inventory-type" class="filter-select">
+                                    <option value="all">All Types</option>
+                                    <option value="Creature">Creature</option>
+                                    <option value="Instant">Instant</option>
+                                    <option value="Sorcery">Sorcery</option>
+                                    <option value="Enchantment">Enchantment</option>
+                                    <option value="Artifact">Artifact</option>
+                                    <option value="Planeswalker">Planeswalker</option>
+                                    <option value="Land">Land</option>
+                                </select>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Ability</label>
+                                <select autocomplete="off" id="inventory-ability" class="filter-select" title="Cards that do this">
+                                    <option value="">Any ability</option>
+                                    <option value="draw">Card draw</option>
+                                    <option value="discard">Discard</option>
+                                    <option value="mill">Mill</option>
+                                    <option value="removal">Removal</option>
+                                    <option value="wipe">Board wipe</option>
+                                    <option value="counter">Counterspell</option>
+                                    <option value="ramp">Ramp</option>
+                                    <option value="tutor">Tutor</option>
+                                    <option value="selection">Scry / surveil</option>
+                                    <option value="lifegain">Lifegain</option>
+                                    <option value="tokens">Makes tokens</option>
+                                    <option value="recursion">Graveyard recursion</option>
+                                    <option value="sacrifice">Sacrifice outlet</option>
+                                </select>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Commander</label>
+                                <select autocomplete="off" id="inventory-commander" class="filter-select">
+                                    <option value="all">All Cards</option>
+                                    <option value="eligible">Commander Eligible</option>
+                                </select>
+                            </div>
+                            <div class="filter-field filter-field-grow">
+                                <label class="field-label">Card Text</label>
+                                <input autocomplete="off" type="text" id="inventory-card-text" class="filter-input" placeholder='e.g. draw card or "target player"' title="Words must all appear in the rules text; quote a phrase to match it as written" />
+                            </div>
+                            <div class="filter-row-end">
+                                <div class="filter-field">
+                                    <label class="field-label">Prices</label>
+                                    <div class="view-toggle">
+                                        <button id="inventory-price-toggle" class="btn-icon" title="Show prices" aria-pressed="false">
+                                            <i class="ph ph-currency-dollar"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="filter-field">
+                                    <label class="field-label">Scrolling</label>
+                                    <div class="view-toggle">
+                                        <button id="inventory-endless-toggle" class="btn-icon" title="Endless scroll off" aria-pressed="false">
+                                            <i class="ph ph-infinity"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="filter-field">
+                                    <label class="field-label">View</label>
+                                    <div class="view-toggle">
+                                        <button id="inventory-grid-view-btn" class="btn-icon active" title="Grid view">
+                                            <i class="ph ph-squares-four"></i>
+                                        </button>
+                                        <button id="inventory-list-view-btn" class="btn-icon" title="List view">
+                                            <i class="ph ph-list"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="filter-group">
-                            <label>Scrolling</label>
-                            <div class="view-toggle">
-                                <button id="inventory-endless-toggle" class="btn-icon" title="Endless scroll off" aria-pressed="false">
-                                    <i class="ph ph-infinity"></i>
+                        <!-- Colour, rarity, cost and where it was printed. -->
+                        <div class="filter-row">
+                            <div class="filter-field">
+                                <label class="field-label">Colors</label>
+                                <div class="color-field-controls">
+                                <div id="inventory-colors" class="color-filter-group">
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="W" />
+                                        <span class="color-checkbox-box"><i class="ms ms-w ms-cost"></i></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="U" />
+                                        <span class="color-checkbox-box"><i class="ms ms-u ms-cost"></i></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="B" />
+                                        <span class="color-checkbox-box"><i class="ms ms-b ms-cost"></i></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="R" />
+                                        <span class="color-checkbox-box"><i class="ms ms-r ms-cost"></i></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="G" />
+                                        <span class="color-checkbox-box"><i class="ms ms-g ms-cost"></i></span>
+                                    </label>
+                                    <label class="color-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="C" />
+                                        <span class="color-checkbox-box"><i class="ms ms-c ms-cost"></i></span>
+                                    </label>
+                                </div>
+                                <select autocomplete="off" id="inventory-color-mode" class="filter-select color-mode-select" aria-label="How colours match" title="Includes: has these colours, maybe others. Exactly: these colours and no others. At most: castable in these colours, colourless included.">
+                                    <option value="includes">Includes</option>
+                                    <option value="exactly">Exactly</option>
+                                    <option value="atmost">At most</option>
+                                </select>
+                                </div>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Rarity</label>
+                                <div id="inventory-rarity" class="rarity-filter-group" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                    <label class="rarity-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="common" />
+                                        <span class="rarity-checkbox-box rarity-c">C</span>
+                                    </label>
+                                    <label class="rarity-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="uncommon" />
+                                        <span class="rarity-checkbox-box rarity-u">U</span>
+                                    </label>
+                                    <label class="rarity-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="rare" />
+                                        <span class="rarity-checkbox-box rarity-r">R</span>
+                                    </label>
+                                    <label class="rarity-checkbox">
+                                        <input autocomplete="off" type="checkbox" value="mythic" />
+                                        <span class="rarity-checkbox-box rarity-m">M</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">CMC</label>
+                                <div class="cmc-range">
+                                    <input autocomplete="off" type="number" id="inventory-cmc-min" class="input-narrow" placeholder="Min" min="0" max="20" />
+                                    <span>-</span>
+                                    <input autocomplete="off" type="number" id="inventory-cmc-max" class="input-narrow" placeholder="Max" min="0" max="20" />
+                                </div>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Sets</label>
+                                <button id="inventory-sets-btn" class="btn btn-secondary" title="Sets you own cards from">
+                                    <span id="inventory-sets-count">All Sets</span>
+                                </button>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Subtypes</label>
+                                <button id="inventory-subtypes-btn" class="btn btn-secondary">
+                                    <span id="inventory-subtypes-count">All Subtypes</span>
                                 </button>
                             </div>
                         </div>
-                        <div class="filter-group">
-                            <label>View</label>
-                            <div class="view-toggle">
-                                <button id="inventory-grid-view-btn" class="btn-icon active" title="Grid view">
-                                    <i class="ph ph-squares-four"></i>
-                                </button>
-                                <button id="inventory-list-view-btn" class="btn-icon" title="List view">
-                                    <i class="ph ph-list"></i>
-                                </button>
+                        <!-- What only a collection has: where the copies are, their grade, how many. -->
+                        <div class="filter-row">
+                            <div class="filter-field">
+                                <label class="field-label">Availability</label>
+                                <select autocomplete="off" id="inventory-availability" class="filter-select">
+                                    <option value="all">All Cards</option>
+                                    <option value="available">Available Only</option>
+                                    <option value="in_decks">In Decks Only</option>
+                                    <option value="lent_out">Lent Out</option>
+                                </select>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Condition</label>
+                                <select autocomplete="off" id="inventory-condition" class="filter-select" title="TCGplayer condition">
+                                    <option value="all">Any Condition</option>
+                                    <option value="NM">Near Mint</option>
+                                    <option value="LP">Lightly Played</option>
+                                    <option value="MP">Moderately Played</option>
+                                    <option value="HP">Heavily Played</option>
+                                    <option value="DMG">Damaged</option>
+                                    <option value="unrecorded">Not recorded</option>
+                                </select>
+                            </div>
+                            <div class="filter-field">
+                                <label class="field-label">Copies</label>
+                                <select autocomplete="off" id="inventory-min-copies" class="filter-select" title="Total copies owned, across printings and finishes">
+                                    <option value="0">Any Count</option>
+                                    <option value="2">2 or more</option>
+                                    <option value="4">4 or more</option>
+                                    <option value="5">Over 4 (prune?)</option>
+                                    <option value="8">8 or more</option>
+                                    <option value="10">10 or more</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -3803,6 +3854,27 @@
             </div>
 
             <!-- Set Filter Modal -->
+            <!--
+              Inventory's Sets / Subtypes picker. The same look as the Browse
+              page's set and subtype modals, but one shared box: it writes into
+              the inventory's chip lists, so a pick here and a chip typed in the
+              search box are the same filter.
+            -->
+            <div id="inventory-pick-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 600px">
+                    <span class="modal-close" id="inventory-pick-modal-close">&times;</span>
+                    <h2 id="inventory-pick-title" style="margin-bottom: 1rem">Filter by Sets</h2>
+                    <div class="form-group">
+                        <input autocomplete="off" type="text" id="inventory-pick-search" placeholder="Search..." style="width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border);" />
+                    </div>
+                    <div id="inventory-pick-list" style="max-height: 400px; overflow-y: auto; margin: 1rem 0;"></div>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem">
+                        <button id="inventory-pick-clear" class="btn btn-secondary">Clear All</button>
+                        <button id="inventory-pick-apply" class="btn btn-primary" style="flex: 1">Apply Filters</button>
+                    </div>
+                </div>
+            </div>
+
             <div id="set-filter-modal" class="modal hidden">
                 <div class="modal-content" style="max-width: 600px">
                     <span class="modal-close" id="set-filter-modal-close"

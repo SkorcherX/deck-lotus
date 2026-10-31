@@ -607,14 +607,17 @@ class ApiClient {
     const subtypes = [...(filters.subtypes || []), filters.liveSubtype].filter(Boolean);
     if (subtypes.length > 0) params.append('subtypes', subtypes.join(','));
     // Rules-text chips plus the text being typed; every word must appear.
-    const text = [...(filters.texts || []), filters.liveText].filter(Boolean).join(' ');
+    const text = [...(filters.texts || []), filters.liveText, filters.cardText].filter(Boolean).join(' ');
     if (text) params.append('text', text);
     if (filters.ability) params.append('abilities', filters.ability);
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
     if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
-    if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
+    if (filters.rarities?.length) params.append('rarity', filters.rarities.join(','));
+    else if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
+    if (filters.cmcMin != null) params.append('cmcMin', filters.cmcMin);
+    if (filters.cmcMax != null) params.append('cmcMax', filters.cmcMax);
     if (filters.minCopies > 0) params.append('minCopies', filters.minCopies);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
@@ -644,14 +647,17 @@ class ApiClient {
     const subtypes = [...(filters.subtypes || []), filters.liveSubtype].filter(Boolean);
     if (subtypes.length > 0) params.append('subtypes', subtypes.join(','));
     // Rules-text chips plus the text being typed; every word must appear.
-    const text = [...(filters.texts || []), filters.liveText].filter(Boolean).join(' ');
+    const text = [...(filters.texts || []), filters.liveText, filters.cardText].filter(Boolean).join(' ');
     if (text) params.append('text', text);
     if (filters.ability) params.append('abilities', filters.ability);
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
     if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
-    if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
+    if (filters.rarities?.length) params.append('rarity', filters.rarities.join(','));
+    else if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
+    if (filters.cmcMin != null) params.append('cmcMin', filters.cmcMin);
+    if (filters.cmcMax != null) params.append('cmcMax', filters.cmcMax);
     if (filters.minCopies > 0) params.append('minCopies', filters.minCopies);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);

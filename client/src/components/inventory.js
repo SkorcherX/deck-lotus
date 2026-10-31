@@ -44,7 +44,11 @@ let filters = {
   availability: 'all',
   commander: 'all',
   condition: 'all',
-  rarity: 'all',
+  rarities: [],
+  cmcMin: null,
+  cmcMax: null,
+  // The Card Text box in the filter bar; joins the text chips.
+  cardText: '',
   minCopies: 0,
 };
 let showPrices = localStorage.getItem('inventoryShowPrices') === 'true';
@@ -187,15 +191,40 @@ function setupFilterListeners() {
     });
   }
 
-  // Rarity (of the printing owned, so a reprint can count at either)
-  const raritySelect = document.getElementById('inventory-rarity');
-  if (raritySelect) {
-    raritySelect.addEventListener('change', (e) => {
-      filters.rarity = e.target.value;
+  // Rarity boxes, as on Browse; any ticked rarity matches. Rarity is of the
+  // printing owned, so a reprint can count at either.
+  const rarityCheckboxes = document.querySelectorAll('#inventory-rarity input[type="checkbox"]');
+  rarityCheckboxes.forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      filters.rarities = Array.from(rarityCheckboxes).filter((cb) => cb.checked).map((cb) => cb.value);
       currentPage = 1;
       loadInventoryData();
     });
-  }
+  });
+
+  // CMC range
+  const cmcMin = document.getElementById('inventory-cmc-min');
+  const cmcMax = document.getElementById('inventory-cmc-max');
+  const onCmc = debounce(() => {
+    filters.cmcMin = cmcMin.value === '' ? null : parseInt(cmcMin.value, 10);
+    filters.cmcMax = cmcMax.value === '' ? null : parseInt(cmcMax.value, 10);
+    currentPage = 1;
+    loadInventoryData();
+  }, 300);
+  cmcMin?.addEventListener('input', onCmc);
+  cmcMax?.addEventListener('input', onCmc);
+
+  // Card Text box, as on Browse. Joins any text chips; every word must appear.
+  const cardText = document.getElementById('inventory-card-text');
+  cardText?.addEventListener('input', debounce(() => {
+    filters.cardText = cardText.value.trim();
+    currentPage = 1;
+    loadInventoryData();
+  }, 300));
+
+  document.getElementById('inventory-sets-btn')?.addEventListener('click', () => openPicker('set'));
+  document.getElementById('inventory-subtypes-btn')?.addEventListener('click', () => openPicker('subtype'));
+  setupPicker();
 
   // Commander eligibility
   const commanderSelect = document.getElementById('inventory-commander');
@@ -396,7 +425,96 @@ function removeFilterChip(kind, value) {
   loadInventoryData();
 }
 
+// The Sets / Subtypes buttons. They edit the same lists the search box's set
+// and creature-type chips do, so either way of picking shows in both places.
+let pickerKind = 'set';
+let pickerDraft = [];
+
+function pickerOptions() {
+  return pickerKind === 'set'
+    ? [...ownedSetNames].map(([code, name]) => ({ value: code, name, note: code }))
+    : [...knownSubtypes.values()].map((s) => ({ value: s, name: s }));
+}
+
+function renderPickerList(query = '') {
+  const list = document.getElementById('inventory-pick-list');
+  const q = query.toLowerCase();
+  const options = pickerOptions().filter((o) =>
+    !q || o.name.toLowerCase().includes(q) || (o.note || '').toLowerCase().includes(q));
+  if (options.length === 0) {
+    list.innerHTML = `<div style="padding: 1rem; text-align: center; color: var(--text-secondary);">No ${pickerKind === 'set' ? 'sets' : 'subtypes'} found</div>`;
+    return;
+  }
+  list.innerHTML = options.map((o) => `
+    <div class="set-item ${pickerDraft.includes(o.value) ? 'selected' : ''}" data-value="${escapeHtml(o.value)}">
+      <div class="set-checkbox"></div>
+      <div class="set-info">
+        <div class="set-name">${escapeHtml(o.name)}</div>
+        ${o.note ? `<div class="set-code">${escapeHtml(o.note)}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function openPicker(kind) {
+  pickerKind = kind;
+  pickerDraft = [...chipList(kind)];
+  if (kind === 'subtype') await loadSubtypeOptions();
+  document.getElementById('inventory-pick-title').textContent =
+    kind === 'set' ? 'Filter by Sets' : 'Filter by Subtypes';
+  const search = document.getElementById('inventory-pick-search');
+  search.value = '';
+  search.placeholder = kind === 'set' ? 'Search sets...' : 'Search subtypes...';
+  renderPickerList();
+  document.getElementById('inventory-pick-modal').classList.remove('hidden');
+  search.focus();
+}
+
+function setupPicker() {
+  const modal = document.getElementById('inventory-pick-modal');
+  if (!modal) return;
+  const close = () => modal.classList.add('hidden');
+  document.getElementById('inventory-pick-modal-close').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  document.getElementById('inventory-pick-search')
+    .addEventListener('input', debounce((e) => renderPickerList(e.target.value), 200));
+  document.getElementById('inventory-pick-list').addEventListener('click', (e) => {
+    const item = e.target.closest('.set-item');
+    if (!item) return;
+    const value = item.dataset.value;
+    const index = pickerDraft.indexOf(value);
+    if (index > -1) pickerDraft.splice(index, 1); else pickerDraft.push(value);
+    item.classList.toggle('selected', index === -1);
+  });
+  document.getElementById('inventory-pick-clear').addEventListener('click', () => {
+    pickerDraft = [];
+    renderPickerList(document.getElementById('inventory-pick-search').value);
+  });
+  document.getElementById('inventory-pick-apply').addEventListener('click', () => {
+    const list = chipList(pickerKind);
+    list.splice(0, list.length, ...pickerDraft);
+    close();
+    currentPage = 1;
+    renderFilterChips();
+    loadInventoryData();
+  });
+}
+
+function updatePickerButtons() {
+  const sets = document.getElementById('inventory-sets-count');
+  if (sets) {
+    sets.textContent = filters.sets.length === 0 ? 'All Sets'
+      : filters.sets.length === 1 ? filters.sets[0] : `${filters.sets.length} Sets`;
+  }
+  const subtypes = document.getElementById('inventory-subtypes-count');
+  if (subtypes) {
+    subtypes.textContent = filters.subtypes.length === 0 ? 'All Subtypes'
+      : filters.subtypes.length === 1 ? filters.subtypes[0] : `${filters.subtypes.length} Subtypes`;
+  }
+}
+
 function renderFilterChips() {
+  updatePickerButtons();
   const container = document.getElementById('inventory-filter-chips');
   if (!container) return;
 
@@ -2025,7 +2143,10 @@ function hasActiveFilters() {
     filters.availability !== 'all' ||
     filters.commander !== 'all' ||
     filters.condition !== 'all' ||
-    filters.rarity !== 'all' ||
+    filters.rarities.length > 0 ||
+    filters.cmcMin !== null ||
+    filters.cmcMax !== null ||
+    !!filters.cardText ||
     filters.minCopies > 0
   );
 }

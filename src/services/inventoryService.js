@@ -125,6 +125,13 @@ function userScopeSql(userIds) {
   return { clause: '= ?', params: [userIds] };
 }
 
+/** A CMC box's value from the query: a number, or null when left blank. */
+export function parseCmcBound(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 /**
  * Get all owned cards for inventory display
  * Returns cards with printing details, quantities, and deck usage stats
@@ -145,6 +152,9 @@ export function getInventory(userIds, filters = {}) {
     commander = 'all', // 'all', 'eligible'
     condition = 'all', // 'all', 'unrecorded', or a code: NM, LP, MP, HP, DMG
     rarity = 'all', // 'all' or an MTGJSON rarity: common, uncommon, rare, mythic, special, bonus
+    rarities = [], // several of the above, any of which matches; wins over `rarity`
+    cmcMin = null,
+    cmcMax = null,
     minCopies = 0, // only cards owned at least this many times (all printings, finishes, conditions)
     page = 1,
     limit = 50
@@ -322,17 +332,27 @@ export function getInventory(userIds, filters = {}) {
   // Rarity filter: cards with at least one owned printing at that rarity.
   // Rarity belongs to the printing, not the card — a common reprinted as a
   // mythic showcase is either, depending on which copy you hold.
-  if (rarity !== 'all') {
+  const rarityList = rarities.length > 0 ? rarities : (rarity !== 'all' ? [rarity] : []);
+  if (rarityList.length > 0) {
     const clause = ` AND c.id IN (
       SELECT p4.card_id
       FROM owned_printings op4
       JOIN printings p4 ON op4.printing_id = p4.id
-      WHERE op4.user_id ${scope.clause} AND p4.rarity = ?
+      WHERE op4.user_id ${scope.clause} AND p4.rarity IN (${rarityList.map(() => '?').join(',')})
     )`;
     sql += clause;
     countSql += clause;
-    params.push(...scope.params, rarity);
-    countParams.push(...scope.params, rarity);
+    params.push(...scope.params, ...rarityList);
+    countParams.push(...scope.params, ...rarityList);
+  }
+
+  // Mana value range, the same bounds as the Browse page's CMC boxes.
+  for (const [bound, op] of [[cmcMin, '>='], [cmcMax, '<=']]) {
+    if (bound === null) continue;
+    sql += ` AND c.cmc ${op} ?`;
+    countSql += ` AND c.cmc ${op} ?`;
+    params.push(bound);
+    countParams.push(bound);
   }
 
   // Availability filter. This has to be part of the query rather than a pass

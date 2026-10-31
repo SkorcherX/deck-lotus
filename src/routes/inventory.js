@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getInventory,
   getInventoryStats,
+  parseCmcBound,
   searchCardsForInventoryAdd,
   bulkAddToInventory,
   bulkRemoveFromInventory,
@@ -100,7 +101,10 @@ router.get('/', authenticate, (req, res, next) => {
       availability: availability || 'all',
       commander: commander || 'all',
       condition: normalizeConditionFilter(condition),
-      rarity: RARITIES.includes(rarity) ? rarity : 'all',
+      // A comma list, like the Browse page's rarity boxes; any of them matches.
+      rarities: String(rarity || '').split(',').filter((r) => RARITIES.includes(r)),
+      cmcMin: parseCmcBound(req.query.cmcMin),
+      cmcMax: parseCmcBound(req.query.cmcMax),
       minCopies: Math.max(0, parseInt(req.query.minCopies, 10) || 0),
       page: parseInt(page),
       limit: parseInt(limit)

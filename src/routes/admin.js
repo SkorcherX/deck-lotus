@@ -15,7 +15,7 @@ import {
 } from '../services/backupService.js';
 import { getAllUsers, updateUser, deleteUser, resetUserPassword } from '../services/authService.js';
 import { getSettings, updateSettings } from '../services/settingsService.js';
-import { getInventory, getInventoryStats } from '../services/inventoryService.js';
+import { getInventory, getInventoryStats, parseCmcBound } from '../services/inventoryService.js';
 import { authenticate } from '../middleware/auth.js';
 import { RARITIES } from '../shared/rarities.js';
 import { normalizeCondition } from '../shared/conditions.js';
@@ -558,7 +558,10 @@ router.get('/inventory', authenticate, requireAdmin, (req, res, next) => {
       availability: availability || 'all',
       commander: commander || 'all',
       condition: normalizeConditionFilter(condition),
-      rarity: RARITIES.includes(rarity) ? rarity : 'all',
+      // A comma list, like the Browse page's rarity boxes; any of them matches.
+      rarities: String(rarity || '').split(',').filter((r) => RARITIES.includes(r)),
+      cmcMin: parseCmcBound(req.query.cmcMin),
+      cmcMax: parseCmcBound(req.query.cmcMax),
       minCopies: Math.max(0, parseInt(req.query.minCopies, 10) || 0),
       page: parseInt(page),
       limit: parseInt(limit)

@@ -5200,11 +5200,9 @@ body.maintenance-locked #app {
   line-height: 1.45;
 }
 
-/* Inventory Filters */
+/* Inventory Filters. The bar itself is Browse's .filter-bar; this only spaces
+   it, so the two pages draw the same box. */
 .inventory-filters {
-  background: var(--bg-secondary);
-  padding: 1.25rem;
-  border-radius: 1rem;
   margin-bottom: 1.5rem;
 }
 
@@ -5289,17 +5287,6 @@ body.maintenance-locked #app {
 .filter-chip-remove:hover {
   background: var(--danger);
   color: var(--on-accent);
-}
-
-.inventory-filters .color-filter-group {
-  display: flex;
-  gap: 0.375rem;
-}
-
-.inventory-filters .color-checkbox-box {
-  padding: 0.5rem;
-  min-width: 40px;
-  min-height: 40px;
 }
 
 .view-toggle {
