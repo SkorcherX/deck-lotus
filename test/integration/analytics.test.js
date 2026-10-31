@@ -10,6 +10,9 @@ import path from 'node:path';
 
 const DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'deck-lotus-analytics-')), 'test.db');
 process.env.DATABASE_PATH = DB_PATH;
+// analyticsService reaches src/utils/jwt.js through inventoryService, and that
+// module exits the process without a strong secret.
+process.env.JWT_SECRET ||= 'test-only-secret-'.padEnd(48, 'x');
 
 const { runMigrations, closeDb } = await import('../../src/db/index.js');
 const { default: db } = await import('../../src/db/connection.js');
