@@ -245,8 +245,12 @@ export function buildExtensionLookup() {
 ${SNIPPET_FUNCTIONS.map((fn) => fn.toString()).join('\n\n')}
 
 globalThis.__deckLotusLookup = async (cards, options, onProgress) => {
+  // Firefox runs a content script's own fetch with the extension's identity;
+  // content.fetch is the page's, which is what a person at the store sends.
+  // Chrome has no \`content\` and already fetches as the page.
+  const pageFetch = typeof content !== 'undefined' && content.fetch ? content.fetch.bind(content) : fetch;
   async function fetchJson(path, body) {
-    const res = await fetch(path, body
+    const res = await pageFetch(new URL(path, location.origin).href, body
       ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'omit' }
       : { credentials: 'omit' });
     if (!res.ok) { const e = new Error('HTTP ' + res.status + ' ' + path.split('?')[0]); e.status = res.status; throw e; }

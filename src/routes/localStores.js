@@ -28,7 +28,20 @@ router.get('/extension.zip', (req, res) => {
     'Content-Type': 'application/zip',
     'Content-Disposition': 'attachment; filename="deck-lotus-store-prices.zip"',
   });
-  res.send(buildExtensionZip());
+  res.send(buildExtensionZip('chrome'));
+});
+
+/**
+ * GET /api/local-stores/extension-firefox.zip — the same extension with the
+ * Firefox manifest. Unsigned: a release Firefox loads it only as a temporary
+ * add-on until it has been signed through addons.mozilla.org.
+ */
+router.get('/extension-firefox.zip', (req, res) => {
+  res.set({
+    'Content-Type': 'application/zip',
+    'Content-Disposition': 'attachment; filename="deck-lotus-store-prices-firefox.zip"',
+  });
+  res.send(buildExtensionZip('firefox'));
 });
 
 router.get('/extension', (req, res) => res.json({ version: extensionVersion() }));

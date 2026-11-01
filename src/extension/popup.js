@@ -35,16 +35,17 @@ async function render() {
     : sites.includes(origin) ? 'Connected. Use "Check prices" on the Shopping page.'
     : allowed ? 'Price checks are allowed on this site.' : '';
 
-  $('connect').onclick = async () => {
-    if (!(await chrome.permissions.request({ origins: [`${origin}/*`] }))) return;
-    await chrome.runtime.sendMessage({ type: 'connect-site', origin });
-    // Registered scripts only reach pages loaded from now on; this one is already open.
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['bridge.js'] }).catch(() => {});
-    render();
+  // permissions.request has to be the first thing a click does (Firefox drops
+  // it otherwise), and Firefox closes this popup when the prompt opens — so
+  // the background is told what to do first, and finishes the job itself.
+  // tcgplayerpro.com is asked for in the same prompt: Chrome grants it at
+  // install, Firefox only when asked.
+  $('connect').onclick = () => {
+    chrome.runtime.sendMessage({ type: 'pending-connect', origin });
+    chrome.permissions.request({ origins: [`${origin}/*`, 'https://*.tcgplayerpro.com/*'] }).then(() => setTimeout(render, 300));
   };
-  $('store').onclick = async () => {
-    await chrome.permissions.request({ origins: [`${origin}/*`] });
-    render();
+  $('store').onclick = () => {
+    chrome.permissions.request({ origins: [`${origin}/*`] }).then(render);
   };
 }
 

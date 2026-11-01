@@ -16,6 +16,33 @@ import { planPurchases, storeCoverage, toCardList, CONDITIONS } from '../../../s
 const NOTICE_KEY = 'deckLotus.localStores.noticeSeen';
 const OPTIONS_KEY = 'deckLotus.localStores.options';
 
+const IS_FIREFOX = /firefox/i.test(navigator.userAgent);
+
+const CHROME_STEPS = `One-time setup in Chrome or Edge:
+  <ol>
+    <li><a href="/api/local-stores/extension.zip" download>Download the extension</a> and unzip it.</li>
+    <li>Open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong>, choose
+      <strong>Load unpacked</strong> and pick the unzipped <code>deck-lotus-store-prices</code> folder.</li>
+    <li>Back on this page, click the extension's icon and choose <strong>connect</strong>.</li>
+  </ol>`;
+
+// Release Firefox installs only add-ons Mozilla has signed. Unlisted signing
+// is free and automatic, but it needs the user's own Mozilla account, so the
+// page can only point the way; the temporary route works at once but is
+// forgotten when Firefox restarts.
+const FIREFOX_STEPS = `One-time setup in Firefox:
+  <ol>
+    <li><a href="/api/local-stores/extension-firefox.zip" download>Download the extension</a> (keep it zipped).</li>
+    <li>Firefox only keeps add-ons that Mozilla has signed. Signing is free: on
+      <a href="https://addons.mozilla.org/developers/addon/submit/distribution" target="_blank" rel="noopener">addons.mozilla.org</a>
+      choose <strong>On your own</strong>, upload the zip, and download the signed <code>.xpi</code> it gives back
+      (usually within minutes). Open that file in Firefox to install it.
+      <div class="local-stores-hint">To try it first: open <code>about:debugging#/runtime/this-firefox</code> and choose
+        <strong>Load Temporary Add-on</strong> with the zip. It is removed when Firefox restarts.</div></li>
+    <li>Back on this page, click the extension's icon (in the puzzle-piece menu) and choose <strong>connect</strong>.
+      Firefox asks to allow this site and tcgplayerpro.com.</li>
+  </ol>`;
+
 let stores = null;
 let getItems = () => [];
 let remainderQuote = null;
@@ -254,15 +281,12 @@ function render() {
             <div>
               <strong>Install the Deck Lotus browser extension to check prices with one click.</strong>
               Stores only answer price lookups from a browser on their own site, so the extension opens each store
-              in a background tab and looks the cards up there. One-time setup in Chrome or Edge:
-              <ol>
-                <li><a href="/api/local-stores/extension.zip" download>Download the extension</a> and unzip it.</li>
-                <li>Open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong>, choose
-                  <strong>Load unpacked</strong> and pick the unzipped <code>deck-lotus-store-prices</code> folder.</li>
-                <li>Back on this page, click the extension's icon and choose <strong>connect</strong>.</li>
-              </ol>
-              Stores on <code>tcgplayerpro.com</code> work straight away. For a store on its own domain, open it once
-              and choose "Allow price checks on this store" in the extension.
+              in a background tab and looks the cards up there.
+              ${IS_FIREFOX ? FIREFOX_STEPS : CHROME_STEPS}
+              Stores on <code>tcgplayerpro.com</code> are allowed when you connect. For a store on its own domain,
+              open it once and choose "Allow price checks on this store" in the extension.
+              <div class="local-stores-hint">Using ${IS_FIREFOX ? 'Chrome or Edge' : 'Firefox'} instead?
+                <a href="${IS_FIREFOX ? '/api/local-stores/extension.zip' : '/api/local-stores/extension-firefox.zip'}" download>Download that version</a>.</div>
             </div>
           </div>`}
         <details class="local-stores-manual">

@@ -13,3 +13,13 @@ test('the extension zip holds the manifest and a generated lookup.js', () => {
   assert.match(text, /__deckLotusLookup/);
   assert.match(extensionVersion(), /^\d+\.\d+\.\d+$/);
 });
+
+test('the Firefox zip has an event-page background and a fixed add-on id', () => {
+  const zip = buildExtensionZip('firefox');
+  const text = zip.toString('latin1');
+  const start = text.indexOf('{', text.indexOf('manifest.json'));
+  const manifest = JSON.parse(text.slice(start, text.indexOf('\n}', start) + 2));
+  assert.deepEqual(manifest.background, { scripts: ['sw.js'] });
+  assert.equal(manifest.browser_specific_settings.gecko.id, 'store-prices@deck-lotus');
+  assert.ok(!text.includes('deck-lotus-store-prices/'), 'files sit at the archive root');
+});

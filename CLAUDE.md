@@ -503,7 +503,17 @@ taken on GitHub — only do it when explicitly asked.
   reference only each other — keep `localShop.js` import-free and build both
   server-side, where nothing is minified. Bump `manifest.json`'s version
   whenever the lookup changes, since an installed extension does not update
-  itself. `importResult` files it under the store whose
+  itself. Firefox gets the same files from `/extension-firefox.zip`: the
+  manifest is rewritten at download (`background.scripts` instead of a
+  service worker, and the gecko id `store-prices@deck-lotus`, which must
+  never change or Firefox sees a new add-on). Release Firefox installs only
+  Mozilla-signed add-ons, so the user signs it themselves as an unlisted
+  add-on on addons.mozilla.org; `npx web-ext lint` on the unzipped build is
+  the check that it will pass. Three Firefox differences shape the code:
+  host permissions are not granted at install (connect asks for
+  tcgplayerpro.com too), the popup closes when a permission prompt opens (so
+  `sw.js` finishes connecting on `permissions.onAdded`), and a content
+  script's own `fetch` is not the page's (`lookup.js` uses `content.fetch`). `importResult` files it under the store whose
   `base_url` matches the result's `origin`, never a store picked in the UI.
   One snapshot per store in `local_store_quotes`, keyed by card name; stores
   are backed up, quotes are not. The split plan chooses per copy without

@@ -98,29 +98,50 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   })();
 });
 
-// The popup asks for these after the user grants the site.
-async function registerBridge(origin) {
-  const id = BRIDGE_PREFIX + btoa(origin).replace(/[^a-z0-9]/gi, '');
+// Connecting a Deck Lotus site. The popup names the site and then asks for
+// the permission; the rest happens here once it is granted, because Firefox
+// closes the popup the moment its permission prompt appears, so nothing the
+// popup meant to do afterwards would run.
+const bridgeId = (origin) => BRIDGE_PREFIX + btoa(origin).replace(/[^a-z0-9]/gi, '');
+
+async function connectSite(origin) {
+  const id = bridgeId(origin);
   const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
   if (!existing.length) {
     await chrome.scripting.registerContentScripts([{ id, matches: [`${origin}/*`], js: ['bridge.js'], runAt: 'document_idle' }]);
   }
+  const sites = await connectedSites();
+  if (!sites.includes(origin)) await chrome.storage.local.set({ sites: [...sites, origin] });
+  // Registered scripts only reach pages loaded from now on; the open ones get it now.
+  for (const tab of await chrome.tabs.query({ url: `${origin}/*` })) {
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['bridge.js'] }).catch(() => {});
+  }
 }
 
+async function disconnectSite(origin) {
+  await chrome.scripting.unregisterContentScripts({ ids: [bridgeId(origin)] }).catch(() => {});
+  const sites = await connectedSites();
+  await chrome.storage.local.set({ sites: sites.filter((s) => s !== origin) });
+}
+
+chrome.permissions.onAdded.addListener(async ({ origins = [] }) => {
+  const { pendingConnect } = await chrome.storage.local.get('pendingConnect');
+  if (pendingConnect && origins.includes(`${pendingConnect}/*`)) {
+    await chrome.storage.local.remove('pendingConnect');
+    await connectSite(pendingConnect);
+  }
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, reply) => {
-  if (message.type !== 'connect-site' && message.type !== 'disconnect-site') return;
-  (async () => {
-    const id = BRIDGE_PREFIX + btoa(message.origin).replace(/[^a-z0-9]/gi, '');
-    const sites = await connectedSites();
-    if (message.type === 'connect-site') {
-      await registerBridge(message.origin);
-      if (!sites.includes(message.origin)) sites.push(message.origin);
-    } else {
-      await chrome.scripting.unregisterContentScripts({ ids: [id] }).catch(() => {});
-      if (sites.includes(message.origin)) sites.splice(sites.indexOf(message.origin), 1);
-    }
-    await chrome.storage.local.set({ sites });
-    reply({ ok: true });
-  })();
+  if (message.type === 'pending-connect') {
+    chrome.storage.local.set({ pendingConnect: message.origin });
+    // Already granted (a reconnect): onAdded will not fire, so finish here.
+    chrome.permissions.contains({ origins: [`${message.origin}/*`] }).then((granted) => {
+      if (granted) chrome.storage.local.remove('pendingConnect').then(() => connectSite(message.origin));
+    });
+    return;
+  }
+  if (message.type !== 'disconnect-site') return;
+  disconnectSite(message.origin).then(() => reply({ ok: true }));
   return true;
 });

@@ -63,11 +63,39 @@ export function zipFiles(files) {
   return Buffer.concat([...locals, ...centrals, end]);
 }
 
-export function buildExtensionZip() {
+/**
+ * Firefox takes the same extension with a different manifest: an event-page
+ * `background.scripts` in place of Chrome's service worker (Firefox has no
+ * extension service workers), and an add-on id, which it needs for storage
+ * and for Mozilla to sign it. The id must never change once someone has
+ * installed it, or Firefox treats the next version as a different add-on.
+ */
+export const FIREFOX_ID = 'store-prices@deck-lotus';
+
+function manifestFor(browser) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(EXTENSION_DIR, 'manifest.json'), 'utf8'));
+  if (browser !== 'firefox') return manifest;
+  manifest.background = { scripts: ['sw.js'] };
+  manifest.browser_specific_settings = {
+    gecko: {
+      id: FIREFOX_ID,
+      strict_min_version: '128.0',
+      data_collection_permissions: { required: ['none'] },
+    },
+  };
+  return manifest;
+}
+
+/** `browser` is 'chrome' (also Edge and other Chromium browsers) or 'firefox'. */
+export function buildExtensionZip(browser = 'chrome') {
+  // Firefox wants the files at the root of the archive; Chrome's Load
+  // unpacked wants a folder, which the zip unpacks into.
+  const prefix = browser === 'firefox' ? '' : 'deck-lotus-store-prices/';
   const files = fs.readdirSync(EXTENSION_DIR)
-    .filter((name) => name !== 'lookup.js')
-    .map((name) => ({ name: `deck-lotus-store-prices/${name}`, data: fs.readFileSync(path.join(EXTENSION_DIR, name)) }));
-  files.push({ name: 'deck-lotus-store-prices/lookup.js', data: Buffer.from(buildExtensionLookup(), 'utf8') });
+    .filter((name) => name !== 'lookup.js' && name !== 'manifest.json')
+    .map((name) => ({ name: prefix + name, data: fs.readFileSync(path.join(EXTENSION_DIR, name)) }));
+  files.push({ name: `${prefix}manifest.json`, data: Buffer.from(JSON.stringify(manifestFor(browser), null, 2), 'utf8') });
+  files.push({ name: `${prefix}lookup.js`, data: Buffer.from(buildExtensionLookup(), 'utf8') });
   return zipFiles(files);
 }
 
