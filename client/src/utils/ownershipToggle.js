@@ -58,26 +58,33 @@ export async function toggleOwnership(cardId, cardName = 'this card') {
 }
 
 /**
- * The deck builder's version of the press: owned means take away *one* copy,
- * not every printing. The rest may be sitting in other decks, and wiping them
- * made each of those decks read as short. `printingId`/`isFoil` name the copy
- * the deck lists, which the server takes first when it is owned.
+ * The deck builder's version of the press. Its dot means "free for this
+ * deck" — owned and not held by a deck at least as committed — so the press
+ * follows that, not plain ownership. Green takes away *one* copy, never every
+ * printing: the rest may be sitting in other decks, and wiping them made each
+ * of those decks read as short. Grey adds one, even when the card is owned,
+ * because the copies owned are in use elsewhere. `printingId`/`isFoil` name
+ * the copy the deck lists, which the server uses first.
  *
- * Returns `{ owned, changed }` like `toggleOwnership`; `owned` stays true
- * while copies remain.
+ * Returns `{ changed }`; the caller reads availability back from the deck,
+ * since it depends on every other deck too.
  */
-export async function toggleOwnershipOneCopy(cardId, cardName = 'this card', { printingId, isFoil } = {}) {
-  const result = await api.toggleCardOwnership(cardId, { removeOne: true, printingId, isFoil });
+export async function toggleOwnershipOneCopy(cardId, cardName = 'this card', { available, printingId, isFoil } = {}) {
+  const result = await api.toggleCardOwnership(cardId, available
+    ? { removeOne: true, printingId, isFoil }
+    : { addOne: true, printingId, isFoil });
 
+  const n = result.copyCount;
   if (result.removedOne) {
-    const left = result.copyCount;
-    showToast(left > 0
-      ? `Removed one ${cardName} (${left} left in collection)`
+    showToast(n > 0
+      ? `Removed one ${cardName} (${n} left in collection)`
       : `Removed ${cardName} from collection`, 'success', 2000);
   } else {
-    showToast('Added to collection', 'success', 1500);
+    showToast(n > 1
+      ? `Added one ${cardName} (${n} in collection)`
+      : `Added ${cardName} to collection`, 'success', 2000);
   }
-  return { owned: result.owned, changed: true };
+  return { changed: true };
 }
 
 /**
@@ -94,21 +101,25 @@ export async function toggleOwnershipOneCopy(cardId, cardName = 'this card', { p
  * The icon differs by state as well as the colour (a filled tick versus an
  * empty ring), which is the part that survives being unable to see the hue.
  */
-export function ownershipToggleAttrs(card, { isOwned = card.is_owned, removesOne = false } = {}) {
+export function ownershipToggleAttrs(card, { isOwned = card.is_owned, deckDot = false } = {}) {
   const name = card.name || 'this card';
-  const label = toggleLabel(name, isOwned, removesOne);
+  const label = toggleLabel(name, isOwned, deckDot);
 
   return `data-card-id="${card.id ?? card.card_id}" data-card-name="${escapeAttr(name)}"`
     + ` aria-pressed="${isOwned ? 'true' : 'false'}" aria-label="${escapeAttr(label)}"`
     + ` title="${escapeAttr(label)}"`
-    + (removesOne ? ' data-removes-one="true"' : '');
+    + (deckDot ? ' data-deck-dot="true"' : '');
 }
 
-function toggleLabel(name, isOwned, removesOne) {
-  if (!isOwned) return `Not owned: ${name}. Adds one copy to your collection.`;
-  return removesOne
-    ? `Owned: ${name}. Removes one copy from your collection.`
-    : `Owned: ${name}. Removes every copy from your collection.`;
+function toggleLabel(name, isOwned, deckDot) {
+  if (deckDot) {
+    return isOwned
+      ? `Available: ${name}. Removes one copy from your collection.`
+      : `Not available for this deck: ${name}. Adds one copy to your collection.`;
+  }
+  return isOwned
+    ? `Owned: ${name}. Removes every copy from your collection.`
+    : `Not owned: ${name}. Adds one copy to your collection.`;
 }
 
 function escapeAttr(value) {
@@ -121,7 +132,7 @@ function escapeAttr(value) {
  */
 export function paintOwnershipToggle(buttonEl, isOwned) {
   const name = buttonEl.dataset.cardName || 'this card';
-  const label = toggleLabel(name, isOwned, buttonEl.dataset.removesOne === 'true');
+  const label = toggleLabel(name, isOwned, buttonEl.dataset.deckDot === 'true');
 
   buttonEl.classList.toggle('owned', isOwned);
   buttonEl.style.background = isOwned

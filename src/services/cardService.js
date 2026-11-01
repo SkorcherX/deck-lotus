@@ -710,6 +710,35 @@ export function toggleCardOwnership(userId, cardId, context = {}) {
     [userId, cardId]
   );
 
+  // The deck builder's grey dot can mean "owned, but every copy is in another
+  // deck", so its press adds a copy whether or not one is owned — of the
+  // printing and finish the deck lists, when it names one.
+  if (context.addOne) {
+    const printingId = context.printingId != null
+      && db.get(`SELECT 1 FROM printings WHERE id = ? AND card_id = ?`, [context.printingId, cardId])
+      ? context.printingId
+      : db.get(
+        `SELECT id FROM printings WHERE card_id = ? ORDER BY set_code, collector_number LIMIT 1`,
+        [cardId]
+      )?.id;
+    if (printingId == null) throw new Error('Card has no printings');
+
+    addOwnedPrintingQuantity(userId, printingId, 1, context.isFoil === true, {
+      source,
+      actorUserId: context.actorUserId,
+      condition: '',
+      detail: { via: 'toggle_ownership' },
+    });
+
+    const copies = db.get(
+      `SELECT COALESCE(SUM(op.quantity), 0) AS n FROM owned_printings op
+         JOIN printings p ON op.printing_id = p.id
+        WHERE op.user_id = ? AND p.card_id = ?`,
+      [userId, cardId]
+    ).n;
+    return { owned: true, added: true, addedOne: true, copyCount: copies, message: 'Added one copy to collection' };
+  }
+
   if (ownedPrintings.length > 0) {
     const copies = ownedPrintings.reduce((sum, row) => sum + row.quantity, 0);
     const foils = ownedPrintings.reduce((sum, row) => sum + (row.is_foil ? row.quantity : 0), 0);

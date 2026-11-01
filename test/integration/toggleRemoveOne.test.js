@@ -65,3 +65,35 @@ test('falls back to a non-foil row, and the last copy un-owns the card', () => {
   assert.equal(last.owned, false);
   assert.deepEqual(rows(), []);
 });
+
+test('a grey dot adds a copy even while one is owned elsewhere', () => {
+  db.run(`INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil) VALUES (?,?,1,0)`, [userId, printingIds[0]]);
+  const result = toggleCardOwnership(userId, cardId, { addOne: true, printingId: printingIds[1], isFoil: true });
+  assert.equal(result.addedOne, true);
+  assert.equal(result.copyCount, 2);
+  assert.deepEqual(rows(), [
+    { printing_id: printingIds[0], is_foil: 0, quantity: 1 },
+    { printing_id: printingIds[1], is_foil: 1, quantity: 1 },
+  ]);
+});
+
+test('is_available: owned but held by an equally committed deck reads as not available', async () => {
+  const { getDeckById } = await import('../../src/services/deckService.js');
+  db.run(`DELETE FROM owned_printings WHERE user_id = ?`, [userId]);
+  db.run(`INSERT INTO owned_printings (user_id, printing_id, quantity, is_foil) VALUES (?,?,1,0)`, [userId, printingIds[0]]);
+  db.run(`INSERT OR IGNORE INTO owned_cards (user_id, card_id, quantity) VALUES (?,?,1)`, [userId, cardId]);
+
+  const deck = (name, status) => {
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,?, 'commander', ?)`, [userId, name, status]);
+    const id = db.get(`SELECT id FROM decks WHERE name = ?`, [name]).id;
+    db.run(`INSERT INTO deck_cards (deck_id, printing_id, quantity) VALUES (?,?,1)`, [id, printingIds[0]]);
+    return id;
+  };
+  const ready = deck('Sleeved', 'ready');
+  const building = deck('New', 'building');
+
+  const card = (id) => getDeckById(id, userId).cards[0];
+  assert.equal(card(ready).is_available, 1);
+  assert.equal(card(building).is_owned, 1);
+  assert.equal(card(building).is_available, 0);
+});

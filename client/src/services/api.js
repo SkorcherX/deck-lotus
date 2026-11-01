@@ -173,10 +173,10 @@ class ApiClient {
   // server refuses to do it on a single request unless `confirmRemoveAll` says
   // the user was shown what it costs. Without it, an owned card comes back
   // untouched with `requiresConfirmation` and the counts to put in the prompt.
-  async toggleCardOwnership(cardId, { confirmRemoveAll = false, removeOne = false, printingId, isFoil } = {}) {
+  async toggleCardOwnership(cardId, { confirmRemoveAll = false, removeOne = false, addOne = false, printingId, isFoil } = {}) {
     return this.request(`/cards/${cardId}/owned`, {
       method: 'POST',
-      body: JSON.stringify({ confirmRemoveAll, removeOne, printingId, isFoil }),
+      body: JSON.stringify({ confirmRemoveAll, removeOne, addOne, printingId, isFoil }),
     });
   }
 

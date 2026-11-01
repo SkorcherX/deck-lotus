@@ -240,6 +240,12 @@ taken on GitHub — only do it when explicitly asked.
   wrapped to three lines inside the card; the deck builder shows the wording as
   a chip in the price row, and the per-card breakdown only when that chip is
   pressed. Anything that grows the label has to survive both.
+  The deck builder's per-card dot is a third, smaller surface: it shows
+  `is_available` (set in `getDeckById` from the readiness shortfalls), not
+  `is_owned`, so a card owned but held by an equally or more committed deck
+  reads grey. A green press removes one copy, a grey press adds one — never
+  the remove-every-copy toggle Browse Cards uses. Maybeboard cards are not
+  claims, so their dot falls back to plain ownership.
 - The backup format (`src/services/backupService.js`) is at version 2, and the
   rule that shapes it is the weekly MTGJSON sync: `cards` and `printings` are
   rebuilt every time, so those tables are never backed up and **nothing may be

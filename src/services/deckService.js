@@ -151,6 +151,24 @@ export function getDeckById(deckId, userId) {
     [userId, deckId]
   );
 
+  // Derived, never stored: a cached readiness count and the collection it
+  // came from can disagree, and then neither can be trusted.
+  const readiness = getDeckReadiness(userId, deckId);
+
+  // The deck builder's dot means "I can put this in the deck without taking
+  // it from another one", not merely "I own one somewhere". A card is short
+  // when readiness says copies are missing or held by a deck at least as
+  // committed as this one. Basic lands are never short. Maybeboard cards are
+  // not claims, so readiness does not judge them and plain ownership stands.
+  const short = new Set(
+    (readiness?.shortfalls || []).map((c) => c.cardId)
+  );
+  for (const card of cards) {
+    card.is_available = card.board_type === 'maybeboard'
+      ? card.is_owned
+      : (short.has(card.card_id) ? 0 : 1);
+  }
+
   return {
     ...deck,
     // Parsed, so no caller ever handles the stored JSON.
@@ -161,9 +179,7 @@ export function getDeckById(deckId, userId) {
     // out — because the owner has not yet said whether it should shrink.
     disruptions: getDisruptions(userId, deckId),
     record: getDeckRecord(deckId, userId),
-    // Derived, never stored: a cached readiness count and the collection it
-    // came from can disagree, and then neither can be trusted.
-    readiness: getDeckReadiness(userId, deckId),
+    readiness,
     bracket: deck.format === 'commander' ? getDeckBracket(deckId, cards) : null,
   };
 }
