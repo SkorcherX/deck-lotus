@@ -133,3 +133,10 @@ test('the extension lookup runs in a store page and returns an importable result
   assert.equal(total(parsed.cards[0].rows), 32.18);
   assert.deepEqual(progress, [0, 1]);
 });
+
+test("lookup.js ends on a value Firefox can clone back to the extension", async () => {
+  const { buildExtensionLookup } = await import('../src/shared/localShop.js');
+  const vm = await import('node:vm');
+  const completion = vm.runInNewContext(buildExtensionLookup(), { location: { origin: 'https://x.test' } });
+  assert.doesNotThrow(() => structuredClone(completion));
+});

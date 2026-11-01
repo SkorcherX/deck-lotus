@@ -9852,3 +9852,5 @@ body.pull-list-open { overflow: hidden; }
 .local-stores-manual { margin-bottom: 0.75rem; }
 .local-stores-manual summary { cursor: pointer; margin-bottom: 0.5rem; }
 .local-stores-notice a { color: var(--primary-light); }
+.local-stores-run-errors { flex: 1 1 100%; color: var(--danger-light); }
+.local-stores-run-errors ul { margin: 0.35rem 0 0; padding-left: 1.25rem; color: var(--text-secondary); user-select: text; }

@@ -260,6 +260,10 @@ globalThis.__deckLotusLookup = async (cards, options, onProgress) => {
   return { format: ${JSON.stringify(RESULT_FORMAT)}, version: ${RESULT_VERSION}, origin: location.origin,
     fetchedAt: new Date().toISOString(), options, cards: results };
 };
+
+// Firefox hands the file's last value back to the extension and fails when
+// it cannot be cloned — the function above would be that value.
+undefined;
 `;
 }
 

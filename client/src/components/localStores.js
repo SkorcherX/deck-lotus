@@ -50,6 +50,9 @@ let remainderQuote = null;
 let extension = null;
 // A run in progress: { storeIds, current, done, total, name, errors }.
 let run = null;
+// What went wrong in the last run. Kept on the page until dismissed or the
+// next run: a toast is gone before a store's error can be read or copied.
+let runErrors = [];
 
 function readStorage(key, fallback) {
   try {
@@ -134,7 +137,12 @@ function renderRun() {
   const el = document.getElementById('local-stores-run');
   if (!el) return;
   if (!run) {
-    el.innerHTML = '';
+    el.innerHTML = runErrors.length ? `
+      <div class="local-stores-run-errors">
+        <strong><i class="ph ph-warning"></i> Some stores could not be checked</strong>
+        <ul>${runErrors.map((e) => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" data-action="dismiss-errors">Dismiss</button>` : '';
     return;
   }
   const step = run.total
@@ -181,11 +189,11 @@ async function onExtensionMessage(event) {
       ? `${storeName(msg.storeId)}: open the store, click the Deck Lotus extension icon and choose "Allow price checks on this store".`
       : `${storeName(msg.storeId)}: ${msg.error}`);
   } else if (msg.type === 'done') {
-    const { errors } = run;
+    runErrors = run.errors;
     run = null;
     render();
-    errors.forEach((e) => showToast(e, 'error', 8000));
-    if (!errors.length && !msg.cancelled) showToast('Store prices updated');
+    if (runErrors.length) showToast(`${runErrors.length} store${runErrors.length === 1 ? '' : 's'} could not be checked`, 'error');
+    else if (!msg.cancelled) showToast('Store prices updated');
     return;
   }
   renderRun();
@@ -195,6 +203,7 @@ function startRun(storeIds) {
   const cards = getItems().map(({ name, quantity }) => ({ name, quantity }));
   const list = stores.filter((s) => storeIds.includes(s.id)).map(({ id, name, baseUrl }) => ({ id, name, baseUrl }));
   run = { storeIds, current: list[0]?.id, done: 0, total: 0, name: null, errors: [] };
+  runErrors = [];
   window.postMessage({ source: 'deck-lotus', type: 'run', stores: list, cards, options: { ...options(), delayMs: 1000 } }, location.origin);
   render();
 }
@@ -446,6 +455,9 @@ async function onClick(event) {
     startRun([Number(el.dataset.id)]);
   } else if (action === 'cancel-run') {
     window.postMessage({ source: 'deck-lotus', type: 'cancel' }, location.origin);
+  } else if (action === 'dismiss-errors') {
+    runErrors = [];
+    renderRun();
   } else if (action === 'ack-notice') {
     writeStorage(NOTICE_KEY, true);
     render();
