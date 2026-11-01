@@ -79,9 +79,12 @@ function manifestFor(browser) {
   manifest.browser_specific_settings = {
     gecko: {
       id: FIREFOX_ID,
-      strict_min_version: '128.0',
+      // 140 is the first Firefox that reads data_collection_permissions,
+      // which addons.mozilla.org now requires; 142 on Android.
+      strict_min_version: '140.0',
       data_collection_permissions: { required: ['none'] },
     },
+    gecko_android: { strict_min_version: '142.0' },
   };
   return manifest;
 }
