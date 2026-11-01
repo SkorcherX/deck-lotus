@@ -488,12 +488,22 @@ taken on GitHub — only do it when explicitly asked.
   `/api/local-stores`) compare TCGplayer Pro storefronts with each other and
   with the online price. The stores' APIs return 403 to anything that is not
   a browser on their own site, and the decision was **not** to work around
-  that: the server never contacts a store. It builds a console script from
-  `src/shared/localShop.js` (`buildLookupScript` serialises the lookup
-  functions' source, so they may reference only each other — keep it
-  import-free and build the script server-side, where nothing is minified),
-  the user runs it on the store's site (one request a second, no cart), and
-  pastes the JSON back. `importResult` files it under the store whose
+  that: the server never contacts a store. The lookup runs in the user's own
+  browser on the store's own page, one request a second, never touching a
+  cart. The normal path is the MV3 extension in `src/extension` (downloaded
+  from `/api/local-stores/extension.zip`, built by `extensionPackage.js`):
+  the user connects their Deck Lotus origin in its popup, which registers
+  `bridge.js` there; "Check prices" posts to the bridge, and `sw.js` opens
+  each store in a background tab and runs `lookup.js` in it. `lookup.js` is
+  **generated** into the zip by `buildExtensionLookup` — MV3 forbids remote
+  code, so the lookup ships inside the extension, and editing the extension
+  folder's copy is not possible (there is none). The fallback is a console
+  script (`buildLookupScript`) the user pastes and whose JSON they paste
+  back. Both serialise the lookup functions' source, so those functions may
+  reference only each other — keep `localShop.js` import-free and build both
+  server-side, where nothing is minified. Bump `manifest.json`'s version
+  whenever the lookup changes, since an installed extension does not update
+  itself. `importResult` files it under the store whose
   `base_url` matches the result's `origin`, never a store picked in the UI.
   One snapshot per store in `local_store_quotes`, keyed by card name; stores
   are backed up, quotes are not. The split plan chooses per copy without

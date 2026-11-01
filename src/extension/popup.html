@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 320px; margin: 0; padding: 14px; font: 13px/1.4 system-ui, sans-serif; background: #14161c; color: #e8e8ea; }
+    h1 { font-size: 14px; margin: 0 0 8px; }
+    p { margin: 6px 0; color: #a8abb3; }
+    button { margin: 4px 0; padding: 6px 10px; cursor: pointer; width: 100%; }
+    code { color: #e8e8ea; word-break: break-all; }
+    ul { padding-left: 18px; margin: 6px 0; }
+    li button { width: auto; margin-left: 6px; padding: 1px 6px; }
+  </style>
+</head>
+<body>
+  <h1>Deck Lotus Store Prices</h1>
+  <p>This tab: <code id="origin">—</code></p>
+  <p id="state"></p>
+  <button id="connect" hidden>This is my Deck Lotus — connect it</button>
+  <button id="store" hidden>Allow price checks on this store</button>
+  <p>Connected Deck Lotus sites:</p>
+  <ul id="sites"></ul>
+  <script src="popup.js"></script>
+</body>
+</html>

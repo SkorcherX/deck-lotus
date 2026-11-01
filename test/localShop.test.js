@@ -114,3 +114,22 @@ test('planPurchases pools stores and online, and lists the online remainder', ()
 
   assert.deepEqual(storeCoverage([{ name: 'Sol Ring', quantity: 3 }], a), { copies: 2, needed: 3, cost: 32.18 });
 });
+
+test('the extension lookup runs in a store page and returns an importable result', async () => {
+  const { buildExtensionLookup } = await import('../src/shared/localShop.js');
+  const page = {
+    location: { origin: 'https://moxvalleygames.tcgplayerpro.com' },
+    setTimeout: (f) => f(),
+    fetch: async (path, init) => ({ ok: true, json: async () => (init?.method === 'POST'
+      ? { products: { totalItems: 3, items: SOL_RING_PRODUCTS } }
+      : SOL_RING_PRODUCTS.map((p) => ({ productId: p.id, skus: SOL_RING_SKUS[p.id] }))) }),
+  };
+  page.globalThis = page;
+  new Function(...Object.keys(page), buildExtensionLookup())(...Object.values(page));
+  const progress = [];
+  const result = await page.__deckLotusLookup([{ name: 'Sol Ring', quantity: 2 }], { minCondition: 'LP' }, (i) => progress.push(i));
+  const parsed = parseLookupResult(JSON.stringify(result));
+  assert.equal(parsed.origin, 'https://moxvalleygames.tcgplayerpro.com');
+  assert.equal(total(parsed.cards[0].rows), 32.18);
+  assert.deepEqual(progress, [0, 1]);
+});

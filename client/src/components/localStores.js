@@ -19,6 +19,10 @@ const OPTIONS_KEY = 'deckLotus.localStores.options';
 let stores = null;
 let getItems = () => [];
 let remainderQuote = null;
+// The browser extension, once its bridge on this page answers: { version }.
+let extension = null;
+// A run in progress: { storeIds, current, done, total, name, errors }.
+let run = null;
 
 function readStorage(key, fallback) {
   try {
@@ -91,6 +95,81 @@ export function initLocalStores(itemsGetter) {
   body.addEventListener('click', onClick);
   body.addEventListener('change', onChange);
   body.addEventListener('submit', onSubmit);
+  window.addEventListener('message', onExtensionMessage);
+  window.postMessage({ source: 'deck-lotus', type: 'ping' }, location.origin);
+}
+
+function storeName(id) {
+  return stores?.find((s) => s.id === id)?.name || 'store';
+}
+
+function renderRun() {
+  const el = document.getElementById('local-stores-run');
+  if (!el) return;
+  if (!run) {
+    el.innerHTML = '';
+    return;
+  }
+  const step = run.total
+    ? `card ${Math.min(run.done + 1, run.total)} of ${run.total}${run.name ? ` — ${escapeHtml(run.name)}` : ''}`
+    : 'opening the store…';
+  el.innerHTML = `<i class="ph ph-circle-notch"></i> Checking <strong>${escapeHtml(storeName(run.current))}</strong>: ${step}
+    <span class="local-stores-hint">(store ${run.storeIds.indexOf(run.current) + 1} of ${run.storeIds.length}; a tab opens in the background)</span>
+    <button type="button" class="btn btn-secondary btn-sm" data-action="cancel-run">Stop</button>`;
+}
+
+/** Messages from the extension's bridge script on this page. */
+async function onExtensionMessage(event) {
+  const msg = event.data;
+  if (event.source !== window || msg?.source !== 'deck-lotus-extension') return;
+  if (msg.type === 'ready') {
+    if (!extension) {
+      extension = { version: msg.version };
+      if (stores) render();
+    }
+    return;
+  }
+  if (!run) return;
+  if (msg.type === 'busy') {
+    showToast('The extension is already checking prices in another tab', 'warning');
+    run = null;
+    render();
+    return;
+  }
+  if (msg.type === 'store-start') {
+    Object.assign(run, { current: msg.storeId, done: 0, total: 0, name: null });
+  } else if (msg.type === 'progress') {
+    Object.assign(run, { done: msg.done, total: msg.total, name: msg.name });
+  } else if (msg.type === 'store-result') {
+    try {
+      const store = await api.importLocalStoreResults(JSON.stringify(msg.result));
+      stores = stores.map((s) => (s.id === store.id ? store : s));
+      remainderQuote = null;
+      render();
+    } catch (err) {
+      run.errors.push(`${storeName(msg.storeId)}: ${err.message}`);
+    }
+  } else if (msg.type === 'store-error') {
+    run.errors.push(msg.error === 'needs-permission'
+      ? `${storeName(msg.storeId)}: open the store, click the Deck Lotus extension icon and choose "Allow price checks on this store".`
+      : `${storeName(msg.storeId)}: ${msg.error}`);
+  } else if (msg.type === 'done') {
+    const { errors } = run;
+    run = null;
+    render();
+    errors.forEach((e) => showToast(e, 'error', 8000));
+    if (!errors.length && !msg.cancelled) showToast('Store prices updated');
+    return;
+  }
+  renderRun();
+}
+
+function startRun(storeIds) {
+  const cards = getItems().map(({ name, quantity }) => ({ name, quantity }));
+  const list = stores.filter((s) => storeIds.includes(s.id)).map(({ id, name, baseUrl }) => ({ id, name, baseUrl }));
+  run = { storeIds, current: list[0]?.id, done: 0, total: 0, name: null, errors: [] };
+  window.postMessage({ source: 'deck-lotus', type: 'run', stores: list, cards, options: { ...options(), delayMs: 1000 } }, location.origin);
+  render();
 }
 
 /** Called whenever the shopping list re-renders. */
@@ -124,8 +203,8 @@ function render() {
       <div class="local-stores-notice">
         <i class="ph ph-info"></i>
         <div>
-          <strong>Before your first lookup.</strong> The script asks the store's own site for each card, one
-          request per second, from your browser. Nothing is added to a cart and Deck Lotus never contacts the
+          <strong>Before your first lookup.</strong> Prices are looked up on the store's own site, one card a
+          second, from your browser. Nothing is added to a cart and Deck Lotus never contacts the
           store itself. Check the store's terms of use if you are unsure they are happy with it.
           <div><button type="button" class="btn btn-secondary btn-sm" data-action="ack-notice">Got it</button></div>
         </div>
@@ -139,6 +218,8 @@ function render() {
               <i class="ph ph-arrow-square-out"></i></a>
             <div class="local-stores-hint">${s.fetchedAt ? `Prices from ${escapeHtml(ago(s.fetchedAt))}` : 'Not looked up yet'}</div>
           </div>
+          ${extension ? `<button type="button" class="btn btn-secondary btn-sm" data-action="run-one" data-id="${s.id}" ${run ? 'disabled' : ''} title="Check prices at this store">
+            <i class="ph ph-arrows-clockwise"></i></button>` : ''}
           <button type="button" class="btn btn-secondary btn-sm" data-action="remove-store" data-id="${s.id}" title="Remove store">
             <i class="ph ph-trash"></i>
           </button>
@@ -160,25 +241,53 @@ function render() {
             </select>
           </label>
           <label><input type="checkbox" data-option="allowFoil" ${opts.allowFoil ? 'checked' : ''}> Foils are fine</label>
-          <button type="button" class="btn btn-primary btn-sm" data-action="copy-script">
-            <i class="ph ph-copy"></i> Copy lookup script (${items.length} cards)
-          </button>
+          ${extension ? `
+            <button type="button" class="btn btn-primary btn-sm" data-action="run-all" ${run ? 'disabled' : ''}>
+              <i class="ph ph-storefront"></i> Check prices at ${stores.length === 1 ? escapeHtml(stores[0].name) : `all ${stores.length} stores`} (${items.length} cards)
+            </button>` : ''}
         </div>
-        <div data-slot="script-fallback"></div>
-        <ol class="local-stores-hint">
-          <li>Open a store above, press F12 and choose <strong>Console</strong>.</li>
-          <li>Paste the script and press Enter. The first time, Chrome asks you to type <code>allow pasting</code>.</li>
-          <li>When it finishes, press <strong>Copy results</strong> on the panel it shows, and paste them here.
-            The same script works on every store.</li>
-        </ol>
-        <form class="local-stores-paste" data-form="import">
-          <textarea class="form-control" name="result" rows="2" placeholder="Paste results here"></textarea>
-          <button type="submit" class="btn btn-secondary btn-sm"><i class="ph ph-upload-simple"></i> Import results</button>
-        </form>
+        <div id="local-stores-run" class="local-stores-run"></div>
+        ${extension ? `
+          <p class="local-stores-hint">About a second per card per store. Keep this page open while it runs.</p>` : `
+          <div class="local-stores-notice">
+            <i class="ph ph-puzzle-piece"></i>
+            <div>
+              <strong>Install the Deck Lotus browser extension to check prices with one click.</strong>
+              Stores only answer price lookups from a browser on their own site, so the extension opens each store
+              in a background tab and looks the cards up there. One-time setup in Chrome or Edge:
+              <ol>
+                <li><a href="/api/local-stores/extension.zip" download>Download the extension</a> and unzip it.</li>
+                <li>Open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong>, choose
+                  <strong>Load unpacked</strong> and pick the unzipped <code>deck-lotus-store-prices</code> folder.</li>
+                <li>Back on this page, click the extension's icon and choose <strong>connect</strong>.</li>
+              </ol>
+              Stores on <code>tcgplayerpro.com</code> work straight away. For a store on its own domain, open it once
+              and choose "Allow price checks on this store" in the extension.
+            </div>
+          </div>`}
+        <details class="local-stores-manual">
+          <summary class="local-stores-hint">Or run the lookup by hand in the store's console</summary>
+          <div class="local-stores-options">
+            <button type="button" class="btn btn-secondary btn-sm" data-action="copy-script">
+              <i class="ph ph-copy"></i> Copy lookup script
+            </button>
+          </div>
+          <div data-slot="script-fallback"></div>
+          <ol class="local-stores-hint">
+            <li>Open a store above, press F12 and choose <strong>Console</strong>.</li>
+            <li>Paste the script and press Enter. The first time, Chrome asks you to type <code>allow pasting</code>.</li>
+            <li>When it finishes, press <strong>Copy results</strong> on the panel it shows, and paste them here.</li>
+          </ol>
+          <form class="local-stores-paste" data-form="import">
+            <textarea class="form-control" name="result" rows="2" placeholder="Paste results here"></textarea>
+            <button type="submit" class="btn btn-secondary btn-sm"><i class="ph ph-upload-simple"></i> Import results</button>
+          </form>
+        </details>
       </div>` : ''}
 
     <div data-slot="comparison">${renderComparison(items)}</div>
   `;
+  renderRun();
 }
 
 function cellFor(card, result) {
@@ -307,7 +416,13 @@ async function onClick(event) {
   const body = document.getElementById('local-stores-body');
   const action = el.dataset.action;
 
-  if (action === 'ack-notice') {
+  if (action === 'run-all') {
+    startRun(stores.map((s) => s.id));
+  } else if (action === 'run-one') {
+    startRun([Number(el.dataset.id)]);
+  } else if (action === 'cancel-run') {
+    window.postMessage({ source: 'deck-lotus', type: 'cancel' }, location.origin);
+  } else if (action === 'ack-notice') {
     writeStorage(NOTICE_KEY, true);
     render();
   } else if (action === 'remove-store') {

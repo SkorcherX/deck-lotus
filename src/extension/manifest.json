@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Deck Lotus Store Prices",
+  "version": "1.0.0",
+  "description": "Checks your local stores' TCGplayer Pro prices for Deck Lotus, in your own browser.",
+  "permissions": ["scripting", "storage"],
+  "host_permissions": ["https://*.tcgplayerpro.com/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "sw.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Deck Lotus Store Prices" }
+}

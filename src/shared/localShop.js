@@ -235,6 +235,31 @@ console.log('Deck Lotus: results are also in window.deckLotusResult');
 }
 
 /**
+ * lookup.js for the browser extension (src/extension): the same lookup
+ * functions, exposed as one global the extension calls inside a store tab.
+ * Extensions may not run code fetched at runtime, so this is generated into
+ * the extension's download rather than sent with each request.
+ */
+export function buildExtensionLookup() {
+  return `// Generated from src/shared/localShop.js — do not edit by hand.
+${SNIPPET_FUNCTIONS.map((fn) => fn.toString()).join('\n\n')}
+
+globalThis.__deckLotusLookup = async (cards, options, onProgress) => {
+  async function fetchJson(path, body) {
+    const res = await fetch(path, body
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'omit' }
+      : { credentials: 'omit' });
+    if (!res.ok) { const e = new Error('HTTP ' + res.status + ' ' + path.split('?')[0]); e.status = res.status; throw e; }
+    return res.json();
+  }
+  const results = await lookupCards(cards, options, { fetchJson, onProgress });
+  return { format: ${JSON.stringify(RESULT_FORMAT)}, version: ${RESULT_VERSION}, origin: location.origin,
+    fetchedAt: new Date().toISOString(), options, cards: results };
+};
+`;
+}
+
+/**
  * Check and tidy a pasted result. Everything in it came from the clipboard,
  * so numbers are coerced, strings cut short and unknown fields dropped.
  * Throws with a message fit to show the user.

@@ -9837,3 +9837,18 @@ body.pull-list-open { overflow: hidden; }
 .local-stores-plan h4 { margin: 0 0 0.5rem; }
 .local-stores-plan ul { margin: 0 0 0.75rem; padding-left: 1.25rem; font-size: 0.9rem; }
 .local-stores-quote { max-width: 26rem; margin-bottom: 0.5rem; }
+.local-stores-run:not(:empty) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  font-size: 0.85rem;
+}
+.local-stores-notice ol { margin: 0.5rem 0; padding-left: 1.25rem; }
+.local-stores-manual { margin-bottom: 0.75rem; }
+.local-stores-manual summary { cursor: pointer; margin-bottom: 0.5rem; }
+.local-stores-notice a { color: var(--primary-light); }

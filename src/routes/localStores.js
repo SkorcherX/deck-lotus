@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 import {
   listStores, addStore, updateStore, removeStore, buildScript, importResult, clearResult, LocalStoreError,
 } from '../services/localStoreService.js';
+import { buildExtensionZip, extensionVersion } from '../services/extensionPackage.js';
 
 const router = express.Router();
 
@@ -16,6 +17,21 @@ function handle(fn) {
     }
   };
 }
+
+/**
+ * GET /api/local-stores/extension.zip — the store-price browser extension.
+ * Public on purpose: it is the app's own code, holds nothing of the user's,
+ * and a plain link cannot carry the Authorization header.
+ */
+router.get('/extension.zip', (req, res) => {
+  res.set({
+    'Content-Type': 'application/zip',
+    'Content-Disposition': 'attachment; filename="deck-lotus-store-prices.zip"',
+  });
+  res.send(buildExtensionZip());
+});
+
+router.get('/extension', (req, res) => res.json({ version: extensionVersion() }));
 
 /** GET /api/local-stores — the caller's stores, each with its latest pasted result. */
 router.get('/', authenticate, handle((req, res) => res.json(listStores(req.user.id))));
