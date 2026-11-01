@@ -191,6 +191,7 @@ async function onExtensionMessage(event) {
       stores = stores.map((s) => (s.id === store.id ? store : s));
       remainderQuote = null;
       render();
+      if (compareEl?.offsetParent) paintCompare();
     } catch (err) {
       run.errors.push(`${storeName(msg.storeId)}: ${err.message}`);
     }
@@ -219,22 +220,13 @@ function startRun(storeIds) {
 }
 
 /** Called whenever the shopping list re-renders. */
-export async function refreshLocalStores() {
-  const section = document.getElementById('local-stores-section');
-  if (!section) return;
+/**
+ * Stores and cheapest-printing prices for the current list. Shared by the
+ * Local stores, Compare and TCGplayer tabs; each fetch happens once.
+ */
+async function ensureData() {
   const items = getItems();
-  section.style.display = items.length ? '' : 'none';
-  if (!items.length) return;
-  remainderQuote = null;
-  if (stores == null) {
-    try {
-      stores = await api.getLocalStores();
-    } catch (err) {
-      document.getElementById('local-stores-body').innerHTML =
-        `<div class="local-stores-error">${escapeHtml(err.message)}</div>`;
-      return;
-    }
-  }
+  if (stores == null) stores = await api.getLocalStores();
   const missing = [...new Set(items.map((i) => i.cardId).filter((id) => id != null && !(id in cheapest)))];
   if (missing.length) {
     try {
@@ -245,7 +237,190 @@ export async function refreshLocalStores() {
       // The deck's own printing price stays as the estimate.
     }
   }
+}
+
+/** The Local stores tab. */
+export async function refreshLocalStores() {
+  const body = document.getElementById('local-stores-body');
+  if (!body) return;
+  if (!getItems().length) {
+    body.innerHTML = '<div class="local-stores-hint">There is nothing on your list to price.</div>';
+    return;
+  }
+  remainderQuote = null;
+  try {
+    await ensureData();
+  } catch (err) {
+    body.innerHTML = `<div class="local-stores-error">${escapeHtml(err.message)}</div>`;
+    return;
+  }
   render();
+}
+
+// The Compare tab, remembered so a finished store check can refresh it.
+let compareEl = null;
+let goVenue = () => {};
+let compareQuote = null;
+
+/**
+ * The Compare tab: one number per way of buying, side by side, each linking
+ * to the tab that explains it. This is the question the page exists to
+ * answer, so it is the first tab rather than a footnote under one of them.
+ */
+export async function renderCompare(el, onVenue) {
+  if (!el) return;
+  compareEl = el;
+  if (onVenue) goVenue = onVenue;
+  const items = getItems();
+  if (!items.length) {
+    el.innerHTML = '<div class="local-stores-hint">There is nothing on your list to price.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="local-stores-hint">Working it out…</div>';
+  try {
+    await ensureData();
+  } catch (err) {
+    el.innerHTML = `<div class="local-stores-error">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  paintCompare();
+}
+
+function paintCompare() {
+  if (!compareEl) return;
+  const items = getItems();
+  const copies = items.reduce((n, c) => n + c.quantity, 0);
+  const onlineTotal = items.reduce((n, c) => n + (c.onlineUnit ?? 0) * c.quantity, 0);
+  const unpriced = items.filter((c) => c.onlineUnit == null).length;
+  const quoted = (stores || []).filter((st) => st.result);
+  const plan = planPurchases(items, quoted);
+  const localSplit = quoted.reduce((n, st) => n + plan.totals[st.id].cost, 0);
+  const stale = (st) => items.filter((c) => !st.result.cards.some((r) => r.name.toLowerCase() === c.name.toLowerCase())).length;
+
+  const tile = (title, value, note, venue, extra = '') => `
+    <div class="local-stores-tile shop-compare-tile">
+      <div class="local-stores-hint">${title}</div>
+      <div class="stat-value">${value}</div>
+      <div class="local-stores-hint">${note}</div>
+      ${extra}
+      ${venue ? `<button type="button" class="btn btn-secondary btn-sm" data-compare-venue="${venue}">Details <i class="ph ph-arrow-right"></i></button>` : ''}
+    </div>`;
+
+  const t = compareQuote?.totals;
+  compareEl.innerHTML = `
+    <p class="local-stores-hint" style="margin-top:0;">${copies} cop${copies === 1 ? 'y' : 'ies'} of ${items.length} card${items.length === 1 ? '' : 's'}.</p>
+    <div class="local-stores-summary">
+      ${tile('Online, cheapest printings', money(onlineTotal),
+        `TCGplayer market, before shipping${unpriced ? ` · ${unpriced} unpriced` : ''}`, 'tcgplayer')}
+      ${tile('Mana Pool, delivered', t ? money(t.total_cents / 100) : compareQuote?.error ? '—' : '?',
+        t ? `${t.seller_count ?? '?'} sellers, shipping and fees included`
+          : compareQuote?.error ? escapeHtml(compareQuote.error) : 'A real quote with shipping and fees',
+        'manapool',
+        t ? '' : '<button type="button" class="btn btn-primary btn-sm" data-compare-action="quote">Get quote</button>')}
+      ${quoted.map((st) => {
+        const cov = storeCoverage(items, st.result);
+        const missing = stale(st);
+        return tile(`${escapeHtml(st.name)} alone (pick up)`, money(cov.cost),
+          `${cov.copies} of ${cov.needed} copies · ${escapeHtml(ago(st.fetchedAt))}${missing ? ` · ${missing} not checked` : ''}`, 'local');
+      }).join('')}
+      ${(stores || []).filter((st) => !st.result).map((st) =>
+        tile(escapeHtml(st.name), '—', 'Prices not checked yet', 'local')).join('')}
+      ${!(stores || []).length ? tile('Local stores', '—', 'Add the stores near you to compare their shelves.', 'local') : ''}
+    </div>
+    ${quoted.length ? `
+      <div class="local-stores-plan">
+        <h4>Cheapest split</h4>
+        <ul>
+          ${quoted.filter((st) => plan.totals[st.id].copies).map((st) => `
+            <li><strong>${escapeHtml(st.name)}</strong> (pick up): ${plan.totals[st.id].copies} copies, ${money(plan.totals[st.id].cost)}</li>`).join('')}
+          <li><strong>Online</strong>: ${plan.online.reduce((n, i) => n + i.quantity, 0)} copies, about ${money(plan.onlineEstimate)} before shipping</li>
+        </ul>
+        <p class="local-stores-hint">About ${money(localSplit + plan.onlineEstimate)} before shipping. The Local stores tab
+          quotes the online part on Mana Pool for a delivered total.</p>
+      </div>` : ''}
+  `;
+
+  compareEl.querySelectorAll('[data-compare-venue]').forEach((btn) => {
+    btn.addEventListener('click', () => goVenue(btn.dataset.compareVenue));
+  });
+  compareEl.querySelector('[data-compare-action="quote"]')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = 'Quoting…';
+    compareQuote = await quoteOnManaPool(items);
+    paintCompare();
+  });
+}
+
+/** A Mana Pool optimizer quote for some items, or `{ error }`. */
+async function quoteOnManaPool(items) {
+  const cart = items.map(({ name, quantity, setCode, collectorNumber }) => ({ name, quantity, setCode, collectorNumber }));
+  try {
+    return await api.manaPoolOptimize(cart, 'lowest_price');
+  } catch (err) {
+    return {
+      error: err.message.includes('not configured')
+        ? 'Mana Pool is not set up on this server'
+        : err.message,
+    };
+  }
+}
+
+/**
+ * The TCGplayer tab. Their API is closed to new developers, so this cannot
+ * fetch live listings. It prices the list from the stored TCGplayer market
+ * data and hands the list to TCGplayer's Mass Entry, which builds a cart on
+ * their site.
+ */
+export async function renderTcgplayer(el) {
+  if (!el) return;
+  const items = getItems();
+  if (!items.length) {
+    el.innerHTML = '<div class="local-stores-hint">There is nothing on your list to price.</div>';
+    return;
+  }
+  try {
+    await ensureData();
+  } catch {
+    // Prices fall back to the deck's own printings.
+  }
+  const list = getItems();
+  const total = list.reduce((n, c) => n + (c.onlineUnit ?? 0) * c.quantity, 0);
+  const lines = list.map((c) => `${c.quantity} ${c.name}`);
+  const massEntry = `https://www.tcgplayer.com/massentry?productline=Magic&c=${encodeURIComponent(lines.join('||'))}`;
+
+  el.innerHTML = `
+    <p class="local-stores-hint" style="margin-top:0;">TCGplayer has no public API for live listings, so this uses
+      their market prices from the daily price update, at the cheapest printing of each card.</p>
+    <div class="local-stores-options">
+      <span class="stat-value">${money(total)}</span>
+      <span class="local-stores-hint">estimated, before shipping</span>
+    </div>
+    <div class="local-stores-options">
+      <a class="btn btn-primary btn-sm" href="${escapeHtml(massEntry)}" target="_blank" rel="noopener">
+        <i class="ph ph-arrow-square-out"></i> Open in TCGplayer Mass Entry
+      </a>
+      <button type="button" class="btn btn-secondary btn-sm" data-tcg-copy><i class="ph ph-copy"></i> Copy list</button>
+    </div>
+    <p class="local-stores-hint">Mass Entry finds sellers for the whole list on TCGplayer. If it opens empty, paste the
+      copied list into its box.</p>
+    <div data-slot="tcg-fallback"></div>
+    <div class="analytics-table-wrap">
+      <table class="analytics-table">
+        <thead><tr><th>Card</th><th class="num">Qty</th><th>Cheapest printing</th><th class="num">Est.</th></tr></thead>
+        <tbody>
+          ${list.map((c) => `<tr>
+            <td>${escapeHtml(c.name)}</td>
+            <td class="num">${c.quantity}</td>
+            <td>${c.onlineSet ? `${escapeHtml(c.onlineSet.toUpperCase())} #${escapeHtml(c.collectorNumber)}` : '<span class="local-stores-hint">as listed</span>'}</td>
+            <td class="num">${c.onlineUnit != null ? money(c.onlineUnit * c.quantity) : '<span class="local-stores-hint">no price</span>'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  el.querySelector('[data-tcg-copy]').addEventListener('click', async () => {
+    if (await copyText(lines.join('\n'), el.querySelector('[data-slot="tcg-fallback"]'))) showToast('List copied');
+  });
 }
 
 function render() {

@@ -95,3 +95,12 @@ describe('building a URL from a route', () => {
     assert.equal(pathFor('not-a-page'), '/decks');
   });
 });
+
+test('the shopping steps have their own paths, and round-trip', async () => {
+  const { parsePath, pathFor } = await import('../client/src/utils/router.js');
+  assert.deepEqual(parsePath('/shopping/list'), { page: 'shopping', step: 'list' });
+  assert.deepEqual(parsePath('/shopping/buy/'), { page: 'shopping', step: 'buy' });
+  assert.deepEqual(parsePath('/shopping/nope'), { page: 'decks' });
+  assert.equal(pathFor('shopping', { step: 'buy' }), '/shopping/buy');
+  assert.equal(pathFor('shopping', {}), '/shopping');
+});

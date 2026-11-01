@@ -159,12 +159,16 @@ const IS_BASIC_LAND = isBasicLandSql('c');
  * counted quantities, owning a single copy removed the card outright — which
  * hid exactly the partial playsets the page exists to fill.
  */
-export function getShoppingList(userId, deckIds, { includeContested = false } = {}) {
+export function getShoppingList(userId, deckIds, { includeContested = false, includeWanted = true } = {}) {
+  // `includeWanted` lets "cards my decks are missing" leave the hand-built
+  // wanted list out. It defaults on, which is what every older caller meant.
+  const wanted = includeWanted ? wantedCards(userId) : [];
+
   // No decks selected is no longer the same as nothing to shop for: the
   // wanted list stands on its own, and returning early here is what used to
   // make the page go blank the moment you deselected everything.
   if (!deckIds || deckIds.length === 0) {
-    return groupIntoSets(wantedCards(userId), 0);
+    return groupIntoSets(wanted, 0);
   }
 
   const placeholders = deckIds.map(() => '?').join(',');
@@ -226,7 +230,7 @@ export function getShoppingList(userId, deckIds, { includeContested = false } = 
 
   const cards = db.all(query, params);
 
-  const list = groupIntoSets([...cards, ...wantedCards(userId)], deckIds.length);
+  const list = groupIntoSets([...cards, ...wanted], deckIds.length);
 
   // A contested row without the name of the deck holding the copy reads as the
   // list quoting a card you already have. The bulk view learned this first and
@@ -617,7 +621,7 @@ function decksHoldingCards(userId, cardIds, excludeDeckIds) {
 export function getBulkBinList(userId, deckIds, options = {}) {
   const threshold = options.threshold != null ? Number(options.threshold) : getBulkThreshold(userId);
 
-  const shopping = getShoppingList(userId, deckIds, { includeContested: true });
+  const shopping = getShoppingList(userId, deckIds, { includeContested: true, includeWanted: options.includeWanted !== false });
   const entries = flattenShoppingSets(shopping.sets);
   const cheapest = cheapestPrintingsFor(entries.map((e) => e.cardId));
 

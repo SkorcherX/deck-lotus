@@ -706,6 +706,9 @@ function renderReadinessPanel(readiness) {
       <div class="deck-readiness-group">
         <h4><i class="ph ph-shopping-cart"></i> Not in your collection (${readiness.missingCopies})</h4>
         <ul>${list(toBuy, (c) => c.missing)}</ul>
+        <button type="button" class="btn btn-primary btn-sm" data-shop-missing>
+          <i class="ph ph-shopping-cart"></i> Shop for missing cards
+        </button>
       </div>`);
   }
 
@@ -729,6 +732,12 @@ function renderReadinessPanel(readiness) {
       <div class="deck-readiness-groups">${sections.join('')}</div>
     </div>
   `;
+  // Straight to step 2 of the Shopping page with just this deck: the place a
+  // shortfall is noticed is the place to start buying it.
+  panel.querySelector('[data-shop-missing]')?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('shopping:for-decks', { detail: { deckIds: [currentDeckId] } }));
+    window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'shopping', step: 'list' } }));
+  });
 }
 
 /**

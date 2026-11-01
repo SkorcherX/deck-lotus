@@ -505,12 +505,13 @@ class ApiClient {
   }
 
   // Shopping methods
-  async getBulkBinList(deckIds, { threshold, commonsOnly, includeContested } = {}) {
+  async getBulkBinList(deckIds, { threshold, commonsOnly, includeContested, includeWanted } = {}) {
     const params = new URLSearchParams();
     if (deckIds && deckIds.length) params.set('deckIds', deckIds.join(','));
     if (threshold != null) params.set('threshold', String(threshold));
     if (commonsOnly === false) params.set('commonsOnly', 'false');
     if (includeContested === false) params.set('includeContested', 'false');
+    if (includeWanted === false) params.set('includeWanted', 'false');
 
     const query = params.toString();
     return this.request(`/shopping/bulk${query ? `?${query}` : ''}`);
@@ -526,12 +527,13 @@ class ApiClient {
   // `includeContested` widens the list to copies you own but have committed to
   // a deck you did not select. They need no purchase, so they are off unless
   // the page asks — see the note on GET /api/shopping.
-  async getShoppingList(deckIds, { includeContested = false } = {}) {
+  async getShoppingList(deckIds, { includeContested = false, includeWanted = true } = {}) {
     const params = new URLSearchParams();
     if (deckIds && deckIds.length > 0) {
       params.append('deckIds', deckIds.join(','));
     }
     if (includeContested) params.append('includeContested', 'true');
+    if (!includeWanted) params.append('includeWanted', 'false');
     return this.request(`/shopping?${params}`);
   }
 

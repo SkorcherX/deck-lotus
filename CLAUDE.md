@@ -121,6 +121,22 @@ taken on GitHub — only do it when explicitly asked.
   quotes a playset as five. Everything downstream (filters, totals, the Mana
   Pool cart optimizer, the export) reads that one number, so a new consumer
   should use it rather than re-deriving a count from `decks`.
+- The Shopping page is a three-step flow (`client/src/components/shopping.js`):
+  what you need (`/shopping`) → your list (`/shopping/list`) → where to buy
+  (`/shopping/buy`, tabs Compare / Local stores / Mana Pool / TCGplayer /
+  Bulk bins). The step is in the URL (`parsePath` returns `step`; `main.js`
+  threads it into `page:shopping`); the source (decks or your own list), deck
+  selection, view and tab are remembered per browser. A bare `/shopping` with
+  a list already chosen jumps to step 2 — but not on Back and not on an
+  in-page step click (`steppingWithin`), or step 1 could never be reached.
+  "Cards my decks are missing" may leave the wanted list out:
+  `getShoppingList`/`getBulkBinList` take `includeWanted` (default on, which
+  is what older callers meant). The search box is on every step and always
+  adds to the wanted list. TCGplayer has no live lookup — their API is closed
+  to new developers — so its tab prices from stored market data and hands the
+  list to Mass Entry; the prefilled `massentry?c=` link format is
+  undocumented, hence the Copy list beside it. The deck builder's "Shop for
+  missing cards" sends `shopping:for-decks` before navigating to step 2.
 - The weekly MTGJSON sync runs on a cron in `src/services/syncService.js`,
   and node-cron reads a bare expression in the *process's* timezone — which in
   a container with no `TZ` is UTC. "Sundays at 3 AM" therefore fired at 8 PM

@@ -127,7 +127,7 @@ class App {
     // pasted — rather than always the deck list. 'replace' because this is
     // the first entry in the session and there is nothing to go back to.
     const route = parsePath(window.location.pathname);
-    this.showPage(route.page, { history: 'replace', deckId: route.deckId });
+    this.showPage(route.page, { history: 'replace', deckId: route.deckId, step: route.step });
   }
 
   renderFooterTheme() {
@@ -154,7 +154,7 @@ class App {
    * a popstate, where the browser has already moved and pushing again would
    * fight it.
    */
-  showPage(pageName, { history = 'push', deckId = null } = {}) {
+  showPage(pageName, { history = 'push', deckId = null, step = null } = {}) {
     // Components that hold a resource while their page is visible — the scan
     // page's camera stream — need to know they are being navigated away from.
     if (this.currentPage && this.currentPage !== pageName) {
@@ -164,7 +164,7 @@ class App {
     this.currentPage = pageName;
 
     if (history !== 'none') {
-      setRoute(pageName, { deckId }, { replace: history === 'replace' });
+      setRoute(pageName, { deckId, step }, { replace: history === 'replace' });
     }
 
     // The deck builder is a page like any other as far as history is
@@ -209,7 +209,7 @@ class App {
         window.dispatchEvent(new CustomEvent('page:deck-generator'));
         break;
       case 'shopping':
-        window.dispatchEvent(new CustomEvent('page:shopping'));
+        window.dispatchEvent(new CustomEvent('page:shopping', { detail: { step, fromHistory: history === 'none' } }));
         break;
       case 'inventory':
         window.dispatchEvent(new CustomEvent('page:inventory'));
@@ -310,15 +310,16 @@ class App {
       // that goes back into the dead end.
       this.showPage(page, {
         deckId: e.detail?.deckId ?? null,
+        step: e.detail?.step ?? null,
         history: e.detail?.replace ? 'replace' : 'push',
       });
     });
 
     // Back and forward. The browser has already moved by the time this fires,
     // so the page is shown without touching history again.
-    onPopState(({ page, deckId }) => {
+    onPopState(({ page, deckId, step }) => {
       if (!api.token) return this.showAuthPage();
-      this.showPage(page, { history: 'none', deckId });
+      this.showPage(page, { history: 'none', deckId, step });
     });
   }
 

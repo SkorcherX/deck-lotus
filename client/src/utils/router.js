@@ -85,6 +85,10 @@ export function parsePath(pathname) {
   // sends the user to the trades list instead (see tradeShop.js).
   if (clean === '/trades/shop') return { page: 'trade-shop' };
 
+  // The shopping page's later steps. Step 1 is the bare /shopping.
+  const shopMatch = clean.match(/^\/shopping\/(list|buy)$/);
+  if (shopMatch) return { page: 'shopping', step: shopMatch[1] };
+
   const page = PAGE_BY_PATH.get(clean);
   return page ? { page } : { page: DEFAULT_PAGE };
 }
@@ -95,6 +99,10 @@ export function pathFor(page, params = {}) {
     // A deck builder with no id has nothing to show, so it addresses the deck
     // list instead of inventing a URL that would 404 back to the default.
     return params.deckId != null ? `/decks/${params.deckId}` : '/decks';
+  }
+
+  if (page === 'shopping' && (params.step === 'list' || params.step === 'buy')) {
+    return `/shopping/${params.step}`;
   }
 
   return PATH_BY_PAGE.get(page) || PATH_BY_PAGE.get(DEFAULT_PAGE);

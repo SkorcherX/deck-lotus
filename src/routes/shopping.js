@@ -49,6 +49,7 @@ router.get('/', authenticate, (req, res, next) => {
   try {
     const shoppingList = getShoppingList(req.user.id, parseDeckIds(req.query.deckIds), {
       includeContested: req.query.includeContested === 'true',
+      includeWanted: req.query.includeWanted !== 'false',
     });
     res.json(shoppingList);
   } catch (error) {
@@ -177,6 +178,7 @@ router.get('/bulk', authenticate, (req, res, next) => {
       // Both default to on, so only an explicit 'false' turns them off.
       commonsOnly: commonsOnly !== 'false',
       includeContested: includeContested !== 'false',
+      includeWanted: req.query.includeWanted !== 'false',
     });
 
     res.json(list);

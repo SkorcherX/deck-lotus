@@ -1211,32 +1211,23 @@
             <!-- Shopping Page -->
             <div id="shopping-page" class="page hidden">
                 <div class="page-header">
-                    <h2>Shopping List</h2>
-                    <p style="color: var(--text-secondary); margin-top: 0.5rem;">Find cards you need from your decks, organized by set for easy LGS shopping</p>
+                    <h2>Shopping</h2>
+                    <p style="color: var(--text-secondary); margin-top: 0.5rem;">Work out what you need, then where it is cheapest to buy.</p>
                 </div>
 
                 <div class="shopping-content">
                     <!--
-                      Cards wanted on their own account, with no deck behind
-                      them. Placed above the deck selector because it is the
-                      half you add to by hand — the deck half needs choosing,
-                      not entering.
+                      Search is on every step: adding one card is the commonest
+                      errand, and it should never need a mode picked first. What
+                      it finds goes on the wanted list, which every step reads.
                     -->
-                    <div class="shopping-section">
-                        <div class="shopping-wanted-head">
-                            <h3 style="margin: 0;">Cards You Want</h3>
-                            <span id="shopping-wanted-count" class="shopping-wanted-count"></span>
-                            <button id="shopping-wanted-clear" class="btn btn-secondary btn-sm hidden">
-                                Clear list
-                            </button>
-                        </div>
-
+                    <div class="shopping-section shop-search">
                         <div class="shopping-wanted-entry">
                             <div class="shopping-wanted-search">
                                 <input
                                     type="text"
                                     id="shopping-wanted-search"
-                                    placeholder="Search for a card to shop for..."
+                                    placeholder="Search for a card to add to your list..."
                                     autocomplete="off"
                                 />
                                 <div id="shopping-wanted-results" class="search-results hidden"></div>
@@ -1250,81 +1241,127 @@
                                 <option value="special">Special</option>
                                 <option value="bonus">Bonus</option>
                             </select>
-                            <button id="shopping-wanted-bulk-toggle" class="btn btn-secondary">
-                                <i class="ph ph-list-plus btn-icon"></i>
-                                <span class="btn-text">Paste a list</span>
+                        </div>
+                    </div>
+
+                    <!-- The three steps. Each is its own URL, so Back moves between them. -->
+                    <nav class="shop-steps" aria-label="Shopping steps">
+                        <button type="button" class="shop-step" data-step="start"><span class="shop-step-num">1</span> What you need</button>
+                        <button type="button" class="shop-step" data-step="list"><span class="shop-step-num">2</span> Your list</button>
+                        <button type="button" class="shop-step" data-step="buy"><span class="shop-step-num">3</span> Where to buy</button>
+                    </nav>
+
+                    <!-- Step 1: decks, or a list of your own -->
+                    <section id="shop-step-start" class="shop-step-panel">
+                        <div class="shop-choices" role="radiogroup" aria-label="What are you shopping for?">
+                            <button type="button" class="shop-choice" data-source="decks" role="radio" aria-checked="false">
+                                <i class="ph ph-stack"></i>
+                                <strong>Cards my decks are missing</strong>
+                                <span>Pick decks and get everything they are short of.</span>
+                            </button>
+                            <button type="button" class="shop-choice" data-source="list" role="radio" aria-checked="false">
+                                <i class="ph ph-list-checks"></i>
+                                <strong>My own list</strong>
+                                <span>Paste a list, or build one with the search above.</span>
                             </button>
                         </div>
 
-                        <!-- Same line formats as the deck and inventory boxes -->
-                        <div id="shopping-wanted-bulk" class="shopping-wanted-bulk hidden">
-                            <textarea
-                                id="shopping-wanted-bulk-text"
-                                rows="8"
-                                placeholder="1 Lightning Bolt&#10;2 Counterspell (MH2) 267&#10;1 FDN 1"
-                            ></textarea>
-                            <div class="shopping-wanted-bulk-actions">
-                                <button id="shopping-wanted-bulk-add" class="btn btn-primary btn-sm">Add to list</button>
-                                <button id="shopping-wanted-bulk-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+                        <div id="shop-source-decks" class="shopping-section hidden">
+                            <div id="shopping-deck-selector"></div>
+                            <label class="shop-toggle">
+                                <input type="checkbox" id="shop-include-wanted" checked>
+                                Also include the cards on my list
+                                <span id="shop-include-wanted-count" class="local-stores-hint"></span>
+                            </label>
+                            <div class="shop-step-actions">
+                                <button type="button" id="shop-build-list" class="btn btn-primary">
+                                    <i class="ph ph-shopping-cart"></i> Build shopping list
+                                </button>
                             </div>
-                            <div id="shopping-wanted-bulk-result" class="shopping-wanted-bulk-result hidden"></div>
                         </div>
-                    </div>
 
-                    <!-- Deck Selection -->
-                    <div class="shopping-section">
-                        <h3 style="margin-bottom: 1rem;">Select Decks to Shop For</h3>
-                        <div id="shopping-deck-selector"></div>
-                    </div>
+                        <div id="shop-source-list" class="shopping-section hidden">
+                            <div class="shopping-wanted-head">
+                                <h3 style="margin: 0;">Your list</h3>
+                                <span id="shopping-wanted-count" class="shopping-wanted-count"></span>
+                                <button id="shopping-wanted-clear" class="btn btn-secondary btn-sm hidden">Clear list</button>
+                            </div>
+                            <!-- Same line formats as the deck and inventory boxes -->
+                            <div id="shopping-wanted-bulk" class="shopping-wanted-bulk">
+                                <textarea
+                                    id="shopping-wanted-bulk-text"
+                                    rows="8"
+                                    placeholder="Paste your list, one card per line:&#10;1 Lightning Bolt&#10;2 Counterspell (MH2) 267&#10;1 FDN 1"
+                                ></textarea>
+                                <div class="shopping-wanted-bulk-actions">
+                                    <button id="shopping-wanted-bulk-add" class="btn btn-secondary btn-sm">Add to list</button>
+                                </div>
+                                <div id="shopping-wanted-bulk-result" class="shopping-wanted-bulk-result hidden"></div>
+                            </div>
+                            <div class="shop-step-actions">
+                                <button type="button" id="shop-review-list" class="btn btn-primary">
+                                    <i class="ph ph-arrow-right"></i> Review list
+                                </button>
+                            </div>
+                        </div>
+                    </section>
 
-                    <!--
-                      Two ways to read the same list. By Set is for buying
-                      singles online. Bulk Bin is for standing at a shop's
-                      cheap-card boxes with a phone in one hand — flat, A-Z,
-                      and priced on the cheapest printing anywhere rather than
-                      the one a deck happens to name.
-                    -->
-                    <div class="shopping-section shopping-mode-section">
-                        <div class="shopping-mode-switch" role="tablist">
-                            <button id="shopping-mode-sets" class="shopping-mode-btn" role="tab" aria-selected="true">
-                                <i class="ph ph-squares-four"></i> By Set
-                            </button>
-                            <button id="shopping-mode-bulk" class="shopping-mode-btn" role="tab" aria-selected="false">
-                                <i class="ph ph-tray"></i> Bulk Bin
+                    <!-- Step 2: the list itself -->
+                    <section id="shop-step-list" class="shop-step-panel hidden">
+                        <div class="shop-list-toolbar">
+                            <div class="shopping-mode-switch" role="tablist" aria-label="View">
+                                <button type="button" class="shopping-mode-btn" data-view="art" role="tab"><i class="ph ph-squares-four"></i> Artwork</button>
+                                <button type="button" class="shopping-mode-btn" data-view="compact" role="tab"><i class="ph ph-list"></i> List</button>
+                                <button type="button" class="shopping-mode-btn" data-view="sets" role="tab"><i class="ph ph-stack"></i> By set</button>
+                            </div>
+                            <button type="button" id="shop-filters-toggle" class="btn btn-secondary btn-sm">
+                                <i class="ph ph-funnel"></i> Filter &amp; sort
                             </button>
                         </div>
-                    </div>
+                        <div class="shopping-section hidden" id="shopping-filters-section">
+                            <div id="shopping-filters"></div>
+                        </div>
+                        <div id="shopping-stats" class="shopping-stats"></div>
+                        <div class="shopping-section" id="shopping-sets-section">
+                            <div id="shopping-list-container"></div>
+                        </div>
+                        <div class="shop-footer">
+                            <span id="shop-footer-summary"></span>
+                            <button type="button" class="btn btn-primary" data-goto="buy">
+                                Where to buy <i class="ph ph-arrow-right"></i>
+                            </button>
+                        </div>
+                    </section>
 
-                    <!--
-                      The found pile. Marking a card found does not add it to
-                      the collection: what you pull out of a bulk box shares a
-                      name with the card your deck lists and almost never a
-                      printing. The pile is saved on every press and reviewed
-                      here, at a keyboard, where printings can be chosen.
-                    -->
-                    <div id="shopping-found-bar" class="shopping-found-bar hidden"></div>
+                    <!-- Step 3: where to buy it -->
+                    <section id="shop-step-buy" class="shop-step-panel hidden">
+                        <div class="shopping-mode-switch shop-venues" role="tablist" aria-label="Where to buy">
+                            <button type="button" class="shopping-mode-btn" data-venue="compare" role="tab"><i class="ph ph-scales"></i> Compare</button>
+                            <button type="button" class="shopping-mode-btn" data-venue="local" role="tab"><i class="ph ph-storefront"></i> Local stores</button>
+                            <button type="button" class="shopping-mode-btn" data-venue="manapool" role="tab"><i class="ph ph-magic-wand"></i> Mana Pool</button>
+                            <button type="button" class="shopping-mode-btn" data-venue="tcgplayer" role="tab"><i class="ph ph-shopping-bag"></i> TCGplayer</button>
+                            <button type="button" class="shopping-mode-btn" data-venue="bulk" role="tab"><i class="ph ph-tray"></i> Bulk bins</button>
+                        </div>
 
-                    <!-- Filters -->
-                    <div class="shopping-section" id="shopping-filters-section">
-                        <h3 style="margin-bottom: 1rem;">Filters & Sorting</h3>
-                        <div id="shopping-filters"></div>
-                    </div>
+                        <!--
+                          The found pile: cards ticked off in a store. It does
+                          not add to the collection — see foundPileService.js.
+                          Shown with the in-person venues only.
+                        -->
+                        <div id="shopping-found-bar" class="shopping-found-bar hidden"></div>
 
-                    <!-- Bulk bin view -->
-                    <div class="shopping-section hidden" id="shopping-bulk-section">
-                        <div id="shopping-bulk-controls"></div>
-                        <div id="shopping-bulk-container"></div>
-                    </div>
+                        <div class="shopping-section shop-venue-panel" data-venue-panel="compare">
+                            <div id="shop-compare"></div>
+                        </div>
 
-                    <!-- Statistics -->
-                    <div id="shopping-stats" class="shopping-stats"></div>
+                        <div class="shopping-section shop-venue-panel" data-venue-panel="local" id="local-stores-section">
+                            <div id="local-stores-body"></div>
+                        </div>
 
-                    <!-- Mana Pool Optimizer -->
-                    <div class="shopping-section" id="shopping-optimizer-section" style="display: none;">
-                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
-                            <h3 style="margin: 0;"><i class="ph ph-magic-wand"></i> Mana Pool Optimizer</h3>
-                            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                                <select autocomplete="off" id="shopping-optimizer-strategy" class="form-control" style="font-size: 0.875rem;">
+                        <div class="shopping-section shop-venue-panel" data-venue-panel="manapool" id="shopping-optimizer-section">
+                            <p class="local-stores-hint" style="margin-top:0;">Mana Pool's optimizer finds the cheapest mix of its sellers for the whole list, shipping and fees included.</p>
+                            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem;">
+                                <select autocomplete="off" id="shopping-optimizer-strategy" class="form-control" style="font-size: 0.875rem; width: auto;">
                                     <option value="lowest_price">Lowest Total Price</option>
                                     <option value="fewest_packages">Fewest Packages</option>
                                     <option value="balanced">Balanced</option>
@@ -1334,19 +1371,23 @@
                                     <i class="ph ph-magic-wand"></i> Optimize Cart
                                 </button>
                             </div>
+                            <div id="shopping-optimizer-results"></div>
                         </div>
-                        <div id="shopping-optimizer-results"></div>
-                    </div>
 
-                    <div class="shopping-section" id="local-stores-section" style="display: none;">
-                        <h3 style="margin: 0 0 1rem;"><i class="ph ph-storefront"></i> Local Store Prices</h3>
-                        <div id="local-stores-body"></div>
-                    </div>
+                        <div class="shopping-section shop-venue-panel" data-venue-panel="tcgplayer">
+                            <div id="shop-tcgplayer"></div>
+                        </div>
 
-                    <!-- Shopping List by Set -->
-                    <div class="shopping-section" id="shopping-sets-section">
-                        <div id="shopping-list-container"></div>
-                    </div>
+                        <!--
+                          Bulk bins: standing at a store's cheap-card boxes with
+                          a phone in one hand — flat, A-Z, and priced on the
+                          cheapest printing anywhere.
+                        -->
+                        <div class="shopping-section shop-venue-panel" data-venue-panel="bulk" id="shopping-bulk-section">
+                            <div id="shopping-bulk-controls"></div>
+                            <div id="shopping-bulk-container"></div>
+                        </div>
+                    </section>
                 </div>
             </div>
 
