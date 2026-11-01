@@ -168,6 +168,14 @@ export function createBackup(userId = null) {
     WHERE user_id IN (${userIdsStr})
   `).all();
 
+  // Local stores the user prices against. Their pasted lookups are not
+  // carried: a dated copy of a shop's shelf, refreshed by running it again.
+  backup.data.local_stores = db.prepare(`
+    SELECT id, user_id, name, base_url, created_at
+    FROM local_stores
+    WHERE user_id IN (${userIdsStr})
+  `).all();
+
   // The read-only collection link. Kept so a restore does not silently break
   // a link the owner already handed to somebody.
   backup.data.collection_shares = db.prepare(`
@@ -350,6 +358,7 @@ export function restoreBackup(backupData, options = {}) {
     owned_printings: 0,
     shopping_list_items: 0,
     found_cards: 0,
+    local_stores: 0,
     collection_shares: 0,
     price_watches: 0,
     audit_log: 0,
@@ -388,6 +397,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM owned_printings WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM shopping_list_items WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM found_cards WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM local_stores WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM price_watches WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM audit_log WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM collection_value_snapshots WHERE user_id = ?').run(userId);
@@ -414,6 +424,7 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM owned_printings').run();
       db.prepare('DELETE FROM shopping_list_items').run();
       db.prepare('DELETE FROM found_cards').run();
+      db.prepare('DELETE FROM local_stores').run();
       db.prepare('DELETE FROM collection_shares').run();
       db.prepare('DELETE FROM price_watches').run();
       db.prepare('DELETE FROM audit_log').run();
@@ -584,6 +595,15 @@ export function restoreBackup(backupData, options = {}) {
       }
       insertFound.run(rowId(row.id), owner(row), cardId, row.card_name, row.quantity, row.created_at);
     }, (r) => `Found card ${r.card_name}`);
+
+    const insertLocalStore = db.prepare(`
+      INSERT OR REPLACE INTO local_stores (id, user_id, name, base_url, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    restoreRows('local_stores', (backupData.data.local_stores || []).filter(mine), (row) => {
+      insertLocalStore.run(rowId(row.id), owner(row), row.name, row.base_url, row.created_at);
+    }, (r) => `Local store ${r.name}`);
 
     // One link per user, and the token is unique across users, so REPLACE on
     // either key leaves at most one row per user and per token.

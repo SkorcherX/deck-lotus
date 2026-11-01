@@ -973,6 +973,31 @@ class ApiClient {
     return this.request('/manapool/status');
   }
 
+  // Local stores — see client/src/components/localStores.js
+  async getLocalStores() {
+    return this.request('/local-stores');
+  }
+
+  async addLocalStore(name, baseUrl) {
+    return this.request('/local-stores', { method: 'POST', body: JSON.stringify({ name, baseUrl }) });
+  }
+
+  async deleteLocalStore(id) {
+    return this.request(`/local-stores/${id}`, { method: 'DELETE' });
+  }
+
+  async buildLocalStoreScript(cards, options) {
+    return this.request('/local-stores/script', { method: 'POST', body: JSON.stringify({ cards, options }) });
+  }
+
+  async importLocalStoreResults(result) {
+    return this.request('/local-stores/results', { method: 'POST', body: JSON.stringify({ result }) });
+  }
+
+  async clearLocalStoreResults(id) {
+    return this.request(`/local-stores/${id}/results`, { method: 'DELETE' });
+  }
+
   async manaPoolOptimize(items, model = 'lowest_price') {
     return this.request('/manapool/optimize', {
       method: 'POST',

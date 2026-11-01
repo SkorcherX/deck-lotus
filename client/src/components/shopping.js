@@ -1,6 +1,7 @@
 import api from '../services/api.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, debounce, confirmDialog } from '../utils/ui.js';
 import { zoomButton } from '../utils/cardZoom.js';
+import { initLocalStores, refreshLocalStores } from './localStores.js';
 
 let selectedDeckIds = new Set();
 let shoppingData = null;
@@ -114,6 +115,8 @@ function switchViewMode(mode) {
   // together.
   const optimizer = document.getElementById('shopping-optimizer-section');
   if (optimizer) optimizer.style.display = bulk ? 'none' : '';
+  const localStores = document.getElementById('local-stores-section');
+  if (localStores) localStores.style.display = bulk ? 'none' : '';
 
   if (bulk) refreshBulkData();
 }
@@ -324,13 +327,13 @@ function escapeHtml(value) {
   ));
 }
 
-async function runShoppingOptimizer() {
-  if (!shoppingData?.sets?.length) {
-    showToast('Load your shopping list first', 'warning');
-    return;
-  }
-
-  // Gather all needed cards (not marked found/skipped)
+/**
+ * The basket: every card still to buy, merged across printings by name, as
+ * both the Mana Pool optimizer and the local store lookup quote it.
+ * `onlineUnit` is the cheapest listed price among the merged printings.
+ */
+function collectPurchaseItems() {
+  if (!shoppingData?.sets?.length) return [];
   const items = [];
   for (const set of shoppingData.sets) {
     for (const card of set.cards) {
@@ -345,18 +348,32 @@ async function runShoppingOptimizer() {
       const wanted = purchaseQuantity(card);
       if (wanted === 0) continue;
       const existing = items.find(i => i.name === card.name);
+      const price = card.price != null ? Number(card.price) : null;
       if (existing) {
         existing.quantity += wanted;
+        if (price != null && (existing.onlineUnit == null || price < existing.onlineUnit)) existing.onlineUnit = price;
       } else {
         items.push({
           name: card.name,
           quantity: wanted,
           setCode: card.setCode,
           collectorNumber: card.collectorNumber,
+          onlineUnit: price,
         });
       }
     }
   }
+
+  return items;
+}
+
+async function runShoppingOptimizer() {
+  if (!shoppingData?.sets?.length) {
+    showToast('Load your shopping list first', 'warning');
+    return;
+  }
+
+  const items = collectPurchaseItems().map(({ onlineUnit, ...item }) => item);
 
   if (!items.length) {
     showToast('No cards to optimize', 'warning');
@@ -1261,6 +1278,8 @@ function renderShoppingList() {
     optimizerSection.style.display = filteredData.totalCards > 0 ? '' : 'none';
     document.getElementById('shopping-optimizer-results').innerHTML = '';
   }
+  initLocalStores(collectPurchaseItems);
+  if (viewMode === 'sets') refreshLocalStores();
 
   // Render expand/collapse all buttons + sets
   container.innerHTML = `

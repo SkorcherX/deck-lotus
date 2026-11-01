@@ -484,3 +484,18 @@ taken on GitHub — only do it when explicitly asked.
   owned − in decks − lent out) and basic lands count as had. "New idea deck"
   imports the picks with the commander on top and sets status `idea`, so it
   never contests a real deck's cards.
+- Local store prices (Shopping page, `client/src/components/localStores.js`,
+  `/api/local-stores`) compare TCGplayer Pro storefronts with each other and
+  with the online price. The stores' APIs return 403 to anything that is not
+  a browser on their own site, and the decision was **not** to work around
+  that: the server never contacts a store. It builds a console script from
+  `src/shared/localShop.js` (`buildLookupScript` serialises the lookup
+  functions' source, so they may reference only each other — keep it
+  import-free and build the script server-side, where nothing is minified),
+  the user runs it on the store's site (one request a second, no cart), and
+  pastes the JSON back. `importResult` files it under the store whose
+  `base_url` matches the result's `origin`, never a store picked in the UI.
+  One snapshot per store in `local_store_quotes`, keyed by card name; stores
+  are backed up, quotes are not. The split plan chooses per copy without
+  shipping, then the online remainder goes to the Mana Pool optimizer for the
+  real total.
