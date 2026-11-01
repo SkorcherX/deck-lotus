@@ -153,10 +153,12 @@ export function findCard(name, setCode = null, collectorNumber = null) {
  * Import deck from parsed card list
  */
 export function importDeck(userId, deckName, format, cardList) {
-  // Create deck
+  // Created as an 'idea': a pasted list is a claim nobody has built yet, and
+  // at the column default ('building') it contested the cards of every other
+  // building deck, reporting them short until the import was deleted.
   const result = db.prepare(
-    `INSERT INTO decks (user_id, name, format, created_at, updated_at)
-     VALUES (?, ?, ?, datetime('now'), datetime('now'))`
+    `INSERT INTO decks (user_id, name, format, status, created_at, updated_at)
+     VALUES (?, ?, ?, 'idea', datetime('now'), datetime('now'))`
   ).run(userId, deckName, format || '');
 
   const deckId = result.lastInsertRowid;
