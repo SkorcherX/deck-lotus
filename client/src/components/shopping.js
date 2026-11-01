@@ -1,7 +1,8 @@
 import api from '../services/api.js';
+import { massEntryButton } from '../utils/manaPoolHandoff.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, debounce, confirmDialog } from '../utils/ui.js';
 import { zoomButton } from '../utils/cardZoom.js';
-import { initLocalStores, refreshLocalStores, renderCompare, renderTcgplayer } from './localStores.js';
+import { initLocalStores, refreshLocalStores, renderCompare, renderTcgplayer, currentItems } from './localStores.js';
 
 let selectedDeckIds = new Set();
 let shoppingData = null;
@@ -524,7 +525,8 @@ async function runShoppingOptimizer() {
     return;
   }
 
-  const items = collectPurchaseItems().map(({ onlineUnit, cardId, ...item }) => item);
+  // Through localStores so a printing picked by hand is quoted as that printing.
+  const items = currentItems().map(({ name, quantity, setCode, collectorNumber, exactPrinting }) => ({ name, quantity, setCode, collectorNumber, exactPrinting }));
 
   if (!items.length) {
     showToast('No cards to optimize', 'warning');
@@ -581,9 +583,7 @@ function renderShoppingOptimizerResults(result, el) {
       <span style="font-size:1rem;font-weight:700;color:var(--success-bright);">
         <i class="ph ph-check-circle"></i> ${fmt(totalCents)} total across ${sellerCount} seller${sellerCount !== 1 ? 's' : ''}
       </span>
-      <a href="https://manapool.com/cart" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-        Complete on Mana Pool <i class="ph ph-arrow-square-out"></i>
-      </a>
+      ${massEntryButton(result.massEntry)}
     </div>
     <div style="background:var(--bg-tertiary);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
         <div style="display:flex;justify-content:space-between;padding:0.2rem 0;font-size:0.85rem;">

@@ -1,4 +1,5 @@
 import db from '../db/connection.js';
+import { NOT_A_STAND_IN } from '../shared/standInPrintings.js';
 import { parseDeckList, findCard } from './importService.js';
 import { groupIntoSets } from './shoppingMerge.js';
 import { buildBulkList, flattenShoppingSets } from './bulkBin.js';
@@ -438,6 +439,35 @@ export function cheapestPrintingOf(cardId) {
   )?.id || null;
 }
 
+/**
+ * Every printing of a card a shopper might choose, with its art and TCGplayer
+ * price, cheapest first (unpriced last). Memorabilia and the like are left
+ * out, for the reason in standInPrintings.js.
+ */
+export function printingChoicesFor(cardId) {
+  return db.all(
+    `SELECT p.id, p.set_code, p.collector_number, p.image_url, p.rarity,
+            s.name AS set_name, s.release_date, pr.price
+       FROM printings p
+       LEFT JOIN sets s ON s.code = p.set_code
+       LEFT JOIN prices pr
+         ON pr.printing_uuid = p.uuid AND pr.provider = 'tcgplayer' AND pr.price_type = 'normal'
+      WHERE p.card_id = ?
+        AND COALESCE(s.type, '') NOT IN (${NOT_A_STAND_IN.map(() => '?').join(',')})
+      ORDER BY CASE WHEN pr.price IS NULL OR pr.price <= 0 THEN 1 ELSE 0 END, pr.price ASC, s.release_date DESC`,
+    [cardId, ...NOT_A_STAND_IN]
+  ).map((r) => ({
+    printingId: r.id,
+    setCode: r.set_code,
+    setName: r.set_name,
+    collectorNumber: r.collector_number,
+    imageUrl: r.image_url,
+    rarity: r.rarity,
+    releaseDate: r.release_date,
+    price: r.price > 0 ? r.price : null,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // The bulk-bin view
 // ---------------------------------------------------------------------------
@@ -480,17 +510,20 @@ export function cheapestPrintingsFor(cardIds) {
          p.set_code,
          p.collector_number,
          p.rarity,
+         p.image_url,
          MIN(pr.price) as price
        FROM printings p
        JOIN prices pr
          ON pr.printing_uuid = p.uuid
         AND pr.provider = 'tcgplayer'
         AND pr.price_type = 'normal'
+       LEFT JOIN sets s ON s.code = p.set_code
       WHERE p.card_id IN (${placeholders})
         AND pr.price IS NOT NULL
         AND pr.price > 0
+        AND COALESCE(s.type, '') NOT IN (${NOT_A_STAND_IN.map(() => '?').join(',')})
       GROUP BY p.card_id`,
-      chunk
+      [...chunk, ...NOT_A_STAND_IN]
     );
 
     for (const row of rows) {
@@ -500,6 +533,7 @@ export function cheapestPrintingsFor(cardIds) {
         setCode: row.set_code,
         collectorNumber: row.collector_number,
         rarity: row.rarity,
+        imageUrl: row.image_url,
         price: row.price,
       };
     }

@@ -8,6 +8,7 @@ import {
   clearWantedCards,
   cheapestPrintingOf,
   cheapestPrintingsFor,
+  printingChoicesFor,
   getBulkBinList,
   setBulkThreshold,
 } from '../services/shoppingService.js';
@@ -155,6 +156,17 @@ router.post('/cheapest', authenticate, (req, res, next) => {
       .filter((id) => !isNaN(id))
       .slice(0, 5000);
     res.json(cheapestPrintingsFor(cardIds));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** GET /api/shopping/printings/:cardId — the printings a shopper can pick between. */
+router.get('/printings/:cardId', authenticate, (req, res, next) => {
+  try {
+    const cardId = parseInt(req.params.cardId, 10);
+    if (isNaN(cardId)) return res.status(400).json({ error: 'cardId must be a number' });
+    res.json(printingChoicesFor(cardId));
   } catch (error) {
     next(error);
   }

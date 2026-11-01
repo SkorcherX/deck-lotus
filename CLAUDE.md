@@ -137,6 +137,23 @@ taken on GitHub — only do it when explicitly asked.
   list to Mass Entry; the prefilled `massentry?c=` link format is
   undocumented, hence the Copy list beside it. The deck builder's "Shop for
   missing cards" sends `shopping:for-decks` before navigating to step 2.
+- Mana Pool quotes go through `src/services/manaPoolStock.js` first. The
+  optimizer rejects a bare name, and a printing nobody on Mana Pool sells
+  comes back "no seller" even when other printings are in stock — Vampiric
+  Tutor read as unavailable with fifteen printings listed. So each line is
+  spread over the printings Mana Pool's public `/prices/singles` feed says it
+  stocks (no credentials, ~50 MB, cached six hours), cheapest first, unless
+  the user picked a printing (`exactPrinting`). "Any printing" never means a
+  memorabilia copy: `NOT_A_STAND_IN` (`src/shared/standInPrintings.js`)
+  excludes those set types there and in `cheapestPrintingsFor` — the cheapest
+  Vampiric Tutor on offer was a gold-bordered 1999 World Championship copy.
+  The cart cannot be filled from outside (the API only creates pending
+  orders against the buyer's account), but Mass Entry takes the list in the
+  link: `manapool.com/add-deck?deck=` + unpadded base64 of the lines, the
+  format EDHREC's buttons use (`client/src/utils/manaPoolHandoff.js`,
+  pinned by a test against a real EDHREC link). It is undocumented; if it
+  stops working, that file is the one place to change. Printings picked by
+  hand on the TCGplayer tab live in localStorage (`deckLotus.shopping.printings`).
 - The weekly MTGJSON sync runs on a cron in `src/services/syncService.js`,
   and node-cron reads a bare expression in the *process's* timezone — which in
   a container with no `TZ` is UTC. "Sundays at 3 AM" therefore fired at 8 PM

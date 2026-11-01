@@ -1,4 +1,5 @@
 import api from '../services/api.js';
+import { massEntryButton } from '../utils/manaPoolHandoff.js';
 import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/commander.js';
 import { showLoading, hideLoading, debounce, formatMana, showToast, hideModal } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
@@ -3439,9 +3440,7 @@ function renderOptimizerResults(result, el) {
       <span style="font-size:1.1rem;font-weight:700;color:var(--success-bright);">
         <i class="ph ph-check-circle"></i> Optimized — ${fmt(totalCents)} across ${sellerCount} seller${sellerCount !== 1 ? 's' : ''}
       </span>
-      <a href="https://manapool.com/cart" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-        Complete on Mana Pool <i class="ph ph-arrow-square-out"></i>
-      </a>
+      ${massEntryButton(result.massEntry)}
     </div>
     <div style="background:var(--bg-tertiary);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
         <div style="display:flex;justify-content:space-between;padding:0.2rem 0;font-size:0.9rem;">

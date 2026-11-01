@@ -10,11 +10,15 @@
  * quote with shipping and fees.
  */
 import api from '../services/api.js';
-import { showToast, confirmDialog } from '../utils/ui.js';
+import { massEntryButton } from '../utils/manaPoolHandoff.js';
+import { showToast, confirmDialog, popover } from '../utils/ui.js';
 import { planPurchases, storeCoverage, toCardList, CONDITIONS } from '../../../src/shared/localShop.js';
 
 const NOTICE_KEY = 'deckLotus.localStores.noticeSeen';
 const OPTIONS_KEY = 'deckLotus.localStores.options';
+// Printings picked by hand, by card id. Kept per browser: a preference about
+// art, not part of the list itself.
+const CHOICES_KEY = 'deckLotus.shopping.printings';
 
 const IS_FIREFOX = /firefox/i.test(navigator.userAgent);
 
@@ -125,9 +129,22 @@ export function initLocalStores(itemsGetter) {
   // otherwise quote $70 online against $1.64 on a store's shelf. The
   // optimizer quote for the online part asks for that same printing.
   getItems = () => itemsGetter().map((item) => {
-    const best = cheapest[item.cardId];
+    const chosen = readStorage(CHOICES_KEY, {})[item.cardId];
+    const best = chosen || cheapest[item.cardId];
     if (!best) return item;
-    return { ...item, onlineUnit: best.price, setCode: best.setCode, collectorNumber: best.collectorNumber, onlineSet: best.setCode };
+    return {
+      ...item,
+      // A pick with no price says so; it must not borrow another printing's.
+      onlineUnit: chosen ? (chosen.price ?? null) : (best.price ?? item.onlineUnit),
+      setCode: best.setCode,
+      collectorNumber: best.collectorNumber,
+      onlineSet: best.setCode,
+      onlineImage: best.imageUrl || null,
+      // A printing picked by hand is bought as that printing; otherwise Mana
+      // Pool is free to substitute any printing it stocks.
+      exactPrinting: !!chosen,
+      chosenPrinting: !!chosen,
+    };
   });
   const body = document.getElementById('local-stores-body');
   if (!body || body.dataset.wired) return;
@@ -219,6 +236,11 @@ function startRun(storeIds) {
   render();
 }
 
+/** The list as every tab prices it: cheapest or chosen printing applied. */
+export function currentItems() {
+  return getItems();
+}
+
 /** Called whenever the shopping list re-renders. */
 /**
  * Stores and cheapest-printing prices for the current list. Shared by the
@@ -295,49 +317,98 @@ function paintCompare() {
   const quoted = (stores || []).filter((st) => st.result);
   const plan = planPurchases(items, quoted);
   const localSplit = quoted.reduce((n, st) => n + plan.totals[st.id].cost, 0);
-  const stale = (st) => items.filter((c) => !st.result.cards.some((r) => r.name.toLowerCase() === c.name.toLowerCase())).length;
-
-  const tile = (title, value, note, venue, extra = '') => `
-    <div class="local-stores-tile shop-compare-tile">
-      <div class="local-stores-hint">${title}</div>
-      <div class="stat-value">${value}</div>
-      <div class="local-stores-hint">${note}</div>
-      ${extra}
-      ${venue ? `<button type="button" class="btn btn-secondary btn-sm" data-compare-venue="${venue}">Details <i class="ph ph-arrow-right"></i></button>` : ''}
-    </div>`;
-
   const t = compareQuote?.totals;
+  const mpShort = compareQuote?.unavailable?.length || 0;
+
+  // Every way of buying, as one shape. Only options covering the whole list
+  // are ranked against each other: a store with one of four copies is cheap
+  // because it is selling less, and colouring it "best" would say otherwise.
+  const options = [
+    {
+      title: 'Online, cheapest printings',
+      value: onlineTotal,
+      note: `TCGplayer market, before shipping${unpriced ? ` · ${unpriced} unpriced` : ''}`,
+      complete: !unpriced,
+      venue: 'tcgplayer',
+    },
+    {
+      title: 'Mana Pool, delivered',
+      value: t ? t.total_cents / 100 : null,
+      note: t ? `${t.seller_count ?? '?'} sellers, shipping and fees included${mpShort ? ` · ${mpShort} not stocked` : ''}`
+        : compareQuote?.error ? escapeHtml(compareQuote.error) : 'A real quote with shipping and fees',
+      complete: !!t && !mpShort,
+      venue: 'manapool',
+      actions: t ? massEntryButton(compareQuote.massEntry, { primary: false })
+        : '<button type="button" class="btn btn-primary btn-sm" data-compare-action="quote">Get quote</button>',
+    },
+    ...quoted.map((st) => {
+      const cov = storeCoverage(items, st.result);
+      const missing = items.filter((c) => !st.result.cards.some((r) => r.name.toLowerCase() === c.name.toLowerCase())).length;
+      return {
+        title: `${escapeHtml(st.name)} alone`,
+        tag: 'pick up',
+        value: cov.copies ? cov.cost : null,
+        note: `${cov.copies} of ${cov.needed} copies · ${escapeHtml(ago(st.fetchedAt))}${missing ? ` · ${missing} not checked` : ''}`,
+        complete: cov.copies === cov.needed,
+        partial: cov.copies > 0 && cov.copies < cov.needed,
+        // What the same copies would cost online: the fair yardstick for a
+        // store that only has some of them.
+        onlineForSame: onlineCostOfCovered(items, st.result),
+        venue: 'local',
+      };
+    }),
+    ...(stores || []).filter((st) => !st.result).map((st) => ({
+      title: escapeHtml(st.name), tag: 'pick up', value: null, note: 'Prices not checked yet', venue: 'local',
+    })),
+  ];
+  if (!(stores || []).length) {
+    options.push({ title: 'Local stores', value: null, note: 'Add the stores near you to compare their shelves.', venue: 'local' });
+  }
+  if (quoted.length) {
+    options.push({
+      title: 'Cheapest split',
+      tag: 'stores + online',
+      value: localSplit + plan.onlineEstimate,
+      note: `Each copy wherever it is cheapest · ${plan.online.reduce((n, i) => n + i.quantity, 0)} online, before shipping`,
+      complete: !plan.uncovered.length,
+      venue: 'local',
+    });
+  }
+
+  const ranked = options.filter((o) => o.complete && o.value != null);
+  const best = ranked.length > 1 ? Math.min(...ranked.map((o) => o.value)) : null;
+
+  const badge = (o) => {
+    if (o.value == null) return '';
+    if (o.partial) {
+      const diff = o.onlineForSame - o.value;
+      return diff >= 0.005
+        ? `<span class="shop-badge is-good">Saves ${money(diff)} on these copies</span>`
+        : `<span class="shop-badge is-bad">${money(-diff)} more than online for these</span>`;
+    }
+    if (!o.complete) return '';
+    if (best != null && o.value === best) return '<span class="shop-badge is-best"><i class="ph ph-trophy"></i> Best price</span>';
+    if (best != null) return `<span class="shop-badge is-bad">${money(o.value - best)} more</span>`;
+    return '';
+  };
+
   compareEl.innerHTML = `
-    <p class="local-stores-hint" style="margin-top:0;">${copies} cop${copies === 1 ? 'y' : 'ies'} of ${items.length} card${items.length === 1 ? '' : 's'}.</p>
-    <div class="local-stores-summary">
-      ${tile('Online, cheapest printings', money(onlineTotal),
-        `TCGplayer market, before shipping${unpriced ? ` · ${unpriced} unpriced` : ''}`, 'tcgplayer')}
-      ${tile('Mana Pool, delivered', t ? money(t.total_cents / 100) : compareQuote?.error ? '—' : '?',
-        t ? `${t.seller_count ?? '?'} sellers, shipping and fees included`
-          : compareQuote?.error ? escapeHtml(compareQuote.error) : 'A real quote with shipping and fees',
-        'manapool',
-        t ? '' : '<button type="button" class="btn btn-primary btn-sm" data-compare-action="quote">Get quote</button>')}
-      ${quoted.map((st) => {
-        const cov = storeCoverage(items, st.result);
-        const missing = stale(st);
-        return tile(`${escapeHtml(st.name)} alone (pick up)`, money(cov.cost),
-          `${cov.copies} of ${cov.needed} copies · ${escapeHtml(ago(st.fetchedAt))}${missing ? ` · ${missing} not checked` : ''}`, 'local');
-      }).join('')}
-      ${(stores || []).filter((st) => !st.result).map((st) =>
-        tile(escapeHtml(st.name), '—', 'Prices not checked yet', 'local')).join('')}
-      ${!(stores || []).length ? tile('Local stores', '—', 'Add the stores near you to compare their shelves.', 'local') : ''}
+    <p class="local-stores-hint" style="margin-top:0;">${copies} cop${copies === 1 ? 'y' : 'ies'} of ${items.length} card${items.length === 1 ? '' : 's'}.
+      Options that cover the whole list are ranked; a store with only some of it shows what it saves on those copies.</p>
+    <div class="shop-compare-grid">
+      ${options.map((o) => `
+        <div class="shop-compare-tile${best != null && o.complete && o.value === best ? ' is-best' : ''}${o.partial ? ' is-partial' : ''}">
+          <div class="shop-compare-title" title="${o.title}">${o.title}</div>
+          ${o.tag ? `<div class="shop-compare-tag">${o.tag}</div>` : ''}
+          <div class="stat-value">${o.value != null ? money(o.value) : '—'}</div>
+          <div class="shop-compare-note">${o.note}</div>
+          ${badge(o)}
+          <div class="shop-compare-actions">
+            ${o.actions || ''}
+            ${o.venue ? `<button type="button" class="btn btn-secondary btn-sm" data-compare-venue="${o.venue}">Details <i class="ph ph-arrow-right"></i></button>` : ''}
+          </div>
+        </div>`).join('')}
     </div>
-    ${quoted.length ? `
-      <div class="local-stores-plan">
-        <h4>Cheapest split</h4>
-        <ul>
-          ${quoted.filter((st) => plan.totals[st.id].copies).map((st) => `
-            <li><strong>${escapeHtml(st.name)}</strong> (pick up): ${plan.totals[st.id].copies} copies, ${money(plan.totals[st.id].cost)}</li>`).join('')}
-          <li><strong>Online</strong>: ${plan.online.reduce((n, i) => n + i.quantity, 0)} copies, about ${money(plan.onlineEstimate)} before shipping</li>
-        </ul>
-        <p class="local-stores-hint">About ${money(localSplit + plan.onlineEstimate)} before shipping. The Local stores tab
-          quotes the online part on Mana Pool for a delivered total.</p>
-      </div>` : ''}
   `;
 
   compareEl.querySelectorAll('[data-compare-venue]').forEach((btn) => {
@@ -351,9 +422,20 @@ function paintCompare() {
   });
 }
 
+/** Online price of exactly the copies a store result covers. */
+function onlineCostOfCovered(items, result) {
+  let total = 0;
+  for (const card of items) {
+    const entry = result.cards.find((c) => c.name.toLowerCase() === card.name.toLowerCase());
+    const had = Math.min(card.quantity, (entry?.rows || []).reduce((n, r) => n + r.qty, 0));
+    total += had * (card.onlineUnit ?? 0);
+  }
+  return total;
+}
+
 /** A Mana Pool optimizer quote for some items, or `{ error }`. */
 async function quoteOnManaPool(items) {
-  const cart = items.map(({ name, quantity, setCode, collectorNumber }) => ({ name, quantity, setCode, collectorNumber }));
+  const cart = items.map(({ name, quantity, setCode, collectorNumber, exactPrinting }) => ({ name, quantity, setCode, collectorNumber, exactPrinting }));
   try {
     return await api.manaPoolOptimize(cart, 'lowest_price');
   } catch (err) {
@@ -402,16 +484,22 @@ export async function renderTcgplayer(el) {
       <button type="button" class="btn btn-secondary btn-sm" data-tcg-copy><i class="ph ph-copy"></i> Copy list</button>
     </div>
     <p class="local-stores-hint">Mass Entry finds sellers for the whole list on TCGplayer. If it opens empty, paste the
-      copied list into its box.</p>
+      copied list into its box. Hover a printing to see its art; click it to pick a different one.</p>
     <div data-slot="tcg-fallback"></div>
     <div class="analytics-table-wrap">
       <table class="analytics-table">
-        <thead><tr><th>Card</th><th class="num">Qty</th><th>Cheapest printing</th><th class="num">Est.</th></tr></thead>
+        <thead><tr><th>Card</th><th class="num">Qty</th><th>Printing</th><th class="num">Est.</th></tr></thead>
         <tbody>
           ${list.map((c) => `<tr>
             <td>${escapeHtml(c.name)}</td>
             <td class="num">${c.quantity}</td>
-            <td>${c.onlineSet ? `${escapeHtml(c.onlineSet.toUpperCase())} #${escapeHtml(c.collectorNumber)}` : '<span class="local-stores-hint">as listed</span>'}</td>
+            <td>${c.cardId != null ? `<button type="button" class="shop-printing" data-pick-printing="${c.cardId}"
+                data-card-name="${escapeHtml(c.name)}" ${c.onlineImage ? `data-art="${escapeHtml(c.onlineImage)}"` : ''}
+                title="Change printing">
+                ${c.onlineSet ? `${escapeHtml(c.onlineSet.toUpperCase())} #${escapeHtml(c.collectorNumber)}` : 'as listed'}
+                ${c.chosenPrinting ? '<span class="shop-printing-chosen">chosen</span>' : ''}
+                <i class="ph ph-caret-down"></i>
+              </button>` : '<span class="local-stores-hint">as listed</span>'}</td>
             <td class="num">${c.onlineUnit != null ? money(c.onlineUnit * c.quantity) : '<span class="local-stores-hint">no price</span>'}</td>
           </tr>`).join('')}
         </tbody>
@@ -421,7 +509,93 @@ export async function renderTcgplayer(el) {
   el.querySelector('[data-tcg-copy]').addEventListener('click', async () => {
     if (await copyText(lines.join('\n'), el.querySelector('[data-slot="tcg-fallback"]'))) showToast('List copied');
   });
+  el.querySelectorAll('[data-pick-printing]').forEach((btn) => {
+    btn.addEventListener('click', () => openPrintingPicker(btn, () => renderTcgplayer(el)));
+  });
 }
+
+/**
+ * Pick which printing of a card to buy, by its art. "Cheapest" (the default)
+ * lets every price quote substitute any printing; a pick is quoted and sent
+ * to Mana Pool as exactly that printing.
+ */
+async function openPrintingPicker(anchor, onChange) {
+  const cardId = Number(anchor.dataset.pickPrinting);
+  const box = document.createElement('div');
+  box.className = 'shop-printing-picker';
+  box.innerHTML = '<div class="local-stores-hint" style="padding:0.5rem;">Loading printings…</div>';
+  const { close } = popover(anchor, box);
+
+  let printings;
+  try {
+    printings = await api.getPrintingChoices(cardId);
+  } catch (err) {
+    box.innerHTML = `<div class="local-stores-error" style="padding:0.5rem;">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  const chosen = readStorage(CHOICES_KEY, {})[cardId];
+  box.innerHTML = `
+    <div class="shop-printing-head">${escapeHtml(anchor.dataset.cardName)}</div>
+    <button type="button" class="shop-printing-option ${chosen ? '' : 'is-current'}" data-choice="">
+      <span class="shop-printing-thumb shop-printing-any"><i class="ph ph-shuffle"></i></span>
+      <span><strong>Cheapest available</strong><br><span class="local-stores-hint">Any printing; Mana Pool may substitute</span></span>
+    </button>
+    ${printings.map((pr, i) => `
+      <button type="button" class="shop-printing-option ${chosen?.printingId === pr.printingId ? 'is-current' : ''}" data-choice="${i}"
+        ${pr.imageUrl ? `data-art="${escapeHtml(pr.imageUrl)}"` : ''}>
+        ${pr.imageUrl ? `<img class="shop-printing-thumb" src="${escapeHtml(pr.imageUrl)}" alt="" loading="lazy">` : '<span class="shop-printing-thumb"></span>'}
+        <span class="shop-printing-text">
+          <strong>${escapeHtml(pr.setName || pr.setCode)}</strong>
+          <span class="local-stores-hint">${escapeHtml(String(pr.setCode).toUpperCase())} #${escapeHtml(pr.collectorNumber)}${pr.releaseDate ? ` · ${escapeHtml(pr.releaseDate.slice(0, 4))}` : ''}</span>
+        </span>
+        <span class="shop-printing-price">${pr.price != null ? money(pr.price) : '<span class="local-stores-hint">no price</span>'}</span>
+      </button>`).join('')}
+  `;
+  box.querySelectorAll('[data-choice]').forEach((option) => {
+    option.addEventListener('click', () => {
+      const all = readStorage(CHOICES_KEY, {});
+      if (option.dataset.choice === '') delete all[cardId];
+      else all[cardId] = printings[Number(option.dataset.choice)];
+      writeStorage(CHOICES_KEY, all);
+      // Quotes built on the old printing no longer describe the list.
+      compareQuote = null;
+      remainderQuote = null;
+      hideArt();
+      close();
+      onChange();
+    });
+  });
+}
+
+// One floating preview for every [data-art] element: hover a printing, see
+// the card. Pointer-only; on touch the picker's thumbnails do the job.
+let artEl = null;
+function showArt(src, x, y) {
+  if (!artEl) {
+    artEl = document.createElement('img');
+    artEl.className = 'shop-art-preview';
+    artEl.alt = '';
+    document.body.append(artEl);
+  }
+  if (artEl.getAttribute('src') !== src) artEl.src = src;
+  const w = 244;
+  const h = 340;
+  const left = x + 18 + w > window.innerWidth ? x - w - 18 : x + 18;
+  const top = Math.min(Math.max(8, y - h / 2), window.innerHeight - h - 8);
+  artEl.style.left = `${Math.max(8, left)}px`;
+  artEl.style.top = `${top}px`;
+  artEl.classList.add('is-visible');
+}
+function hideArt() {
+  artEl?.classList.remove('is-visible');
+}
+document.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  const target = e.target.closest?.('[data-art]');
+  if (target) showArt(target.dataset.art, e.clientX, e.clientY);
+  else hideArt();
+});
+document.addEventListener('scroll', hideArt, true);
 
 function render() {
   const body = document.getElementById('local-stores-body');
@@ -559,7 +733,7 @@ function renderComparison(items) {
       <td class="num">${card.quantity}</td>
       ${cells.map((c) => mark(c.cost, c.html)).join('')}
       ${mark(online, online != null
-        ? `<span title="${escapeHtml(card.onlineSet ? `Cheapest printing: ${card.onlineSet.toUpperCase()} #${card.collectorNumber}` : 'The printing your deck lists')}">${money(online)}</span>`
+        ? `<span ${card.onlineImage ? `data-art="${escapeHtml(card.onlineImage)}"` : ''} title="${escapeHtml(card.onlineSet ? `${card.chosenPrinting ? 'Chosen' : 'Cheapest'} printing: ${card.onlineSet.toUpperCase()} #${card.collectorNumber}` : 'The printing your deck lists')}">${money(online)}</span>`
         : '<span class="local-stores-hint">no price</span>')}
     </tr>`;
   }).join('');
@@ -631,7 +805,7 @@ function renderRemainderQuote(localSplit) {
         <tr><td><strong>Everything</strong></td><td class="num"><strong>${money(localSplit + (t.total_cents || 0) / 100)}</strong></td></tr>` : ''}
     </table>
     ${remainderQuote.unavailable?.length ? `<div class="local-stores-error">No Mana Pool seller for: ${escapeHtml(remainderQuote.unavailable.join(', '))}</div>` : ''}
-    ${t ? `<a href="https://manapool.com/cart" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Open Mana Pool cart <i class="ph ph-arrow-square-out"></i></a>` : ''}
+    ${t ? massEntryButton(remainderQuote.massEntry, { label: 'Buy the online part on Mana Pool' }) : ''}
   `;
 }
 
@@ -695,7 +869,7 @@ async function onClick(event) {
     const byName = new Map(items.map((i) => [i.name.toLowerCase(), i]));
     const cart = plan.online.map((o) => {
       const item = byName.get(o.name.toLowerCase());
-      return { name: o.name, quantity: o.quantity, setCode: item?.setCode, collectorNumber: item?.collectorNumber };
+      return { name: o.name, quantity: o.quantity, setCode: item?.setCode, collectorNumber: item?.collectorNumber, exactPrinting: item?.exactPrinting };
     });
     el.disabled = true;
     el.innerHTML = '<i class="ph ph-circle-notch"></i> Quoting…';
