@@ -718,6 +718,41 @@ export function toggleCardOwnership(userId, cardId, context = {}) {
     // adds, so a press that takes it away again is not a surprise.
     const undoingOwnPress = ownedPrintings.length === 1 && copies === 1 && foils === 0;
 
+    // The deck builder's tick takes away one copy, never the lot. Other decks
+    // may be holding the rest, and wiping them made every one of those decks
+    // read as short. The copy comes off the printing and finish the deck
+    // lists when one is owned, else a non-foil row, so the press removes the
+    // copy most likely to be the one the user means.
+    if (context.removeOne) {
+      const preferred = context.printingId != null
+        ? ownedPrintings.find(row => row.printing_id === context.printingId
+            && (row.is_foil === 1) === (context.isFoil === true))
+          || ownedPrintings.find(row => row.printing_id === context.printingId)
+        : null;
+      const target = preferred
+        || ownedPrintings.find(row => !row.is_foil)
+        || ownedPrintings[0];
+      const isFoil = target.is_foil === 1;
+      const total = ownedPrintingTotal(userId, target.printing_id, isFoil);
+
+      setOwnedPrintingQuantity(userId, target.printing_id, total - 1, isFoil, {
+        source,
+        actorUserId: context.actorUserId,
+      });
+
+      if (copies === 1) {
+        db.run(`DELETE FROM owned_cards WHERE user_id = ? AND card_id = ?`, [userId, cardId]);
+      }
+
+      return {
+        owned: copies > 1,
+        removed: true,
+        removedOne: true,
+        copyCount: copies - 1,
+        message: 'Removed one copy from collection',
+      };
+    }
+
     if (!undoingOwnPress && !context.confirmRemoveAll) {
       return {
         owned: true,

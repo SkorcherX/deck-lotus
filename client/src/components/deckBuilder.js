@@ -3,7 +3,7 @@ import { massEntryButton } from '../utils/manaPoolHandoff.js';
 import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/commander.js';
 import { showLoading, hideLoading, debounce, formatMana, showToast, hideModal } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
-import { toggleOwnership, ownershipToggleAttrs, paintOwnershipToggle } from '../utils/ownershipToggle.js';
+import { toggleOwnershipOneCopy, ownershipToggleAttrs, paintOwnershipToggle } from '../utils/ownershipToggle.js';
 import { cmcColor, manaGradient } from '../utils/theme.js';
 import {
   setupInventoryPanel,
@@ -1178,7 +1178,7 @@ function renderCardItem(card) {
   if (layoutView === 'ultra-compact') {
     return `
       <div class="deck-card-item ultra-compact ${card.is_commander ? 'is-commander' : ''}" data-deck-card-id="${card.deck_card_id}" data-printing-id="${card.printing_id}" data-is-sideboard="${card.is_sideboard}" data-board-type="${card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')}" data-card-id="${card.card_id}" draggable="true">
-        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="position: absolute; top: 2px; left: 2px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 16px; height: 16px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
+        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card, { removesOne: true })} style="position: absolute; top: 2px; left: 2px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 16px; height: 16px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
           <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
         </button>
         ${showCommanderIcon ? `
@@ -1232,7 +1232,7 @@ function renderCardItem(card) {
   if (layoutView === 'compact') {
     return `
       <div class="deck-card-item compact ${card.is_commander ? 'is-commander' : ''}" data-deck-card-id="${card.deck_card_id}" data-printing-id="${card.printing_id}" data-is-sideboard="${card.is_sideboard}" data-board-type="${card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')}" data-card-id="${card.card_id}" draggable="true" style="position: relative;">
-        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="position: absolute; top: 4px; left: 4px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
+        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card, { removesOne: true })} style="position: absolute; top: 4px; left: 4px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
           <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
         </button>
         <img src="${card.image_url}"
@@ -1271,7 +1271,7 @@ function renderCardItem(card) {
 
   return `
     <div class="deck-card-item ${card.is_commander ? 'is-commander' : ''}" data-deck-card-id="${card.deck_card_id}" data-printing-id="${card.printing_id}" data-is-sideboard="${card.is_sideboard}" data-board-type="${card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')}" data-card-id="${card.card_id}" draggable="true" style="position: relative;">
-      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
+      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card, { removesOne: true })} style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
         <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
       </button>
       <img src="${card.image_url}"
@@ -1729,9 +1729,13 @@ async function toggleCommander(deckCardId) {
 
 async function toggleCardOwnership(cardId, buttonEl) {
   try {
-    // Removing asks first. A cancelled prompt changes nothing, so the deck's
-    // ownership percentage must not be recomputed either.
-    const { owned, changed } = await toggleOwnership(cardId, buttonEl.dataset.cardName);
+    // One copy, never all of them: the rest may belong to other decks.
+    const item = buttonEl.closest('.deck-card-item');
+    const deckCard = currentDeck.cards.find(c => c.deck_card_id == item?.dataset.deckCardId);
+    const { owned, changed } = await toggleOwnershipOneCopy(cardId, buttonEl.dataset.cardName, {
+      printingId: deckCard?.printing_id,
+      isFoil: Boolean(deckCard?.is_foil),
+    });
     if (!changed) return;
 
     paintOwnershipToggle(buttonEl, owned);

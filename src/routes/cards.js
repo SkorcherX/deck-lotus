@@ -208,11 +208,14 @@ router.post('/:id/owned', authenticate, (req, res, next) => {
   try {
     const cardId = parseInt(req.params.id);
     const userId = req.user.id;
-    const { confirmRemoveAll = false } = req.body || {};
+    const { confirmRemoveAll = false, removeOne = false, printingId, isFoil } = req.body || {};
 
     const result = toggleCardOwnership(userId, cardId, {
       source: 'card_page',
       confirmRemoveAll: confirmRemoveAll === true,
+      removeOne: removeOne === true,
+      printingId: Number.isInteger(printingId) ? printingId : null,
+      isFoil: isFoil === true,
     });
     res.json(result);
   } catch (error) {

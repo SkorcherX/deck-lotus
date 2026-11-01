@@ -58,6 +58,29 @@ export async function toggleOwnership(cardId, cardName = 'this card') {
 }
 
 /**
+ * The deck builder's version of the press: owned means take away *one* copy,
+ * not every printing. The rest may be sitting in other decks, and wiping them
+ * made each of those decks read as short. `printingId`/`isFoil` name the copy
+ * the deck lists, which the server takes first when it is owned.
+ *
+ * Returns `{ owned, changed }` like `toggleOwnership`; `owned` stays true
+ * while copies remain.
+ */
+export async function toggleOwnershipOneCopy(cardId, cardName = 'this card', { printingId, isFoil } = {}) {
+  const result = await api.toggleCardOwnership(cardId, { removeOne: true, printingId, isFoil });
+
+  if (result.removedOne) {
+    const left = result.copyCount;
+    showToast(left > 0
+      ? `Removed one ${cardName} (${left} left in collection)`
+      : `Removed ${cardName} from collection`, 'success', 2000);
+  } else {
+    showToast('Added to collection', 'success', 1500);
+  }
+  return { owned: result.owned, changed: true };
+}
+
+/**
  * The button's own markup, so its accessible name and its state cannot drift
  * between the four places it is rendered.
  *
@@ -71,15 +94,21 @@ export async function toggleOwnership(cardId, cardName = 'this card') {
  * The icon differs by state as well as the colour (a filled tick versus an
  * empty ring), which is the part that survives being unable to see the hue.
  */
-export function ownershipToggleAttrs(card, { isOwned = card.is_owned } = {}) {
+export function ownershipToggleAttrs(card, { isOwned = card.is_owned, removesOne = false } = {}) {
   const name = card.name || 'this card';
-  const label = isOwned
-    ? `Owned: ${name}. Removes every copy from your collection.`
-    : `Not owned: ${name}. Adds one copy to your collection.`;
+  const label = toggleLabel(name, isOwned, removesOne);
 
   return `data-card-id="${card.id ?? card.card_id}" data-card-name="${escapeAttr(name)}"`
     + ` aria-pressed="${isOwned ? 'true' : 'false'}" aria-label="${escapeAttr(label)}"`
-    + ` title="${escapeAttr(label)}"`;
+    + ` title="${escapeAttr(label)}"`
+    + (removesOne ? ' data-removes-one="true"' : '');
+}
+
+function toggleLabel(name, isOwned, removesOne) {
+  if (!isOwned) return `Not owned: ${name}. Adds one copy to your collection.`;
+  return removesOne
+    ? `Owned: ${name}. Removes one copy from your collection.`
+    : `Owned: ${name}. Removes every copy from your collection.`;
 }
 
 function escapeAttr(value) {
@@ -92,9 +121,7 @@ function escapeAttr(value) {
  */
 export function paintOwnershipToggle(buttonEl, isOwned) {
   const name = buttonEl.dataset.cardName || 'this card';
-  const label = isOwned
-    ? `Owned: ${name}. Removes every copy from your collection.`
-    : `Not owned: ${name}. Adds one copy to your collection.`;
+  const label = toggleLabel(name, isOwned, buttonEl.dataset.removesOne === 'true');
 
   buttonEl.classList.toggle('owned', isOwned);
   buttonEl.style.background = isOwned
