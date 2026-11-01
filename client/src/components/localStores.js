@@ -53,6 +53,8 @@ let run = null;
 // What went wrong in the last run. Kept on the page until dismissed or the
 // next run: a toast is gone before a store's error can be read or copied.
 let runErrors = [];
+// Cheapest priced printing per card id, from /shopping/cheapest.
+const cheapest = {};
 
 function readStorage(key, fallback) {
   try {
@@ -118,7 +120,15 @@ function options() {
 
 /** Wire the section once. `itemsGetter` returns the list as the Mana Pool optimizer sees it. */
 export function initLocalStores(itemsGetter) {
-  getItems = itemsGetter;
+  // Online is priced the way a store is: the cheapest printing of the card,
+  // not the one the deck names. A deck listing a Secret Lair Sol Ring would
+  // otherwise quote $70 online against $1.64 on a store's shelf. The
+  // optimizer quote for the online part asks for that same printing.
+  getItems = () => itemsGetter().map((item) => {
+    const best = cheapest[item.cardId];
+    if (!best) return item;
+    return { ...item, onlineUnit: best.price, setCode: best.setCode, collectorNumber: best.collectorNumber, onlineSet: best.setCode };
+  });
   const body = document.getElementById('local-stores-body');
   if (!body || body.dataset.wired) return;
   body.dataset.wired = '1';
@@ -223,6 +233,16 @@ export async function refreshLocalStores() {
       document.getElementById('local-stores-body').innerHTML =
         `<div class="local-stores-error">${escapeHtml(err.message)}</div>`;
       return;
+    }
+  }
+  const missing = [...new Set(items.map((i) => i.cardId).filter((id) => id != null && !(id in cheapest)))];
+  if (missing.length) {
+    try {
+      const found = await api.getCheapestPrintings(missing);
+      // Unpriced cards are remembered as null, so they are not asked for again.
+      for (const id of missing) cheapest[id] = found[id] || null;
+    } catch {
+      // The deck's own printing price stays as the estimate.
     }
   }
   render();
@@ -363,7 +383,9 @@ function renderComparison(items) {
       <td>${escapeHtml(card.name)}</td>
       <td class="num">${card.quantity}</td>
       ${cells.map((c) => mark(c.cost, c.html)).join('')}
-      ${mark(online, online != null ? money(online) : '<span class="local-stores-hint">no price</span>')}
+      ${mark(online, online != null
+        ? `<span title="${escapeHtml(card.onlineSet ? `Cheapest printing: ${card.onlineSet.toUpperCase()} #${card.collectorNumber}` : 'The printing your deck lists')}">${money(online)}</span>`
+        : '<span class="local-stores-hint">no price</span>')}
     </tr>`;
   }).join('');
 
@@ -381,7 +403,7 @@ function renderComparison(items) {
       <div class="local-stores-tile">
         <div class="local-stores-hint">All online (estimate)</div>
         <div class="stat-value">${money(onlineTotal)}</div>
-        <div class="local-stores-hint">TCGplayer market, before shipping${unpricedOnline ? ` · ${unpricedOnline} unpriced` : ''}</div>
+        <div class="local-stores-hint">Cheapest printing, TCGplayer market, before shipping${unpricedOnline ? ` · ${unpricedOnline} unpriced` : ''}</div>
       </div>
     </div>
 
@@ -409,7 +431,7 @@ function renderComparison(items) {
     <div class="analytics-table-wrap">
       <table class="analytics-table">
         <thead><tr><th>Card</th><th class="num">Need</th>
-          ${quoted.map((s) => `<th class="num">${escapeHtml(s.name)}</th>`).join('')}<th class="num">Online est.</th></tr></thead>
+          ${quoted.map((s) => `<th class="num">${escapeHtml(s.name)}</th>`).join('')}<th class="num" title="Cheapest printing at TCGplayer market price">Online est.</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>

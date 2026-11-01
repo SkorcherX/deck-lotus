@@ -974,6 +974,10 @@ class ApiClient {
   }
 
   // Local stores — see client/src/components/localStores.js
+  async getCheapestPrintings(cardIds) {
+    return this.request('/shopping/cheapest', { method: 'POST', body: JSON.stringify({ cardIds }) });
+  }
+
   async getLocalStores() {
     return this.request('/local-stores');
   }

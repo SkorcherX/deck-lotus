@@ -355,6 +355,7 @@ function collectPurchaseItems() {
       } else {
         items.push({
           name: card.name,
+          cardId: card.cardId,
           quantity: wanted,
           setCode: card.setCode,
           collectorNumber: card.collectorNumber,
@@ -373,7 +374,7 @@ async function runShoppingOptimizer() {
     return;
   }
 
-  const items = collectPurchaseItems().map(({ onlineUnit, ...item }) => item);
+  const items = collectPurchaseItems().map(({ onlineUnit, cardId, ...item }) => item);
 
   if (!items.length) {
     showToast('No cards to optimize', 'warning');

@@ -7,6 +7,7 @@ import {
   removeWantedCard,
   clearWantedCards,
   cheapestPrintingOf,
+  cheapestPrintingsFor,
   getBulkBinList,
   setBulkThreshold,
 } from '../services/shoppingService.js';
@@ -135,6 +136,24 @@ router.delete('/wanted/:id', authenticate, (req, res, next) => {
 router.delete('/wanted', authenticate, (req, res, next) => {
   try {
     res.json(clearWantedCards(req.user.id));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/shopping/cheapest — `{ cardIds }` → the cheapest priced printing
+ * of each card, keyed by card id. The local store comparison prices online
+ * the way it prices a store, any printing, so the two columns ask the same
+ * question.
+ */
+router.post('/cheapest', authenticate, (req, res, next) => {
+  try {
+    const cardIds = (Array.isArray(req.body?.cardIds) ? req.body.cardIds : [])
+      .map((id) => parseInt(id, 10))
+      .filter((id) => !isNaN(id))
+      .slice(0, 5000);
+    res.json(cheapestPrintingsFor(cardIds));
   } catch (error) {
     next(error);
   }
