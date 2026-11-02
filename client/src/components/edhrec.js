@@ -193,7 +193,7 @@ function render() {
     </div>
 
     <div class="edhrec-actions">
-      <span class="edhrec-muted">${state.picked.size} picked</span>
+      <span class="edhrec-muted">${state.picked.size} picked${state.picked.size ? ` · ${pickedForShopping().toBuy.length} to buy` : ''}</span>
       <button type="button" class="btn btn-sm btn-secondary" data-action="shopping" ${state.picked.size ? '' : 'disabled'}>
         <i class="ph ph-shopping-cart btn-icon"></i> Add to shopping list
       </button>
@@ -314,10 +314,64 @@ function pickedNames() {
   return state.data.cards.map((c) => c.name).filter((n) => state.picked.has(n));
 }
 
+/**
+ * Picks split by whether they need buying. Picks usually span filters — the
+ * owned cards picked for the deck, then the missing ones to buy — so the
+ * shopping list takes only cards with no free copy unless told otherwise.
+ * A free copy can still be added on purpose (wanting a second one).
+ */
+function pickedForShopping() {
+  const byName = new Map(state.data.cards.map((c) => [c.name, c]));
+  const picks = pickedNames().map((n) => byName.get(n)).filter((c) => c && !c.isBasic);
+  return {
+    toBuy: picks.filter((c) => !(c.available > 0)).map((c) => c.name),
+    have: picks.filter((c) => c.available > 0).map((c) => c.name),
+  };
+}
+
+/** Three-way choice: 'buy' (only cards to buy), 'all', or null (cancelled). */
+function chooseShoppingScope(toBuy, have) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal';
+    const list = have.slice(0, 8).map(escapeHtml).join(', ') + (have.length > 8 ? `, and ${have.length - 8} more` : '');
+    overlay.innerHTML = `
+      <div class="modal-content modal-sm confirm-dialog">
+        <div class="confirm-icon"><i class="ph-fill ph-shopping-cart"></i></div>
+        <h2>You already have ${have.length} of these</h2>
+        <p>${have.length} picked card${have.length === 1 ? ' has' : 's have'} a free copy in your collection: ${list}.</p>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" data-act="cancel">Cancel</button>
+          <button class="btn btn-secondary" data-act="all">Add all ${toBuy.length + have.length}</button>
+          ${toBuy.length ? `<button class="btn btn-primary" data-act="buy">Add the ${toBuy.length} I need</button>` : ''}
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const done = (val) => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) return done(null);
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act) done(act === 'cancel' ? null : act);
+    });
+    const onKey = (e) => { if (e.key === 'Escape') done(null); };
+    document.addEventListener('keydown', onKey);
+    overlay.querySelector('[data-act="buy"], [data-act="all"]').focus();
+  });
+}
+
 async function addToShopping() {
-  const basics = new Set(state.data.cards.filter((c) => c.isBasic).map((c) => c.name));
-  const names = pickedNames().filter((n) => !basics.has(n));
-  if (!names.length) return showToast('Only basic lands picked — those are never on the shopping list', 'info');
+  const { toBuy, have } = pickedForShopping();
+  if (!toBuy.length && !have.length) return showToast('Only basic lands picked — those are never on the shopping list', 'info');
+  let names = toBuy;
+  if (have.length) {
+    const scope = await chooseShoppingScope(toBuy, have);
+    if (!scope) return;
+    if (scope === 'all') names = [...toBuy, ...have];
+  }
   showLoading();
   try {
     const result = await api.addWantedCardsBulk(names.map((n) => `1 ${n}`).join('\n'));
