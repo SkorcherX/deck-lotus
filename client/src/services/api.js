@@ -728,6 +728,10 @@ class ApiClient {
   }
 
   // EDHREC lookup
+  async suggestEdhrecCommanders(q) {
+    return this.request(`/edhrec/commanders?${new URLSearchParams({ q })}`);
+  }
+
   async getEdhrecCommander(q, refresh = false) {
     const params = new URLSearchParams({ q });
     if (refresh) params.set('refresh', '1');

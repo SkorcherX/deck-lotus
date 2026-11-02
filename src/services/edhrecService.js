@@ -4,6 +4,7 @@ import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
 import { isBasicLandSql } from './basicLands.js';
 import { parseDeckList, importDeck } from './importService.js';
 import { getDeckById } from './deckService.js';
+import { normalizeForSearch } from '../utils/cardNameMatch.js';
 
 /**
  * "What does EDHREC say this commander runs, and which of those do I have?"
@@ -146,6 +147,33 @@ function ownershipFor(userId, names) {
  * caller owns. Returns the categories in EDHREC's order plus a de-duplicated
  * `cards` list (one row per card, its first category) for the table.
  */
+/**
+ * Commander names for the lookup box's autocomplete. Eligible the way
+ * canBeCommander in formatRulesService.js decides it — MTGJSON's leadership
+ * flag, else a legendary creature, a Background, or "can be your
+ * commander" — so the list offers only names EDHREC has a page for.
+ * Names starting with the query come first.
+ */
+export function suggestCommanders(query, limit = 10) {
+  const normalized = normalizeForSearch(query || '');
+  if (!normalized || normalized.length < 2) return [];
+  return db.all(`
+    SELECT c.name, c.mana_cost, c.type_line
+    FROM cards c
+    WHERE c.name_normalized LIKE @infix
+      AND (
+        json_extract(c.leadership_skills, '$.commander') = 1
+        OR (c.leadership_skills IS NULL AND (
+              (c.type_line LIKE '%Legendary%' AND c.type_line LIKE '%Creature%')
+           OR c.type_line LIKE '%Background%'
+           OR c.oracle_text LIKE '%can be your commander%'))
+      )
+    ORDER BY c.name_normalized NOT LIKE @prefix, c.name
+    LIMIT @limit
+  `, { infix: `%${normalized}%`, prefix: `${normalized}%`, limit: Math.min(25, Math.max(1, limit)) })
+    .map((r) => ({ name: r.name, manaCost: r.mana_cost, typeLine: r.type_line }));
+}
+
 export async function getCommanderRecommendations(userId, input, { refresh = false } = {}) {
   const slug = commanderSlug(input);
   if (!slug) throw new EdhrecError('Enter a commander name or an EDHREC URL', 400);

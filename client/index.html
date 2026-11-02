@@ -2573,7 +2573,11 @@
                 </div>
 
                 <form id="edhrec-form" class="edhrec-form" autocomplete="off">
-                    <input autocomplete="off" name="q" type="text" placeholder="Commander name, or paste an edhrec.com/commanders/… URL" required />
+                    <div class="edhrec-search">
+                        <input autocomplete="off" name="q" type="text" placeholder="Commander name, or paste an edhrec.com/commanders/… URL" required
+                               role="combobox" aria-autocomplete="list" aria-controls="edhrec-suggestions" aria-expanded="false" />
+                        <div id="edhrec-suggestions" class="search-results hidden" role="listbox"></div>
+                    </div>
                     <button type="submit" class="btn btn-primary"><i class="ph ph-magnifying-glass btn-icon"></i> Look up</button>
                 </form>
 

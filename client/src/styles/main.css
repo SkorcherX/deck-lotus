@@ -9711,6 +9711,12 @@ body.pull-list-open { overflow: hidden; }
   flex: 1 1 auto; min-width: 0; padding: 0.45rem 0.6rem; background: var(--bg-tertiary); color: var(--text);
   border: 1px solid var(--border-color); border-radius: 6px;
 }
+.edhrec-search { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
+.edhrec-search input { width: 100%; }
+.edhrec-search .search-results { z-index: 30; }
+.edhrec-search .search-result-item { padding: 0.5rem 0.75rem; display: flex; justify-content: space-between; gap: 0.75rem; }
+.edhrec-search .search-result-item.active { background: var(--bg-secondary); }
+.edhrec-search .edhrec-suggest-type { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .edhrec-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.75rem; }
 .edhrec-head h3 { margin: 0 0 0.2rem; }
 .edhrec-muted { font-size: 0.8rem; color: var(--text-secondary); }

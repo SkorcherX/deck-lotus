@@ -411,6 +411,91 @@ async function copyList() {
   }
 }
 
+// Commander autocomplete on the lookup box. Picking a name looks it up at
+// once; a pasted EDHREC URL gets no suggestions and is looked up on Enter.
+let suggestTimer = null;
+let suggestSeq = 0;
+let activeSuggestion = -1;
+
+function closeSuggestions() {
+  clearTimeout(suggestTimer);
+  suggestSeq++;
+  activeSuggestion = -1;
+  const box = document.getElementById('edhrec-suggestions');
+  box?.classList.add('hidden');
+  document.querySelector('#edhrec-form [name="q"]')?.setAttribute('aria-expanded', 'false');
+}
+
+function markActive(box) {
+  box.querySelectorAll('.search-result-item').forEach((el, i) => {
+    el.classList.toggle('active', i === activeSuggestion);
+    if (i === activeSuggestion) el.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+function setupSuggestions(form) {
+  const input = form.q;
+  const box = document.getElementById('edhrec-suggestions');
+  if (!input || !box) return;
+
+  const pick = (name) => {
+    input.value = name;
+    closeSuggestions();
+    lookup(name);
+  };
+
+  input.addEventListener('input', () => {
+    clearTimeout(suggestTimer);
+    const q = input.value.trim();
+    if (q.length < 2 || /edhrec\.com|^https?:/i.test(q)) return closeSuggestions();
+    suggestTimer = setTimeout(async () => {
+      const seq = ++suggestSeq;
+      let commanders = [];
+      try {
+        ({ commanders = [] } = await api.suggestEdhrecCommanders(q));
+      } catch {
+        return;
+      }
+      // A slower answer to an older query must not replace a newer one.
+      if (seq !== suggestSeq) return;
+      activeSuggestion = -1;
+      if (!commanders.length) return closeSuggestions();
+      box.innerHTML = commanders.map((c, i) => `
+        <div class="search-result-item" role="option" data-index="${i}" data-name="${escapeHtml(c.name)}">
+          <strong>${escapeHtml(c.name)}</strong>
+          <span class="edhrec-suggest-type">${escapeHtml(c.typeLine || '')}</span>
+        </div>`).join('');
+      box.classList.remove('hidden');
+      input.setAttribute('aria-expanded', 'true');
+    }, 200);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    const items = box.querySelectorAll('.search-result-item');
+    if (box.classList.contains('hidden') || !items.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      activeSuggestion = (activeSuggestion + step + items.length) % items.length;
+      markActive(box);
+    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+      e.preventDefault();
+      pick(items[activeSuggestion].dataset.name);
+    } else if (e.key === 'Escape') {
+      closeSuggestions();
+    }
+  });
+
+  // mousedown, not click: it fires before the input's blur closes the list.
+  box.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.search-result-item');
+    if (!item) return;
+    e.preventDefault();
+    pick(item.dataset.name);
+  });
+  input.addEventListener('blur', () => setTimeout(closeSuggestions, 100));
+}
+
 export function setupEdhrec() {
   const form = document.getElementById('edhrec-form');
   const result = document.getElementById('edhrec-result');
@@ -418,8 +503,10 @@ export function setupEdhrec() {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
+    closeSuggestions();
     lookup(form.q.value.trim());
   });
+  setupSuggestions(form);
 
   result.addEventListener('click', (e) => {
     const filter = e.target.closest('[data-filter]');

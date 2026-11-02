@@ -157,7 +157,8 @@ async function start() {
   // every time the server reloads. It is a test environment; this is not a
   // credential worth protecting, and hardcoding it here keeps it out of .env
   // where it might get copied somewhere that matters.
-  process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-environment-not-a-secret';
+  // At least 32 characters: src/utils/jwt.js refuses to start on anything shorter.
+  process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-environment-not-a-secret-padded-to-32+';
 
   // Registration off: the fixture's four accounts are the point, and a stray
   // signup would change what the next person testing sees.

@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { getCommanderRecommendations, createIdeaDeck, EdhrecError } from '../services/edhrecService.js';
+import { getCommanderRecommendations, createIdeaDeck, suggestCommanders, EdhrecError } from '../services/edhrecService.js';
 
 const router = express.Router();
 
@@ -19,6 +19,15 @@ router.get('/commander', authenticate, async (req, res, next) => {
     res.json(await getCommanderRecommendations(req.user.id, req.query.q, { refresh: req.query.refresh === '1' }));
   } catch (error) {
     fail(res, next, error);
+  }
+});
+
+/** GET /api/edhrec/commanders?q= — commander names for the lookup box's autocomplete. */
+router.get('/commanders', authenticate, (req, res, next) => {
+  try {
+    res.json({ commanders: suggestCommanders(String(req.query.q || '')) });
+  } catch (error) {
+    next(error);
   }
 });
 
