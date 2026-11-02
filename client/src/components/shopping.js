@@ -140,6 +140,12 @@ export function setupShopping() {
   window.addEventListener('page:shopping', (e) => loadShoppingData(e.detail?.step, { fromHistory: !!e.detail?.fromHistory }));
   // From a deck's "Shop for missing cards": the deck ids arrive before the page.
   window.addEventListener('shopping:for-decks', (e) => { pendingDecks = e.detail?.deckIds || null; });
+  // From another page's "View list" (the EDHREC toast): straight to step 2.
+  window.addEventListener('shopping:open-list', () => {
+    flow.source = 'list';
+    saveFlow();
+    goToStep('list');
+  });
 
   document.getElementById('shopping-optimize-btn')?.addEventListener('click', runShoppingOptimizer);
   setupWantedList();
@@ -350,17 +356,29 @@ function setupWantedList() {
 
   document.getElementById('shopping-wanted-bulk-add')?.addEventListener('click', addWantedBulk);
 
-  document.getElementById('shopping-wanted-clear')?.addEventListener('click', async () => {
-    if (!window.confirm('Remove every card from your wanted list?')) return;
-
-    try {
-      const { cleared } = await api.clearWantedCards();
-      showToast(`Removed ${cleared} card${cleared === 1 ? '' : 's'}`, 'success');
-      await refreshShoppingData();
-    } catch (error) {
-      showToast('Could not clear the list: ' + error.message, 'error');
-    }
+  // Step 1's list panel and step 2's toolbar both offer it.
+  document.querySelectorAll('#shopping-wanted-clear, #shop-list-clear').forEach((btn) => {
+    btn.addEventListener('click', clearWantedList);
   });
+}
+
+async function clearWantedList() {
+  const total = shoppingData?.totalWanted || 0;
+  const ok = await confirmDialog({
+    title: 'Clear your list?',
+    message: `Takes all ${total} card${total === 1 ? '' : 's'} off the list you added by hand. Cards your decks need are not on it and stay.`,
+    confirmText: 'Clear list',
+    danger: true,
+  });
+  if (!ok) return;
+
+  try {
+    const { cleared } = await api.clearWantedCards();
+    showToast(`Removed ${cleared} card${cleared === 1 ? '' : 's'}`, 'success');
+    await refreshShoppingData();
+  } catch (error) {
+    showToast('Could not clear the list: ' + error.message, 'error');
+  }
 }
 
 function renderWantedSearchResults(cards) {
@@ -1314,6 +1332,7 @@ function renderWantedSummary() {
   }
 
   clear?.classList.toggle('hidden', total === 0);
+  document.getElementById('shop-list-clear')?.classList.toggle('hidden', total === 0);
 }
 
 function applyFiltersToData(data) {

@@ -393,10 +393,18 @@ export function addWantedCardsBulk(userId, text) {
       continue;
     }
 
+    // A bare name asks for the card, not a printing: quote the cheapest one,
+    // as Browse Cards does. findCard's pick for a name is whichever printing
+    // came first — a $100 Sol Ring as easily as a $1 one. A line that names
+    // its set keeps the printing it asked for.
+    const printingId = line.setCode
+      ? card.printing_id
+      : (cheapestPrintingOf(card.id) || card.printing_id);
+
     try {
       added.push(
         addWantedCard(userId, {
-          printingId: card.printing_id,
+          printingId,
           quantity: line.quantity,
           isFoil: !!line.isFoil,
         })
@@ -425,17 +433,25 @@ export function addWantedCardsBulk(userId, text) {
  * user can swap the printing afterwards.
  */
 export function cheapestPrintingOf(cardId) {
+  // Unpriced and zero-priced rows last, memorabilia and the like never ahead
+  // of a real printing, and among equal prices the readable one: English and
+  // not a Japanese alternate art (★), so the list's art can be read.
   return db.get(
     `SELECT p.id
        FROM printings p
+       LEFT JOIN sets s ON s.code = p.set_code
        LEFT JOIN prices pr
          ON pr.printing_uuid = p.uuid
         AND pr.provider = 'tcgplayer'
         AND pr.price_type = 'normal'
       WHERE p.card_id = ?
-      ORDER BY CASE WHEN pr.price IS NULL THEN 1 ELSE 0 END, pr.price ASC, p.id ASC
+      ORDER BY COALESCE(s.type, '') IN (${NOT_A_STAND_IN.map(() => '?').join(',')}),
+               CASE WHEN pr.price IS NULL OR pr.price <= 0 THEN 1 ELSE 0 END, pr.price ASC,
+               COALESCE(p.language, 'en') NOT IN ('en', 'English'),
+               p.collector_number LIKE '%★%',
+               s.release_date DESC, p.id ASC
       LIMIT 1`,
-    [cardId]
+    [cardId, ...NOT_A_STAND_IN]
   )?.id || null;
 }
 

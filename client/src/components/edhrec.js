@@ -376,7 +376,9 @@ async function addToShopping() {
   try {
     const result = await api.addWantedCardsBulk(names.map((n) => `1 ${n}`).join('\n'));
     const missed = result.unresolved?.length || 0;
-    showToast(`Added ${result.added.length} to the shopping list${missed ? ` (${missed} not found)` : ''}`, missed ? 'warning' : 'success');
+    showToast(`Added ${result.added.length} to the shopping list${missed ? ` (${missed} not found)` : ''}`, missed ? 'warning' : 'success', 6000, {
+      action: { label: 'View list', onClick: () => window.dispatchEvent(new CustomEvent('shopping:open-list')) },
+    });
   } catch (error) {
     showToast(error.message || 'Could not add to the shopping list', 'error');
   } finally {
