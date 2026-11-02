@@ -9813,6 +9813,11 @@ body.pull-list-open { overflow: hidden; }
   border-radius: 8px;
 }
 .local-stores-store a { color: inherit; text-decoration: none; }
+.local-stores-store > div { flex: 1 1 auto; min-width: 0; }
+.local-stores-off > div { opacity: 0.55; }
+.local-stores-hidden { margin-top: 0.25rem; }
+.local-stores-hidden > summary { cursor: pointer; }
+.local-stores-hidden .local-stores-store { margin-top: 0.5rem; }
 .local-stores-add,
 .local-stores-paste,
 .local-stores-options { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }

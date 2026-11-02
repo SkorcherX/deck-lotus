@@ -168,12 +168,18 @@ export function createBackup(userId = null) {
     WHERE user_id IN (${userIdsStr})
   `).all();
 
-  // Local stores the user prices against. Their pasted lookups are not
-  // carried: a dated copy of a shop's shelf, refreshed by running it again.
+  // Local stores, as each user sees them. Stores are shared across the
+  // household (migration 053), so a row here is one user's view of one:
+  // the store by address plus that user's `hidden`/`checking`. Restore
+  // matches on base_url. Pasted lookups are not carried: a dated copy of a
+  // shop's shelf, refreshed by running it again.
   backup.data.local_stores = db.prepare(`
-    SELECT id, user_id, name, base_url, created_at
-    FROM local_stores
-    WHERE user_id IN (${userIdsStr})
+    SELECT u.id AS user_id, s.name, s.base_url, s.created_at,
+           COALESCE(pf.hidden, 0) AS hidden, COALESCE(pf.checking, 1) AS checking
+    FROM users u
+    CROSS JOIN local_stores s
+    LEFT JOIN local_store_prefs pf ON pf.user_id = u.id AND pf.store_id = s.id
+    WHERE u.id IN (${userIdsStr})
   `).all();
 
   // The read-only collection link. Kept so a restore does not silently break
@@ -397,7 +403,9 @@ export function restoreBackup(backupData, options = {}) {
       db.prepare('DELETE FROM owned_printings WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM shopping_list_items WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM found_cards WHERE user_id = ?').run(userId);
-      db.prepare('DELETE FROM local_stores WHERE user_id = ?').run(userId);
+      // Stores are shared; only this user's view of them is theirs to replace.
+      db.prepare('DELETE FROM local_store_prefs WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM local_store_quotes WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM price_watches WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM audit_log WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM collection_value_snapshots WHERE user_id = ?').run(userId);
@@ -596,13 +604,24 @@ export function restoreBackup(backupData, options = {}) {
       insertFound.run(rowId(row.id), owner(row), cardId, row.card_name, row.quantity, row.created_at);
     }, (r) => `Found card ${r.card_name}`);
 
+    // By address: the household may already have the store, under another
+    // member. Version 2 backups from before sharing carry no hidden/checking
+    // and restore as visible and checked.
     const insertLocalStore = db.prepare(`
-      INSERT OR REPLACE INTO local_stores (id, user_id, name, base_url, created_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO local_stores (created_by, name, base_url, created_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(base_url) DO NOTHING
+    `);
+    const localStoreId = db.prepare(`SELECT id FROM local_stores WHERE base_url = ?`);
+    const insertLocalStorePrefs = db.prepare(`
+      INSERT OR REPLACE INTO local_store_prefs (user_id, store_id, hidden, checking) VALUES (?, ?, ?, ?)
     `);
 
     restoreRows('local_stores', (backupData.data.local_stores || []).filter(mine), (row) => {
-      insertLocalStore.run(rowId(row.id), owner(row), row.name, row.base_url, row.created_at);
+      insertLocalStore.run(owner(row), row.name, row.base_url, row.created_at);
+      const storeId = localStoreId.get(row.base_url)?.id;
+      if (storeId != null && (row.hidden || row.checking === 0)) {
+        insertLocalStorePrefs.run(owner(row), storeId, row.hidden ? 1 : 0, row.checking === 0 ? 0 : 1);
+      }
     }, (r) => `Local store ${r.name}`);
 
     // One link per user, and the token is unique across users, so REPLACE on

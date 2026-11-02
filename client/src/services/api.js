@@ -992,6 +992,10 @@ class ApiClient {
     return this.request('/local-stores', { method: 'POST', body: JSON.stringify({ name, baseUrl }) });
   }
 
+  async setLocalStorePrefs(id, prefs) {
+    return this.request(`/local-stores/${id}/prefs`, { method: 'PATCH', body: JSON.stringify(prefs) });
+  }
+
   async deleteLocalStore(id) {
     return this.request(`/local-stores/${id}`, { method: 'DELETE' });
   }

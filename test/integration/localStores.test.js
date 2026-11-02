@@ -1,6 +1,6 @@
 /**
- * Local stores: a pasted result files under the store at its origin, never
- * under another user's store, and re-pasting replaces the snapshot.
+ * Local stores: shared across the household, each user with their own
+ * hidden/checking say and their own pasted lookup, filed by origin.
  */
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,28 +35,61 @@ after(() => closeDb());
 test('store addresses are normalised to an https origin', () => {
   const store = stores.addStore(me, { name: 'Mox Valley', baseUrl: 'moxvalleygames.tcgplayerpro.com/search?q=x' });
   assert.equal(store.baseUrl, 'https://moxvalleygames.tcgplayerpro.com');
-  assert.throws(() => stores.addStore(me, { name: 'Dup', baseUrl: 'https://moxvalleygames.tcgplayerpro.com/' }), /already/);
   assert.throws(() => stores.addStore(me, { name: 'Plain', baseUrl: 'http://example.com' }), /https/);
 });
 
-test('a result files under the store at its origin and replaces the last one', () => {
+test("a store one member adds shows up for everyone, credited to them", () => {
+  const [seen] = stores.listStores(them);
+  assert.equal(seen.name, 'Mox Valley');
+  assert.equal(seen.addedBy, 'a');
+  assert.equal(seen.checking, true);
+  assert.equal(seen.hidden, false);
+  // Adding the same address again is the same shop, not a second row.
+  stores.addStore(them, { name: 'Mox', baseUrl: 'https://moxvalleygames.tcgplayerpro.com/' });
+  assert.equal(db.get(`SELECT COUNT(*) c FROM local_stores`).c, 1);
+});
+
+test('lookups are per member and re-pasting replaces the last one', () => {
   stores.importResult(me, result('https://moxvalleygames.tcgplayerpro.com', 8.53));
   const updated = stores.importResult(me, result('https://moxvalleygames.tcgplayerpro.com', 9));
   assert.equal(updated.result.cards[0].rows[0].price, 9);
-  assert.equal(db.get(`SELECT COUNT(*) c FROM local_store_quotes`).c, 1);
-});
-
-test("a result from someone else's store is refused", () => {
-  stores.addStore(them, { name: 'Other', baseUrl: 'https://other.tcgplayerpro.com' });
-  assert.throws(() => stores.importResult(me, result('https://other.tcgplayerpro.com', 1)), /not one of your stores/);
   assert.equal(stores.listStores(them)[0].result, null);
+  stores.importResult(them, result('https://moxvalleygames.tcgplayerpro.com', 7));
+  assert.equal(stores.listStores(me)[0].result.cards[0].rows[0].price, 9);
+  assert.equal(db.get(`SELECT COUNT(*) c FROM local_store_quotes`).c, 2);
 });
 
-test('changing the address drops the old snapshot', () => {
+test('a result from a store nobody added is refused', () => {
+  assert.throws(() => stores.importResult(me, result('https://other.tcgplayerpro.com', 1)), /not one of your stores/);
+});
+
+test('leaving a store out of price checks is your own setting', () => {
   const [store] = stores.listStores(me);
-  const moved = stores.updateStore(me, store.id, { baseUrl: 'https://moved.tcgplayerpro.com' });
+  stores.setStorePrefs(them, store.id, { checking: false });
+  assert.equal(stores.listStores(them)[0].checking, false);
+  assert.equal(stores.listStores(me)[0].checking, true);
+});
+
+test('removing hides it for you only; the row goes once nobody sees it', () => {
+  const [store] = stores.listStores(me);
+  stores.removeStore(them, store.id);
+  assert.equal(stores.listStores(them)[0].hidden, true);
+  assert.equal(stores.listStores(them)[0].result, null);
+  assert.equal(stores.listStores(me)[0].hidden, false);
+  // Adding it again brings it back.
+  assert.equal(stores.addStore(them, { name: 'x', baseUrl: store.baseUrl }).hidden, false);
+  stores.removeStore(them, store.id);
+  stores.removeStore(me, store.id);
+  assert.equal(db.get(`SELECT COUNT(*) c FROM local_stores`).c, 0);
+});
+
+test('changing the address drops the old snapshots', () => {
+  const store = stores.addStore(me, { name: 'Mox Valley', baseUrl: 'https://moxvalleygames.tcgplayerpro.com' });
+  stores.importResult(me, result(store.baseUrl, 9));
+  const moved = stores.updateStore(them, store.id, { baseUrl: 'https://moved.tcgplayerpro.com' });
   assert.equal(moved.result, null);
-  assert.throws(() => stores.removeStore(them, store.id), /not found/);
+  assert.equal(stores.listStores(me)[0].result, null);
+  assert.throws(() => stores.removeStore(me, 9999), /not found/);
 });
 
 test('the script carries the cards', () => {

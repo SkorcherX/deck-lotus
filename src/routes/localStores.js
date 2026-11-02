@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import {
-  listStores, addStore, updateStore, removeStore, buildScript, importResult, clearResult, LocalStoreError,
+  listStores, addStore, updateStore, removeStore, setStorePrefs, buildScript, importResult, clearResult, LocalStoreError,
 } from '../services/localStoreService.js';
 import { buildExtensionZip, extensionVersion } from '../services/extensionPackage.js';
 
@@ -46,7 +46,10 @@ router.get('/extension-firefox.zip', (req, res) => {
 
 router.get('/extension', (req, res) => res.json({ version: extensionVersion() }));
 
-/** GET /api/local-stores — the caller's stores, each with its latest pasted result. */
+/**
+ * GET /api/local-stores — the household's stores, each with the caller's own
+ * settings (`hidden`, `checking`) and the caller's latest pasted result.
+ */
 router.get('/', authenticate, handle((req, res) => res.json(listStores(req.user.id))));
 
 /** POST /api/local-stores — `{ name, baseUrl }`. */
@@ -54,6 +57,10 @@ router.post('/', authenticate, handle((req, res) => res.status(201).json(addStor
 
 router.patch('/:id', authenticate, handle((req, res) => res.json(updateStore(req.user.id, Number(req.params.id), req.body || {}))));
 
+/** PATCH /api/local-stores/:id/prefs — `{ hidden?, checking? }`, the caller's own say over a shared store. */
+router.patch('/:id/prefs', authenticate, handle((req, res) => res.json(setStorePrefs(req.user.id, Number(req.params.id), req.body || {}))));
+
+/** DELETE /api/local-stores/:id — hides it for the caller; others keep it. */
 router.delete('/:id', authenticate, handle((req, res) => {
   removeStore(req.user.id, Number(req.params.id));
   res.json({ ok: true });

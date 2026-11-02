@@ -558,3 +558,14 @@ taken on GitHub — only do it when explicitly asked.
   are backed up, quotes are not. The split plan chooses per copy without
   shipping, then the online remainder goes to the Mana Pool optimizer for the
   real total.
+- Local stores are the household's (migration 053): one `local_stores` row
+  per `base_url` (UNIQUE), `created_by` only crediting who added it (SET NULL
+  on user delete, so a member leaving does not take the store from everyone).
+  Each user's say is `local_store_prefs` — `hidden` (off their view) and
+  `checking` (in price checks and comparisons); no row means visible and
+  checked. "Remove" hides for the caller only, and the row is deleted once
+  no user still sees it. Quotes are per user, `(store_id, user_id)`, because
+  a lookup prices that user's list. Anyone may rename or re-address a store,
+  and a new address clears everyone's quotes there. Backup carries each
+  user's view (store by address plus their prefs) and restores by
+  `base_url`.

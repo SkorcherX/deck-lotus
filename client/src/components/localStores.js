@@ -48,6 +48,11 @@ const FIREFOX_STEPS = `One-time setup in Firefox:
   </ol>`;
 
 let stores = null;
+// Stores are the household's (migration 053). Each user can hide one from
+// their view or leave it visible but out of price checks; everything that
+// runs, quotes or compares reads `active()`.
+const visible = () => (stores || []).filter((s) => !s.hidden);
+const active = () => visible().filter((s) => s.checking);
 let getItems = () => [];
 let remainderQuote = null;
 // The browser extension, once its bridge on this page answers: { version }.
@@ -314,7 +319,7 @@ function paintCompare() {
   const copies = items.reduce((n, c) => n + c.quantity, 0);
   const onlineTotal = items.reduce((n, c) => n + (c.onlineUnit ?? 0) * c.quantity, 0);
   const unpriced = items.filter((c) => c.onlineUnit == null).length;
-  const quoted = (stores || []).filter((st) => st.result);
+  const quoted = active().filter((st) => st.result);
   const plan = planPurchases(items, quoted);
   const localSplit = quoted.reduce((n, st) => n + plan.totals[st.id].cost, 0);
   const t = compareQuote?.totals;
@@ -357,11 +362,11 @@ function paintCompare() {
         venue: 'local',
       };
     }),
-    ...(stores || []).filter((st) => !st.result).map((st) => ({
+    ...active().filter((st) => !st.result).map((st) => ({
       title: escapeHtml(st.name), tag: 'pick up', value: null, note: 'Prices not checked yet', venue: 'local',
     })),
   ];
-  if (!(stores || []).length) {
+  if (!active().length) {
     options.push({ title: 'Local stores', value: null, note: 'Add the stores near you to compare their shelves.', venue: 'local' });
   }
   if (quoted.length) {
@@ -616,19 +621,30 @@ function render() {
       </div>`}
 
     <div class="local-stores-list">
-      ${(stores || []).map((s) => `
-        <div class="local-stores-store">
+      ${visible().map((s) => `
+        <div class="local-stores-store${s.checking ? '' : ' local-stores-off'}">
+          <input type="checkbox" data-action="toggle-checking" data-id="${s.id}" ${s.checking ? 'checked' : ''}
+                 title="Include this store in price checks and comparisons" aria-label="Price-check ${escapeHtml(s.name)}">
           <div>
             <a href="${escapeHtml(s.baseUrl)}" target="_blank" rel="noopener noreferrer"><strong>${escapeHtml(s.name)}</strong>
               <i class="ph ph-arrow-square-out"></i></a>
-            <div class="local-stores-hint">${s.fetchedAt ? `Prices from ${escapeHtml(ago(s.fetchedAt))}` : 'Not looked up yet'}</div>
+            <div class="local-stores-hint">${s.fetchedAt ? `Prices from ${escapeHtml(ago(s.fetchedAt))}` : 'Not looked up yet'}${s.addedBy ? ` · added by ${escapeHtml(s.addedBy)}` : ''}</div>
           </div>
-          ${extension ? `<button type="button" class="btn btn-secondary btn-sm" data-action="run-one" data-id="${s.id}" ${run ? 'disabled' : ''} title="Check prices at this store">
+          ${extension ? `<button type="button" class="btn btn-secondary btn-sm" data-action="run-one" data-id="${s.id}" ${run || !s.checking ? 'disabled' : ''} title="Check prices at this store">
             <i class="ph ph-arrows-clockwise"></i></button>` : ''}
-          <button type="button" class="btn btn-secondary btn-sm" data-action="remove-store" data-id="${s.id}" title="Remove store">
+          <button type="button" class="btn btn-secondary btn-sm" data-action="remove-store" data-id="${s.id}" title="Remove from your list (others in the household keep it)">
             <i class="ph ph-trash"></i>
           </button>
-        </div>`).join('') || '<div class="local-stores-hint">Add a store that sells through a TCGplayer Pro storefront.</div>'}
+        </div>`).join('') || '<div class="local-stores-hint">Add a store that sells through a TCGplayer Pro storefront. Stores you add are shared with everyone in the household.</div>'}
+      ${(stores || []).some((s) => s.hidden) ? `
+        <details class="local-stores-hidden">
+          <summary class="local-stores-hint">${(stores || []).filter((s) => s.hidden).length} hidden store(s)</summary>
+          ${(stores || []).filter((s) => s.hidden).map((s) => `
+            <div class="local-stores-store">
+              <div><strong>${escapeHtml(s.name)}</strong></div>
+              <button type="button" class="btn btn-secondary btn-sm" data-action="unhide-store" data-id="${s.id}">Show again</button>
+            </div>`).join('')}
+        </details>` : ''}
     </div>
 
     <form class="local-stores-add" data-form="add-store">
@@ -637,7 +653,7 @@ function render() {
       <button type="submit" class="btn btn-secondary btn-sm"><i class="ph ph-plus"></i> Add store</button>
     </form>
 
-    ${stores?.length ? `
+    ${active().length ? `
       <div class="local-stores-steps">
         <div class="local-stores-options">
           <label>Worst condition
@@ -648,7 +664,7 @@ function render() {
           <label><input type="checkbox" data-option="allowFoil" ${opts.allowFoil ? 'checked' : ''}> Foils are fine</label>
           ${extension ? `
             <button type="button" class="btn btn-primary btn-sm" data-action="run-all" ${run ? 'disabled' : ''}>
-              <i class="ph ph-storefront"></i> Check prices at ${stores.length === 1 ? escapeHtml(stores[0].name) : `all ${stores.length} stores`} (${items.length} cards)
+              <i class="ph ph-storefront"></i> Check prices at ${active().length === 1 ? escapeHtml(active()[0].name) : `all ${active().length} stores`} (${items.length} cards)
             </button>` : ''}
         </div>
         <div id="local-stores-run" class="local-stores-run"></div>
@@ -715,7 +731,7 @@ function cellFor(card, result) {
 }
 
 function renderComparison(items) {
-  const quoted = (stores || []).filter((s) => s.result);
+  const quoted = active().filter((s) => s.result);
   if (!quoted.length) return '';
 
   const plan = planPurchases(items, quoted);
@@ -811,7 +827,7 @@ function renderRemainderQuote(localSplit) {
 
 function currentPlan() {
   const items = getItems();
-  return { items, plan: planPurchases(items, (stores || []).filter((s) => s.result)) };
+  return { items, plan: planPurchases(items, active().filter((s) => s.result)) };
 }
 
 async function onClick(event) {
@@ -821,7 +837,7 @@ async function onClick(event) {
   const action = el.dataset.action;
 
   if (action === 'run-all') {
-    startRun(stores.map((s) => s.id));
+    startRun(active().map((s) => s.id));
   } else if (action === 'run-one') {
     startRun([Number(el.dataset.id)]);
   } else if (action === 'cancel-run') {
@@ -835,12 +851,20 @@ async function onClick(event) {
   } else if (action === 'remove-store') {
     const store = stores.find((s) => s.id === Number(el.dataset.id));
     const ok = await confirmDialog({
-      title: 'Remove store?', message: `${store.name} and its last price lookup will be removed.`, confirmText: 'Remove', danger: true,
+      title: 'Remove store?',
+      message: `${store.name} and your last price lookup there come off your list. Everyone else in the household keeps it, and you can show it again later.`,
+      confirmText: 'Remove', danger: true,
     });
     if (!ok) return;
     await api.deleteLocalStore(store.id);
-    stores = stores.filter((s) => s.id !== store.id);
+    stores = stores.map((s) => (s.id === store.id ? { ...s, hidden: true, result: null, fetchedAt: null } : s));
     render();
+    paintCompare();
+  } else if (action === 'unhide-store') {
+    const store = await api.setLocalStorePrefs(Number(el.dataset.id), { hidden: false });
+    stores = stores.map((s) => (s.id === store.id ? store : s));
+    render();
+    paintCompare();
   } else if (action === 'clear-result') {
     const id = Number(el.dataset.id);
     await api.clearLocalStoreResults(id);
@@ -884,7 +908,19 @@ async function onClick(event) {
   }
 }
 
-function onChange(event) {
+async function onChange(event) {
+  const toggle = event.target.closest('[data-action="toggle-checking"]');
+  if (toggle) {
+    try {
+      const store = await api.setLocalStorePrefs(Number(toggle.dataset.id), { checking: toggle.checked });
+      stores = stores.map((s) => (s.id === store.id ? store : s));
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+    render();
+    paintCompare();
+    return;
+  }
   const el = event.target.closest('[data-option]');
   if (!el) return;
   const opts = options();
@@ -900,8 +936,11 @@ async function onSubmit(event) {
   try {
     if (form.dataset.form === 'add-store') {
       const store = await api.addLocalStore(data.get('name'), data.get('baseUrl'));
-      stores = [...stores, store].sort((a, b) => a.name.localeCompare(b.name));
-      showToast(`Added ${store.name}`);
+      const known = stores.some((s) => s.id === store.id);
+      stores = known
+        ? stores.map((s) => (s.id === store.id ? store : s))
+        : [...stores, store].sort((a, b) => a.name.localeCompare(b.name));
+      showToast(known ? `${store.name} was already shared in the household — it is back on your list` : `Added ${store.name} for the household`);
     } else {
       const text = String(data.get('result') || '').trim();
       if (!text) return;
