@@ -1,4 +1,5 @@
 import db from '../db/connection.js';
+import { cheapestPrintingOf } from './cheapestPrinting.js';
 import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
 // One parser for both paste boxes — see the note in cardLines.js about the two
 // having drifted apart while a comment claimed they agreed.
@@ -208,6 +209,15 @@ export function importDeck(userId, deckName, format, cardList) {
       });
       console.warn(`Card not found: ${cardData.name || ''}${cardData.setCode ? ` (${cardData.setCode})` : ''}${cardData.collectorNumber ? ` ${cardData.collectorNumber}` : ''}`);
       continue;
+    }
+
+    // A line with no set asks for the card, not a printing. findCard's answer
+    // to a bare name is whichever printing the table lists first — often a
+    // showcase, a Secret Lair or a Japanese alternate art — and the deck's
+    // value is then priced off it. Use the cheapest readable printing, as the
+    // shopping list does. A line that names a set keeps what it asked for.
+    if (!cardData.setCode) {
+      card.printing_id = cheapestPrintingOf(card.id) || card.printing_id;
     }
 
     const isFoil = cardData.isFoil ? 1 : 0;

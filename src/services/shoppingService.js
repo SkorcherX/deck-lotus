@@ -424,36 +424,9 @@ export function addWantedCardsBulk(userId, text) {
   return { added, unresolved, parsed: parsed.length };
 }
 
-/**
- * The cheapest printing of a card, for entry points that work at card level.
- *
- * Browse Cards knows a card, not a printing, and the list stores printings.
- * Cheapest is the right default for a shopping list specifically — you are
- * being quoted a price, and the quote should be the best one available. The
- * user can swap the printing afterwards.
- */
-export function cheapestPrintingOf(cardId) {
-  // Unpriced and zero-priced rows last, memorabilia and the like never ahead
-  // of a real printing, and among equal prices the readable one: English and
-  // not a Japanese alternate art (★), so the list's art can be read.
-  return db.get(
-    `SELECT p.id
-       FROM printings p
-       LEFT JOIN sets s ON s.code = p.set_code
-       LEFT JOIN prices pr
-         ON pr.printing_uuid = p.uuid
-        AND pr.provider = 'tcgplayer'
-        AND pr.price_type = 'normal'
-      WHERE p.card_id = ?
-      ORDER BY COALESCE(s.type, '') IN (${NOT_A_STAND_IN.map(() => '?').join(',')}),
-               CASE WHEN pr.price IS NULL OR pr.price <= 0 THEN 1 ELSE 0 END, pr.price ASC,
-               COALESCE(p.language, 'en') NOT IN ('en', 'English'),
-               p.collector_number LIKE '%★%',
-               s.release_date DESC, p.id ASC
-      LIMIT 1`,
-    [cardId, ...NOT_A_STAND_IN]
-  )?.id || null;
-}
+// Moved to cheapestPrinting.js so deck import can share it without importing
+// the shopping service. Re-exported for the existing callers.
+export { cheapestPrintingOf } from './cheapestPrinting.js';
 
 /**
  * Every printing of a card a shopper might choose, with its art and TCGplayer

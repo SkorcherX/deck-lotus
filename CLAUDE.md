@@ -605,3 +605,11 @@ taken on GitHub — only do it when explicitly asked.
   go in at the printing the user holds most of, finish included, so they
   read as owned; others at `cheapestPrintingOf`. Audit source `edhrec`,
   one `batchId` per addition.
+- A card list line with no set code names a card, not a printing. Deck
+  import, the shopping list, Browse Cards "want" and EDHREC all resolve it
+  with `cheapestPrintingOf` (`src/services/cheapestPrinting.js`): English
+  and non-★ first whatever the price, then real printings ahead of
+  memorabilia, then cheapest TCGplayer normal price. `findCard`'s own answer
+  to a bare name is whichever row comes first — often a showcase or Japanese
+  printing — and the deck's value is priced off whatever is stored. A line
+  that names its set keeps exactly what it asked for.
