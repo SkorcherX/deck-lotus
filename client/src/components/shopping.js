@@ -144,6 +144,9 @@ export function setupShopping() {
   window.addEventListener('shopping:open-list', () => {
     flow.source = 'list';
     saveFlow();
+    // goToStep marks the move as within the page, which skips the refetch on
+    // arrival; the cards were just added elsewhere, so load afresh.
+    loaded = false;
     goToStep('list');
   });
 
@@ -661,6 +664,18 @@ async function loadShoppingData(requestedStep = null, { fromHistory = false } = 
       hideLoading();
       showError('Failed to load shopping data: ' + error.message);
       return;
+    }
+  } else if (!within) {
+    // Arriving from another page: cards may have been added there (EDHREC's
+    // "View list", Browse Cards, a deck), and the list held from the last
+    // visit would not show them. Moving between steps here needs no fetch.
+    try {
+      showLoading();
+      await fetchList();
+    } catch (error) {
+      showError('Failed to refresh shopping data: ' + error.message);
+    } finally {
+      hideLoading();
     }
   }
 
