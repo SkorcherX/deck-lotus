@@ -94,7 +94,25 @@ function ownershipFor(userId, names) {
   const counts = db.prepare(`
     SELECT c.id AS card_id, c.name, c.type_line, c.mana_cost, c.cmc,
       ${isBasicLandSql('c')} AS is_basic,
-      (SELECT p.image_url FROM printings p WHERE p.card_id = c.id AND p.image_url IS NOT NULL LIMIT 1) AS image_url,
+      -- Preview art: a printing the user owns (most copies first), so an owned
+      -- card never shows a version they don't hold; otherwise a readable one —
+      -- English, from an ordinary set, plain frame, newest first. Language was
+      -- stored as 'en' for every printing before the import carried it, so
+      -- the Japanese alternate arts are also caught by their ★ collector
+      -- numbers and the Mystical Archive by its set type.
+      (SELECT p.image_url FROM printings p LEFT JOIN sets s ON s.code = p.set_code
+        WHERE p.card_id = c.id AND p.image_url IS NOT NULL
+        ORDER BY COALESCE((SELECT SUM(op.quantity) FROM owned_printings op
+                           WHERE op.user_id = @u AND op.printing_id = p.id), 0) DESC,
+                 COALESCE(p.language, 'en') NOT IN ('en', 'English'),
+                 p.collector_number LIKE '%★%',
+                 COALESCE(p.is_promo, 0)
+                   OR COALESCE(s.type, '') IN ('promo', 'masterpiece', 'memorabilia', 'funny', 'token', 'alchemy'),
+                 COALESCE(p.border_color, 'black') NOT IN ('black', 'white'),
+                 COALESCE(p.is_full_art, 0),
+                 p.collector_number GLOB '*[^0-9]*',
+                 s.release_date DESC
+        LIMIT 1) AS image_url,
       -- The card's lowest rarity in print: a card that was ever a common is
       -- a common to anyone hunting for a copy. Special/bonus only when it has
       -- never been printed as anything else.

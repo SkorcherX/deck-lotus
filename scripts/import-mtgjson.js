@@ -336,7 +336,7 @@ async function importCards(sourceDb, targetDb) {
   const sourcePrintings = srcDb.prepare(`
     SELECT c.uuid, c.name, c.setCode, c.number, c.rarity, c.artist,
            c.flavorText, c.finishes, c.isPromo, c.isFullArt,
-           c.frameVersion, c.borderColor, c.watermark,
+           c.frameVersion, c.borderColor, c.watermark, c.language,
            ci.scryfallId, ci.mtgoId, ci.mtgoFoilId,
            ci.tcgplayerProductId, ci.cardKingdomId,
            ci.cardKingdomFoilId, ci.cardKingdomEtchedId,
@@ -356,7 +356,7 @@ async function importCards(sourceDb, targetDb) {
       mtg_arena_id, multiverse_id
     ) VALUES (
       (SELECT id FROM cards WHERE name = ? LIMIT 1),
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'en', ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `);
@@ -391,6 +391,7 @@ async function importCards(sourceDb, targetDb) {
         p.frameVersion,
         p.borderColor,
         p.watermark,
+        p.language || 'en',
         imageUrl,
         p.scryfallId,
         p.mtgoId,
