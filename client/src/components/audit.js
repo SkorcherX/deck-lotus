@@ -529,6 +529,7 @@ const SOURCE_LABELS = {
   card_page: 'Card page',
   deck_builder: 'Deck builder',
   deck_import: 'Deck import',
+  edhrec: 'EDHREC',
   trade: 'Trade',
   scan: 'Scan',
   scanner: 'Phone scanner',

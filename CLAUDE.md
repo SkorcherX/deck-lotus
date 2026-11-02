@@ -598,3 +598,10 @@ taken on GitHub — only do it when explicitly asked.
   `formatRulesService.js`, so a format with no size rule (or none set) is
   judged on cards alone. Test fixtures that build a handful of cards to test
   claims use `'casual'` for that reason.
+- EDHREC "Add to deck" (`addCardsToDeck` in `edhrecService.js`,
+  `POST /api/edhrec/deck/:id/cards`) adds picks to an existing deck, one
+  copy each to the mainboard. A card the deck already lists (main or side,
+  any printing) is skipped, not doubled — EDHREC is Commander. Owned cards
+  go in at the printing the user holds most of, finish included, so they
+  read as owned; others at `cheapestPrintingOf`. Audit source `edhrec`,
+  one `batchId` per addition.

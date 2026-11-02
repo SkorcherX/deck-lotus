@@ -9717,6 +9717,11 @@ body.pull-list-open { overflow: hidden; }
   flex: 1 1 auto; min-width: 0; padding: 0.45rem 0.6rem; background: var(--bg-tertiary); color: var(--text);
   border: 1px solid var(--border-color); border-radius: 6px;
 }
+.edhrec-deck-picker { text-align: left; }
+.edhrec-deck-list { display: flex; flex-direction: column; gap: 0.35rem; max-height: 50vh; overflow-y: auto; margin: 0.75rem 0; }
+.edhrec-deck-option { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.5rem 0.65rem; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.edhrec-deck-option:has(input:checked) { border-color: var(--primary); background: var(--bg-secondary); }
+.edhrec-deck-option > span { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .edhrec-search { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
 .edhrec-search input { width: 100%; }
 .edhrec-search .search-results { z-index: 30; }

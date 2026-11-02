@@ -2,7 +2,9 @@ import db from '../db/connection.js';
 import { commanderSlug, parseCommanderPage } from '../shared/edhrecPage.js';
 import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
 import { isBasicLandSql } from './basicLands.js';
-import { parseDeckList, importDeck } from './importService.js';
+import { parseDeckList, importDeck, findCard } from './importService.js';
+import { recordDeckEvent, AUDIT_ACTIONS } from './auditService.js';
+import { cheapestPrintingOf } from './shoppingService.js';
 import { getDeckById } from './deckService.js';
 import { normalizeForSearch } from '../utils/cardNameMatch.js';
 
@@ -244,4 +246,85 @@ export function createIdeaDeck(userId, { name, commander, cardNames }) {
   const result = importDeck(userId, name || `${commander || 'EDHREC'} (EDHREC)`, 'commander', cardList);
   db.run(`UPDATE decks SET status = 'idea' WHERE id = ? AND user_id = ?`, [result.deckId, userId]);
   return { deck: getDeckById(result.deckId, userId), imported: result.imported, unresolved: result.unresolved };
+}
+
+/**
+ * Add picked cards to a deck the user already has — an idea or a deck being
+ * built that EDHREC is filling out.
+ *
+ * Cards the deck already lists (any printing, main or sideboard) are skipped
+ * and reported, not added again: EDHREC's pages are Commander, where a second
+ * copy is a legality error rather than a choice. Each new card goes in at a
+ * printing the user owns (the one they hold most of, its finish included), so
+ * it reads as owned and the pull list finds it; otherwise the cheapest
+ * printing, the same default as the shopping list. One batchId on every audit
+ * row, so the addition can be found and undone as a unit.
+ */
+export function addCardsToDeck(userId, { deckId, cardNames }) {
+  const deck = db.get(`SELECT id, name FROM decks WHERE id = ? AND user_id = ?`, [deckId, userId]);
+  if (!deck) throw new EdhrecError('Deck not found', 404);
+
+  const picked = [...new Set((cardNames || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  if (!picked.length) throw new EdhrecError('Pick at least one card', 400);
+
+  const inDeck = new Set(db.all(`
+    SELECT DISTINCT p.card_id FROM deck_cards dc JOIN printings p ON p.id = dc.printing_id
+     WHERE dc.deck_id = ?
+       AND COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) IN ('mainboard', 'sideboard')
+  `, [deck.id]).map((r) => r.card_id));
+
+  const ownedPrinting = db.prepare(`
+    SELECT op.printing_id, op.is_foil, SUM(op.quantity) AS q
+      FROM owned_printings op JOIN printings p ON p.id = op.printing_id
+     WHERE op.user_id = ? AND p.card_id = ?
+     GROUP BY op.printing_id, op.is_foil
+     ORDER BY q DESC, op.is_foil ASC
+     LIMIT 1
+  `);
+  const existingRow = db.prepare(`
+    SELECT id, quantity FROM deck_cards WHERE deck_id = ? AND printing_id = ? AND board_type = 'mainboard' AND is_foil = ?
+  `);
+  const insertRow = db.prepare(`
+    INSERT INTO deck_cards (deck_id, printing_id, quantity, is_sideboard, is_commander, board_type, is_foil)
+    VALUES (?, ?, 1, 0, 0, 'mainboard', ?)
+  `);
+
+  const batchId = `edhrec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const added = [];
+  const skipped = [];
+  const unresolved = [];
+
+  db.transaction(() => {
+    for (const name of picked) {
+      const card = findCard(name);
+      if (!card) { unresolved.push(name); continue; }
+      if (inDeck.has(card.id)) { skipped.push(card.name); continue; }
+
+      const owned = ownedPrinting.get(userId, card.id);
+      const printingId = owned?.printing_id ?? cheapestPrintingOf(card.id) ?? card.printing_id;
+      const isFoil = owned ? owned.is_foil : 0;
+
+      // Two names can resolve to one card (a DFC by either face).
+      if (existingRow.get(deck.id, printingId, isFoil)) { skipped.push(card.name); continue; }
+      insertRow.run(deck.id, printingId, isFoil);
+      inDeck.add(card.id);
+      added.push({ name: card.name, owned: !!owned });
+
+      recordDeckEvent({
+        userId,
+        action: AUDIT_ACTIONS.DECK_CARD_ADD,
+        source: 'edhrec',
+        deckId: deck.id,
+        deckName: deck.name,
+        printingId,
+        isFoil: !!isFoil,
+        quantityBefore: 0,
+        quantityAfter: 1,
+        detail: { boardType: 'mainboard', batchId },
+      });
+    }
+    if (added.length) db.run(`UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [deck.id]);
+  });
+
+  return { deck: { id: deck.id, name: deck.name }, added, skipped, unresolved };
 }

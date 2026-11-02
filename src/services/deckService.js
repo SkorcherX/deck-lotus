@@ -41,7 +41,10 @@ export function getUserDecks(userId) {
     `SELECT d.*,
       (SELECT COALESCE(SUM(quantity), 0) FROM deck_cards WHERE deck_id = d.id AND (board_type = 'mainboard' OR (board_type IS NULL AND is_sideboard = 0))) as mainboard_count,
       (SELECT COALESCE(SUM(quantity), 0) FROM deck_cards WHERE deck_id = d.id AND (board_type = 'sideboard' OR (board_type IS NULL AND is_sideboard = 1))) as sideboard_count,
-      (SELECT COALESCE(SUM(quantity), 0) FROM deck_cards WHERE deck_id = d.id AND board_type = 'maybeboard') as maybeboard_count
+      (SELECT COALESCE(SUM(quantity), 0) FROM deck_cards WHERE deck_id = d.id AND board_type = 'maybeboard') as maybeboard_count,
+      -- For pickers that match a deck by commander (the EDHREC page's "Add to deck").
+      (SELECT c.name FROM deck_cards dc JOIN printings p ON p.id = dc.printing_id JOIN cards c ON c.id = p.card_id
+        WHERE dc.deck_id = d.id AND dc.is_commander = 1 ORDER BY dc.id LIMIT 1) as commander_name
      FROM decks d
      WHERE user_id = ?
      ORDER BY updated_at DESC`,

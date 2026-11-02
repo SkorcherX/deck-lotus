@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { getCommanderRecommendations, createIdeaDeck, suggestCommanders, EdhrecError } from '../services/edhrecService.js';
+import { getCommanderRecommendations, createIdeaDeck, addCardsToDeck, suggestCommanders, EdhrecError } from '../services/edhrecService.js';
 
 const router = express.Router();
 
@@ -35,6 +35,15 @@ router.get('/commanders', authenticate, (req, res, next) => {
 router.post('/deck', authenticate, (req, res, next) => {
   try {
     res.status(201).json(createIdeaDeck(req.user.id, req.body || {}));
+  } catch (error) {
+    fail(res, next, error);
+  }
+});
+
+/** POST /api/edhrec/deck/:id/cards — `{ cardNames }` → added to an existing deck. */
+router.post('/deck/:id/cards', authenticate, (req, res, next) => {
+  try {
+    res.json(addCardsToDeck(req.user.id, { deckId: Number(req.params.id), cardNames: req.body?.cardNames }));
   } catch (error) {
     fail(res, next, error);
   }

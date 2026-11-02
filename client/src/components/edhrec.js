@@ -197,6 +197,9 @@ function render() {
       <button type="button" class="btn btn-sm btn-secondary" data-action="shopping" ${state.picked.size ? '' : 'disabled'}>
         <i class="ph ph-shopping-cart btn-icon"></i> Add to shopping list
       </button>
+      <button type="button" class="btn btn-sm btn-secondary" data-action="add-to-deck" ${state.picked.size ? '' : 'disabled'}>
+        <i class="ph ph-plus-square btn-icon"></i> Add to deck
+      </button>
       <button type="button" class="btn btn-sm btn-secondary" data-action="deck" ${state.picked.size ? '' : 'disabled'}>
         <i class="ph ph-cards btn-icon"></i> New idea deck
       </button>
@@ -401,6 +404,94 @@ async function createDeck() {
   }
 }
 
+// Building first: that is the deck EDHREC is most often filling out. Then
+// ideas, finished decks, and retired ones last.
+const STATUS_ORDER = { building: 0, idea: 1, ready: 2, retired: 3 };
+const STATUS_LABEL = { building: 'Building', idea: 'Idea', ready: 'Ready', retired: 'Retired' };
+
+/** Pick one of the user's decks; resolves to its id, or null if cancelled. */
+function chooseDeck(decks, commander, count) {
+  return new Promise((resolve) => {
+    const same = (d) => commander && d.commander_name === commander;
+    const sorted = [...decks].sort((a, b) =>
+      Number(same(b)) - Number(same(a))
+      || (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+      || String(a.name).localeCompare(String(b.name)));
+    const preselect = sorted[0]?.id;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal';
+    overlay.innerHTML = `
+      <div class="modal-content modal-sm confirm-dialog edhrec-deck-picker">
+        <h2>Add ${count} card${count === 1 ? '' : 's'} to a deck</h2>
+        <p>Cards the deck already lists are skipped. Owned cards go in at the printing you hold.</p>
+        <div class="edhrec-deck-list" role="radiogroup">
+          ${sorted.map((d) => `
+            <label class="edhrec-deck-option">
+              <input type="radio" name="edhrec-deck" value="${d.id}" ${d.id === preselect ? 'checked' : ''}>
+              <span>
+                <strong>${escapeHtml(d.name)}</strong>
+                <span class="edhrec-muted">${escapeHtml(STATUS_LABEL[d.status] || d.status || '')}
+                  · ${escapeHtml(d.format || 'no format')} · ${d.mainboard_count || 0} cards${same(d) ? ' · same commander' : ''}</span>
+              </span>
+            </label>`).join('')}
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" data-act="cancel">Cancel</button>
+          <button class="btn btn-primary" data-act="ok">Add to deck</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const done = (val) => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    const chosen = () => Number(overlay.querySelector('input[name="edhrec-deck"]:checked')?.value) || null;
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) return done(null);
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'cancel') done(null);
+      else if (act === 'ok') done(chosen());
+    });
+    const onKey = (e) => { if (e.key === 'Escape') done(null); };
+    document.addEventListener('keydown', onKey);
+    overlay.querySelector('input:checked')?.focus();
+  });
+}
+
+async function addToDeck() {
+  const names = pickedNames();
+  let decks;
+  try {
+    ({ decks = [] } = await api.getDecks());
+  } catch (error) {
+    return showToast(error.message || 'Could not load your decks', 'error');
+  }
+  if (!decks.length) return showToast('You have no decks yet — use "New idea deck" instead', 'info');
+
+  const deckId = await chooseDeck(decks, state.data.commander.name, names.length);
+  if (!deckId) return;
+
+  showLoading();
+  try {
+    const result = await api.addEdhrecCardsToDeck(deckId, names);
+    const notes = [];
+    if (result.skipped?.length) notes.push(`${result.skipped.length} already in it`);
+    if (result.unresolved?.length) notes.push(`${result.unresolved.length} not found`);
+    showToast(
+      `Added ${result.added.length} to ${result.deck.name}${notes.length ? ` (${notes.join(', ')})` : ''}`,
+      result.unresolved?.length ? 'warning' : 'success',
+      6000,
+      { action: { label: 'Open deck', onClick: () => window.dispatchEvent(new CustomEvent('open-deck', { detail: { deckId } })) } }
+    );
+  } catch (error) {
+    showToast(error.message || 'Could not add to the deck', 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
 async function copyList() {
   const text = pickedNames().map((n) => `1 ${n}`).join('\n');
   try {
@@ -527,6 +618,7 @@ export function setupEdhrec() {
     else if (action === 'direction') { state.desc = !state.desc; render(); }
     else if (action === 'shopping') addToShopping();
     else if (action === 'deck') createDeck();
+    else if (action === 'add-to-deck') addToDeck();
     else if (action === 'copy') copyList();
     else if (action === 'clear') { state.picked.clear(); render(); }
   });

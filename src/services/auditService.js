@@ -60,6 +60,8 @@ export const AUDIT_SOURCES = [
   // when a deck turns out to hold the wrong card, whether a person chose it
   // or a heuristic did is the first thing worth knowing.
   'deck_generator',
+  // Cards picked on the EDHREC page and added to an existing deck.
+  'edhrec',
   'trade',
   // A card lent or borrowed. Never moves owned_printings — see loanService.js.
   'loan',

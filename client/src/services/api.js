@@ -728,6 +728,10 @@ class ApiClient {
   }
 
   // EDHREC lookup
+  async addEdhrecCardsToDeck(deckId, cardNames) {
+    return this.request(`/edhrec/deck/${deckId}/cards`, { method: 'POST', body: JSON.stringify({ cardNames }) });
+  }
+
   async suggestEdhrecCommanders(q) {
     return this.request(`/edhrec/commanders?${new URLSearchParams({ q })}`);
   }
