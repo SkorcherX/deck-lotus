@@ -576,3 +576,17 @@ taken on GitHub — only do it when explicitly asked.
   version in `src/extension/manifest.json` means signing the new zip on
   addons.mozilla.org ("On your own") and dropping the new `.xpi` there;
   until then Firefox users get the older signed one.
+- Local test environment: start it with the `test-env` entry in
+  `.claude/launch.json` (`npm run test:env`, `scripts/test-env.mjs`), log in
+  as `admin` / `test`. Two pitfalls, both hit more than once:
+  - `src/utils/jwt.js` exits at startup unless `JWT_SECRET` is at least 32
+    characters and not a published default. `test-env.mjs` sets its own
+    fixed secret for this; if the server dies with "FATAL: JWT_SECRET must
+    be set…", that string has fallen under the rule again — lengthen it
+    there rather than adding a `.env` or exporting one by hand.
+  - The script pins the port to `TEST_PORT` (default 3100). If the preview
+    tool reports a different port because 3100 looked busy, the server is
+    still on 3100 — check `preview_logs` and navigate the tab to
+    `http://localhost:3100`.
+  It serves `client/dist`, so run `npx vite build` in `client/` first or
+  the browser shows the previous build.
