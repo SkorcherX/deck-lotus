@@ -293,7 +293,10 @@ let compareQuote = null;
 const TCG_SHIP_PER_PACKAGE = 2.75;
 const TCG_MAX_PACKAGES = 6;
 function tcgShippingEstimate(items) {
-  const distinct = items.filter((c) => c.onlineUnit != null).length;
+  return shippingForCards(items.filter((c) => c.onlineUnit != null).length);
+}
+
+function shippingForCards(distinct) {
   if (!distinct) return { packages: 0, cost: 0 };
   const packages = Math.min(TCG_MAX_PACKAGES, Math.ceil(distinct / 2));
   return { packages, cost: packages * TCG_SHIP_PER_PACKAGE };
@@ -347,6 +350,12 @@ async function autoQuoteManaPool(items, { force = false } = {}) {
   compareQuote = quote;
   compareQuoteKey = key;
   paintCompare();
+}
+
+/** Shipping guess for the online part of a split: its priced cards only. */
+function splitShipping(plan) {
+  const unpriced = new Set(plan.uncovered.map((u) => u.name));
+  return shippingForCards(plan.online.filter((o) => !unpriced.has(o.name)).length);
 }
 
 function paintCompare() {
@@ -408,12 +417,19 @@ function paintCompare() {
   if (!active().length) {
     options.push({ title: 'Local stores', value: null, note: 'Add the stores near you to compare their shelves.', venue: 'local' });
   }
-  if (quoted.length) {
+  // Only when a store actually supplies something: with no store copies the
+  // split is the TCGplayer row again, and showing both read as a second,
+  // cheaper way to buy the same cards. Its online part gets the same shipping
+  // guess as the TCGplayer row, or skipping shipping alone would make it win.
+  const storeCopies = quoted.reduce((n, st) => n + plan.totals[st.id].copies, 0);
+  if (storeCopies) {
+    const ship = splitShipping(plan);
+    const onlineCopies = plan.online.reduce((n, i) => n + i.quantity, 0);
     options.push({
       title: 'Cheapest split',
       tag: 'stores + online',
-      value: localSplit + plan.onlineEstimate,
-      note: `Each copy wherever it is cheapest · ${plan.online.reduce((n, i) => n + i.quantity, 0)} online, before shipping`,
+      value: localSplit + plan.onlineEstimate + ship.cost,
+      note: `Each copy wherever it is cheapest · ${storeCopies} from stores, ${onlineCopies} online${onlineCopies ? ` (incl. about ${money(ship.cost)} shipping)` : ''}`,
       complete: !plan.uncovered.length,
       venue: 'local',
     });
@@ -822,7 +838,7 @@ function renderComparison(items) {
         ${quoted.filter((s) => plan.totals[s.id].copies).map((s) => `
           <li><strong>${escapeHtml(s.name)}</strong> (pick up): ${plan.totals[s.id].copies} copies, ${money(plan.totals[s.id].cost)}</li>`).join('')}
         <li><strong>Online</strong>: ${plan.online.reduce((n, i) => n + i.quantity, 0)} copies,
-          about ${money(plan.onlineEstimate)} before shipping${plan.uncovered.length ? ` (${plan.uncovered.length} cards with no price)` : ''}</li>
+          about ${money(plan.onlineEstimate)} + about ${money(splitShipping(plan).cost)} shipping${plan.uncovered.length ? ` (${plan.uncovered.length} cards with no price)` : ''}</li>
       </ul>
       ${plan.online.length ? `
         <div class="local-stores-options">
