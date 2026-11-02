@@ -702,6 +702,20 @@ function renderReadinessPanel(readiness) {
 
   const sections = [];
 
+  // A deck the wrong size for its format. Listed first: owning every card
+  // listed does not make a 63-card Commander deck playable.
+  const size = readiness.size;
+  if (readiness.state === 'incomplete' && size) {
+    sections.push(`
+      <div class="deck-readiness-group">
+        <h4><i class="ph ph-stack"></i> ${size.short > 0
+          ? `${size.short} card${size.short === 1 ? '' : 's'} short of ${size.target}`
+          : `${size.over} card${size.over === 1 ? '' : 's'} over ${size.target}`}</h4>
+        <p class="deck-readiness-note">The mainboard holds ${size.count}, commander and basic lands included.${
+          toBuy.length || toReclaim.length ? '' : ' Every card it lists is in your collection and free to use.'}</p>
+      </div>`);
+  }
+
   if (toBuy.length) {
     sections.push(`
       <div class="deck-readiness-group">

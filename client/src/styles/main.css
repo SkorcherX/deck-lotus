@@ -1044,6 +1044,8 @@ select option {
 .deck-readiness[data-state="needs_buying"] { color: var(--warning); }
 .deck-readiness[data-state="needs_assembly"] { color: var(--primary); }
 .deck-readiness[data-state="empty"] { color: var(--text-secondary); }
+/* Wrong size for its format: not buy, not reclaim — it needs building. */
+.deck-readiness[data-state="incomplete"] { color: var(--danger-light, var(--danger)); }
 
 /* ---------------------------------------------------------------------------
    The bulk-bin view
@@ -1496,6 +1498,7 @@ select option {
 
 .deck-readiness-chip[data-state="needs_buying"] { border-left: 3px solid var(--warning); }
 .deck-readiness-chip[data-state="needs_assembly"] { border-left: 3px solid var(--primary); }
+.deck-readiness-chip[data-state="incomplete"] { border-left: 3px solid var(--danger-light, var(--danger)); }
 
 .deck-readiness-chip-caret {
   color: var(--text-secondary);
@@ -1516,6 +1519,9 @@ select option {
   border-radius: 0.5rem;
   padding: 0.85rem 1rem;
 }
+
+.deck-readiness-banner[data-state="incomplete"] { border-left-color: var(--danger-light, var(--danger)); }
+.deck-readiness-note { margin: 0; font-size: 0.85rem; color: var(--text-secondary); }
 
 .deck-readiness-banner[data-state="needs_assembly"],
 .deck-readiness-banner[data-state="bracket"] {

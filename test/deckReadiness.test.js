@@ -141,3 +141,44 @@ test('states rank worst-first so callers can surface the decks needing work', ()
   assert.ok(stateRank('needs_assembly') > stateRank('ready'));
   assert.ok(stateRank('ready') > stateRank('empty'));
 });
+
+// Owning every card a deck lists is not the same as the deck being playable:
+// a 63-card Commander list said "Ready" until size was part of the verdict.
+test('a deck under its format size is incomplete, not ready', () => {
+  const [d] = assessDecks(
+    [row({ card_id: 1, name: 'Sol Ring', needed: 1, owned: 1 })],
+    [1],
+    new Map([[1, { count: 63, exact: 100 }]])
+  ).values();
+  assert.equal(d.state, 'incomplete');
+  assert.deepEqual(d.size, { count: 63, target: 100, short: 37, over: 0 });
+  assert.equal(describeState(d), '63 / 100 cards');
+});
+
+test('an incomplete deck still names what it needs to buy', () => {
+  const [d] = assessDecks(
+    [row({ card_id: 1, name: 'Sol Ring', needed: 1, owned: 0 })],
+    [1],
+    new Map([[1, { count: 63, exact: 100 }]])
+  ).values();
+  assert.equal(describeState(d), '63 / 100 cards · 1 to buy');
+});
+
+test('over an exact size is incomplete; a minimum has no ceiling', () => {
+  const owned = [row({ card_id: 1, name: 'Sol Ring', needed: 1, owned: 1 })];
+  const [over] = assessDecks(owned, [1], new Map([[1, { count: 104, exact: 100 }]])).values();
+  assert.equal(over.state, 'incomplete');
+  assert.equal(describeState(over), '104 / 100 cards');
+  const [big] = assessDecks(owned, [1], new Map([[1, { count: 75, min: 60 }]])).values();
+  assert.equal(big.state, 'ready');
+});
+
+test('a full-size deck, or one with no size rule, is judged on its cards', () => {
+  const owned = [row({ card_id: 1, name: 'Sol Ring', needed: 1, owned: 1 })];
+  assert.equal([...assessDecks(owned, [1], new Map([[1, { count: 100, exact: 100 }]])).values()][0].state, 'ready');
+  assert.equal([...assessDecks(owned, [1]).values()][0].state, 'ready');
+});
+
+test('incomplete outranks every other state', () => {
+  assert.ok(stateRank('incomplete') > stateRank('needs_buying'));
+});

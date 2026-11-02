@@ -590,3 +590,11 @@ taken on GitHub — only do it when explicitly asked.
     `http://localhost:3100`.
   It serves `client/dist`, so run `npx vite build` in `client/` first or
   the browser shows the previous build.
+- Readiness also checks deck size. A deck whose mainboard (commander and
+  basic lands included, counted as `checkFormatRules` counts it) is under its
+  format's `minDeck`, or off an `exactDeck`, is `incomplete` — ranked above
+  `needs_buying` — however many of its listed cards are owned and free; the
+  label reads "63 / 100 cards". Sizes come from `FORMAT_RULES` in
+  `formatRulesService.js`, so a format with no size rule (or none set) is
+  judged on cards alone. Test fixtures that build a handful of cards to test
+  claims use `'casual'` for that reason.

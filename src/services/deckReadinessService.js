@@ -3,6 +3,7 @@ import { assessDecks, describeState, stateRank } from './deckReadiness.js';
 import { isBasicLandSql } from './basicLands.js';
 import { deckPrioritySql } from './deckPriority.js';
 import { loanNetSql } from './loanHoldings.js';
+import { FORMAT_RULES } from './formatRulesService.js';
 
 /**
  * The database half of deck readiness. The arithmetic lives in
@@ -110,13 +111,41 @@ function deckIdsFor(userId, deckId = null) {
 }
 
 /**
+ * Each deck's mainboard count against its format's size rule, for
+ * assessDecks. Counted the way checkFormatRules counts it — mainboard only,
+ * commander included, basic lands included — so the readiness badge and the
+ * legality check cannot disagree about how big a deck is.
+ */
+function deckSizes(userId, deckId = null) {
+  const scoped = deckId != null ? ' AND d.id = ?' : '';
+  const rows = db.all(`
+    SELECT d.id AS deck_id, d.format,
+           COALESCE(SUM(CASE WHEN COALESCE(dc.board_type, CASE WHEN dc.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END) = 'mainboard'
+                             THEN dc.quantity ELSE 0 END), 0) AS count
+      FROM decks d
+      LEFT JOIN deck_cards dc ON dc.deck_id = d.id
+     WHERE d.user_id = ?${scoped}
+     GROUP BY d.id
+  `, deckId != null ? [userId, deckId] : [userId]);
+
+  const sizes = new Map();
+  for (const row of rows) {
+    const rules = FORMAT_RULES[String(row.format || '').toLowerCase()];
+    if (rules?.exactDeck || rules?.minDeck) {
+      sizes.set(row.deck_id, { count: row.count, exact: rules.exactDeck, min: rules.minDeck });
+    }
+  }
+  return sizes;
+}
+
+/**
  * Readiness for every deck a user owns, keyed by deck id.
  *
  * Shaped for the deck list: the per-card breakdown is dropped, because that is
  * potentially thousands of rows to render a badge with.
  */
 export function getDeckReadinessSummaries(userId) {
-  const assessed = assessDecks(claimRows(userId), deckIdsFor(userId));
+  const assessed = assessDecks(claimRows(userId), deckIdsFor(userId), deckSizes(userId));
   const summaries = new Map();
 
   for (const [deckId, deck] of assessed) {
@@ -136,7 +165,7 @@ export function getDeckReadiness(userId, deckId) {
   const ids = deckIdsFor(userId, deckId);
   if (ids.length === 0) return null;
 
-  const deck = assessDecks(claimRows(userId, deckId), ids).get(ids[0]);
+  const deck = assessDecks(claimRows(userId, deckId), ids, deckSizes(userId, deckId)).get(ids[0]);
 
   return {
     ...summarise(deck),
@@ -157,5 +186,6 @@ function summarise(deck) {
     missingCards: deck.missingCards,
     contestedCards: deck.contestedCards,
     totalCopies: deck.totalCopies,
+    size: deck.size,
   };
 }

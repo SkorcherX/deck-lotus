@@ -91,8 +91,11 @@ before(async () => {
     };
   }
 
-  db.run(`INSERT INTO decks (user_id, name, format) VALUES (?,'Deck A','commander')`, [userId]);
-  db.run(`INSERT INTO decks (user_id, name, format) VALUES (?,'Deck B','commander')`, [userId]);
+  // 'casual' has no size rule: these decks are a handful of cards, and a
+  // Commander format would make readiness report them as incomplete instead
+  // of testing the claims below.
+  db.run(`INSERT INTO decks (user_id, name, format) VALUES (?,'Deck A','casual')`, [userId]);
+  db.run(`INSERT INTO decks (user_id, name, format) VALUES (?,'Deck B','casual')`, [userId]);
   deckA = db.get(`SELECT id FROM decks WHERE name='Deck A'`).id;
   deckB = db.get(`SELECT id FROM decks WHERE name='Deck B'`).id;
 
@@ -148,7 +151,7 @@ before(async () => {
     ['EDHREC Import', 'idea'],
     ['Old Deck', 'retired'],
   ]) {
-    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,?,'commander',?)`,
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,?,'casual',?)`,
       [userId, name, status]);
     statusDecks[status] = db.get(`SELECT id FROM decks WHERE name = ?`, [name]).id;
   }
@@ -327,7 +330,7 @@ describe('deck status decides whose claim wins', () => {
     // The whole reason this is a priority order and not a rule exempting
     // Ready decks: two finished decks fighting over one copy is a real
     // shortfall and must keep showing up.
-    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,'Second Sleeved','commander','ready')`, [userId]);
+    db.run(`INSERT INTO decks (user_id, name, format, status) VALUES (?,'Second Sleeved','casual','ready')`, [userId]);
     const rivalId = db.get(`SELECT id FROM decks WHERE name='Second Sleeved'`).id;
     db.run(
       `INSERT INTO deck_cards (deck_id, printing_id, quantity, board_type) VALUES (?,?,1,'mainboard')`,

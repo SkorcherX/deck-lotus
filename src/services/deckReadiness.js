@@ -24,6 +24,10 @@
 
 /** Deck states, worst-first. `rank` decides which one a deck ends up in. */
 const STATES = {
+  // The deck is not yet the size its format requires (or is over an exact
+  // size). Owning every card listed does not make a 63-card Commander deck
+  // playable, so this outranks everything else.
+  incomplete: { rank: 4 },
   needs_buying: { rank: 3 },
   needs_assembly: { rank: 2 },
   ready: { rank: 1 },
@@ -71,7 +75,13 @@ export function assessCard({ needed, owned, elsewhere }) {
  * a deck missing from the map reads as a bug at the call site, and an empty
  * deck reporting "Ready" would be a lie.
  */
-export function assessDecks(rows, deckIds = []) {
+/**
+ * `sizes` is optional: deckId → `{ count, min, exact }`, the deck's mainboard
+ * count (basic lands included — they fill slots like anything else) against
+ * its format's size rule. A deck with no entry, or a format with no size rule,
+ * is judged on its cards alone, which is how every deck was judged before.
+ */
+export function assessDecks(rows, deckIds = [], sizes = new Map()) {
   const decks = new Map();
 
   const deckFor = (deckId) => {
@@ -86,6 +96,7 @@ export function assessDecks(rows, deckIds = []) {
         missingCards: 0,
         contestedCards: 0,
         totalCopies: 0,
+        size: null,
         cards: [],
       });
     }
@@ -136,6 +147,7 @@ export function assessDecks(rows, deckIds = []) {
   }
 
   for (const deck of decks.values()) {
+    deck.size = sizeVerdict(sizes.get(deck.deckId));
     deck.state = stateFor(deck);
 
     // Worst first, then alphabetically — the point of the per-card list is the
@@ -157,10 +169,29 @@ export function assessDecks(rows, deckIds = []) {
  * is reported as needing the shop trip, because that is the blocking half.
  */
 function stateFor(deck) {
+  if (deck.totalCopies === 0 && !deck.size?.count) return 'empty';
+  if (deck.size && (deck.size.short > 0 || deck.size.over > 0)) return 'incomplete';
   if (deck.totalCopies === 0) return 'empty';
   if (deck.missingCopies > 0) return 'needs_buying';
   if (deck.contestedCopies > 0) return 'needs_assembly';
   return 'ready';
+}
+
+/**
+ * `{ count, target, short, over }` for a deck with a size rule, else null.
+ * `over` only applies to an exact size (Commander's 100); a minimum has no
+ * upper bound.
+ */
+function sizeVerdict(rule) {
+  if (!rule || !(rule.exact || rule.min)) return null;
+  const count = rule.count || 0;
+  const target = rule.exact || rule.min;
+  return {
+    count,
+    target,
+    short: Math.max(0, target - count),
+    over: rule.exact ? Math.max(0, count - rule.exact) : 0,
+  };
 }
 
 /** Ordering helper for callers that want to surface the worst decks first. */
@@ -174,6 +205,12 @@ export function stateRank(state) {
  */
 export function describeState(deck) {
   switch (deck.state) {
+    case 'incomplete': {
+      const parts = [`${deck.size.count} / ${deck.size.target} cards`];
+      if (deck.missingCopies > 0) parts.push(`${deck.missingCopies} to buy`);
+      else if (deck.contestedCopies > 0) parts.push(`${deck.contestedCopies} in other decks`);
+      return parts.join(' · ');
+    }
     case 'needs_buying': {
       const parts = [`Short ${deck.missingCopies} to buy`];
       if (deck.contestedCopies > 0) parts.push(`${deck.contestedCopies} in other decks`);

@@ -398,6 +398,10 @@ function readinessBadge(readiness) {
   if (!readiness || readiness.state === 'empty') return '';
 
   const detail = [];
+  if (readiness.state === 'incomplete' && readiness.size) {
+    const { count, target, short, over } = readiness.size;
+    detail.push(short > 0 ? `${count} of ${target} cards — ${short} short` : `${count} cards — ${over} over ${target}`);
+  }
   if (readiness.missingCopies) {
     detail.push(`${readiness.missingCopies} copies not in your collection`);
   }
@@ -432,6 +436,9 @@ function readinessBadge(readiness) {
  */
 function shortVerdict(readiness) {
   if (readiness.state === 'ready') return 'Ready';
+  // Size first: a deck that is not yet full is not close to sleeved, however
+  // many of its listed cards you own.
+  if (readiness.state === 'incomplete' && readiness.size) return `${readiness.size.count}/${readiness.size.target}`;
   if (readiness.missingCopies) return `Short ${readiness.missingCopies}`;
   if (readiness.contestedCopies) return `${readiness.contestedCopies} held`;
   return readiness.label;
