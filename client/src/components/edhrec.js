@@ -396,7 +396,7 @@ async function createDeck() {
     const result = await api.createEdhrecDeck({ commander, cardNames: pickedNames() });
     const missed = result.unresolved?.length || 0;
     showToast(`Created idea deck "${result.deck.name}" with ${result.imported} cards${missed ? ` (${missed} not found)` : ''}`, missed ? 'warning' : 'success');
-    window.dispatchEvent(new CustomEvent('open-deck', { detail: { deckId: result.deck.id } }));
+    openDeck(result.deck.id);
   } catch (error) {
     showToast(error.message || 'Could not create the deck', 'error');
   } finally {
@@ -404,17 +404,45 @@ async function createDeck() {
   }
 }
 
+/**
+ * Through the app's navigation, not a bare open-deck event, so the address
+ * bar becomes /decks/:id. With the bare event the URL kept pointing at the
+ * last deck visited, and a refresh reloaded *that* deck — which, with two
+ * decks for one commander, looked like the EDHREC additions being lost.
+ */
+function openDeck(deckId) {
+  window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'deck-builder', deckId } }));
+}
+
 // Building first: that is the deck EDHREC is most often filling out. Then
 // ideas, finished decks, and retired ones last.
 const STATUS_ORDER = { building: 0, idea: 1, ready: 2, retired: 3 };
 const STATUS_LABEL = { building: 'Building', idea: 'Idea', ready: 'Ready', retired: 'Retired' };
 
+/** "3 min ago" / "yesterday" from a SQLite UTC timestamp — enough to tell two decks apart. */
+function editedAgo(stamp) {
+  const then = new Date(String(stamp).replace(' ', 'T') + (String(stamp).endsWith('Z') ? '' : 'Z'));
+  const mins = Math.round((Date.now() - then.getTime()) / 60000);
+  if (!Number.isFinite(mins)) return '';
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'yesterday' : `${days} days ago`;
+}
+
 /** Pick one of the user's decks; resolves to its id, or null if cancelled. */
 function chooseDeck(decks, commander, count) {
   return new Promise((resolve) => {
     const same = (d) => commander && d.commander_name === commander;
+    // Same commander first, and among those the one edited most recently:
+    // that is the deck being worked on. Two decks for one commander (an
+    // EDHREC import and the copy actually being built, say) otherwise sorted
+    // by status and name, which could pre-select the one not being edited.
     const sorted = [...decks].sort((a, b) =>
       Number(same(b)) - Number(same(a))
+      || (same(a) && same(b) ? String(b.updated_at || '').localeCompare(String(a.updated_at || '')) : 0)
       || (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
       || String(a.name).localeCompare(String(b.name)));
     const preselect = sorted[0]?.id;
@@ -432,7 +460,8 @@ function chooseDeck(decks, commander, count) {
               <span>
                 <strong>${escapeHtml(d.name)}</strong>
                 <span class="edhrec-muted">${escapeHtml(STATUS_LABEL[d.status] || d.status || '')}
-                  · ${escapeHtml(d.format || 'no format')} · ${d.mainboard_count || 0} cards${same(d) ? ' · same commander' : ''}</span>
+                  · ${escapeHtml(d.format || 'no format')} · ${d.mainboard_count || 0} cards${same(d) ? ' · same commander' : ''}
+                  ${d.updated_at ? ` · edited ${escapeHtml(editedAgo(d.updated_at))}` : ''}</span>
               </span>
             </label>`).join('')}
         </div>
@@ -483,7 +512,7 @@ async function addToDeck() {
       `Added ${result.added.length} to ${result.deck.name}${notes.length ? ` (${notes.join(', ')})` : ''}`,
       result.unresolved?.length ? 'warning' : 'success',
       6000,
-      { action: { label: 'Open deck', onClick: () => window.dispatchEvent(new CustomEvent('open-deck', { detail: { deckId } })) } }
+      { action: { label: 'Open deck', onClick: () => openDeck(deckId) } }
     );
   } catch (error) {
     showToast(error.message || 'Could not add to the deck', 'error');
