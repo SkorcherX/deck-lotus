@@ -284,6 +284,20 @@ export async function refreshLocalStores() {
 let compareEl = null;
 let goVenue = () => {};
 let compareQuote = null;
+
+// A rough TCGplayer shipping figure. Their cart ships per seller and we
+// cannot know how many sellers it will pick, so this guesses: about one
+// package per two different cards, capped (Optimize consolidates big lists),
+// at a typical small-seller rate. Calibrated on one real cart — 4 cards,
+// 2 packages, $5.48 — so treat it as an order of magnitude, not a quote.
+const TCG_SHIP_PER_PACKAGE = 2.75;
+const TCG_MAX_PACKAGES = 6;
+function tcgShippingEstimate(items) {
+  const distinct = items.filter((c) => c.onlineUnit != null).length;
+  if (!distinct) return { packages: 0, cost: 0 };
+  const packages = Math.min(TCG_MAX_PACKAGES, Math.ceil(distinct / 2));
+  return { packages, cost: packages * TCG_SHIP_PER_PACKAGE };
+}
 // The list compareQuote was taken for, and the quote still running. The
 // quote is a live optimizer call, so it runs once per list rather than on
 // every repaint, and a changed list (new card, other printing) asks again.
@@ -353,8 +367,9 @@ function paintCompare() {
   const options = [
     {
       title: 'TCGplayer',
-      value: onlineTotal,
-      note: `TCGplayer market, before shipping${unpriced ? ` · ${unpriced} unpriced` : ''}`,
+      tag: 'estimate',
+      value: onlineTotal + tcgShippingEstimate(items).cost,
+      note: `Market price ${money(onlineTotal)} + about ${money(tcgShippingEstimate(items).cost)} shipping · the real cart usually runs higher${unpriced ? ` · ${unpriced} unpriced` : ''}`,
       complete: !unpriced,
       venue: 'tcgplayer',
     },
@@ -493,16 +508,22 @@ export async function renderTcgplayer(el) {
   }
   const list = getItems();
   const total = list.reduce((n, c) => n + (c.onlineUnit ?? 0) * c.quantity, 0);
+  const ship = tcgShippingEstimate(list);
   const lines = list.map((c) => `${c.quantity} ${c.name}`);
   const massEntry = `https://www.tcgplayer.com/massentry?productline=Magic&c=${encodeURIComponent(lines.join('||'))}`;
 
   el.innerHTML = `
-    <p class="local-stores-hint" style="margin-top:0;">TCGplayer has no public API for live listings, so this uses
-      their market prices from the daily price update, at the cheapest printing of each card.</p>
+    <p class="local-stores-hint" style="margin-top:0;">TCGplayer has no public API for live listings or carts, so
+      this is an estimate: their <strong>market price</strong> (an average of recent sales, from the daily price
+      update) at the cheapest printing of each card, plus a rough shipping guess.</p>
     <div class="local-stores-options">
-      <span class="stat-value">${money(total)}</span>
-      <span class="local-stores-hint">estimated, before shipping</span>
+      <span class="stat-value">${money(total + ship.cost)}</span>
+      <span class="local-stores-hint">market estimate: ${money(total)} in cards + about ${money(ship.cost)} shipping
+        (${ship.packages} package${ship.packages === 1 ? '' : 's'} guessed)</span>
     </div>
+    <p class="local-stores-hint">Expect the Mass Entry cart to come in somewhat higher. It buys current listings
+      (Near Mint and Lightly Played by default), which for cheap cards usually sit above the market average, and
+      every seller in the cart ships separately. Its Optimize button can bring the total back down.</p>
     <div class="local-stores-options">
       <a class="btn btn-primary btn-sm" href="${escapeHtml(massEntry)}" target="_blank" rel="noopener">
         <i class="ph ph-arrow-square-out"></i> Open in TCGplayer Mass Entry
