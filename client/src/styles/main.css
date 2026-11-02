@@ -9574,6 +9574,9 @@ body.pull-list-open { overflow: hidden; }
 .pull-set-mythic { color: var(--rarity-mythic); }
 .pull-card-note { font-size: var(--text-sm); color: var(--text-secondary); }
 .pull-card-note.is-warn { color: var(--warning); }
+.pull-card-counts { font-size: var(--text-sm); color: var(--text-secondary); }
+.pull-card-counts .is-free { color: var(--success); font-weight: 600; }
+.pull-card-counts .is-none { color: var(--text-muted, var(--text-secondary)); }
 .pull-copies { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: auto; }
 .pull-copy { width: 2.75rem; height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; font-size: 1.6rem; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; }
 .pull-copy.is-pulled { background: var(--success); border-color: var(--success); color: var(--on-accent); }

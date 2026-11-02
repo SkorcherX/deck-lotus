@@ -66,6 +66,19 @@ function copyBoxes(card) {
     </button>`).join('');
 }
 
+// The Inventory page's three numbers, any printing of the card: whether a
+// copy is free in storage or has to come out of another deck. "In decks"
+// includes this one, exactly as the Inventory page counts it.
+function collectionCounts(card) {
+  const c = card.collection;
+  if (!c) return '';
+  const lent = c.lentOut ? ` · <span>${c.lentOut} lent out</span>` : '';
+  return `<div class="pull-card-counts" title="Any printing of this card. Available = owned − in decks${c.lentOut ? ' − lent out' : ''}.">
+      <span>${c.owned} owned</span> · <span>${c.inDecks} in decks</span>${lent} ·
+      <span class="${c.available > 0 ? 'is-free' : 'is-none'}">${Math.max(0, c.available)} available</span>
+    </div>`;
+}
+
 function cardRow(card) {
   const done = card.pulled >= card.quantity;
   const conditions = card.conditions.filter((c) => c.condition).map((c) => `${c.quantity}× ${c.condition}`).join(', ');
@@ -94,6 +107,7 @@ function cardRow(card) {
           ${escapeHtml(card.setName)} · ${escapeHtml(String(card.setCode || '').toUpperCase())} #${escapeHtml(card.collectorNumber)}
           ${conditions ? ` · ${escapeHtml(conditions)}` : ''}
         </div>
+        ${collectionCounts(card)}
         ${card.alsoIn.length ? `<div class="pull-card-note"><i class="ph ph-stack" aria-hidden="true"></i>
           Also in ${card.alsoIn.map((d) => `<strong>${escapeHtml(d.name)}</strong> (${escapeHtml(d.status)})`).join(', ')}</div>` : ''}
         ${card.missing ? `<div class="pull-card-note is-warn"><i class="ph ph-warning" aria-hidden="true"></i>

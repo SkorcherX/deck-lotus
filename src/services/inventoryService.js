@@ -125,6 +125,33 @@ function userScopeSql(userIds) {
   return { clause: '= ?', params: [userIds] };
 }
 
+/**
+ * The Inventory page's three numbers for each of a set of cards: owned, in
+ * decks, available (owned − in decks − lent out). Built from the same SQL as
+ * that page so another page quoting them (the pull list) cannot disagree.
+ * Returns a Map of card id → { owned, inDecks, lentOut, available }.
+ */
+export function getCardCollectionCounts(userId, cardIds) {
+  const ids = [...new Set(cardIds)].filter((id) => id != null);
+  if (ids.length === 0) return new Map();
+  const scope = userScopeSql(userId);
+  const rows = db.all(
+    `SELECT c.id AS card_id,
+            ${ownedTotalSql(scope.clause)} AS owned,
+            ${inDecksTotalSql(scope.clause)} AS in_decks,
+            ${lentOutTotalSql(scope.clause)} AS lent_out
+       FROM cards c
+      WHERE c.id IN (${ids.map(() => '?').join(',')})`,
+    [...scope.params, ...scope.params, ...scope.params, ...ids]
+  );
+  return new Map(rows.map((r) => [r.card_id, {
+    owned: r.owned,
+    inDecks: r.in_decks,
+    lentOut: r.lent_out,
+    available: r.owned - r.in_decks - r.lent_out,
+  }]));
+}
+
 /** A CMC box's value from the query: a number, or null when left blank. */
 export function parseCmcBound(value) {
   if (value === undefined || value === null || value === '') return null;

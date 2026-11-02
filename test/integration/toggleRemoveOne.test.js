@@ -97,3 +97,11 @@ test('is_available: owned but held by an equally committed deck reads as not ava
   assert.equal(card(building).is_owned, 1);
   assert.equal(card(building).is_available, 0);
 });
+
+test('pull list rows carry the Inventory page counts', async () => {
+  const { getPullList } = await import('../../src/services/pullListService.js');
+  // From the previous test: 1 copy owned, listed in 'Sleeved' and 'New'.
+  const deckId = db.get(`SELECT id FROM decks WHERE name='New'`).id;
+  const [row] = getPullList(userId, deckId).cards;
+  assert.deepEqual(row.collection, { owned: 1, inDecks: 2, lentOut: 0, available: -1 });
+});
