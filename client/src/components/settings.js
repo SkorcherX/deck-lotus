@@ -65,18 +65,7 @@ export function setupSettings() {
       showLoading();
       const backup = await api.createBackup();
       hideLoading();
-
-      // Create a download link
-      const dataStr = JSON.stringify(backup, null, 2);
-      const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(dataBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `deck-lotus-backup-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      saveBackupFile(backup);
 
       showToast('Backup created successfully!', 'success');
     } catch (error) {
@@ -335,11 +324,24 @@ export function setupSettings() {
     await loadApiKeys();
     await loadSyncStatus();
     await checkAdminAndLoadUsers();
-    await loadBackupConfig();
-    await loadBackups();
     await loadPriceSchedule();
     await loadClearCollectionSummary();
   });
+}
+
+/**
+ * Hand a backup object to the browser as a .json download.
+ */
+function saveBackupFile(backup) {
+  const dataBlob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(dataBlob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `deck-lotus-backup-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 /**
@@ -413,10 +415,11 @@ async function clearCollectionFlow() {
   if (wantsBackup) {
     try {
       showLoading();
-      const result = await api.createBackupNow();
+      // A download of the caller's own data, not a server-side file: those
+      // are admin-only, and this flow has to work for everyone.
+      saveBackupFile(await api.createBackup());
       hideLoading();
-      showToast(`Backup created: ${result.filename}`, 'success');
-      await loadBackups();
+      showToast('Backup downloaded', 'success');
     } catch (error) {
       hideLoading();
       showToast('Backup failed, nothing was cleared: ' + error.message, 'error');
@@ -605,6 +608,8 @@ async function checkAdminAndLoadUsers() {
     const adminOnly = ['notifications-section', 'price-schedule-section']
       .map((id) => document.getElementById(id))
       .filter(Boolean);
+    const serverBackups = document.getElementById('server-backups-admin');
+    const createBackupNowBtn = document.getElementById('create-backup-now-btn');
 
     // Backup section is available to all users (they can backup their own data)
     if (backupSection) backupSection.style.display = 'block';
@@ -615,15 +620,21 @@ async function checkAdminAndLoadUsers() {
       if (accessControlSection) accessControlSection.style.display = 'block';
       if (databaseSection) databaseSection.style.display = 'block';
       adminOnly.forEach((el) => { el.style.display = 'block'; });
+      if (serverBackups) serverBackups.style.display = 'block';
+      if (createBackupNowBtn) createBackupNowBtn.style.display = '';
       await loadUsers();
       await loadNotificationSettings();
       await loadAccessControl();
+      await loadBackupConfig();
+      await loadBackups();
     } else {
       // Hide admin-only sections for non-admins
       if (userManagementSection) userManagementSection.style.display = 'none';
       if (accessControlSection) accessControlSection.style.display = 'none';
       if (databaseSection) databaseSection.style.display = 'none';
       adminOnly.forEach((el) => { el.style.display = 'none'; });
+      if (serverBackups) serverBackups.style.display = 'none';
+      if (createBackupNowBtn) createBackupNowBtn.style.display = 'none';
     }
   } catch (error) {
     console.error('Failed to check admin status:', error);

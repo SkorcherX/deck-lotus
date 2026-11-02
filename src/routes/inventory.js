@@ -2,12 +2,15 @@ import express from 'express';
 import {
   getInventory,
   getInventoryStats,
+  parseCmcBound,
   searchCardsForInventoryAdd,
   bulkAddToInventory,
   bulkRemoveFromInventory,
   resolveBulkAddItems,
   resolveBulkRemoveItems,
   getAvailability,
+  getSellableInventory,
+  recordSales,
   getBuilderInventory,
   getOwnedSets,
   exportInventory,
@@ -98,7 +101,10 @@ router.get('/', authenticate, (req, res, next) => {
       availability: availability || 'all',
       commander: commander || 'all',
       condition: normalizeConditionFilter(condition),
-      rarity: RARITIES.includes(rarity) ? rarity : 'all',
+      // A comma list, like the Browse page's rarity boxes; any of them matches.
+      rarities: String(rarity || '').split(',').filter((r) => RARITIES.includes(r)),
+      cmcMin: parseCmcBound(req.query.cmcMin),
+      cmcMax: parseCmcBound(req.query.cmcMax),
       minCopies: Math.max(0, parseInt(req.query.minCopies, 10) || 0),
       page: parseInt(page),
       limit: parseInt(limit)
@@ -369,6 +375,35 @@ router.get('/availability', authenticate, (req, res, next) => {
     );
 
     res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/inventory/sellable
+ * Owned rows with the copies free to sell, for ManaSlinger.
+ */
+router.get('/sellable', authenticate, (req, res, next) => {
+  try {
+    res.json({ items: getSellableInventory(req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/sold
+ * Take sold copies out of the collection. Body: { items: [{ scryfallId,
+ * isFoil, condition, quantity }], reference }.
+ */
+router.post('/sold', authenticate, (req, res, next) => {
+  try {
+    const { items, reference } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0 || items.length > BULK_ITEM_LIMIT) {
+      return res.status(400).json({ error: `items must be an array of 1-${BULK_ITEM_LIMIT}` });
+    }
+    res.json(recordSales(req.user.id, items, { reference: reference ? String(reference).slice(0, 200) : null }));
   } catch (error) {
     next(error);
   }

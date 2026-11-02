@@ -16,6 +16,7 @@ import { recordInventoryChange } from './auditService.js';
 import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
 import { normalizeCondition, conditionLabel } from '../shared/conditions.js';
 import { takeOwnedCopies, changeOwnedCondition } from './cardService.js';
+import { splitFreeAcrossConditions } from './sellableSplit.js';
 
 const LIVE_LOANS = `(${LIVE_LOAN_STATUSES.map((s) => `'${s}'`).join(',')})`;
 
@@ -125,6 +126,40 @@ function userScopeSql(userIds) {
 }
 
 /**
+ * The Inventory page's three numbers for each of a set of cards: owned, in
+ * decks, available (owned − in decks − lent out). Built from the same SQL as
+ * that page so another page quoting them (the pull list) cannot disagree.
+ * Returns a Map of card id → { owned, inDecks, lentOut, available }.
+ */
+export function getCardCollectionCounts(userId, cardIds) {
+  const ids = [...new Set(cardIds)].filter((id) => id != null);
+  if (ids.length === 0) return new Map();
+  const scope = userScopeSql(userId);
+  const rows = db.all(
+    `SELECT c.id AS card_id,
+            ${ownedTotalSql(scope.clause)} AS owned,
+            ${inDecksTotalSql(scope.clause)} AS in_decks,
+            ${lentOutTotalSql(scope.clause)} AS lent_out
+       FROM cards c
+      WHERE c.id IN (${ids.map(() => '?').join(',')})`,
+    [...scope.params, ...scope.params, ...scope.params, ...ids]
+  );
+  return new Map(rows.map((r) => [r.card_id, {
+    owned: r.owned,
+    inDecks: r.in_decks,
+    lentOut: r.lent_out,
+    available: r.owned - r.in_decks - r.lent_out,
+  }]));
+}
+
+/** A CMC box's value from the query: a number, or null when left blank. */
+export function parseCmcBound(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * Get all owned cards for inventory display
  * Returns cards with printing details, quantities, and deck usage stats
  */
@@ -144,6 +179,9 @@ export function getInventory(userIds, filters = {}) {
     commander = 'all', // 'all', 'eligible'
     condition = 'all', // 'all', 'unrecorded', or a code: NM, LP, MP, HP, DMG
     rarity = 'all', // 'all' or an MTGJSON rarity: common, uncommon, rare, mythic, special, bonus
+    rarities = [], // several of the above, any of which matches; wins over `rarity`
+    cmcMin = null,
+    cmcMax = null,
     minCopies = 0, // only cards owned at least this many times (all printings, finishes, conditions)
     page = 1,
     limit = 50
@@ -321,17 +359,27 @@ export function getInventory(userIds, filters = {}) {
   // Rarity filter: cards with at least one owned printing at that rarity.
   // Rarity belongs to the printing, not the card — a common reprinted as a
   // mythic showcase is either, depending on which copy you hold.
-  if (rarity !== 'all') {
+  const rarityList = rarities.length > 0 ? rarities : (rarity !== 'all' ? [rarity] : []);
+  if (rarityList.length > 0) {
     const clause = ` AND c.id IN (
       SELECT p4.card_id
       FROM owned_printings op4
       JOIN printings p4 ON op4.printing_id = p4.id
-      WHERE op4.user_id ${scope.clause} AND p4.rarity = ?
+      WHERE op4.user_id ${scope.clause} AND p4.rarity IN (${rarityList.map(() => '?').join(',')})
     )`;
     sql += clause;
     countSql += clause;
-    params.push(...scope.params, rarity);
-    countParams.push(...scope.params, rarity);
+    params.push(...scope.params, ...rarityList);
+    countParams.push(...scope.params, ...rarityList);
+  }
+
+  // Mana value range, the same bounds as the Browse page's CMC boxes.
+  for (const [bound, op] of [[cmcMin, '>='], [cmcMax, '<=']]) {
+    if (bound === null) continue;
+    sql += ` AND c.cmc ${op} ?`;
+    countSql += ` AND c.cmc ${op} ?`;
+    params.push(bound);
+    countParams.push(bound);
   }
 
   // Availability filter. This has to be part of the query rather than a pass
@@ -2222,5 +2270,121 @@ export function removeCardsFromCollection(userId, cardIds, context = {}) {
     removedCards: new Set(rows.map((row) => row.card_id)).size,
     removedCopies,
     batchId,
+  };
+}
+
+/**
+ * Every owned row with what can be sold from it, for an outside storefront
+ * (ManaSlinger). One entry per printing, finish and condition, carrying the
+ * Scryfall ID marketplaces key on. `sellable` is the row's share of the
+ * printing's free copies — never cards a deck needs or a friend has on loan.
+ */
+export function getSellableInventory(userId) {
+  const rows = db.all(`
+    SELECT op.printing_id, op.is_foil, op.condition, op.quantity,
+           c.name, p.set_code, s.name AS set_name, p.collector_number,
+           p.rarity, p.scryfall_id, p.language, p.finishes, p.image_url
+      FROM owned_printings op
+      JOIN printings p ON p.id = op.printing_id
+      JOIN cards c ON c.id = p.card_id
+      LEFT JOIN sets s ON s.code = p.set_code
+     WHERE op.user_id = ? AND op.quantity > 0
+  `, [userId]);
+
+  const availability = getAvailabilityMap(userId);
+  const groups = new Map();
+  for (const row of rows) {
+    const key = availabilityKey(row.printing_id, row.is_foil === 1);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+
+  const items = [];
+  for (const [key, group] of groups) {
+    const entry = availability.get(key);
+    // Basic lands report free as null (unlimited); every owned copy is free.
+    const free = entry?.free ?? group.reduce((n, r) => n + r.quantity, 0);
+    for (const row of splitFreeAcrossConditions(group, free)) {
+      items.push({
+        printingId: row.printing_id,
+        isFoil: row.is_foil === 1,
+        condition: row.condition,
+        quantity: row.quantity,
+        sellable: row.sellable,
+        name: row.name,
+        setCode: row.set_code,
+        setName: row.set_name,
+        collectorNumber: row.collector_number,
+        rarity: row.rarity,
+        scryfallId: row.scryfall_id,
+        language: row.language,
+        finishes: row.finishes,
+        imageUrl: row.image_url,
+      });
+    }
+  }
+  return items;
+}
+
+/**
+ * Take sold copies out of the collection (ManaSlinger, after a Mana Pool
+ * order). Each item names the printing by Scryfall ID with finish and the
+ * condition it was listed at.
+ *
+ * Copies come from that condition first, then from unrecorded copies — an
+ * unrecorded copy is what ManaSlinger lists under an assumed condition. Never
+ * from another recorded condition: that would be a different card than the
+ * one sold. Whatever cannot be found is reported as a shortfall rather than
+ * failing the batch, because the sale has already happened.
+ */
+export function recordSales(userId, items, { reference = null } = {}) {
+  const results = [];
+
+  db.transaction(() => {
+    for (const item of items) {
+      const quantity = Math.max(0, parseInt(item.quantity, 10) || 0);
+      const isFoil = Boolean(item.isFoil);
+      const condition = normalizeCondition(item.condition || '', { strict: true });
+      const printing = db.get(
+        `SELECT p.id FROM printings p
+          WHERE p.scryfall_id = ?
+          ORDER BY EXISTS (SELECT 1 FROM owned_printings op
+                            WHERE op.printing_id = p.id AND op.user_id = ? AND op.is_foil = ?) DESC, p.id
+          LIMIT 1`,
+        [item.scryfallId, userId, isFoil ? 1 : 0]
+      );
+
+      if (!printing) {
+        results.push({ ...item, taken: 0, shortfall: quantity, error: 'Unknown Scryfall ID' });
+        continue;
+      }
+
+      let left = quantity;
+      const taken = [];
+      for (const from of [...new Set([condition, ''])]) {
+        if (left <= 0) break;
+        const have = db.get(
+          `SELECT quantity FROM owned_printings
+            WHERE user_id = ? AND printing_id = ? AND is_foil = ? AND condition = ?`,
+          [userId, printing.id, isFoil ? 1 : 0, from]
+        )?.quantity || 0;
+        const n = Math.min(have, left);
+        if (!n) continue;
+        taken.push(...takeOwnedCopies(userId, printing.id, isFoil, n, {
+          condition: from,
+          source: 'sale',
+          detail: reference ? { reference } : null,
+        }));
+        left -= n;
+      }
+
+      results.push({ ...item, printingId: printing.id, taken: quantity - left, shortfall: left, from: taken });
+    }
+  });
+
+  return {
+    items: results,
+    taken: results.reduce((n, r) => n + r.taken, 0),
+    shortfall: results.reduce((n, r) => n + r.shortfall, 0),
   };
 }

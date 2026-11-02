@@ -453,7 +453,7 @@ const SOURCE_LABELS = {
   bulk_add: 'Bulk add', quick_add: 'Quick add', card_page: 'Card page', deck_builder: 'Deck builder',
   deck_import: 'Deck import', deck_generator: 'Deck generator', trade: 'Trades', loan: 'Loans',
   scan: 'Web scanner', scanner: 'Phone scanner', bulk_remove: 'Bulk remove',
-  bulk_condition: 'Set condition', api: 'Other',
+  bulk_condition: 'Set condition', sale: 'Sales', api: 'Other',
 };
 
 function renderSources() {

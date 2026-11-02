@@ -1,6 +1,8 @@
 import api from '../services/api.js';
+import { massEntryButton } from '../utils/manaPoolHandoff.js';
 import { showLoading, hideLoading, formatMana, showToast, showError, debounce, confirmDialog } from '../utils/ui.js';
 import { zoomButton } from '../utils/cardZoom.js';
+import { initLocalStores, refreshLocalStores, renderCompare, renderTcgplayer, currentItems } from './localStores.js';
 
 let selectedDeckIds = new Set();
 let shoppingData = null;
@@ -13,7 +15,6 @@ let filters = {
   setSearch: '',
   sortBy: 'setName', // setName, price, releaseDate
   budgetMode: false,
-  compactView: false, // Toggle between full and compact view
   // Copies you own that a deck you did not select is holding. Off by default,
   // because they cost nothing to buy — but reachable, so that a deck reading
   // "Short 1, in other decks" has somewhere to lead. Unlike the rest of this
@@ -28,6 +29,60 @@ let filters = {
  * shopping list; different question being asked of it.
  */
 let viewMode = 'sets';
+
+/**
+ * The guided flow: what you are shopping for (step 1), the list (step 2) and
+ * where to buy it (step 3). `step` lives in the URL; the rest is remembered
+ * per browser so a return visit lands on the same list.
+ */
+const FLOW_KEY = 'deckLotus.shopping.flow';
+const STEPS = ['start', 'list', 'buy'];
+const VENUES = ['compare', 'local', 'manapool', 'tcgplayer', 'bulk'];
+let flow = {
+  source: null,          // 'decks' | 'list'
+  includeWanted: true,   // decks only: add the wanted list to the decks' needs
+  deckIds: [],           // remembered deck selection
+  listView: 'art',       // 'art' | 'compact' | 'sets'
+  venue: 'compare',
+};
+let step = 'start';
+let loaded = false;
+// Set by "Shop for missing cards" on a deck, read once on arrival.
+let pendingDecks = null;
+// True while the page is moving between its own steps, so arriving at step 1
+// that way is not mistaken for a fresh visit to /shopping.
+let steppingWithin = false;
+// Per-deck estimate for the deck picker: deck id → dollars still to spend.
+let deckCosts = new Map();
+
+function readFlow() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FLOW_KEY) || 'null');
+    if (saved && typeof saved === 'object') flow = { ...flow, ...saved };
+  } catch {
+    // Blocked storage: the flow just starts fresh.
+  }
+  if (!VENUES.includes(flow.venue)) flow.venue = 'compare';
+  if (!['art', 'compact', 'sets'].includes(flow.listView)) flow.listView = 'art';
+}
+
+function saveFlow() {
+  flow.deckIds = [...selectedDeckIds];
+  try {
+    localStorage.setItem(FLOW_KEY, JSON.stringify(flow));
+  } catch {
+    // Not remembered; nothing else depends on it.
+  }
+}
+
+/** The decks the list is built from — none when shopping from your own list. */
+function activeDeckIds() {
+  return flow.source === 'decks' ? Array.from(selectedDeckIds) : [];
+}
+
+function wantedIncluded() {
+  return flow.source !== 'decks' || flow.includeWanted;
+}
 let bulkData = null;
 
 // commonsOnly and includeContested are session-only on purpose — they are
@@ -81,41 +136,149 @@ function manaPoolCardUrl(name) {
 }
 
 export function setupShopping() {
-  window.addEventListener('page:shopping', loadShoppingData);
+  readFlow();
+  window.addEventListener('page:shopping', (e) => loadShoppingData(e.detail?.step, { fromHistory: !!e.detail?.fromHistory }));
+  // From a deck's "Shop for missing cards": the deck ids arrive before the page.
+  window.addEventListener('shopping:for-decks', (e) => { pendingDecks = e.detail?.deckIds || null; });
 
   document.getElementById('shopping-optimize-btn')?.addEventListener('click', runShoppingOptimizer);
-  document.getElementById('shopping-mode-sets')?.addEventListener('click', () => switchViewMode('sets'));
-  document.getElementById('shopping-mode-bulk')?.addEventListener('click', () => switchViewMode('bulk'));
   setupWantedList();
+  setupFlow();
 }
 
-/**
- * Swap lenses.
- *
- * The by-set filters do not travel: they operate on set grouping and price of
- * the deck's own printing, neither of which the bulk view uses. Showing them
- * above a list they cannot affect would be worse than hiding them.
- */
-function switchViewMode(mode) {
-  if (viewMode === mode) return;
-  viewMode = mode;
+function setupFlow() {
+  const page = document.getElementById('shopping-page');
+  if (!page) return;
 
-  const bulk = mode === 'bulk';
+  page.querySelectorAll('.shop-step').forEach((btn) => {
+    btn.addEventListener('click', () => goToStep(btn.dataset.step));
+  });
+  page.querySelectorAll('[data-goto]').forEach((btn) => {
+    btn.addEventListener('click', () => goToStep(btn.dataset.goto));
+  });
 
-  document.getElementById('shopping-mode-sets')?.setAttribute('aria-selected', String(!bulk));
-  document.getElementById('shopping-mode-bulk')?.setAttribute('aria-selected', String(bulk));
+  page.querySelectorAll('.shop-choice').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      flow.source = btn.dataset.source;
+      saveFlow();
+      renderStart();
+    });
+  });
 
-  document.getElementById('shopping-filters-section')?.classList.toggle('hidden', bulk);
-  document.getElementById('shopping-sets-section')?.classList.toggle('hidden', bulk);
-  document.getElementById('shopping-bulk-section')?.classList.toggle('hidden', !bulk);
+  document.getElementById('shop-include-wanted')?.addEventListener('change', (e) => {
+    flow.includeWanted = e.target.checked;
+    saveFlow();
+  });
 
-  // The Mana Pool optimizer quotes the printings the by-set list names. The
-  // bulk list is about walking into a shop, so the two do not belong on screen
-  // together.
-  const optimizer = document.getElementById('shopping-optimizer-section');
-  if (optimizer) optimizer.style.display = bulk ? 'none' : '';
+  document.getElementById('shop-build-list')?.addEventListener('click', async () => {
+    if (selectedDeckIds.size === 0) {
+      showToast('Pick at least one deck first', 'warning');
+      return;
+    }
+    saveFlow();
+    await refreshShoppingData();
+    goToStep('list');
+  });
 
-  if (bulk) refreshBulkData();
+  document.getElementById('shop-review-list')?.addEventListener('click', async () => {
+    await refreshShoppingData();
+    if (!(shoppingData?.totalWanted > 0)) {
+      showToast('Your list is empty. Paste some cards or search for one above.', 'warning');
+      return;
+    }
+    goToStep('list');
+  });
+
+  page.querySelectorAll('[data-view]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      flow.listView = btn.dataset.view;
+      saveFlow();
+      renderShoppingList();
+    });
+  });
+
+  document.getElementById('shop-filters-toggle')?.addEventListener('click', () => {
+    document.getElementById('shopping-filters-section')?.classList.toggle('hidden');
+  });
+
+  page.querySelectorAll('[data-venue]').forEach((btn) => {
+    btn.addEventListener('click', () => showVenue(btn.dataset.venue));
+  });
+}
+
+/** Move to a step, putting it in the URL so Back returns to the one before. */
+function goToStep(next, { history = 'push' } = {}) {
+  if (!STEPS.includes(next)) next = 'start';
+  // A list or a venue with nothing chosen has nothing to show.
+  if (next !== 'start' && !flow.source) next = 'start';
+  steppingWithin = true;
+  window.dispatchEvent(new CustomEvent('navigate', {
+    detail: { page: 'shopping', step: next === 'start' ? null : next, replace: history === 'replace' },
+  }));
+}
+
+/** Show a step's panel. Called on every arrival at the page, including Back. */
+function showStep(next) {
+  step = next;
+  // Every tab in step 3 reads the list through this, so it is set before any can open.
+  initLocalStores(collectPurchaseItems);
+  document.querySelectorAll('#shopping-page .shop-step').forEach((btn) => {
+    const current = btn.dataset.step === step;
+    btn.classList.toggle('active', current);
+    btn.toggleAttribute('aria-current', current);
+    btn.disabled = btn.dataset.step !== 'start' && !flow.source;
+  });
+  for (const name of STEPS) {
+    document.getElementById(`shop-step-${name}`)?.classList.toggle('hidden', name !== step);
+  }
+  viewMode = step === 'buy' && flow.venue === 'bulk' ? 'bulk' : 'sets';
+
+  if (step === 'start') renderStart();
+  if (step === 'list') renderShoppingList();
+  if (step === 'buy') showVenue(flow.venue);
+  window.scrollTo({ top: 0 });
+}
+
+function renderStart() {
+  document.querySelectorAll('#shopping-page .shop-step').forEach((btn) => {
+    btn.disabled = btn.dataset.step !== 'start' && !flow.source;
+  });
+  document.querySelectorAll('#shopping-page .shop-choice').forEach((btn) => {
+    btn.setAttribute('aria-checked', String(btn.dataset.source === flow.source));
+  });
+  document.getElementById('shop-source-decks')?.classList.toggle('hidden', flow.source !== 'decks');
+  document.getElementById('shop-source-list')?.classList.toggle('hidden', flow.source !== 'list');
+  const include = document.getElementById('shop-include-wanted');
+  if (include) include.checked = flow.includeWanted;
+  const wantedCount = document.getElementById('shop-include-wanted-count');
+  if (wantedCount) {
+    const n = shoppingData?.totalWanted ?? wantedTotal;
+    wantedCount.textContent = n ? `(${n} card${n === 1 ? '' : 's'})` : '(your list is empty)';
+  }
+  if (flow.source === 'decks') renderDeckSelector();
+  renderWantedSummary();
+}
+
+function showVenue(venue) {
+  if (!VENUES.includes(venue)) venue = 'compare';
+  flow.venue = venue;
+  saveFlow();
+  document.querySelectorAll('#shopping-page [data-venue]').forEach((btn) => {
+    btn.setAttribute('aria-selected', String(btn.dataset.venue === venue));
+  });
+  document.querySelectorAll('#shopping-page .shop-venue-panel').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.venuePanel !== venue);
+  });
+  // The found pile is for cards pulled out of a box in person.
+  const inPerson = venue === 'local' || venue === 'bulk';
+  document.getElementById('shopping-found-bar')?.classList.toggle('shop-found-away', !inPerson);
+
+  viewMode = venue === 'bulk' ? 'bulk' : 'sets';
+  if (venue === 'bulk') refreshBulkData();
+  if (venue === 'local') refreshLocalStores();
+  if (venue === 'compare') renderCompare(document.getElementById('shop-compare'), showVenue);
+  if (venue === 'tcgplayer') renderTcgplayer(document.getElementById('shop-tcgplayer'));
+  if (venue === 'manapool') document.getElementById('shopping-optimizer-results').innerHTML = '';
 }
 
 /** Re-read whichever list is on screen. */
@@ -185,20 +348,6 @@ function setupWantedList() {
     });
   }
 
-  const bulkToggle = document.getElementById('shopping-wanted-bulk-toggle');
-  const bulk = document.getElementById('shopping-wanted-bulk');
-
-  bulkToggle?.addEventListener('click', () => {
-    bulk?.classList.toggle('hidden');
-    if (!bulk?.classList.contains('hidden')) {
-      document.getElementById('shopping-wanted-bulk-text')?.focus();
-    }
-  });
-
-  document.getElementById('shopping-wanted-bulk-cancel')?.addEventListener('click', () => {
-    bulk?.classList.add('hidden');
-  });
-
   document.getElementById('shopping-wanted-bulk-add')?.addEventListener('click', addWantedBulk);
 
   document.getElementById('shopping-wanted-clear')?.addEventListener('click', async () => {
@@ -249,6 +398,11 @@ function renderWantedSearchResults(cards) {
       try {
         const { added } = await api.addWantedCard(body);
         showToast(`Added ${added.name} to your list`, 'success', 1500);
+        // Searching from a blank page starts a list of your own.
+        if (!flow.source) {
+          flow.source = 'list';
+          saveFlow();
+        }
 
         const search = document.getElementById('shopping-wanted-search');
         if (search) search.value = '';
@@ -324,13 +478,13 @@ function escapeHtml(value) {
   ));
 }
 
-async function runShoppingOptimizer() {
-  if (!shoppingData?.sets?.length) {
-    showToast('Load your shopping list first', 'warning');
-    return;
-  }
-
-  // Gather all needed cards (not marked found/skipped)
+/**
+ * The basket: every card still to buy, merged across printings by name, as
+ * both the Mana Pool optimizer and the local store lookup quote it.
+ * `onlineUnit` is the cheapest listed price among the merged printings.
+ */
+function collectPurchaseItems() {
+  if (!shoppingData?.sets?.length) return [];
   const items = [];
   for (const set of shoppingData.sets) {
     for (const card of set.cards) {
@@ -345,18 +499,34 @@ async function runShoppingOptimizer() {
       const wanted = purchaseQuantity(card);
       if (wanted === 0) continue;
       const existing = items.find(i => i.name === card.name);
+      const price = card.price != null ? Number(card.price) : null;
       if (existing) {
         existing.quantity += wanted;
+        if (price != null && (existing.onlineUnit == null || price < existing.onlineUnit)) existing.onlineUnit = price;
       } else {
         items.push({
           name: card.name,
+          cardId: card.cardId,
           quantity: wanted,
           setCode: card.setCode,
           collectorNumber: card.collectorNumber,
+          onlineUnit: price,
         });
       }
     }
   }
+
+  return items;
+}
+
+async function runShoppingOptimizer() {
+  if (!shoppingData?.sets?.length) {
+    showToast('Load your shopping list first', 'warning');
+    return;
+  }
+
+  // Through localStores so a printing picked by hand is quoted as that printing.
+  const items = currentItems().map(({ name, quantity, setCode, collectorNumber, exactPrinting }) => ({ name, quantity, setCode, collectorNumber, exactPrinting }));
 
   if (!items.length) {
     showToast('No cards to optimize', 'warning');
@@ -413,9 +583,7 @@ function renderShoppingOptimizerResults(result, el) {
       <span style="font-size:1rem;font-weight:700;color:var(--success-bright);">
         <i class="ph ph-check-circle"></i> ${fmt(totalCents)} total across ${sellerCount} seller${sellerCount !== 1 ? 's' : ''}
       </span>
-      <a href="https://manapool.com/cart" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-        Complete on Mana Pool <i class="ph ph-arrow-square-out"></i>
-      </a>
+      ${massEntryButton(result.massEntry)}
     </div>
     <div style="background:var(--bg-tertiary);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
         <div style="display:flex;justify-content:space-between;padding:0.2rem 0;font-size:0.85rem;">
@@ -442,100 +610,160 @@ function renderShoppingOptimizerResults(result, el) {
   `;
 }
 
-async function loadShoppingData() {
+async function loadShoppingData(requestedStep = null, { fromHistory = false } = {}) {
+  const within = steppingWithin;
+  steppingWithin = false;
+  if (pendingDecks) {
+    flow.source = 'decks';
+    flow.includeWanted = false;
+    selectedDeckIds = new Set(pendingDecks);
+    pendingDecks = null;
+    saveFlow();
+    loaded = false;
+  }
+
+  if (!loaded) {
+    try {
+      showLoading();
+      const decksResult = await api.getDecks();
+      allDecks = decksResult.decks;
+      const known = new Set(allDecks.map((d) => d.id));
+      if (selectedDeckIds.size === 0) selectedDeckIds = new Set(flow.deckIds.filter((id) => known.has(id)));
+      else selectedDeckIds = new Set([...selectedDeckIds].filter((id) => known.has(id)));
+
+      // The pile before the list: what is already ticked off decides which
+      // rows the list is allowed to show.
+      await loadFoundPile();
+      await fetchList();
+      loaded = true;
+      renderFilters();
+      hideLoading();
+      loadDeckCosts();
+    } catch (error) {
+      hideLoading();
+      showError('Failed to load shopping data: ' + error.message);
+      return;
+    }
+  }
+
+  // A bare /shopping with a list already chosen goes straight back to it:
+  // the steps are for finding your way in, not a gate on every visit. Not
+  // on Back, though — that is someone asking for step 1.
+  let target = requestedStep || 'start';
+  if (!requestedStep && !fromHistory && !within && flow.source && listHasCards()) target = 'list';
+  if (target !== 'start' && !flow.source) target = 'start';
+  if (target !== (requestedStep || 'start')) {
+    goToStep(target, { history: 'replace' });
+    return;
+  }
+  showStep(target);
+}
+
+function listHasCards() {
+  return (shoppingData?.totalCards || 0) > 0 || (shoppingData?.totalWanted || 0) > 0;
+}
+
+async function fetchList() {
+  shoppingData = await api.getShoppingList(activeDeckIds(), {
+    includeContested: filters.includeContested,
+    includeWanted: wantedIncluded(),
+  });
+  if (shoppingData?.totalWanted != null && flow.source !== 'decks') wantedTotal = shoppingData.totalWanted;
+}
+
+// Size of the wanted list on its own, for the deck step's "also include" line.
+let wantedTotal = 0;
+
+/**
+ * Roughly what each deck still needs, in dollars, for the deck picker. One
+ * request for every deck, attributing each card's price to the decks it is
+ * listed for — an estimate to choose by, not a quote.
+ */
+async function loadDeckCosts() {
+  const ids = allDecks.filter((d) => (d.readiness?.missingCopies || 0) > 0).map((d) => d.id);
+  if (!ids.length) return;
   try {
-    showLoading();
-
-    // Get user's decks first
-    const decksResult = await api.getDecks();
-    allDecks = decksResult.decks;
-
-    // Retired decks are not ticked on arrival. `deckPriority` ranks retired
-    // below idea precisely because a shelved deck is out of rotation, and the
-    // allocation rule honours that — but this page used to select every deck
-    // regardless of status, so a deck you had explicitly shelved still put
-    // cards on your buy list and into the headline totals.
-    //
-    // Only the default. Ticking a retired deck is a legitimate thing to want
-    // (you are rebuilding it), and Select All still means all.
-    selectedDeckIds = new Set(allDecks.filter(d => d.status !== 'retired').map(d => d.id));
-
-    // The pile before the list: what is already ticked off decides which rows
-    // the list is allowed to show.
-    await loadFoundPile();
-
-    // Get shopping data
-    const result = await api.getShoppingList(Array.from(selectedDeckIds), {
-      includeContested: filters.includeContested,
-    });
-    shoppingData = result;
-
-    renderDeckSelector();
-    renderFilters();
-    renderShoppingList();
-    hideLoading();
-  } catch (error) {
-    hideLoading();
-    showError('Failed to load shopping data: ' + error.message);
+    const all = await api.getShoppingList(ids, { includeWanted: false });
+    deckCosts = new Map();
+    for (const card of all.sets.flatMap((set) => set.cards)) {
+      if (!card.price) continue;
+      for (const d of card.decks || []) {
+        const copies = Math.min(d.quantity || 1, purchaseQuantity(card));
+        deckCosts.set(d.deckId, (deckCosts.get(d.deckId) || 0) + card.price * copies);
+      }
+    }
+    if (step === 'start' && flow.source === 'decks') renderDeckSelector();
+  } catch {
+    // The picker still works without the estimate.
   }
 }
 
 function renderDeckSelector() {
   const container = document.getElementById('shopping-deck-selector');
+  if (!container) return;
 
   if (allDecks.length === 0) {
-    container.innerHTML = '<p style="color: var(--text-secondary);">No decks found</p>';
+    container.innerHTML = '<p style="color: var(--text-secondary);">You have no decks yet.</p>';
     return;
   }
 
+  // Decks that are short come first: those are the ones worth shopping for.
+  const decks = [...allDecks].sort((a, b) => {
+    const short = (d) => ((d.readiness?.missingCopies || 0) > 0 ? 0 : 1);
+    return short(a) - short(b);
+  });
+
   container.innerHTML = `
-    <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
-      <button id="select-all-decks" class="btn btn-secondary btn-sm">Select All</button>
-      <button id="deselect-all-decks" class="btn btn-secondary btn-sm">Deselect All</button>
+    <div class="shop-deck-head">
+      <h3 style="margin: 0;">Which decks?</h3>
+      <button type="button" id="select-short-decks" class="btn btn-secondary btn-sm">Select all that are short</button>
+      <button type="button" id="deselect-all-decks" class="btn btn-secondary btn-sm">Clear</button>
     </div>
     <div class="deck-selector-grid">
-      ${allDecks.map(deck => `
-        <label class="deck-selector-item">
-          <input
-            type="checkbox"
-            value="${deck.id}"
-            ${selectedDeckIds.has(deck.id) ? 'checked' : ''}
-            class="deck-checkbox"
-          />
-          <span class="deck-selector-name">${deck.name}</span>
-          ${deck.format ? `<span class="deck-selector-format">${deck.format}</span>` : ''}
-          ${deck.status === 'retired' ? `
-            <span class="deck-selector-format" title="Retired decks are out of rotation, so they are not shopped for unless you tick them">retired</span>
-          ` : ''}
-        </label>
-      `).join('')}
+      ${decks.map((deck) => {
+        const r = deck.readiness;
+        const missing = r?.missingCopies || 0;
+        const held = r?.contestedCopies || 0;
+        const cost = deckCosts.get(deck.id);
+        const ready = !missing && !held;
+        return `
+        <label class="deck-selector-item ${ready ? 'deck-selector-ready' : ''}">
+          <input type="checkbox" value="${deck.id}" ${selectedDeckIds.has(deck.id) ? 'checked' : ''} class="deck-checkbox" />
+          <span class="deck-selector-body">
+            <span class="deck-selector-name">${escapeHtml(deck.name)}</span>
+            <span class="deck-selector-need">
+              ${ready ? '<i class="ph ph-check-circle"></i> Ready'
+                : missing ? `${missing} missing${cost ? ` · ~$${cost.toFixed(0)}` : ''}` : ''}
+              ${held ? `<span title="You own these, but another deck is holding them">${missing ? ' · ' : ''}${held} in other decks</span>` : ''}
+            </span>
+          </span>
+          ${deck.format ? `<span class="deck-selector-format">${escapeHtml(deck.format)}</span>` : ''}
+          ${deck.status === 'retired' ? '<span class="deck-selector-format">retired</span>' : ''}
+        </label>`;
+      }).join('')}
     </div>
   `;
 
-  // Add event listeners
-  // Literally all, retired included — this is an explicit press, not an
-  // assumption made on the user's behalf.
-  document.getElementById('select-all-decks').addEventListener('click', () => {
-    selectedDeckIds = new Set(allDecks.map(d => d.id));
-    document.querySelectorAll('.deck-checkbox').forEach(cb => cb.checked = true);
-    refreshActiveView();
+  document.getElementById('select-short-decks').addEventListener('click', () => {
+    selectedDeckIds = new Set(allDecks
+      .filter((d) => (d.readiness?.missingCopies || 0) > 0 && d.status !== 'retired')
+      .map((d) => d.id));
+    saveFlow();
+    renderDeckSelector();
   });
 
   document.getElementById('deselect-all-decks').addEventListener('click', () => {
     selectedDeckIds.clear();
-    document.querySelectorAll('.deck-checkbox').forEach(cb => cb.checked = false);
-    refreshActiveView();
+    saveFlow();
+    renderDeckSelector();
   });
 
-  document.querySelectorAll('.deck-checkbox').forEach(checkbox => {
+  container.querySelectorAll('.deck-checkbox').forEach((checkbox) => {
     checkbox.addEventListener('change', (e) => {
-      const deckId = parseInt(e.target.value);
-      if (e.target.checked) {
-        selectedDeckIds.add(deckId);
-      } else {
-        selectedDeckIds.delete(deckId);
-      }
-      refreshActiveView();
+      const deckId = parseInt(e.target.value, 10);
+      if (e.target.checked) selectedDeckIds.add(deckId);
+      else selectedDeckIds.delete(deckId);
+      saveFlow();
     });
   });
 }
@@ -602,7 +830,7 @@ function renderFilters() {
 
       <!-- Sort By -->
       <div class="filter-group">
-        <label>Sort Sets By</label>
+        <label>Sort sets by <span class="local-stores-hint">(By set view)</span></label>
         <select id="sort-by" class="filter-select">
           <option value="setName" ${filters.sortBy === 'setName' ? 'selected' : ''}>Set Name</option>
           <option value="totalPrice" ${filters.sortBy === 'totalPrice' ? 'selected' : ''}>Total Value (High to Low)</option>
@@ -634,10 +862,6 @@ function renderFilters() {
           <label class="checkbox-label" title="Cards you already own, but which a deck you have not selected is holding. They cost nothing to buy, so they are listed without a quantity and left out of the totals, the export and the cart.">
             <input type="checkbox" id="include-contested" ${filters.includeContested ? 'checked' : ''} />
             Show held in other decks
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" id="compact-view" ${filters.compactView ? 'checked' : ''} />
-            Compact View
           </label>
         </div>
       </div>
@@ -688,11 +912,6 @@ function renderFilters() {
     renderShoppingList();
   });
 
-  document.getElementById('compact-view').addEventListener('change', (e) => {
-    filters.compactView = e.target.checked;
-    renderShoppingList();
-  });
-
   // The only filter the server answers, so this one goes back for data.
   document.getElementById('include-contested').addEventListener('change', (e) => {
     filters.includeContested = e.target.checked;
@@ -708,7 +927,6 @@ function renderFilters() {
       setSearch: '',
       sortBy: 'setName',
       budgetMode: false,
-      compactView: filters.compactView, // Preserve compact view setting
       includeContested: filters.includeContested, // Preserved: it is a lens, not a filter
     };
     renderFilters();
@@ -725,7 +943,7 @@ function renderFilters() {
 async function refreshBulkData() {
   try {
     showLoading();
-    bulkData = await api.getBulkBinList(Array.from(selectedDeckIds), bulkOptions);
+    bulkData = await api.getBulkBinList(activeDeckIds(), { ...bulkOptions, includeWanted: wantedIncluded() });
     // The server answers with the stored threshold on the first call, when the
     // page has none yet. Adopting it here keeps the box showing what the list
     // was actually built with.
@@ -1064,16 +1282,12 @@ function purchaseQuantity(card) {
 }
 
 async function refreshShoppingData() {
-  // Deselecting every deck no longer means there is nothing to fetch: the
-  // wanted list comes back either way, and short-circuiting here is what used
-  // to blank the page the moment the last deck was unticked.
   try {
     showLoading();
-    const result = await api.getShoppingList(Array.from(selectedDeckIds), {
-      includeContested: filters.includeContested,
-    });
-    shoppingData = result;
-    renderShoppingList();
+    await fetchList();
+    if (step === 'start') renderStart();
+    else if (step === 'buy') showVenue(flow.venue);
+    else renderShoppingList();
     hideLoading();
   } catch (error) {
     hideLoading();
@@ -1191,78 +1405,88 @@ function applyFiltersToData(data) {
 function renderShoppingList() {
   const container = document.getElementById('shopping-list-container');
   const stats = document.getElementById('shopping-stats');
+  const footer = document.getElementById('shop-footer-summary');
+  if (!container) return;
 
   renderWantedSummary();
+  document.querySelectorAll('#shopping-page [data-view]').forEach((btn) => {
+    btn.setAttribute('aria-selected', String(btn.dataset.view === flow.listView));
+  });
+  // Sorting and searching sets only means something when grouped by set.
+  document.querySelectorAll('#sort-by, #set-search').forEach((el) => {
+    el.closest('.filter-group')?.classList.toggle('hidden', flow.listView !== 'sets');
+  });
 
-  // Only genuinely-nothing is empty now — no decks picked *and* nothing on the
-  // wanted list.
-  if (!shoppingData || (selectedDeckIds.size === 0 && !(shoppingData.totalWanted > 0))) {
+  if (!shoppingData || !listHasCards()) {
     container.innerHTML = `
-      <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
-        <i class="ph ph-shopping-cart" style="font-size: 4rem; opacity: 0.3;"></i>
-        <h3>Nothing to shop for yet</h3>
-        <p>Pick a deck above, or search for a card you want.</p>
+      <div class="shop-empty">
+        <i class="ph ph-check-circle"></i>
+        <h3>${flow.source === 'decks' ? 'Those decks are not missing anything' : 'Your list is empty'}</h3>
+        <p>${flow.source === 'decks'
+          ? 'Everything they need is already in your collection.'
+          : 'Paste a list or search for a card above.'}</p>
+        <button type="button" class="btn btn-secondary btn-sm" data-goto-start>Back to step 1</button>
       </div>
     `;
+    container.querySelector('[data-goto-start]')?.addEventListener('click', () => goToStep('start'));
     stats.innerHTML = '';
+    if (footer) footer.textContent = '';
+    initLocalStores(collectPurchaseItems);
     return;
   }
 
-  // Apply filters
   const filteredData = applyFiltersToData(shoppingData);
+  initLocalStores(collectPurchaseItems);
 
   if (filteredData.sets.length === 0) {
     container.innerHTML = `
-      <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
-        <i class="ph ph-check-circle" style="font-size: 4rem; opacity: 0.3;"></i>
-        <h3>No cards match your filters!</h3>
-        <p>Try adjusting your filters or you might own everything already.</p>
+      <div class="shop-empty">
+        <i class="ph ph-funnel"></i>
+        <h3>No cards match your filters</h3>
+        <p>Clear them under Filter &amp; sort to see the whole list.</p>
       </div>
     `;
     stats.innerHTML = '';
+    if (footer) footer.textContent = '';
     return;
   }
 
-  // Render statistics
+  const total = filteredData.totalPrice || 0;
+  const source = flow.source === 'decks'
+    ? `${selectedDeckIds.size} deck${selectedDeckIds.size === 1 ? '' : 's'}${wantedIncluded() && shoppingData.totalWanted ? ' + your list' : ''}`
+    : 'Your list';
   stats.innerHTML = `
     <div class="shopping-stat">
       <i class="ph ph-cards"></i>
       <div>
         <div class="stat-value">${filteredData.totalCards}</div>
-        <div class="stat-label">Cards Needed</div>
-      </div>
-    </div>
-    <div class="shopping-stat">
-      <i class="ph ph-stack"></i>
-      <div>
-        <div class="stat-value">${filteredData.sets.length}</div>
-        <div class="stat-label">Sets</div>
+        <div class="stat-label">Cards to buy</div>
       </div>
     </div>
     <div class="shopping-stat">
       <i class="ph ph-currency-dollar"></i>
       <div>
-        <div class="stat-value">$${(filteredData.totalPrice || 0).toFixed(2)}</div>
-        <div class="stat-label">Total Est. Cost</div>
+        <div class="stat-value">$${total.toFixed(2)}</div>
+        <div class="stat-label" title="TCGplayer market price of the printings listed. Step 3 compares real offers.">Estimated cost</div>
       </div>
     </div>
     <div class="shopping-stat">
       <i class="ph ph-folder"></i>
       <div>
-        <div class="stat-value">${selectedDeckIds.size}</div>
-        <div class="stat-label">Decks Selected</div>
+        <div class="stat-value shop-stat-text">${escapeHtml(source)}</div>
+        <div class="stat-label">Shopping for</div>
       </div>
     </div>
   `;
+  if (footer) footer.textContent = `${filteredData.totalCards} card${filteredData.totalCards === 1 ? '' : 's'} · about $${total.toFixed(2)}`;
 
-  // Show optimizer section when there are cards to buy
-  const optimizerSection = document.getElementById('shopping-optimizer-section');
-  if (optimizerSection) {
-    optimizerSection.style.display = filteredData.totalCards > 0 ? '' : 'none';
-    document.getElementById('shopping-optimizer-results').innerHTML = '';
+  if (flow.listView !== 'sets') {
+    const cards = filteredData.sets.flatMap((set) => set.cards)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    container.innerHTML = flow.listView === 'art' ? renderArtGrid(cards) : renderSetCards(cards, { compact: true });
+    return;
   }
 
-  // Render expand/collapse all buttons + sets
   container.innerHTML = `
     <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
       <button id="expand-all-sets" class="btn btn-secondary btn-sm">
@@ -1291,40 +1515,76 @@ function renderShoppingList() {
     `).join('')}
   `;
 
-  // Add expand/collapse all functionality
   document.getElementById('expand-all-sets').addEventListener('click', () => {
-    document.querySelectorAll('.shopping-set-content').forEach(content => {
-      content.classList.remove('collapsed');
-    });
-    document.querySelectorAll('.shopping-set-toggle').forEach(toggle => {
-      toggle.classList.add('rotated');
-    });
+    document.querySelectorAll('.shopping-set-content').forEach(content => content.classList.remove('collapsed'));
+    document.querySelectorAll('.shopping-set-toggle').forEach(toggle => toggle.classList.add('rotated'));
   });
 
   document.getElementById('collapse-all-sets').addEventListener('click', () => {
-    document.querySelectorAll('.shopping-set-content').forEach(content => {
-      content.classList.add('collapsed');
-    });
-    document.querySelectorAll('.shopping-set-toggle').forEach(toggle => {
-      toggle.classList.remove('rotated');
-    });
+    document.querySelectorAll('.shopping-set-content').forEach(content => content.classList.add('collapsed'));
+    document.querySelectorAll('.shopping-set-toggle').forEach(toggle => toggle.classList.remove('rotated'));
   });
 
-  // Add toggle functionality for individual sets
   document.querySelectorAll('.shopping-set-header').forEach(header => {
     header.addEventListener('click', () => {
-      const setCode = header.dataset.setCode;
-      const content = document.getElementById(`set-${setCode}`);
-      const toggle = header.querySelector('.shopping-set-toggle');
-
+      const content = document.getElementById(`set-${header.dataset.setCode}`);
       content.classList.toggle('collapsed');
-      toggle.classList.toggle('rotated');
+      header.querySelector('.shopping-set-toggle').classList.toggle('rotated');
     });
   });
 }
 
-function renderSetCards(cards) {
-  if (filters.compactView) {
+/**
+ * The artwork view: every card on the list as its picture, which is how a
+ * card is recognised at a glance. Lazy-loaded so a long list does not fetch
+ * three hundred images before the first one shows.
+ */
+function renderArtGrid(cards) {
+  return `
+    <div class="shop-art-grid">
+      ${cards.map((card) => {
+        const qty = purchaseQuantity(card);
+        const cardKey = `${card.printingId}`;
+        const why = card.decks.length
+          ? card.decks.map((d) => d.deckName).join(', ')
+          : card.wanted ? 'On your list' : '';
+        return `
+          <div class="shop-art-card" data-card-key="${cardKey}">
+            <div class="shop-art-image">
+              ${card.imageUrl
+                ? `<img src="${card.imageUrl}" alt="${escapeHtml(card.name)}" loading="lazy" onerror="this.style.display='none'" />`
+                : `<div class="shop-art-missing">${escapeHtml(card.name)}</div>`}
+              ${qty > 1 ? `<span class="shop-art-qty">${qty}×</span>` : ''}
+              ${zoomButton(card.imageUrl, card.name, { className: 'on-art' })}
+            </div>
+            <div class="shop-art-info">
+              <div class="shop-art-name" title="${escapeHtml(card.name)}">${escapeHtml(card.name)}</div>
+              <div class="shop-art-meta">
+                ${card.price ? `<span class="card-price">$${(card.price * Math.max(1, qty)).toFixed(2)}</span>` : '<span class="local-stores-hint">no price</span>'}
+                ${ownedHint(card)}
+              </div>
+              ${contestedNote(card)}
+              ${why ? `<div class="shop-art-why" title="${escapeHtml(why)}">${escapeHtml(why)}</div>` : ''}
+              ${card.wanted ? `
+                <div class="shopping-wanted-qty">
+                  <button class="btn-icon wanted-step" data-wanted-id="${card.wanted.id}" data-to="${card.wanted.quantity - 1}" title="One fewer"><i class="ph ph-minus"></i></button>
+                  <span class="shopping-wanted-qty-value">${card.wanted.quantity}</span>
+                  <button class="btn-icon wanted-step" data-wanted-id="${card.wanted.id}" data-to="${card.wanted.quantity + 1}" title="One more"><i class="ph ph-plus"></i></button>
+                  <button class="btn-icon wanted-remove" data-wanted-id="${card.wanted.id}" title="Take off your list"><i class="ph ph-trash"></i></button>
+                </div>` : ''}
+              <div class="shop-art-actions">
+                <button class="btn-icon skip-btn" data-card-key="${cardKey}" title="Hide for this visit"><i class="ph ph-eye-slash"></i></button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderSetCards(cards, { compact = false } = {}) {
+  if (compact) {
     // Compact view - just a simple list
     return `
       <div class="shopping-cards-compact">

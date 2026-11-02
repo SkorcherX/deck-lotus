@@ -1,8 +1,9 @@
 import api from '../services/api.js';
+import { massEntryButton } from '../utils/manaPoolHandoff.js';
 import { canBeCommander, deckUsesCommanders, setCommander } from '../utils/commander.js';
 import { showLoading, hideLoading, debounce, formatMana, showToast, hideModal } from '../utils/ui.js';
 import { showCardDetail } from './cards.js';
-import { toggleOwnership, ownershipToggleAttrs, paintOwnershipToggle } from '../utils/ownershipToggle.js';
+import { toggleOwnershipOneCopy, ownershipToggleAttrs, paintOwnershipToggle } from '../utils/ownershipToggle.js';
 import { cmcColor, manaGradient } from '../utils/theme.js';
 import {
   setupInventoryPanel,
@@ -706,6 +707,9 @@ function renderReadinessPanel(readiness) {
       <div class="deck-readiness-group">
         <h4><i class="ph ph-shopping-cart"></i> Not in your collection (${readiness.missingCopies})</h4>
         <ul>${list(toBuy, (c) => c.missing)}</ul>
+        <button type="button" class="btn btn-primary btn-sm" data-shop-missing>
+          <i class="ph ph-shopping-cart"></i> Shop for missing cards
+        </button>
       </div>`);
   }
 
@@ -729,6 +733,12 @@ function renderReadinessPanel(readiness) {
       <div class="deck-readiness-groups">${sections.join('')}</div>
     </div>
   `;
+  // Straight to step 2 of the Shopping page with just this deck: the place a
+  // shortfall is noticed is the place to start buying it.
+  panel.querySelector('[data-shop-missing]')?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('shopping:for-decks', { detail: { deckIds: [currentDeckId] } }));
+    window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'shopping', step: 'list' } }));
+  });
 }
 
 /**
@@ -1168,8 +1178,8 @@ function renderCardItem(card) {
   if (layoutView === 'ultra-compact') {
     return `
       <div class="deck-card-item ultra-compact ${card.is_commander ? 'is-commander' : ''}" data-deck-card-id="${card.deck_card_id}" data-printing-id="${card.printing_id}" data-is-sideboard="${card.is_sideboard}" data-board-type="${card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')}" data-card-id="${card.card_id}" draggable="true">
-        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="position: absolute; top: 2px; left: 2px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 16px; height: 16px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
-          <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
+        <button class="ownership-toggle-btn ${card.is_available ? 'owned' : ''}" ${ownershipToggleAttrs(card, { isOwned: card.is_available, deckDot: true })} style="position: absolute; top: 2px; left: 2px; background: ${card.is_available ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 16px; height: 16px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
+          <i class="ph${card.is_available ? '-fill ph-check-circle' : ' ph-circle'}"></i>
         </button>
         ${showCommanderIcon ? `
           <button class="commander-toggle-btn inline ${card.is_commander ? 'active' : ''}"
@@ -1222,8 +1232,8 @@ function renderCardItem(card) {
   if (layoutView === 'compact') {
     return `
       <div class="deck-card-item compact ${card.is_commander ? 'is-commander' : ''}" data-deck-card-id="${card.deck_card_id}" data-printing-id="${card.printing_id}" data-is-sideboard="${card.is_sideboard}" data-board-type="${card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')}" data-card-id="${card.card_id}" draggable="true" style="position: relative;">
-        <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="position: absolute; top: 4px; left: 4px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
-          <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
+        <button class="ownership-toggle-btn ${card.is_available ? 'owned' : ''}" ${ownershipToggleAttrs(card, { isOwned: card.is_available, deckDot: true })} style="position: absolute; top: 4px; left: 4px; background: ${card.is_available ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
+          <i class="ph${card.is_available ? '-fill ph-check-circle' : ' ph-circle'}"></i>
         </button>
         <img src="${card.image_url}"
              class="deck-card-image-compact"
@@ -1261,8 +1271,8 @@ function renderCardItem(card) {
 
   return `
     <div class="deck-card-item ${card.is_commander ? 'is-commander' : ''}" data-deck-card-id="${card.deck_card_id}" data-printing-id="${card.printing_id}" data-is-sideboard="${card.is_sideboard}" data-board-type="${card.board_type || (card.is_sideboard ? 'sideboard' : 'mainboard')}" data-card-id="${card.card_id}" draggable="true" style="position: relative;">
-      <button class="ownership-toggle-btn ${card.is_owned ? 'owned' : ''}" ${ownershipToggleAttrs(card)} style="position: absolute; top: 8px; left: 8px; background: ${card.is_owned ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
-        <i class="ph${card.is_owned ? '-fill ph-check-circle' : ' ph-circle'}"></i>
+      <button class="ownership-toggle-btn ${card.is_available ? 'owned' : ''}" ${ownershipToggleAttrs(card, { isOwned: card.is_available, deckDot: true })} style="position: absolute; top: 8px; left: 8px; background: ${card.is_available ? 'rgb(var(--success-rgb) / 0.9)' : 'rgb(var(--scrim-rgb) / 0.8)'}; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s;">
+        <i class="ph${card.is_available ? '-fill ph-check-circle' : ' ph-circle'}"></i>
       </button>
       <img src="${card.image_url}"
            class="deck-card-image"
@@ -1719,21 +1729,27 @@ async function toggleCommander(deckCardId) {
 
 async function toggleCardOwnership(cardId, buttonEl) {
   try {
-    // Removing asks first. A cancelled prompt changes nothing, so the deck's
-    // ownership percentage must not be recomputed either.
-    const { owned, changed } = await toggleOwnership(cardId, buttonEl.dataset.cardName);
+    // The dot means "free for this deck", so a grey one may be a card owned
+    // but held by another deck: its press adds a copy rather than removing
+    // one. A green press takes one copy, never all of them — the rest may
+    // belong to other decks.
+    const item = buttonEl.closest('.deck-card-item');
+    const deckCard = currentDeck.cards.find(c => c.deck_card_id == item?.dataset.deckCardId);
+    const { changed } = await toggleOwnershipOneCopy(cardId, buttonEl.dataset.cardName, {
+      available: Boolean(deckCard?.is_available),
+      printingId: deckCard?.printing_id,
+      isFoil: Boolean(deckCard?.is_foil),
+    });
     if (!changed) return;
 
-    paintOwnershipToggle(buttonEl, owned);
+    // Availability is decided against every other deck, so it is read back
+    // rather than guessed: one copy more can still leave this deck short.
+    const { deck } = await api.getDeck(currentDeckId);
+    currentDeck.cards = deck.cards;
+    currentDeck.readiness = deck.readiness;
+    renderReadinessPanel(currentDeck.readiness);
+    renderDeckCards();
 
-    // Update the card's is_owned status in currentDeck
-    currentDeck.cards.forEach(card => {
-      if (card.card_id == cardId) {
-        card.is_owned = owned;
-      }
-    });
-
-    // Reload stats to update the ownership percentage
     await loadDeckStats();
   } catch (error) {
     showToast('Failed to update collection', 'error');
@@ -3430,9 +3446,7 @@ function renderOptimizerResults(result, el) {
       <span style="font-size:1.1rem;font-weight:700;color:var(--success-bright);">
         <i class="ph ph-check-circle"></i> Optimized — ${fmt(totalCents)} across ${sellerCount} seller${sellerCount !== 1 ? 's' : ''}
       </span>
-      <a href="https://manapool.com/cart" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-        Complete on Mana Pool <i class="ph ph-arrow-square-out"></i>
-      </a>
+      ${massEntryButton(result.massEntry)}
     </div>
     <div style="background:var(--bg-tertiary);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
         <div style="display:flex;justify-content:space-between;padding:0.2rem 0;font-size:0.9rem;">

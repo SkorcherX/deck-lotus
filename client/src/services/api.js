@@ -173,10 +173,10 @@ class ApiClient {
   // server refuses to do it on a single request unless `confirmRemoveAll` says
   // the user was shown what it costs. Without it, an owned card comes back
   // untouched with `requiresConfirmation` and the counts to put in the prompt.
-  async toggleCardOwnership(cardId, { confirmRemoveAll = false } = {}) {
+  async toggleCardOwnership(cardId, { confirmRemoveAll = false, removeOne = false, addOne = false, printingId, isFoil } = {}) {
     return this.request(`/cards/${cardId}/owned`, {
       method: 'POST',
-      body: JSON.stringify({ confirmRemoveAll }),
+      body: JSON.stringify({ confirmRemoveAll, removeOne, addOne, printingId, isFoil }),
     });
   }
 
@@ -505,12 +505,13 @@ class ApiClient {
   }
 
   // Shopping methods
-  async getBulkBinList(deckIds, { threshold, commonsOnly, includeContested } = {}) {
+  async getBulkBinList(deckIds, { threshold, commonsOnly, includeContested, includeWanted } = {}) {
     const params = new URLSearchParams();
     if (deckIds && deckIds.length) params.set('deckIds', deckIds.join(','));
     if (threshold != null) params.set('threshold', String(threshold));
     if (commonsOnly === false) params.set('commonsOnly', 'false');
     if (includeContested === false) params.set('includeContested', 'false');
+    if (includeWanted === false) params.set('includeWanted', 'false');
 
     const query = params.toString();
     return this.request(`/shopping/bulk${query ? `?${query}` : ''}`);
@@ -526,12 +527,13 @@ class ApiClient {
   // `includeContested` widens the list to copies you own but have committed to
   // a deck you did not select. They need no purchase, so they are off unless
   // the page asks — see the note on GET /api/shopping.
-  async getShoppingList(deckIds, { includeContested = false } = {}) {
+  async getShoppingList(deckIds, { includeContested = false, includeWanted = true } = {}) {
     const params = new URLSearchParams();
     if (deckIds && deckIds.length > 0) {
       params.append('deckIds', deckIds.join(','));
     }
     if (includeContested) params.append('includeContested', 'true');
+    if (!includeWanted) params.append('includeWanted', 'false');
     return this.request(`/shopping?${params}`);
   }
 
@@ -607,14 +609,17 @@ class ApiClient {
     const subtypes = [...(filters.subtypes || []), filters.liveSubtype].filter(Boolean);
     if (subtypes.length > 0) params.append('subtypes', subtypes.join(','));
     // Rules-text chips plus the text being typed; every word must appear.
-    const text = [...(filters.texts || []), filters.liveText].filter(Boolean).join(' ');
+    const text = [...(filters.texts || []), filters.liveText, filters.cardText].filter(Boolean).join(' ');
     if (text) params.append('text', text);
     if (filters.ability) params.append('abilities', filters.ability);
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
     if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
-    if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
+    if (filters.rarities?.length) params.append('rarity', filters.rarities.join(','));
+    else if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
+    if (filters.cmcMin != null) params.append('cmcMin', filters.cmcMin);
+    if (filters.cmcMax != null) params.append('cmcMax', filters.cmcMax);
     if (filters.minCopies > 0) params.append('minCopies', filters.minCopies);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
@@ -644,14 +649,17 @@ class ApiClient {
     const subtypes = [...(filters.subtypes || []), filters.liveSubtype].filter(Boolean);
     if (subtypes.length > 0) params.append('subtypes', subtypes.join(','));
     // Rules-text chips plus the text being typed; every word must appear.
-    const text = [...(filters.texts || []), filters.liveText].filter(Boolean).join(' ');
+    const text = [...(filters.texts || []), filters.liveText, filters.cardText].filter(Boolean).join(' ');
     if (text) params.append('text', text);
     if (filters.ability) params.append('abilities', filters.ability);
     if (filters.sort) params.append('sort', filters.sort);
     if (filters.availability) params.append('availability', filters.availability);
     if (filters.commander) params.append('commander', filters.commander);
     if (filters.condition && filters.condition !== 'all') params.append('condition', filters.condition);
-    if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
+    if (filters.rarities?.length) params.append('rarity', filters.rarities.join(','));
+    else if (filters.rarity && filters.rarity !== 'all') params.append('rarity', filters.rarity);
+    if (filters.cmcMin != null) params.append('cmcMin', filters.cmcMin);
+    if (filters.cmcMax != null) params.append('cmcMax', filters.cmcMax);
     if (filters.minCopies > 0) params.append('minCopies', filters.minCopies);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
@@ -965,6 +973,39 @@ class ApiClient {
   // Mana Pool methods
   async manaPoolStatus() {
     return this.request('/manapool/status');
+  }
+
+  // Local stores — see client/src/components/localStores.js
+  async getPrintingChoices(cardId) {
+    return this.request(`/shopping/printings/${cardId}`);
+  }
+
+  async getCheapestPrintings(cardIds) {
+    return this.request('/shopping/cheapest', { method: 'POST', body: JSON.stringify({ cardIds }) });
+  }
+
+  async getLocalStores() {
+    return this.request('/local-stores');
+  }
+
+  async addLocalStore(name, baseUrl) {
+    return this.request('/local-stores', { method: 'POST', body: JSON.stringify({ name, baseUrl }) });
+  }
+
+  async deleteLocalStore(id) {
+    return this.request(`/local-stores/${id}`, { method: 'DELETE' });
+  }
+
+  async buildLocalStoreScript(cards, options) {
+    return this.request('/local-stores/script', { method: 'POST', body: JSON.stringify({ cards, options }) });
+  }
+
+  async importLocalStoreResults(result) {
+    return this.request('/local-stores/results', { method: 'POST', body: JSON.stringify({ result }) });
+  }
+
+  async clearLocalStoreResults(id) {
+    return this.request(`/local-stores/${id}/results`, { method: 'DELETE' });
   }
 
   async manaPoolOptimize(items, model = 'lowest_price') {

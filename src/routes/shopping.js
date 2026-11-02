@@ -7,6 +7,8 @@ import {
   removeWantedCard,
   clearWantedCards,
   cheapestPrintingOf,
+  cheapestPrintingsFor,
+  printingChoicesFor,
   getBulkBinList,
   setBulkThreshold,
 } from '../services/shoppingService.js';
@@ -48,6 +50,7 @@ router.get('/', authenticate, (req, res, next) => {
   try {
     const shoppingList = getShoppingList(req.user.id, parseDeckIds(req.query.deckIds), {
       includeContested: req.query.includeContested === 'true',
+      includeWanted: req.query.includeWanted !== 'false',
     });
     res.json(shoppingList);
   } catch (error) {
@@ -141,6 +144,35 @@ router.delete('/wanted', authenticate, (req, res, next) => {
 });
 
 /**
+ * POST /api/shopping/cheapest — `{ cardIds }` → the cheapest priced printing
+ * of each card, keyed by card id. The local store comparison prices online
+ * the way it prices a store, any printing, so the two columns ask the same
+ * question.
+ */
+router.post('/cheapest', authenticate, (req, res, next) => {
+  try {
+    const cardIds = (Array.isArray(req.body?.cardIds) ? req.body.cardIds : [])
+      .map((id) => parseInt(id, 10))
+      .filter((id) => !isNaN(id))
+      .slice(0, 5000);
+    res.json(cheapestPrintingsFor(cardIds));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** GET /api/shopping/printings/:cardId — the printings a shopper can pick between. */
+router.get('/printings/:cardId', authenticate, (req, res, next) => {
+  try {
+    const cardId = parseInt(req.params.cardId, 10);
+    if (isNaN(cardId)) return res.status(400).json({ error: 'cardId must be a number' });
+    res.json(printingChoicesFor(cardId));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/shopping/bulk
  * The bulk-bin list: cheap cards to look for while rummaging at a shop.
  *
@@ -158,6 +190,7 @@ router.get('/bulk', authenticate, (req, res, next) => {
       // Both default to on, so only an explicit 'false' turns them off.
       commonsOnly: commonsOnly !== 'false',
       includeContested: includeContested !== 'false',
+      includeWanted: req.query.includeWanted !== 'false',
     });
 
     res.json(list);

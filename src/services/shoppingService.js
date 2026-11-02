@@ -1,4 +1,5 @@
 import db from '../db/connection.js';
+import { NOT_A_STAND_IN } from '../shared/standInPrintings.js';
 import { parseDeckList, findCard } from './importService.js';
 import { groupIntoSets } from './shoppingMerge.js';
 import { buildBulkList, flattenShoppingSets } from './bulkBin.js';
@@ -159,12 +160,16 @@ const IS_BASIC_LAND = isBasicLandSql('c');
  * counted quantities, owning a single copy removed the card outright — which
  * hid exactly the partial playsets the page exists to fill.
  */
-export function getShoppingList(userId, deckIds, { includeContested = false } = {}) {
+export function getShoppingList(userId, deckIds, { includeContested = false, includeWanted = true } = {}) {
+  // `includeWanted` lets "cards my decks are missing" leave the hand-built
+  // wanted list out. It defaults on, which is what every older caller meant.
+  const wanted = includeWanted ? wantedCards(userId) : [];
+
   // No decks selected is no longer the same as nothing to shop for: the
   // wanted list stands on its own, and returning early here is what used to
   // make the page go blank the moment you deselected everything.
   if (!deckIds || deckIds.length === 0) {
-    return groupIntoSets(wantedCards(userId), 0);
+    return groupIntoSets(wanted, 0);
   }
 
   const placeholders = deckIds.map(() => '?').join(',');
@@ -226,7 +231,7 @@ export function getShoppingList(userId, deckIds, { includeContested = false } = 
 
   const cards = db.all(query, params);
 
-  const list = groupIntoSets([...cards, ...wantedCards(userId)], deckIds.length);
+  const list = groupIntoSets([...cards, ...wanted], deckIds.length);
 
   // A contested row without the name of the deck holding the copy reads as the
   // list quoting a card you already have. The bulk view learned this first and
@@ -434,6 +439,35 @@ export function cheapestPrintingOf(cardId) {
   )?.id || null;
 }
 
+/**
+ * Every printing of a card a shopper might choose, with its art and TCGplayer
+ * price, cheapest first (unpriced last). Memorabilia and the like are left
+ * out, for the reason in standInPrintings.js.
+ */
+export function printingChoicesFor(cardId) {
+  return db.all(
+    `SELECT p.id, p.set_code, p.collector_number, p.image_url, p.rarity,
+            s.name AS set_name, s.release_date, pr.price
+       FROM printings p
+       LEFT JOIN sets s ON s.code = p.set_code
+       LEFT JOIN prices pr
+         ON pr.printing_uuid = p.uuid AND pr.provider = 'tcgplayer' AND pr.price_type = 'normal'
+      WHERE p.card_id = ?
+        AND COALESCE(s.type, '') NOT IN (${NOT_A_STAND_IN.map(() => '?').join(',')})
+      ORDER BY CASE WHEN pr.price IS NULL OR pr.price <= 0 THEN 1 ELSE 0 END, pr.price ASC, s.release_date DESC`,
+    [cardId, ...NOT_A_STAND_IN]
+  ).map((r) => ({
+    printingId: r.id,
+    setCode: r.set_code,
+    setName: r.set_name,
+    collectorNumber: r.collector_number,
+    imageUrl: r.image_url,
+    rarity: r.rarity,
+    releaseDate: r.release_date,
+    price: r.price > 0 ? r.price : null,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // The bulk-bin view
 // ---------------------------------------------------------------------------
@@ -476,17 +510,20 @@ export function cheapestPrintingsFor(cardIds) {
          p.set_code,
          p.collector_number,
          p.rarity,
+         p.image_url,
          MIN(pr.price) as price
        FROM printings p
        JOIN prices pr
          ON pr.printing_uuid = p.uuid
         AND pr.provider = 'tcgplayer'
         AND pr.price_type = 'normal'
+       LEFT JOIN sets s ON s.code = p.set_code
       WHERE p.card_id IN (${placeholders})
         AND pr.price IS NOT NULL
         AND pr.price > 0
+        AND COALESCE(s.type, '') NOT IN (${NOT_A_STAND_IN.map(() => '?').join(',')})
       GROUP BY p.card_id`,
-      chunk
+      [...chunk, ...NOT_A_STAND_IN]
     );
 
     for (const row of rows) {
@@ -496,6 +533,7 @@ export function cheapestPrintingsFor(cardIds) {
         setCode: row.set_code,
         collectorNumber: row.collector_number,
         rarity: row.rarity,
+        imageUrl: row.image_url,
         price: row.price,
       };
     }
@@ -617,7 +655,7 @@ function decksHoldingCards(userId, cardIds, excludeDeckIds) {
 export function getBulkBinList(userId, deckIds, options = {}) {
   const threshold = options.threshold != null ? Number(options.threshold) : getBulkThreshold(userId);
 
-  const shopping = getShoppingList(userId, deckIds, { includeContested: true });
+  const shopping = getShoppingList(userId, deckIds, { includeContested: true, includeWanted: options.includeWanted !== false });
   const entries = flattenShoppingSets(shopping.sets);
   const cheapest = cheapestPrintingsFor(entries.map((e) => e.cardId));
 

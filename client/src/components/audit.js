@@ -532,6 +532,7 @@ const SOURCE_LABELS = {
   trade: 'Trade',
   scan: 'Scan',
   scanner: 'Phone scanner',
+  sale: 'Sale',
   api: 'API',
 };
 

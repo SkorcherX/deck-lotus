@@ -34,7 +34,7 @@ function wipeUserData() {
   for (const table of [
     'deck_card_disruptions', 'deck_games', 'deck_pull_progress', 'deck_cards', 'deck_shares', 'decks',
     'trade_items', 'trades', 'api_keys', 'owned_cards', 'owned_printings',
-    'shopping_list_items', 'found_cards', 'collection_shares', 'price_watches', 'audit_log',
+    'shopping_list_items', 'found_cards', 'local_stores', 'collection_shares', 'price_watches', 'audit_log',
     'collection_value_snapshots',
   ]) {
     db.run(`DELETE FROM ${table}`);
@@ -98,6 +98,8 @@ before(async () => {
 
   db.run(`INSERT INTO found_cards (user_id, card_id, card_name, quantity) VALUES (?,?,?,2)`,
     [userId, printings['Sol Ring'].cardId, 'Sol Ring']);
+
+  db.run(`INSERT INTO local_stores (user_id, name, base_url) VALUES (?, 'Mox Valley', 'https://moxvalleygames.tcgplayerpro.com')`, [userId]);
 
   db.run(`INSERT INTO collection_shares (user_id, share_token) VALUES (?, ?)`,
     [userId, 'a'.repeat(32)]);
@@ -212,6 +214,7 @@ describe('backup and restore round trip', () => {
 
     assert.equal(db.get(`SELECT card_name, quantity FROM found_cards`).quantity, 2);
     assert.equal(db.get(`SELECT COUNT(*) c FROM price_watches`).c, 1);
+    assert.equal(db.get(`SELECT base_url FROM local_stores`).base_url, 'https://moxvalleygames.tcgplayerpro.com');
   });
 
   test('a shared collection link survives, so a link already handed out keeps working', () => {
@@ -371,5 +374,41 @@ describe('version 1 backups', () => {
     assert.equal(db.get(`SELECT is_foil FROM deck_cards`).is_foil, 0);
     assert.equal(db.get(`SELECT status FROM decks WHERE id = ?`, [deckId]).status, 'building');
     assert.equal(db.get(`SELECT bulk_price_threshold FROM users WHERE id = ?`, [userId]).bulk_price_threshold, 1.0);
+  });
+
+  test('a scoped restore cannot reach past its own user', () => {
+    // A non-admin restore is an uploaded file, so it is treated as hostile:
+    // here it claims to be the partner, makes itself admin, brings an API key,
+    // and carries a deck id that belongs to someone else.
+    db.run(`INSERT INTO decks (user_id, name, format) VALUES (?, 'Partner Deck', 'commander')`, [partnerId]);
+    const partnerDeckId = db.get(`SELECT id FROM decks WHERE name='Partner Deck'`).id;
+
+    const backup = createBackup(userId);
+    backup.data.users = backup.data.users.map((u) => ({ ...u, is_admin: 1, password_hash: 'forged' }));
+    backup.data.owned_printings = backup.data.owned_printings.map((r) => ({ ...r, user_id: userId }));
+    backup.data.decks = backup.data.decks.map((d) => ({ ...d, id: partnerDeckId }));
+    backup.data.deck_cards = backup.data.deck_cards.map((c) => ({ ...c, deck_id: partnerDeckId }));
+    backup.data.found_cards.push({ ...backup.data.found_cards[0], user_id: partnerId });
+
+    const keysBefore = db.get(`SELECT COUNT(*) c FROM api_keys`).c;
+    const results = restoreBackup(backup, { overwrite: false, userId });
+
+    const owner = db.get(`SELECT is_admin, password_hash FROM users WHERE id = ?`, [userId]);
+    assert.deepEqual({ ...owner }, { is_admin: 0, password_hash: 'hash-owner' });
+    assert.equal(db.get(`SELECT COUNT(*) c FROM api_keys`).c, keysBefore, 'no key may come from the file');
+    assert.equal(results.trades, 0);
+    assert.equal(results.card_loans, 0);
+    assert.equal(results.collection_shares, 0);
+
+    const partnerDeck = db.get(`SELECT user_id, name FROM decks WHERE id = ?`, [partnerDeckId]);
+    assert.deepEqual({ ...partnerDeck }, { user_id: partnerId, name: 'Partner Deck' }, 'partner deck replaced');
+    assert.equal(db.get(`SELECT COUNT(*) c FROM deck_cards WHERE deck_id = ?`, [partnerDeckId]).c, 0);
+
+    const restored = db.get(`SELECT id FROM decks WHERE user_id = ? AND name = 'Test Deck' ORDER BY id DESC`, [userId]);
+    assert.ok(restored.id !== partnerDeckId);
+    assert.ok(db.get(`SELECT COUNT(*) c FROM deck_cards WHERE deck_id = ?`, [restored.id]).c > 0);
+
+    assert.equal(db.get(`SELECT COUNT(*) c FROM found_cards WHERE user_id = ?`, [partnerId]).c, 0,
+      'a row claiming another user must land on the caller');
   });
 });

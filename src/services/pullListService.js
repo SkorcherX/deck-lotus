@@ -14,6 +14,7 @@ import db from '../db/connection.js';
 import { getDeckReadiness } from './deckReadinessService.js';
 import { normalizeLayout, DEFAULT_PULL_LAYOUT } from '../shared/pullLayout.js';
 import { isBasicLand } from './basicLands.js';
+import { getCardCollectionCounts } from './inventoryService.js';
 
 function ownDeck(userId, deckId) {
   const deck = db.get('SELECT id, name, format, status FROM decks WHERE id = ? AND user_id = ?', [deckId, userId]);
@@ -83,6 +84,10 @@ export function getPullList(userId, deckId) {
     .filter((s) => (s.missing || 0) > 0)
     .map((s) => [s.cardId, s.missing]));
 
+  // The Inventory page's numbers for each card, any printing: so the list says
+  // whether a copy is sitting free in storage or has to come out of a deck.
+  const counts = getCardCollectionCounts(userId, rows.map((r) => r.card_id));
+
   const cards = [];
   const basics = [];
   for (const row of rows) {
@@ -117,6 +122,7 @@ export function getPullList(userId, deckId) {
       // the deck lists the card twice in different printings.
       missing: missingByCard.get(row.card_id) || 0,
       alsoIn: db.all(elsewhereStmt, [userId, deckId, row.card_id]),
+      collection: counts.get(row.card_id) || { owned: 0, inDecks: 0, lentOut: 0, available: 0 },
     });
   }
 

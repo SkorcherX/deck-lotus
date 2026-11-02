@@ -121,6 +121,39 @@ taken on GitHub — only do it when explicitly asked.
   quotes a playset as five. Everything downstream (filters, totals, the Mana
   Pool cart optimizer, the export) reads that one number, so a new consumer
   should use it rather than re-deriving a count from `decks`.
+- The Shopping page is a three-step flow (`client/src/components/shopping.js`):
+  what you need (`/shopping`) → your list (`/shopping/list`) → where to buy
+  (`/shopping/buy`, tabs Compare / Local stores / Mana Pool / TCGplayer /
+  Bulk bins). The step is in the URL (`parsePath` returns `step`; `main.js`
+  threads it into `page:shopping`); the source (decks or your own list), deck
+  selection, view and tab are remembered per browser. A bare `/shopping` with
+  a list already chosen jumps to step 2 — but not on Back and not on an
+  in-page step click (`steppingWithin`), or step 1 could never be reached.
+  "Cards my decks are missing" may leave the wanted list out:
+  `getShoppingList`/`getBulkBinList` take `includeWanted` (default on, which
+  is what older callers meant). The search box is on every step and always
+  adds to the wanted list. TCGplayer has no live lookup — their API is closed
+  to new developers — so its tab prices from stored market data and hands the
+  list to Mass Entry; the prefilled `massentry?c=` link format is
+  undocumented, hence the Copy list beside it. The deck builder's "Shop for
+  missing cards" sends `shopping:for-decks` before navigating to step 2.
+- Mana Pool quotes go through `src/services/manaPoolStock.js` first. The
+  optimizer rejects a bare name, and a printing nobody on Mana Pool sells
+  comes back "no seller" even when other printings are in stock — Vampiric
+  Tutor read as unavailable with fifteen printings listed. So each line is
+  spread over the printings Mana Pool's public `/prices/singles` feed says it
+  stocks (no credentials, ~50 MB, cached six hours), cheapest first, unless
+  the user picked a printing (`exactPrinting`). "Any printing" never means a
+  memorabilia copy: `NOT_A_STAND_IN` (`src/shared/standInPrintings.js`)
+  excludes those set types there and in `cheapestPrintingsFor` — the cheapest
+  Vampiric Tutor on offer was a gold-bordered 1999 World Championship copy.
+  The cart cannot be filled from outside (the API only creates pending
+  orders against the buyer's account), but Mass Entry takes the list in the
+  link: `manapool.com/add-deck?deck=` + unpadded base64 of the lines, the
+  format EDHREC's buttons use (`client/src/utils/manaPoolHandoff.js`,
+  pinned by a test against a real EDHREC link). It is undocumented; if it
+  stops working, that file is the one place to change. Printings picked by
+  hand on the TCGplayer tab live in localStorage (`deckLotus.shopping.printings`).
 - The weekly MTGJSON sync runs on a cron in `src/services/syncService.js`,
   and node-cron reads a bare expression in the *process's* timezone — which in
   a container with no `TZ` is UTC. "Sundays at 3 AM" therefore fired at 8 PM
@@ -207,6 +240,12 @@ taken on GitHub — only do it when explicitly asked.
   wrapped to three lines inside the card; the deck builder shows the wording as
   a chip in the price row, and the per-card breakdown only when that chip is
   pressed. Anything that grows the label has to survive both.
+  The deck builder's per-card dot is a third, smaller surface: it shows
+  `is_available` (set in `getDeckById` from the readiness shortfalls), not
+  `is_owned`, so a card owned but held by an equally or more committed deck
+  reads grey. A green press removes one copy, a grey press adds one — never
+  the remove-every-copy toggle Browse Cards uses. Maybeboard cards are not
+  claims, so their dot falls back to plain ownership.
 - The backup format (`src/services/backupService.js`) is at version 2, and the
   rule that shapes it is the weekly MTGJSON sync: `cards` and `printings` are
   rebuilt every time, so those tables are never backed up and **nothing may be
@@ -219,6 +258,12 @@ taken on GitHub — only do it when explicitly asked.
   `test/integration/backupRoundTrip.test.js` backs up, wipes and restores, and
   is the only thing that catches this class of bug — a backup that never gets
   restored looks perfect.
+  A non-admin restore (`restoreBackup` with `userId`) treats the file as
+  hostile: every `user_id` is forced to the caller, row ids are dropped so
+  SQLite assigns fresh ones (decks via `deckIdMap`), and users, API keys,
+  share tokens, trades and loans are admin-restore only. Server-side backup
+  files are admin-only too. A new table added to the restore must go through
+  `owner()`/`rowId()`, or a crafted file can overwrite another user's row.
 - A deck's status is a claim on cards, not just a label. `deckPriority.js`
   ranks them ready(1) > building(2) > idea(3) > retired(4), and a deck's cards
   are contested **only by decks at least as committed as it is**. Without this
@@ -478,3 +523,38 @@ taken on GitHub — only do it when explicitly asked.
   owned − in decks − lent out) and basic lands count as had. "New idea deck"
   imports the picks with the commander on top and sets status `idea`, so it
   never contests a real deck's cards.
+- Local store prices (Shopping page, `client/src/components/localStores.js`,
+  `/api/local-stores`) compare TCGplayer Pro storefronts with each other and
+  with the online price. The stores' APIs return 403 to anything that is not
+  a browser on their own site, and the decision was **not** to work around
+  that: the server never contacts a store. The lookup runs in the user's own
+  browser on the store's own page, one request a second, never touching a
+  cart. The normal path is the MV3 extension in `src/extension` (downloaded
+  from `/api/local-stores/extension.zip`, built by `extensionPackage.js`):
+  the user connects their Deck Lotus origin in its popup, which registers
+  `bridge.js` there; "Check prices" posts to the bridge, and `sw.js` opens
+  each store in a background tab and runs `lookup.js` in it. `lookup.js` is
+  **generated** into the zip by `buildExtensionLookup` — MV3 forbids remote
+  code, so the lookup ships inside the extension, and editing the extension
+  folder's copy is not possible (there is none). The fallback is a console
+  script (`buildLookupScript`) the user pastes and whose JSON they paste
+  back. Both serialise the lookup functions' source, so those functions may
+  reference only each other — keep `localShop.js` import-free and build both
+  server-side, where nothing is minified. Bump `manifest.json`'s version
+  whenever the lookup changes, since an installed extension does not update
+  itself. Firefox gets the same files from `/extension-firefox.zip`: the
+  manifest is rewritten at download (`background.scripts` instead of a
+  service worker, and the gecko id `store-prices@deck-lotus`, which must
+  never change or Firefox sees a new add-on). Release Firefox installs only
+  Mozilla-signed add-ons, so the user signs it themselves as an unlisted
+  add-on on addons.mozilla.org; `npx web-ext lint` on the unzipped build is
+  the check that it will pass. Three Firefox differences shape the code:
+  host permissions are not granted at install (connect asks for
+  tcgplayerpro.com too), the popup closes when a permission prompt opens (so
+  `sw.js` finishes connecting on `permissions.onAdded`), and a content
+  script's own `fetch` is not the page's (`lookup.js` uses `content.fetch`). `importResult` files it under the store whose
+  `base_url` matches the result's `origin`, never a store picked in the UI.
+  One snapshot per store in `local_store_quotes`, keyed by card name; stores
+  are backed up, quotes are not. The split plan chooses per copy without
+  shipping, then the online remainder goes to the Mana Pool optimizer for the
+  real total.
