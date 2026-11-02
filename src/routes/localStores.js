@@ -3,7 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 import {
   listStores, addStore, updateStore, removeStore, setStorePrefs, buildScript, importResult, clearResult, LocalStoreError,
 } from '../services/localStoreService.js';
-import { buildExtensionZip, extensionVersion } from '../services/extensionPackage.js';
+import { buildExtensionZip, extensionVersion, signedFirefoxBuild } from '../services/extensionPackage.js';
 
 const router = express.Router();
 
@@ -44,7 +44,25 @@ router.get('/extension-firefox.zip', (req, res) => {
   res.send(buildExtensionZip('firefox'));
 });
 
-router.get('/extension', (req, res) => res.json({ version: extensionVersion() }));
+/**
+ * GET /api/local-stores/extension.xpi — the Mozilla-signed Firefox build.
+ * Served as application/x-xpinstall so Firefox offers to install it on click.
+ * Public for the same reason as the zips.
+ */
+router.get('/extension.xpi', (req, res) => {
+  const build = signedFirefoxBuild();
+  if (!build) return res.status(404).json({ error: 'No signed Firefox build is available yet.' });
+  res.set({
+    'Content-Type': 'application/x-xpinstall',
+    'Content-Disposition': `inline; filename="deck-lotus-store-prices-${build.version}.xpi"`,
+  });
+  res.sendFile(build.file);
+});
+
+router.get('/extension', (req, res) => res.json({
+  version: extensionVersion(),
+  signedFirefoxVersion: signedFirefoxBuild()?.version || null,
+}));
 
 /**
  * GET /api/local-stores — the household's stores, each with the caller's own

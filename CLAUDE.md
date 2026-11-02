@@ -569,3 +569,10 @@ taken on GitHub — only do it when explicitly asked.
   and a new address clears everyone's quotes there. Backup carries each
   user's view (store by address plus their prefs) and restores by
   `base_url`.
+- Firefox keeps only Mozilla-signed add-ons, so the store-price extension's
+  signed build lives in `src/extension-signed/` as
+  `deck-lotus-store-prices-<version>.xpi` and is served at
+  `/api/local-stores/extension.xpi` (newest version wins). Bumping the
+  version in `src/extension/manifest.json` means signing the new zip on
+  addons.mozilla.org ("On your own") and dropping the new `.xpi` there;
+  until then Firefox users get the older signed one.

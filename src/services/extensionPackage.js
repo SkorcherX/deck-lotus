@@ -105,3 +105,29 @@ export function buildExtensionZip(browser = 'chrome') {
 export function extensionVersion() {
   return JSON.parse(fs.readFileSync(path.join(EXTENSION_DIR, 'manifest.json'), 'utf8')).version;
 }
+
+/**
+ * The Mozilla-signed Firefox build, if one has been dropped into
+ * src/extension-signed/ as deck-lotus-store-prices-<version>.xpi. Firefox
+ * keeps only signed add-ons, so this is what lets a household member install
+ * with one click instead of signing the zip themselves. Signing happens on
+ * addons.mozilla.org ("On your own"); a new extension version needs a new
+ * signed file, and until one is added the newest older one is served.
+ * Returns { version, file } or null.
+ */
+const SIGNED_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extension-signed');
+
+export function signedFirefoxBuild() {
+  let names;
+  try {
+    names = fs.readdirSync(SIGNED_DIR);
+  } catch {
+    return null;
+  }
+  const builds = names
+    .map((name) => ({ name, m: /^deck-lotus-store-prices-(\d+(?:\.\d+)*)\.xpi$/.exec(name) }))
+    .filter((b) => b.m)
+    .map((b) => ({ version: b.m[1], file: path.join(SIGNED_DIR, b.name) }))
+    .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }));
+  return builds[0] || null;
+}

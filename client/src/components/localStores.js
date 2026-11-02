@@ -34,15 +34,11 @@ const CHROME_STEPS = `One-time setup in Chrome or Edge:
 // is free and automatic, but it needs the user's own Mozilla account, so the
 // page can only point the way; the temporary route works at once but is
 // forgotten when Firefox restarts.
+// The signed .xpi (src/extension-signed) installs straight from this link:
+// Firefox recognises the type and offers to add it. No Mozilla account needed.
 const FIREFOX_STEPS = `One-time setup in Firefox:
   <ol>
-    <li><a href="/api/local-stores/extension-firefox.zip" download>Download the extension</a> (keep it zipped).</li>
-    <li>Firefox only keeps add-ons that Mozilla has signed. Signing is free: on
-      <a href="https://addons.mozilla.org/developers/addon/submit/distribution" target="_blank" rel="noopener">addons.mozilla.org</a>
-      choose <strong>On your own</strong>, upload the zip, and download the signed <code>.xpi</code> it gives back
-      (usually within minutes). Open that file in Firefox to install it.
-      <div class="local-stores-hint">To try it first: open <code>about:debugging#/runtime/this-firefox</code> and choose
-        <strong>Load Temporary Add-on</strong> with the zip. It is removed when Firefox restarts.</div></li>
+    <li><a href="/api/local-stores/extension.xpi">Install the extension</a> and choose <strong>Add</strong> when Firefox asks.</li>
     <li>Back on this page, click the extension's icon (in the puzzle-piece menu) and choose <strong>connect</strong>.
       Firefox asks to allow this site and tcgplayerpro.com.</li>
   </ol>`;
@@ -288,6 +284,11 @@ export async function refreshLocalStores() {
 let compareEl = null;
 let goVenue = () => {};
 let compareQuote = null;
+// The list compareQuote was taken for, and the quote still running. The
+// quote is a live optimizer call, so it runs once per list rather than on
+// every repaint, and a changed list (new card, other printing) asks again.
+let compareQuoteKey = null;
+let compareQuoting = null;
 
 /**
  * The Compare tab: one number per way of buying, side by side, each linking
@@ -311,6 +312,27 @@ export async function renderCompare(el, onVenue) {
     return;
   }
   paintCompare();
+  autoQuoteManaPool(items);
+}
+
+function cartKey(items) {
+  return JSON.stringify(items.map(({ name, quantity, setCode, collectorNumber, exactPrinting }) => [name, quantity, setCode, collectorNumber, !!exactPrinting]));
+}
+
+/** Fetch the Mana Pool quote for the Compare tab without waiting for a click. */
+async function autoQuoteManaPool(items, { force = false } = {}) {
+  const key = cartKey(items);
+  if (!force && (compareQuoting === key || (compareQuote && compareQuoteKey === key))) return;
+  compareQuoting = key;
+  compareQuote = null;
+  paintCompare();
+  const quote = await quoteOnManaPool(items);
+  // A newer list started its own quote while this one ran; drop this answer.
+  if (compareQuoting !== key) return;
+  compareQuoting = null;
+  compareQuote = quote;
+  compareQuoteKey = key;
+  paintCompare();
 }
 
 function paintCompare() {
@@ -330,7 +352,7 @@ function paintCompare() {
   // because it is selling less, and colouring it "best" would say otherwise.
   const options = [
     {
-      title: 'Online, cheapest printings',
+      title: 'TCGplayer',
       value: onlineTotal,
       note: `TCGplayer market, before shipping${unpriced ? ` · ${unpriced} unpriced` : ''}`,
       complete: !unpriced,
@@ -340,11 +362,13 @@ function paintCompare() {
       title: 'Mana Pool, delivered',
       value: t ? t.total_cents / 100 : null,
       note: t ? `${t.seller_count ?? '?'} sellers, shipping and fees included${mpShort ? ` · ${mpShort} not stocked` : ''}`
-        : compareQuote?.error ? escapeHtml(compareQuote.error) : 'A real quote with shipping and fees',
+        : compareQuote?.error ? escapeHtml(compareQuote.error)
+          : compareQuoting ? 'Getting a quote with shipping and fees…' : 'A real quote with shipping and fees',
       complete: !!t && !mpShort,
       venue: 'manapool',
       actions: t ? massEntryButton(compareQuote.massEntry, { primary: false })
-        : '<button type="button" class="btn btn-primary btn-sm" data-compare-action="quote">Get quote</button>',
+        : compareQuoting ? '<span class="local-stores-hint"><i class="ph ph-circle-notch"></i> Quoting…</span>'
+          : compareQuote?.error ? '<button type="button" class="btn btn-secondary btn-sm" data-compare-action="quote">Try again</button>' : '',
     },
     ...quoted.map((st) => {
       const cov = storeCoverage(items, st.result);
@@ -419,11 +443,8 @@ function paintCompare() {
   compareEl.querySelectorAll('[data-compare-venue]').forEach((btn) => {
     btn.addEventListener('click', () => goVenue(btn.dataset.compareVenue));
   });
-  compareEl.querySelector('[data-compare-action="quote"]')?.addEventListener('click', async (e) => {
-    e.target.disabled = true;
-    e.target.textContent = 'Quoting…';
-    compareQuote = await quoteOnManaPool(items);
-    paintCompare();
+  compareEl.querySelector('[data-compare-action="quote"]')?.addEventListener('click', () => {
+    autoQuoteManaPool(items, { force: true });
   });
 }
 
@@ -680,7 +701,9 @@ function render() {
               Stores on <code>tcgplayerpro.com</code> are allowed when you connect. For a store on its own domain,
               open it once and choose "Allow price checks on this store" in the extension.
               <div class="local-stores-hint">Using ${IS_FIREFOX ? 'Chrome or Edge' : 'Firefox'} instead?
-                <a href="${IS_FIREFOX ? '/api/local-stores/extension.zip' : '/api/local-stores/extension-firefox.zip'}" download>Download that version</a>.</div>
+                ${IS_FIREFOX
+                  ? '<a href="/api/local-stores/extension.zip" download>Download that version</a>'
+                  : '<a href="/api/local-stores/extension.xpi">Install the Firefox version</a> (open the link in Firefox)'}.</div>
             </div>
           </div>`}
         <details class="local-stores-manual">
