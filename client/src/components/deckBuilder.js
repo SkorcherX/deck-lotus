@@ -3471,7 +3471,7 @@ function renderOptimizerResults(result, el) {
         </div>
         ${totals.buyer_fee_cents ? `
         <div style="display:flex;justify-content:space-between;padding:0.2rem 0;font-size:0.9rem;">
-          <span>Buyer fee</span><span>${fmt(totals.buyer_fee_cents)}</span>
+          <span title="Mana Pool charges buyers 4.2% on single cards">Singles fee (4.2%)${totals.fee_estimated ? ' · est.' : ''}</span><span>${fmt(totals.buyer_fee_cents)}</span>
         </div>` : ''}
         <div style="display:flex;justify-content:space-between;padding:0.35rem 0 0;font-size:1rem;font-weight:700;border-top:1px solid var(--border-color);margin-top:0.25rem;">
           <span>Total</span><span style="color:var(--primary);">${fmt(totalCents)}</span>

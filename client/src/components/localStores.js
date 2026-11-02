@@ -352,6 +352,19 @@ async function autoQuoteManaPool(items, { force = false } = {}) {
   paintCompare();
 }
 
+/** Market cost of the cards a Mana Pool quote could not stock, and how many have no price. */
+function notStockedCost(items, names) {
+  const wanted = new Set(names.map((n) => String(n).toLowerCase()));
+  let cost = 0;
+  let unpriced = 0;
+  for (const c of items) {
+    if (!wanted.has(c.name.toLowerCase())) continue;
+    if (c.onlineUnit == null) unpriced++;
+    else cost += c.onlineUnit * c.quantity;
+  }
+  return { cost, unpriced };
+}
+
 /** Shipping guess for the online part of a split: its priced cards only. */
 function splitShipping(plan) {
   const unpriced = new Set(plan.uncovered.map((u) => u.name));
@@ -369,6 +382,7 @@ function paintCompare() {
   const localSplit = quoted.reduce((n, st) => n + plan.totals[st.id].cost, 0);
   const t = compareQuote?.totals;
   const mpShort = compareQuote?.unavailable?.length || 0;
+  const mpMissing = notStockedCost(items, compareQuote?.unavailable || []);
 
   // Every way of buying, as one shape. Only options covering the whole list
   // are ranked against each other: a store with one of four copies is cheap
@@ -384,11 +398,16 @@ function paintCompare() {
     },
     {
       title: 'Mana Pool, delivered',
-      value: t ? t.total_cents / 100 : null,
-      note: t ? `${t.seller_count ?? '?'} sellers, shipping and fees included${mpShort ? ` · ${mpShort} not stocked` : ''}`
+      tag: t && mpShort ? 'estimate' : undefined,
+      // Cards Mana Pool has no seller for are priced at TCGplayer market, so
+      // the figure covers the whole list instead of quietly leaving them out.
+      value: t ? t.total_cents / 100 + mpMissing.cost : null,
+      note: t ? `${t.seller_count ?? '?'} sellers, shipping and 4.2% singles fee included${mpShort
+        ? ` · ${mpShort} not stocked, added at market (${money(mpMissing.cost)})`
+        : ''}`
         : compareQuote?.error ? escapeHtml(compareQuote.error)
           : compareQuoting ? 'Getting a quote with shipping and fees…' : 'A real quote with shipping and fees',
-      complete: !!t && !mpShort,
+      complete: !!t && !mpMissing.unpriced,
       venue: 'manapool',
       actions: t ? massEntryButton(compareQuote.massEntry, { primary: false })
         : compareQuoting ? '<span class="local-stores-hint"><i class="ph ph-circle-notch"></i> Quoting…</span>'
@@ -875,7 +894,7 @@ function renderRemainderQuote(localSplit) {
       ${t ? `
         <tr><td>Mana Pool subtotal</td><td class="num">${cents(t.subtotal_cents)}</td></tr>
         <tr><td>Shipping (${t.seller_count ?? '?'} sellers)</td><td class="num">${cents(t.shipping_cents)}</td></tr>
-        ${t.buyer_fee_cents ? `<tr><td>Buyer fee</td><td class="num">${cents(t.buyer_fee_cents)}</td></tr>` : ''}
+        ${t.buyer_fee_cents ? `<tr><td title="Mana Pool charges buyers 4.2% on single cards">Singles fee (4.2%)${t.fee_estimated ? ' · est.' : ''}</td><td class="num">${cents(t.buyer_fee_cents)}</td></tr>` : ''}
         <tr><td><strong>Mana Pool total</strong></td><td class="num"><strong>${cents(t.total_cents)}</strong></td></tr>
         <tr><td>Local pickups</td><td class="num">${money(localSplit)}</td></tr>
         <tr><td><strong>Everything</strong></td><td class="num"><strong>${money(localSplit + (t.total_cents || 0) / 100)}</strong></td></tr>` : ''}

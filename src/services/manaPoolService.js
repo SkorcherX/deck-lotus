@@ -129,14 +129,41 @@ export async function getLowestPrice(cardName, condition = 'nm', scryfallId = nu
   return { lowPrice: low, marketPrice: market, products: [cardName] };
 }
 
-// Map internal condition codes to Mana Pool condition_ids arrays.
-// Mana Pool accepts an array of acceptable conditions — include all conditions at or above the requested one.
-function toConditionIds(condition) {
+// The optimizer's condition when a line names none. Mana Pool's own checkout
+// defaults to "Minimum condition: Lightly played", and quoting with every
+// condition allowed priced in Heavily Played and Damaged copies — a quote a
+// third under what the same list cost at checkout.
+export const DEFAULT_MIN_CONDITION = 'lp';
+
+// Mana Pool's singles fee: buyers pay 4.2% on single cards (none on sealed).
+export const SINGLES_FEE_RATE = 0.042;
+
+// A minimum condition as Mana Pool condition_ids: that condition and every
+// better one. 'lp' → ['NM', 'LP']. (This once returned the condition and
+// every *worse* one, so 'lp' accepted Damaged and refused Near Mint.)
+export function toConditionIds(condition) {
   const all = ['NM', 'LP', 'MP', 'HP', 'DMG'];
   const norm = condition?.toLowerCase();
-  if (!norm || norm === 'any') return all;
-  const idx = { nm: 0, lp: 1, mp: 2, hp: 3, dm: 4, dmg: 4 }[norm] ?? 0;
-  return all.slice(idx); // e.g. 'lp' → ['LP', 'MP', 'HP', 'DM'] — any condition LP or worse accepted
+  if (norm === 'any') return all;
+  const idx = { nm: 0, lp: 1, mp: 2, hp: 3, dm: 4, dmg: 4 }[norm] ?? 1;
+  return all.slice(0, idx + 1);
+}
+
+/**
+ * The optimizer's totals with the singles fee made explicit. Mana Pool's
+ * checkout adds 4.2% of the singles subtotal; when the API's answer carries no
+ * `buyer_fee_cents` it is worked out here, and `total_cents` is raised to
+ * subtotal + shipping + fee if it came back without it. `fee_estimated` says
+ * which. Totals that already include the fee pass through unchanged.
+ */
+export function withSinglesFee(totals) {
+  if (!totals) return totals;
+  const subtotal = totals.subtotal_cents ?? 0;
+  const shipping = totals.shipping_cents ?? 0;
+  const reported = totals.buyer_fee_cents ?? 0;
+  const fee = reported || Math.round(subtotal * SINGLES_FEE_RATE);
+  const total = Math.max(totals.total_cents ?? 0, subtotal + shipping + fee);
+  return { ...totals, buyer_fee_cents: fee, total_cents: total, fee_estimated: !reported };
 }
 
 function buildOptimizerBody(items, model) {
@@ -157,7 +184,7 @@ function buildOptimizerBody(items, model) {
         quantity_requested: item.quantity ?? 1,
         language_ids: ['EN'],
         finish_ids: item.foil ? ['FO'] : ['NF'],
-        condition_ids: toConditionIds(item.condition),
+        condition_ids: toConditionIds(item.condition || DEFAULT_MIN_CONDITION),
       };
     }),
   };

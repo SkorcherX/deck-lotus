@@ -613,3 +613,11 @@ taken on GitHub — only do it when explicitly asked.
   to a bare name is whichever row comes first — often a showcase or Japanese
   printing — and the deck's value is priced off whatever is stored. A line
   that names its set keeps exactly what it asked for.
+- Mana Pool optimizer quotes are meant to match its checkout. A line with
+  no condition is quoted at `DEFAULT_MIN_CONDITION` ('lp' → NM and LP, the
+  checkout's own default); `toConditionIds` returns a condition *and
+  better* — it once returned the condition and worse, which priced in
+  Damaged copies. `withSinglesFee` adds the 4.2% buyer singles fee to the
+  totals whenever the answer has no `buyer_fee_cents` (`fee_estimated`
+  says so). On Compare, cards Mana Pool cannot stock are added at
+  TCGplayer market so the figure covers the whole list.

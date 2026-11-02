@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { isConfigured, optimizeCart, validateDeck, getCardInfoBulk } from '../services/manaPoolService.js';
+import { isConfigured, optimizeCart, validateDeck, getCardInfoBulk, withSinglesFee } from '../services/manaPoolService.js';
 import { getManaPoolStock, expandToStock, massEntryText } from '../services/manaPoolStock.js';
 import db from '../db/connection.js';
 import { NOT_A_STAND_IN } from '../shared/standInPrintings.js';
@@ -44,7 +44,7 @@ router.post('/optimize', authenticate, async (req, res, next) => {
       ...(result.unavailable || []),
       ...notStocked.map((u) => u.name),
     ])];
-    res.json({ ...result, unavailable, notStocked, massEntry: massEntryText(lines) });
+    res.json({ ...result, totals: withSinglesFee(result.totals), unavailable, notStocked, massEntry: massEntryText(lines) });
   } catch (err) {
     next(err);
   }
