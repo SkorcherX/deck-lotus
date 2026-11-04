@@ -1,6 +1,7 @@
 import db from '../db/connection.js';
 import { NOT_A_STAND_IN } from '../shared/standInPrintings.js';
 import { parseDeckList, findCard } from './importService.js';
+import { cheapestPrintingOf } from './cheapestPrinting.js';
 import { groupIntoSets } from './shoppingMerge.js';
 import { buildBulkList, flattenShoppingSets } from './bulkBin.js';
 import { isBasicLandSql } from './basicLands.js';
@@ -426,7 +427,7 @@ export function addWantedCardsBulk(userId, text) {
 
 // Moved to cheapestPrinting.js so deck import can share it without importing
 // the shopping service. Re-exported for the existing callers.
-export { cheapestPrintingOf } from './cheapestPrinting.js';
+export { cheapestPrintingOf };
 
 /**
  * Every printing of a card a shopper might choose, with its art and TCGplayer

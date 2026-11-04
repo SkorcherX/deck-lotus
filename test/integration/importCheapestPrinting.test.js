@@ -18,6 +18,7 @@ process.env.DATABASE_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dec
 const { runMigrations, closeDb } = await import('../../src/db/index.js');
 const { default: db } = await import('../../src/db/connection.js');
 const { importDeck, parseDeckList } = await import('../../src/services/importService.js');
+const shopping = await import('../../src/services/shoppingService.js');
 
 let userId;
 const p = {};
@@ -58,4 +59,11 @@ test('a line naming its set keeps the printing it asked for, Japanese included',
   assert.equal(printingOf(shown), p.showcase);
   const { deckId: jp } = importDeck(userId, 'JP', 'commander', parseDeckList('1 Sol Ring (JPN) 1'));
   assert.equal(printingOf(jp), p.japanese);
+});
+
+test('the shopping page paste box resolves a bare name the same way', () => {
+  const { added, unresolved } = shopping.addWantedCardsBulk(userId, '1 Sol Ring');
+  assert.equal(unresolved.length, 0);
+  assert.equal(added.length, 1);
+  assert.equal(db.get(`SELECT printing_id FROM shopping_list_items WHERE user_id = ?`, [userId]).printing_id, p.cheap);
 });
