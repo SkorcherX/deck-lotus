@@ -2796,15 +2796,15 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label for="pm-condition">Condition</label>
-                            <select autocomplete="off" id="pm-condition">
-                                <option value="any">Any Condition</option>
-                                <option value="nm">Near Mint (NM)</option>
-                                <option value="lp">Lightly Played (LP)</option>
-                                <option value="mp">Moderately Played (MP)</option>
-                                <option value="hp">Heavily Played (HP)</option>
-                                <option value="dm">Damaged (DM)</option>
-                            </select>
+                            <label>Conditions</label>
+                            <div id="pm-conditions" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                <label title="Near Mint"><input type="checkbox" value="nm"> NM</label>
+                                <label title="Lightly Played"><input type="checkbox" value="lp"> LP</label>
+                                <label title="Moderately Played"><input type="checkbox" value="mp"> MP</label>
+                                <label title="Heavily Played"><input type="checkbox" value="hp"> HP</label>
+                                <label title="Damaged"><input type="checkbox" value="dm"> DMG</label>
+                            </div>
+                            <small style="color: var(--text-secondary);">Mana Pool publishes prices for NM, NM + LP, or all five.</small>
                         </div>
                         <div class="form-group">
                             <label for="pm-max-price">Target Price ($) <span style="font-weight: 400; color: var(--text-secondary);">— optional</span></label>

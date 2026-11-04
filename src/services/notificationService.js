@@ -4,6 +4,7 @@
 // NTFY_TOPIC / NTFY_TOKEN env vars as the fallback for anything left blank.
 // Settings win so the topic can be changed without recreating the container.
 import { getSettings } from './settingsService.js';
+import { formatWatchConditions } from '../shared/watchConditions.js';
 
 const DEFAULT_URL = 'https://ntfy.sh';
 
@@ -91,7 +92,7 @@ export async function sendTestNotification(overrides = {}, sentBy = 'an admin') 
 }
 
 export async function sendPriceAlert({ cardName, foundPrice, threshold, condition }) {
-  const condLabel = { nm: 'NM', lp: 'LP', mp: 'MP', hp: 'HP', dm: 'DM', any: 'Any' }[condition] || condition.toUpperCase();
+  const condLabel = formatWatchConditions(condition);
   const title = `Price Alert: ${cardName}`;
   const message = threshold != null
     ? `${cardName} (${condLabel}) is now $${foundPrice.toFixed(2)} — below your $${threshold.toFixed(2)} threshold!`

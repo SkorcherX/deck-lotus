@@ -77,17 +77,16 @@ export async function getAllSinglePrices() {
   return Array.isArray(res) ? res : (res.data ?? []);
 }
 
-// Returns the lowest available price (in dollars) for a card at a given condition.
-// condition: 'nm' | 'lp' | 'mp' | 'hp' | 'dm' | 'any' | null
+// Returns the lowest available price (in dollars) for a card in a condition tier.
+// condition: 'nm' (Near Mint) | 'lp' (LP or better) | 'any'
+// A tier with no listing is unpriced — never answered with a worse copy's price.
 // Uses /prices/singles which has per-printing prices for all in-stock items.
 // All prices from the API are in cents — divided by 100 here.
 export async function getLowestPrice(cardName, condition = 'nm', scryfallId = null) {
   assertConfigured();
 
-  const normalised = condition?.toLowerCase();
-  const useNm = normalised === 'nm';
-  const useLp = normalised === 'lp' || normalised === 'mp' || normalised === 'hp' || normalised === 'dm';
-  // 'any' / null → use price_cents (cheapest available across all conditions)
+  const priceField = { nm: 'price_cents_nm', lp: 'price_cents_lp_plus', any: 'price_cents' }[condition];
+  if (!priceField) throw new Error(`Unknown condition tier: ${condition}`);
 
   const singles = await getAllSinglePrices();
   // When a specific printing is selected, only check that exact printing by scryfall_id
@@ -100,6 +99,7 @@ export async function getLowestPrice(cardName, condition = 'nm', scryfallId = nu
 
   if (!matches.length) {
     // Fallback: POST /card_info gives from_price_cents (cheapest overall, any condition)
+    if (condition !== 'any') return null;
     const cards = await getCardInfoBulk([cardName]);
     const matching = cards.filter(c => c.name?.toLowerCase() === cardName.toLowerCase());
     const prices = matching.map(c => c.from_price_cents).filter(p => p > 0);
@@ -108,22 +108,13 @@ export async function getLowestPrice(cardName, condition = 'nm', scryfallId = nu
     return { lowPrice: low, marketPrice: low, products: [cardName] };
   }
 
-  // Pick the correct price field per condition, then find the minimum across all printings
-  const prices = matches
-    .map(s => {
-      if (useNm) return s.price_cents_nm || s.price_cents;
-      if (useLp) return s.price_cents_lp_plus || s.price_cents;
-      return s.price_cents; // any condition
-    })
-    .filter(p => p > 0);
+  // Find the minimum across all printings
+  const prices = matches.map(s => s[priceField]).filter(p => p > 0);
 
   if (!prices.length) return null;
 
   const low = Math.min(...prices) / 100;
-  const lowestMatch = matches.find(s => {
-    const p = useNm ? (s.price_cents_nm || s.price_cents) : useLp ? (s.price_cents_lp_plus || s.price_cents) : s.price_cents;
-    return p === Math.min(...prices);
-  });
+  const lowestMatch = matches.find(s => s[priceField] === Math.min(...prices));
   const market = lowestMatch?.price_market ? lowestMatch.price_market / 100 : low;
 
   return { lowPrice: low, marketPrice: market, products: [cardName] };

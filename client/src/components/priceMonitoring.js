@@ -1,8 +1,9 @@
 import api from '../services/api.js';
 import { showToast, debounce, confirmDialog, openDrawer, closeDrawer } from '../utils/ui.js';
 import { token, tokenRgba } from '../utils/theme.js';
+import { parseWatchConditions, priceTier, formatWatchConditions } from '../../../src/shared/watchConditions.js';
 
-const CONDITIONS = { any: 'Any', nm: 'NM', lp: 'LP', mp: 'MP', hp: 'HP', dm: 'DM' };
+const conditionBoxes = () => document.querySelectorAll('#pm-conditions input[type="checkbox"]');
 
 function formatPrice(v) {
   return v != null ? `$${parseFloat(v).toFixed(2)}` : '—';
@@ -62,7 +63,7 @@ function renderWatches(watches) {
             </div>
             <div style="font-size: 0.875rem; color: var(--text-secondary); display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.25rem;">
               <span>${targetLabel}</span>
-              <span>Cond: <strong style="color: var(--text);">${CONDITIONS[w.condition] || w.condition}</strong></span>
+              <span>Cond: <strong style="color: var(--text);">${formatWatchConditions(w.condition)}</strong></span>
               <span>Current: <strong style="color: ${priceColor};">${formatPrice(price)}</strong></span>
               ${w.expires_at ? `<span>Expires: <strong style="color:var(--text);">${w.expires_at.slice(0,10)}</strong></span>` : ''}
             </div>
@@ -109,7 +110,8 @@ function openWatchModal(watch = null) {
   document.getElementById('pm-card-name').value = watch?.card_name ?? '';
   document.getElementById('pm-card-name').disabled = !!watch;
   document.getElementById('pm-max-price').value = watch?.max_price != null ? watch.max_price : '';
-  document.getElementById('pm-condition').value = watch?.condition ?? 'any';
+  const accepted = parseWatchConditions(watch?.condition ?? 'any');
+  conditionBoxes().forEach(box => { box.checked = accepted.includes(box.value); });
   document.getElementById('pm-expires-at').value = watch?.expires_at?.slice(0, 10) ?? '';
   document.getElementById('pm-notes').value = watch?.notes ?? '';
 
@@ -396,12 +398,17 @@ export function setupPriceMonitoring() {
   document.getElementById('pm-watch-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const watchId = document.getElementById('pm-watch-id').value;
+    const conditions = [...conditionBoxes()].filter(box => box.checked).map(box => box.value);
+    if (!priceTier(conditions)) {
+      showToast('Tick NM, NM + LP, or all five conditions', 'error');
+      return;
+    }
     const data = {
       card_name: document.getElementById('pm-card-name').value.trim(),
       max_price: document.getElementById('pm-max-price').value !== ''
         ? parseFloat(document.getElementById('pm-max-price').value)
         : null,
-      condition: document.getElementById('pm-condition').value,
+      condition: conditions,
       expires_at: document.getElementById('pm-expires-at').value || null,
       notes: document.getElementById('pm-notes').value.trim() || null,
       card_id: document.getElementById('pm-card-id').value || null,

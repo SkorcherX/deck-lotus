@@ -621,3 +621,9 @@ taken on GitHub — only do it when explicitly asked.
   totals whenever the answer has no `buyer_fee_cents` (`fee_estimated`
   says so). On Compare, cards Mana Pool cannot stock are added at
   TCGplayer market so the figure covers the whole list.
+- A price watch stores the conditions it accepts as a list (`nm,lp`), but Mana
+  Pool's `/prices/singles` publishes only three prices: NM, LP or better, and
+  overall cheapest. `src/shared/watchConditions.js` therefore accepts only NM,
+  NM + LP, or all five, and refuses other sets rather than quoting a copy the
+  user did not tick. An unlisted tier is unpriced, never filled from a worse
+  copy. Old single values still in the column or a backup are read as those sets.

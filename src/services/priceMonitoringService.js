@@ -4,6 +4,18 @@ import { getLowestPrice as manaPoolPrice, isConfigured as manaPoolConfigured } f
 import { getLowestPrice as tcgPlayerPrice, isConfigured as tcgConfigured } from './tcgplayerService.js';
 import { sendPriceAlert } from './notificationService.js';
 import { getSettings, updateSettings } from './settingsService.js';
+import { parseWatchConditions, priceTier } from '../shared/watchConditions.js';
+
+// The list a watch stores, or a 400 for a set no price can answer.
+function normalizeConditions(value) {
+  const codes = parseWatchConditions(value);
+  if (!priceTier(codes)) {
+    const error = new Error('Mana Pool only publishes prices for NM, NM + LP, or all conditions');
+    error.statusCode = 400;
+    throw error;
+  }
+  return codes.join(',');
+}
 
 async function getLowestPrice(cardName, condition, scryfallId = null) {
   if (manaPoolConfigured()) return manaPoolPrice(cardName, condition, scryfallId);
@@ -24,7 +36,7 @@ export function getWatches(userId) {
   `).all(userId);
 }
 
-export function createWatch(userId, { cardName, maxPrice, condition = 'nm', notes, expiresAt, cardId, scryfallId, imageUrl, setCode, setName }) {
+export function createWatch(userId, { cardName, maxPrice, condition = ['nm'], notes, expiresAt, cardId, scryfallId, imageUrl, setCode, setName }) {
   if (!cardName?.trim()) throw new Error('card_name is required');
 
   const parsedMax = maxPrice != null && maxPrice !== '' ? parseFloat(maxPrice) : null;
@@ -36,7 +48,7 @@ export function createWatch(userId, { cardName, maxPrice, condition = 'nm', note
   const result = db.prepare(`
     INSERT INTO price_watches (user_id, card_name, max_price, condition, notes, expires_at, card_id, scryfall_id, image_url, set_code, set_name)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(userId, cardName.trim(), parsedMax, condition, notes || null, expiresAt || null,
+  `).run(userId, cardName.trim(), parsedMax, normalizeConditions(condition), notes || null, expiresAt || null,
     cardId || null, scryfallId || null, imageUrl || null, setCode || null, setName || null);
 
   return db.prepare('SELECT * FROM price_watches WHERE id = ?').get(result.lastInsertRowid);
@@ -57,7 +69,7 @@ export function updateWatch(userId, watchId, updates) {
   }
   if (updates.condition !== undefined) {
     fields.push('condition = ?');
-    values.push(updates.condition);
+    values.push(normalizeConditions(updates.condition));
   }
   if (updates.notes !== undefined) {
     fields.push('notes = ?');
@@ -101,8 +113,9 @@ async function checkWatch(watch) {
   const db = getDb();
 
   try {
-    const conditionArg = watch.condition === 'any' ? null : watch.condition;
-    const result = await getLowestPrice(watch.card_name, conditionArg ?? 'nm', watch.scryfall_id || null);
+    const tier = priceTier(parseWatchConditions(watch.condition));
+    if (!tier) throw new Error(`Unpriceable conditions: ${watch.condition}`);
+    const result = await getLowestPrice(watch.card_name, tier, watch.scryfall_id || null);
     const foundPrice = result?.lowPrice ?? null;
 
     let notified = 0;
