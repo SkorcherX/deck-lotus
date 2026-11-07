@@ -14,7 +14,7 @@ import { isBasicLandSql } from './basicLands.js';
 import { deckPrioritySql, DECK_PRIORITY } from './deckPriority.js';
 import { recordInventoryChange } from './auditService.js';
 import { LIVE_LOAN_STATUSES } from './loanHoldings.js';
-import { normalizeCondition, conditionLabel } from '../shared/conditions.js';
+import { normalizeCondition, conditionLabel, REMOVAL_ORDER } from '../shared/conditions.js';
 import { takeOwnedCopies, changeOwnedCondition } from './cardService.js';
 import { splitFreeAcrossConditions } from './sellableSplit.js';
 
@@ -1200,6 +1200,186 @@ export function bulkRemoveFromInventory(userId, items, context = {}) {
   }
 
   return { ...results, batchId };
+}
+
+/**
+ * Regrade from a pasted list — "Update condition only" in Bulk Add.
+ *
+ * Each line says "N copies of this card, which I already own, are in this
+ * condition": `2 Lightning Bolt (M10) 146 *HP*`. Nothing is ever added; a
+ * line asking for copies the collection does not hold reports the shortfall.
+ *
+ * Which copies move, in order:
+ *  1. copies already at the line's condition count first and do not move, so
+ *     pasting the same list twice changes nothing the second time;
+ *  2. copies with no condition recorded;
+ *  3. only with `includeGraded`, copies graded something else (worst first,
+ *     REMOVAL_ORDER) — by default hand grading is never undone, the same rule
+ *     as `setConditionForCards`.
+ * A line with no collector number may land on any owned printing of the card
+ * (narrowed to the set when one is given), the printing held most first.
+ *
+ * Lines are planned in order against a running tally, so two lines naming the
+ * same card cannot both claim the same copies. `dryRun` returns the plan
+ * without writing; otherwise every move goes through `changeOwnedCondition`
+ * under one `batchId`, source `bulk_condition`, in one transaction.
+ */
+export function regradeFromList(userId, items, { includeGraded = false, dryRun = false } = {}) {
+  const batchId = `bulk-condition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Unclaimed copies per owned row, `${printingId}|${foil}|${condition}`.
+  // Filled from the database the first time a printing is looked at.
+  const avail = new Map();
+  const totals = new Map(); // `${printingId}|${foil}` → copies across conditions
+  const loaded = new Set();
+  const load = (printingId, foil) => {
+    const key = `${printingId}|${foil}`;
+    if (loaded.has(key)) return;
+    loaded.add(key);
+    const rows = db.all(
+      `SELECT condition, quantity FROM owned_printings
+        WHERE user_id = ? AND printing_id = ? AND is_foil = ? AND quantity > 0`,
+      [userId, printingId, foil]
+    );
+    let total = 0;
+    for (const r of rows) {
+      avail.set(`${key}|${r.condition}`, r.quantity);
+      total += r.quantity;
+    }
+    totals.set(key, total);
+  };
+
+  const lines = items.map((item) => {
+    const quantity = Math.max(1, parseInt(item.quantity ?? 1, 10) || 1);
+    const isFoil = !!item.isFoil;
+    const foil = isFoil ? 1 : 0;
+    const line = {
+      input: {
+        cardName: item.cardName ?? null,
+        setCode: item.setCode ?? null,
+        collectorNumber: item.collectorNumber ?? null,
+      },
+      quantity,
+      isFoil,
+      condition: null,
+      cardName: item.cardName ?? null,
+      already: 0,
+      moves: [],
+      done: 0,
+      problem: null,
+    };
+
+    let dest;
+    try {
+      dest = normalizeCondition(item.condition, { strict: true });
+    } catch (error) {
+      line.problem = error.message;
+      return line;
+    }
+    if (!dest) {
+      line.problem = 'No condition on this line — add *NM*, *LP*, *MP*, *HP* or *DMG*';
+      return line;
+    }
+    line.condition = dest;
+
+    let resolved;
+    try {
+      resolved = resolveBulkItem(item, { ownedBy: userId, isFoil });
+    } catch (error) {
+      resolved = { error: error.message };
+    }
+    if (resolved.error) {
+      line.problem = resolved.error;
+      return line;
+    }
+    line.cardName = resolved.cardName;
+
+    // Which owned printings this line may take from.
+    const exact = !!(item.setCode && item.collectorNumber);
+    const setCode = item.setCode ? item.setCode.toUpperCase() : null;
+    const printings = exact
+      ? [{ id: resolved.printing.id, set_code: resolved.printing.set_code, collector_number: resolved.printing.collector_number }]
+      : db.all(`
+          SELECT DISTINCT p.id, p.set_code, p.collector_number
+            FROM owned_printings op
+            JOIN printings p ON p.id = op.printing_id
+           WHERE op.user_id = ? AND op.is_foil = ? AND op.quantity > 0 AND p.card_id = ?
+             ${setCode ? 'AND p.set_code = ?' : ''}
+        `, setCode ? [userId, foil, resolved.cardId, setCode] : [userId, foil, resolved.cardId]);
+
+    for (const p of printings) load(p.id, foil);
+    printings.sort((a, b) => (totals.get(`${b.id}|${foil}`) - totals.get(`${a.id}|${foil}`)) || (a.id - b.id));
+
+    const owned = printings.reduce((n, p) => n + (totals.get(`${p.id}|${foil}`) || 0), 0);
+    if (exact) {
+      line.setCode = resolved.setCode;
+      line.collectorNumber = resolved.collectorNumber;
+    }
+    if (owned === 0) {
+      line.problem = `Not in your collection${isFoil ? ' as a foil' : ''}`;
+      return line;
+    }
+
+    let need = quantity;
+    const take = (p, condition, isMove) => {
+      if (need <= 0) return;
+      const key = `${p.id}|${foil}|${condition}`;
+      const n = Math.min(need, avail.get(key) || 0);
+      if (n <= 0) return;
+      avail.set(key, avail.get(key) - n);
+      need -= n;
+      if (isMove) {
+        line.moves.push({ printingId: p.id, setCode: p.set_code, collectorNumber: p.collector_number, from: condition, count: n });
+      } else {
+        line.already += n;
+      }
+    };
+
+    for (const p of printings) take(p, dest, false);
+    for (const p of printings) take(p, '', true);
+    let gradedLeft = 0;
+    for (const condition of REMOVAL_ORDER) {
+      if (condition === '' || condition === dest) continue;
+      for (const p of printings) {
+        if (includeGraded) take(p, condition, true);
+        gradedLeft += avail.get(`${p.id}|${foil}|${condition}`) || 0;
+      }
+    }
+
+    line.done = quantity - need;
+    if (need > 0) {
+      line.problem = `Only ${line.done} of ${quantity} could be marked ${dest}`
+        + (!includeGraded && gradedLeft > 0
+          ? ` — ${gradedLeft} more ${gradedLeft === 1 ? 'is' : 'are'} already graded something else`
+          : '');
+    }
+    return line;
+  });
+
+  const regraded = lines.reduce((n, l) => n + l.moves.reduce((m, mv) => m + mv.count, 0), 0);
+  const summary = {
+    lines,
+    regraded,
+    already: lines.reduce((n, l) => n + l.already, 0),
+    problems: lines.filter((l) => l.problem).length,
+    batchId,
+    dryRun,
+  };
+  if (dryRun || regraded === 0) return summary;
+
+  db.transaction(() => {
+    for (const line of lines) {
+      for (const move of line.moves) {
+        changeOwnedCondition(userId, move.printingId, line.isFoil, move.from, line.condition, {
+          quantity: move.count,
+          source: 'bulk_condition',
+          actorUserId: userId,
+          detail: { batchId, entered: { ...line.input, quantity: line.quantity, isFoil: line.isFoil } },
+        });
+      }
+    }
+  });
+  return summary;
 }
 
 /**

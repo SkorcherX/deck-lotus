@@ -1627,6 +1627,7 @@ function setupBulkAddModal() {
     clearFile();
     fileBtn?.classList.toggle('hidden', !source);
     textGroup?.classList.toggle('hidden', !!source);
+    document.getElementById('bulk-add-regrade-group')?.classList.toggle('hidden', !!source);
     hint?.classList.toggle('hidden', !source);
     if (source) {
       hint.textContent = source.hint;
@@ -1779,6 +1780,81 @@ function setupBulkAddModal() {
       }
     });
   }
+
+  // "Update condition only": plan first (dryRun), show it, confirm, apply.
+  const regradeBtn = document.getElementById('bulk-add-regrade-btn');
+  regradeBtn?.addEventListener('click', async () => {
+    const items = parseBulkAddText(document.getElementById('bulk-add-text').value);
+    if (items.length === 0) {
+      showError('Paste a list first, with a condition on each line (e.g. 1 *HP* FDN 24)');
+      return;
+    }
+    const includeGraded = document.getElementById('bulk-add-regrade-graded').checked;
+    const label = regradeBtn.querySelector('.btn-text');
+    try {
+      regradeBtn.disabled = true;
+      label.textContent = 'Checking...';
+      const plan = await api.regradeFromList(items, { includeGraded, dryRun: true });
+      document.getElementById('bulk-add-result').classList.add('hidden');
+      renderRegradePreview(plan);
+
+      if (plan.regraded === 0) {
+        showToast(plan.problems ? 'Nothing to regrade — see the problems listed' : 'Already up to date', 'info');
+        return;
+      }
+      const s = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+      const confirmed = await confirmDialog({
+        title: 'Update conditions?',
+        message: `${s(items.length, 'line', 'lines')} → ${s(plan.regraded, 'copy', 'copies')} regraded`
+          + (plan.already ? `, ${plan.already} already correct` : '')
+          + (plan.problems ? `, ${s(plan.problems, 'problem', 'problems')} (listed in the preview)` : '')
+          + '. Nothing is added to your collection. The history page records it as one batch.',
+        confirmText: `Regrade ${s(plan.regraded, 'copy', 'copies')}`,
+        cancelText: 'Cancel',
+      });
+      if (!confirmed) return;
+
+      label.textContent = 'Updating...';
+      const result = await api.regradeFromList(items, { includeGraded });
+      renderRegradePreview(result);
+      const resultDiv = document.getElementById('bulk-add-result');
+      resultDiv.classList.remove('hidden');
+      resultDiv.innerHTML = `<div style="color: var(--success);">Regraded ${s(result.regraded, 'copy', 'copies')}</div>`
+        + (result.problems ? `<div style="color: var(--danger); margin-top: 0.5rem;">${s(result.problems, 'line', 'lines')} could not be fully applied — see the preview.</div>` : '');
+      showToast(`Regraded ${s(result.regraded, 'copy', 'copies')}`, 'success');
+      await loadInventoryData();
+    } catch (error) {
+      showError('Condition update failed: ' + error.message);
+    } finally {
+      regradeBtn.disabled = false;
+      label.textContent = 'Update condition only';
+    }
+  });
+}
+
+/** Plan or result of "Update condition only", one row per pasted line. */
+function renderRegradePreview(plan) {
+  const previewDiv = document.getElementById('bulk-add-preview');
+  const contentDiv = document.getElementById('bulk-add-preview-content');
+  if (!previewDiv || !contentDiv) return;
+
+  const describe = (l) => l.cardName
+    || [l.input.setCode, l.input.collectorNumber].filter(Boolean).join(' ')
+    || 'Unknown card';
+
+  contentDiv.innerHTML = plan.lines.map((l) => {
+    const moved = l.moves.map((m) =>
+      `${m.count} ${[m.setCode, m.collectorNumber].filter(Boolean).join(' ')} from ${m.from || 'ungraded'}`).join(', ');
+    const detail = [moved, l.already ? `${l.already} already ${l.condition}` : ''].filter(Boolean).join('; ');
+    return `
+      <div style="display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; border-bottom: 1px solid var(--border);">
+        <span${l.problem && !l.done ? ' style="color: var(--danger);"' : ''}>${l.quantity}x ${escapeHtml(describe(l))}${l.isFoil ? ' <span style="color: var(--text-secondary);">(foil)</span>' : ''}${l.condition ? ` → <strong>${l.condition}</strong>` : ''}</span>
+        <span style="text-align: right; color: ${l.problem ? 'var(--danger)' : 'var(--text-secondary)'};">
+          ${escapeHtml(detail)}${l.problem ? `${detail ? '<br>' : ''}${escapeHtml(l.problem)}` : ''}
+        </span>
+      </div>`;
+  }).join('');
+  previewDiv.classList.remove('hidden');
 }
 
 /**

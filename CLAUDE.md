@@ -419,6 +419,13 @@ taken on GitHub — only do it when explicitly asked.
   with source `bulk_condition`, and by default touches **only unrecorded
   copies** — marking a new collection Near Mint must never undo grading done
   by hand. `overwrite` is the explicit opt-out.
+  Bulk Add's "Update condition only" (`regradeFromList`,
+  `POST /api/inventory/regrade-list`) regrades from a pasted list and never
+  adds: copies already at the line's condition count first (so a repeat
+  paste is a no-op), then unrecorded ones, then — only with `includeGraded`
+  — graded ones worst first. Lines are planned against a running tally so
+  two lines cannot claim one copy; a bare name may land on any owned
+  printing, most-held first. The UI always dry-runs and confirms first.
 - A deck's plan (`decks.plan`, migration 047, `src/services/deckPlanService.js`)
   is one JSON column: `{ themeKey, secondaryThemeKey, secondaryShare, keep }`.
   Kept cards are stored by **name**, never `card_id`, for the backup rule

@@ -899,6 +899,13 @@ class ApiClient {
     });
   }
 
+  async regradeFromList(items, { includeGraded = false, dryRun = false } = {}) {
+    return this.request('/inventory/regrade-list', {
+      method: 'POST',
+      body: JSON.stringify({ items, includeGraded, dryRun }),
+    });
+  }
+
   async resolveBulkRemoveItems(items) {
     return this.request('/inventory/bulk-remove-resolve', {
       method: 'POST',

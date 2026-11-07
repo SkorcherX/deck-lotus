@@ -15,6 +15,7 @@ import {
   getOwnedSets,
   exportInventory,
   setConditionForCards,
+  regradeFromList,
   clearCollection,
   removeCardsFromCollection,
   summarizeCollectionForClear,
@@ -267,6 +268,26 @@ router.post('/bulk-remove-resolve', authenticate, (req, res, next) => {
     }
 
     res.json({ items: resolveBulkRemoveItems(req.user.id, items) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/inventory/regrade-list
+ * Body: { items, includeGraded?, dryRun? }. Bulk Add's "Update condition
+ * only": regrades copies already owned, never adds (see regradeFromList).
+ */
+router.post('/regrade-list', authenticate, (req, res, next) => {
+  try {
+    const { items, includeGraded = false, dryRun = false } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Items array is required' });
+    }
+    if (items.length > BULK_ITEM_LIMIT) {
+      return res.status(400).json({ error: `At most ${BULK_ITEM_LIMIT} items per request` });
+    }
+    res.json(regradeFromList(req.user.id, items, { includeGraded: !!includeGraded, dryRun: !!dryRun }));
   } catch (error) {
     next(error);
   }
