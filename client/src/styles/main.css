@@ -2603,6 +2603,16 @@ button.btn-icon.active {
   color: var(--text);
   font-size: var(--text-sm);
 }
+/* Room between the number and the up/down arrows (CMC Min/Max). The width
+   grows by the same amount so "Min"/"Max" still fit beside them. */
+.input-narrow[type="number"] {
+  width: 80px;
+}
+
+.input-narrow::-webkit-inner-spin-button {
+  margin-left: var(--space-2);
+}
+
 .input-narrow:focus {
   outline: none;
   border-color: var(--primary);
