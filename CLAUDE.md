@@ -564,7 +564,18 @@ taken on GitHub — only do it when explicitly asked.
   One snapshot per store in `local_store_quotes`, keyed by card name; stores
   are backed up, quotes are not. The split plan chooses per copy without
   shipping, then the online remainder goes to the Mana Pool optimizer for the
-  real total.
+  real total. A store copy up to `localPremium` dearer than online (per
+  browser, default $0.25) still goes to the store, to save shipping.
+  The one exception to "never touching a cart": each store's "Buy at" list
+  lets the user tick copies, and **only that button** sends a `cart` message
+  to the extension, which runs `addCartItems` (same generated `lookup.js`, not
+  in the console script) in a store tab and leaves the cart open. It never
+  checks out. The store's `POST /api/cart/items` takes
+  `{ skuId, storePriceCustomId, condition, quantity }` where `condition` is
+  the SKU's exact `conditionName` and `quantity` is the line's new **total**,
+  so the cart is read first and added to. Found by reading the storefront's
+  `storefronts-app.tcgplayer.com/app.js`; undocumented, so if carts stop
+  filling, look there. Unlike lookups it sends the store's cookies.
 - Local stores are the household's (migration 053): one `local_stores` row
   per `base_url` (UNIQUE), `created_by` only crediting who added it (SET NULL
   on user delete, so a member leaving does not take the store from everyone).

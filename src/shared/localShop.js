@@ -79,6 +79,8 @@ export function allocate(card, products, skusByProductId, options) {
         printing: product.name,
         set: product.setName || '',
         condition: String(sku.conditionName || '').replace(/\s+foil$/i, ''),
+        // The store's own wording, which its cart wants back verbatim.
+        conditionName: String(sku.conditionName || ''),
         isFoil: !!sku.isFoil,
         price: sku.price,
         stock: sku.quantity,
@@ -179,6 +181,76 @@ export async function lookupCards(cards, options, io) {
 const SNIPPET_FUNCTIONS = [conditionRank, frontFace, nameMatches, allocate, lookupCards];
 
 /**
+ * Put chosen copies in the store's cart, the way its own "Add to Cart" does.
+ * Runs only when the user presses the button — never as part of a lookup.
+ *
+ * `items` are [{ name, productId, skuId, qty, price }] from a lookup result.
+ * Each product's SKUs are fetched again first: stock moves between the lookup
+ * and the add, and the cart wants the store's exact condition wording. The
+ * store's `/api/cart/items` sets a line's *total*, so what is already in the
+ * cart is read and added to rather than overwritten. Nothing is checked out.
+ * Returns one row per item: status 'added' | 'partial' | 'gone' | 'error'.
+ */
+export async function addCartItems(items, io) {
+  const delayMs = Math.max(500, io.delayMs || 1000);
+  const sleep = io.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  let first = true;
+  const call = async (path, body) => {
+    if (!first) await sleep(delayMs);
+    first = false;
+    return io.fetchJson(path, body);
+  };
+
+  const cart = await call('/api/cart');
+  const inCart = new Map();
+  for (const line of (cart && cart.cartItems) || []) {
+    if (line.storePriceCustomId) continue;
+    const k = line.skuId + '|' + line.condition;
+    inCart.set(k, (inCart.get(k) || 0) + (line.quantity || 0));
+  }
+
+  const skus = {};
+  const productIds = [...new Set(items.map((i) => i.productId).filter(Boolean))];
+  for (let j = 0; j < productIds.length; j += 20) {
+    const res = await call('/api/inventory/skus?productIds=' + productIds.slice(j, j + 20).join(','));
+    for (const entry of res || []) for (const sku of entry.skus || []) skus[sku.skuId] = sku;
+  }
+
+  const results = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (io.onProgress) io.onProgress(i, items.length, item.name);
+    const sku = skus[item.skuId];
+    const want = Math.max(0, item.qty | 0);
+    const base = { name: item.name, skuId: item.skuId, wanted: want, added: 0, was: item.price };
+    if (!sku || !(sku.quantity > 0)) {
+      results.push({ ...base, status: 'gone' });
+      continue;
+    }
+    const k = sku.skuId + '|' + sku.conditionName;
+    const have = inCart.get(k) || 0;
+    const target = Math.min(have + want, sku.quantity);
+    if (target <= have) {
+      results.push({ ...base, status: 'gone', price: sku.price });
+      continue;
+    }
+    try {
+      const res = await call('/api/cart/items', {
+        skuId: sku.skuId, storePriceCustomId: null, condition: sku.conditionName, quantity: target,
+      });
+      if (res && res.errors && res.errors.length) throw new Error(res.errors.join('; '));
+      inCart.set(k, target);
+      const added = target - have;
+      results.push({ ...base, added, price: sku.price, status: added < want ? 'partial' : 'added' });
+    } catch (err) {
+      results.push({ ...base, status: 'error', error: String((err && err.message) || err) });
+    }
+  }
+  if (io.onProgress) io.onProgress(items.length, items.length, null);
+  return results;
+}
+
+/**
  * The whole paste-into-the-console script, with the card list baked in. It
  * talks only to whatever site it is pasted on, so one script serves every
  * store; the result names its origin and the import files it under the store
@@ -242,7 +314,23 @@ console.log('Deck Lotus: results are also in window.deckLotusResult');
  */
 export function buildExtensionLookup() {
   return `// Generated from src/shared/localShop.js — do not edit by hand.
-${SNIPPET_FUNCTIONS.map((fn) => fn.toString()).join('\n\n')}
+${[...SNIPPET_FUNCTIONS, addCartItems].map((fn) => fn.toString()).join('\n\n')}
+
+// Adding to the cart, only ever on the user's press. Unlike the lookup this
+// sends the store's cookies: the cart belongs to this browser's session.
+globalThis.__deckLotusCart = async (items, onProgress) => {
+  const pageFetch = typeof content !== 'undefined' && content.fetch ? content.fetch.bind(content) : fetch;
+  async function fetchJson(path, body) {
+    const res = await pageFetch(new URL(path, location.origin).href, body
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'include' }
+      : { credentials: 'include' });
+    if (!res.ok) { const e = new Error('HTTP ' + res.status + ' ' + path.split('?')[0]); e.status = res.status; throw e; }
+    return res.json();
+  }
+  const results = await addCartItems(items, { fetchJson, onProgress });
+  const link = document.querySelector('a[aria-label="View current cart"]');
+  return { origin: location.origin, cartUrl: link && link.href ? link.href : null, results };
+};
 
 globalThis.__deckLotusLookup = async (cards, options, onProgress) => {
   // Firefox runs a content script's own fetch with the extension's identity;
@@ -294,6 +382,7 @@ export function parseLookupResult(input) {
       printing: str(r.printing),
       set: str(r.set),
       condition: str(r.condition, 40),
+      conditionName: str(r.conditionName, 60),
       isFoil: !!r.isFoil,
       price: Math.max(0, num(r.price)),
       qty: Math.max(0, Math.floor(num(r.qty))),
@@ -326,7 +415,10 @@ const key = (name) => String(name || '').trim().toLowerCase();
  * optimizer on the online remainder, which is why `online` is returned as a
  * list ready to send there.
  */
-export function planPurchases(cards, stores) {
+export function planPurchases(cards, stores, { localPremium = 0 } = {}) {
+  // How much more a store copy may cost than online and still be picked:
+  // a dime over is worth it to skip shipping and the wait.
+  const premium = Math.max(0, Number(localPremium) || 0);
   const byStore = stores.map((s) => ({
     ...s,
     cardsByName: new Map((s.result?.cards || []).map((c) => [key(c.name), c])),
@@ -349,7 +441,7 @@ export function planPurchases(cards, stores) {
     let left = card.quantity;
     for (const copy of pool) {
       if (left === 0) break;
-      if (card.onlineUnit != null && copy.price > card.onlineUnit) break;
+      if (card.onlineUnit != null && copy.price > card.onlineUnit + premium + 1e-9) break;
       const last = picks[picks.length - 1];
       if (last && last.source === copy.source && last.row === copy.row) last.qty++;
       else picks.push({ source: copy.source, price: copy.price, qty: 1, row: copy.row });

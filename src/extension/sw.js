@@ -4,7 +4,11 @@
 // generated from src/shared/localShop.js) runs inside it, so every request is
 // an ordinary same-origin request from the store's own page in the user's own
 // browser — the same thing the user would do by hand, one card a second.
-// Nothing touches a cart. The tab is closed when the store is done.
+// A price check never touches a cart; its tab is closed when the store is done.
+//
+// Adding to a cart is a separate message ('cart'), sent only when the user
+// presses "Add to cart" on Deck Lotus. It adds the copies they ticked, then
+// leaves the store tab open on the cart for them to review. It never checks out.
 
 const BRIDGE_PREFIX = 'deck-lotus-bridge-';
 let current = null;
@@ -73,6 +77,10 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     }
     return;
   }
+  if (message.type === 'cart' && sender.tab) {
+    fillCart(message, sender);
+    return;
+  }
   if (message.type !== 'run' || !sender.tab) return;
 
   (async () => {
@@ -97,6 +105,46 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     }
   })();
 });
+
+async function fillCart(message, sender) {
+  const sites = await connectedSites();
+  if (!sites.includes(new URL(sender.url).origin)) return;
+  const pageTabId = sender.tab.id;
+  const store = message.store || {};
+  if (current) {
+    send(pageTabId, { type: 'busy' });
+    return;
+  }
+  if (!(await hasPermission(store.baseUrl))) {
+    send(pageTabId, { type: 'cart-result', storeId: store.id, error: 'needs-permission' });
+    return;
+  }
+  current = { pageTabId, tabId: null, cancelled: false };
+  let tab;
+  try {
+    tab = await chrome.tabs.create({ url: store.baseUrl, active: false });
+    current.tabId = tab.id;
+    await waitForLoad(tab.id);
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['lookup.js'] });
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      args: [message.items || [], store.id],
+      func: (items, storeId) => globalThis.__deckLotusCart(items, (i, n, name) => {
+        chrome.runtime.sendMessage({ type: 'lookup-progress', storeId, done: i, total: n, name });
+      }),
+    });
+    if (!result) throw new Error('Adding to the cart did not return anything.');
+    send(pageTabId, { type: 'cart-result', storeId: store.id, result });
+    // Leave the store's cart in front for review; the user checks out there.
+    const cartUrl = result.cartUrl && result.cartUrl.startsWith(store.baseUrl) ? result.cartUrl : store.baseUrl;
+    await chrome.tabs.update(tab.id, { url: cartUrl, active: true });
+  } catch (err) {
+    send(pageTabId, { type: 'cart-result', storeId: store.id, error: String(err?.message || err) });
+    if (tab) chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+  } finally {
+    current = null;
+  }
+}
 
 // Connecting a Deck Lotus site. The popup names the site and then asks for
 // the permission; the rest happens here once it is granted, because Firefox

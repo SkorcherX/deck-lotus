@@ -13,6 +13,8 @@
       window.postMessage({ source: 'deck-lotus-extension', type: 'ready', version }, location.origin);
     } else if (event.data.type === 'run') {
       chrome.runtime.sendMessage({ type: 'run', stores: event.data.stores, cards: event.data.cards, options: event.data.options });
+    } else if (event.data.type === 'cart') {
+      chrome.runtime.sendMessage({ type: 'cart', store: event.data.store, items: event.data.items });
     } else if (event.data.type === 'cancel') {
       chrome.runtime.sendMessage({ type: 'cancel' });
     }

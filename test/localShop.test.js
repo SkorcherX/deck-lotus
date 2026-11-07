@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   allocate, nameMatches, conditionRank, lookupCards, buildLookupScript,
-  parseLookupResult, planPurchases, storeCoverage, RESULT_FORMAT,
+  parseLookupResult, planPurchases, storeCoverage, RESULT_FORMAT, addCartItems, buildExtensionLookup,
 } from '../src/shared/localShop.js';
 
 // Captured from a real TCGplayer Pro storefront (Nov 2026).
@@ -139,4 +139,50 @@ test("lookup.js ends on a value Firefox can clone back to the extension", async 
   const vm = await import('node:vm');
   const completion = vm.runInNewContext(buildExtensionLookup(), { location: { origin: 'https://x.test' } });
   assert.doesNotThrow(() => structuredClone(completion));
+});
+
+test('planPurchases sends a slightly dearer store copy to the store within the allowance', () => {
+  const cards = [{ name: 'Sol Ring', quantity: 1, onlineUnit: 1.5 }];
+  const stores = [{ id: 1, result: { cards: [{ name: 'Sol Ring', rows: [{ skuId: 9, price: 1.6, qty: 1 }] }] } }];
+  assert.equal(planPurchases(cards, stores).totals[1].copies, 0, 'no allowance: online wins');
+  assert.equal(planPurchases(cards, stores, { localPremium: 0.1 }).totals[1].copies, 1, '10 cents over is within 10 cents');
+  assert.equal(planPurchases(cards, stores, { localPremium: 0.05 }).totals[1].copies, 0);
+});
+
+test('addCartItems adds to what is already in the cart, re-checks stock and uses the store\'s condition wording', async () => {
+  const posts = [];
+  const io = {
+    sleep: async () => {},
+    async fetchJson(path, body) {
+      if (path === '/api/cart') return { itemCount: 1, cartItems: [{ skuId: 364650, storePriceCustomId: null, condition: 'Lightly Played', quantity: 1 }] };
+      if (path.startsWith('/api/inventory/skus')) {
+        return [
+          { productId: 1571, skus: [
+            { skuId: 364650, conditionName: 'Lightly Played', price: 21.52, quantity: 3 },
+            { skuId: 348892, conditionName: 'Heavily Played', price: 9.0, quantity: 1 },
+          ] },
+          { productId: 221310, skus: [{ skuId: 4535376, conditionName: 'Near Mint', price: 10.66, quantity: 0 }] },
+        ];
+      }
+      if (path === '/api/cart/items') { posts.push(body); return { itemCount: 3 }; }
+      throw new Error('unexpected ' + path);
+    },
+  };
+  const results = await addCartItems([
+    { name: 'Sol Ring', productId: 1571, skuId: 364650, qty: 1, price: 21.52 },
+    { name: 'Sol Ring', productId: 1571, skuId: 348892, qty: 2, price: 8.53 },
+    { name: 'Sol Ring', productId: 221310, skuId: 4535376, qty: 1, price: 10.66 },
+  ], io);
+
+  assert.deepEqual(posts, [
+    { skuId: 364650, storePriceCustomId: null, condition: 'Lightly Played', quantity: 2 },
+    { skuId: 348892, storePriceCustomId: null, condition: 'Heavily Played', quantity: 1 },
+  ]);
+  assert.deepEqual(results.map((r) => [r.status, r.added]), [['added', 1], ['partial', 1], ['gone', 0]]);
+  assert.equal(results[1].price, 9.0, 'the current price is reported');
+});
+
+test('the extension lookup carries the cart function; the console script does not', () => {
+  assert.match(buildExtensionLookup(), /__deckLotusCart/);
+  assert.doesNotMatch(buildLookupScript([{ name: 'Sol Ring', quantity: 1 }]), /api\/cart/);
 });

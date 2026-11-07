@@ -115,12 +115,58 @@ async function copyText(text, fallbackEl) {
   }
 }
 
+// How much more per copy a store may charge than online and still win the
+// split: a few cents over beats paying shipping and waiting for the post.
+const DEFAULT_LOCAL_PREMIUM = 0.25;
+
 function options() {
   const saved = readStorage(OPTIONS_KEY, {});
+  const premium = Number(saved.localPremium);
   return {
     minCondition: CONDITIONS.includes(saved.minCondition) ? saved.minCondition : 'LP',
     allowFoil: !!saved.allowFoil,
+    localPremium: Number.isFinite(premium) && premium >= 0 ? premium : DEFAULT_LOCAL_PREMIUM,
   };
+}
+
+const planFor = (items, quoted) => planPurchases(items, quoted, { localPremium: options().localPremium });
+
+// What to put in each store's cart: skuId → copies, per store and lookup.
+// Starts as the split's picks for that store; the ticks are the user's after
+// that, until the store is looked up again.
+const cartPicks = new Map();
+// An add-to-cart in progress: { storeId, done, total, name }.
+let cartRun = null;
+// The last add-to-cart answer per store: { results, error, at }.
+const cartOutcome = new Map();
+
+function picksFor(store, items, plan) {
+  const key = `${store.id}|${store.fetchedAt}|${items.map((i) => `${i.name}:${i.quantity}`).join(',')}`;
+  let entry = cartPicks.get(store.id);
+  if (!entry || entry.key !== key) {
+    const picks = new Map();
+    for (const line of plan.lines) {
+      for (const p of line.picks) {
+        if (p.source === store.id && p.row?.skuId) picks.set(p.row.skuId, (picks.get(p.row.skuId) || 0) + p.qty);
+      }
+    }
+    entry = { key, picks };
+    cartPicks.set(store.id, entry);
+  }
+  return entry.picks;
+}
+
+/** Every copy a store's lookup found for the list, one row per listing. */
+function storeRows(store, items) {
+  const rows = [];
+  for (const card of items) {
+    const entry = store.result.cards.find((c) => c.name.toLowerCase() === card.name.toLowerCase());
+    for (const row of entry?.rows || []) {
+      if (!row.skuId) continue;
+      rows.push({ ...row, name: card.name, need: card.quantity, onlineUnit: card.onlineUnit });
+    }
+  }
+  return rows;
 }
 
 /** Wire the section once. `itemsGetter` returns the list as the Mana Pool optimizer sees it. */
@@ -189,6 +235,27 @@ async function onExtensionMessage(event) {
     if (!extension) {
       extension = { version: msg.version };
       if (stores) render();
+    }
+    return;
+  }
+  if (cartRun) {
+    if (msg.type === 'busy') {
+      showToast('The extension is busy in another tab — try again when it finishes', 'warning');
+      cartRun = null;
+      render();
+    } else if (msg.type === 'progress' && msg.storeId === cartRun.storeId) {
+      Object.assign(cartRun, { done: msg.done, total: msg.total, name: msg.name });
+      render();
+    } else if (msg.type === 'cart-result') {
+      const id = cartRun.storeId;
+      cartOutcome.set(id, msg.error ? { error: msg.error } : { results: msg.result?.results || [] });
+      cartRun = null;
+      render();
+      if (msg.error) showToast(`Could not add to the cart at ${storeName(id)}`, 'error');
+      else {
+        const added = (msg.result?.results || []).reduce((n, r) => n + r.added, 0);
+        showToast(`${added} cop${added === 1 ? 'y' : 'ies'} added — the store's cart is open in a new tab`);
+      }
     }
     return;
   }
@@ -378,7 +445,7 @@ function paintCompare() {
   const onlineTotal = items.reduce((n, c) => n + (c.onlineUnit ?? 0) * c.quantity, 0);
   const unpriced = items.filter((c) => c.onlineUnit == null).length;
   const quoted = active().filter((st) => st.result);
-  const plan = planPurchases(items, quoted);
+  const plan = planFor(items, quoted);
   const localSplit = quoted.reduce((n, st) => n + plan.totals[st.id].cost, 0);
   const t = compareQuote?.totals;
   const mpShort = compareQuote?.unavailable?.length || 0;
@@ -691,8 +758,8 @@ function render() {
         <i class="ph ph-info"></i>
         <div>
           <strong>Before your first lookup.</strong> Prices are looked up on the store's own site, one card a
-          second, from your browser. Nothing is added to a cart and Deck Lotus never contacts the
-          store itself. Check the store's terms of use if you are unsure they are happy with it.
+          second, from your browser. A price check never adds to a cart — only the "Add to cart" button
+          does, with the copies you tick — and Deck Lotus never contacts the store itself. Check the store's terms of use if you are unsure they are happy with it.
           <div><button type="button" class="btn btn-secondary btn-sm" data-action="ack-notice">Got it</button></div>
         </div>
       </div>`}
@@ -739,6 +806,9 @@ function render() {
             </select>
           </label>
           <label><input type="checkbox" data-option="allowFoil" ${opts.allowFoil ? 'checked' : ''}> Foils are fine</label>
+          <label title="A store copy up to this much dearer than online still goes to the store in the split, to save shipping">Buy local if within $
+            <input type="number" class="input-narrow" data-option="localPremium" min="0" step="0.05" value="${opts.localPremium}"> a copy
+          </label>
           ${extension ? `
             <button type="button" class="btn btn-primary btn-sm" data-action="run-all" ${run ? 'disabled' : ''}>
               <i class="ph ph-storefront"></i> Check prices at ${active().length === 1 ? escapeHtml(active()[0].name) : `all ${active().length} stores`} (${items.length} cards)
@@ -813,7 +883,7 @@ function renderComparison(items) {
   const quoted = active().filter((s) => s.result);
   if (!quoted.length) return '';
 
-  const plan = planPurchases(items, quoted);
+  const plan = planFor(items, quoted);
   const onlineTotal = items.reduce((s, c) => s + (c.onlineUnit ?? 0) * c.quantity, 0);
   const unpricedOnline = items.filter((c) => c.onlineUnit == null).length;
   const localSplit = quoted.reduce((s, st) => s + plan.totals[st.id].cost, 0);
@@ -868,9 +938,12 @@ function renderComparison(items) {
         <div data-slot="remainder-quote">${renderRemainderQuote(localSplit)}</div>` : `
         <div class="local-stores-hint">Everything is cheapest locally — ${money(localSplit)} in all.</div>`}
       <p class="local-stores-hint">Each copy goes wherever it is cheapest, comparing store prices with the online
-        price per card. Shipping is not part of that choice, so check the quote: a few cheap cards online may cost
-        more to ship than to buy in store.</p>
+        price per card — except that a store copy up to ${money(options().localPremium)} dearer still goes to the
+        store, since buying it there saves shipping and waiting. Check the quote: a few cheap cards online may
+        cost more to ship than to buy in store.</p>
     </div>
+
+    ${quoted.map((s) => renderStoreCart(s, items, plan)).join('')}
 
     <div class="analytics-table-wrap">
       <table class="analytics-table">
@@ -882,6 +955,114 @@ function renderComparison(items) {
     <p class="local-stores-hint">Hover a store price to see the printings and conditions it is made of.
       Store prices are a snapshot from when the script ran.</p>
   `;
+}
+
+/**
+ * One store's "buy here" list: every copy its lookup found, ticked where the
+ * split sends it to this store. The user changes the ticks — a card a dime
+ * dearer than online is often worth buying here anyway — and the button puts
+ * exactly the ticked copies in the store's cart through the extension.
+ */
+function renderStoreCart(store, items, plan) {
+  const rows = storeRows(store, items);
+  if (!rows.length) return '';
+  const picks = picksFor(store, items, plan);
+  const outcome = cartOutcome.get(store.id);
+  const busy = cartRun?.storeId === store.id;
+
+  return `
+    <details class="local-stores-cart" data-cart-store="${store.id}" ${picks.size || outcome ? 'open' : ''}>
+      <summary><strong>Buy at ${escapeHtml(store.name)}</strong>
+        <span class="local-stores-hint">— ${rows.length} listing${rows.length === 1 ? '' : 's'} found; ticked ones go in the cart</span></summary>
+      <div class="local-stores-options">
+        <button type="button" class="btn btn-secondary btn-sm" data-action="cart-select" data-id="${store.id}" data-which="plan">Cheapest split's picks</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="cart-select" data-id="${store.id}" data-which="all">Everything here</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="cart-select" data-id="${store.id}" data-which="none">None</button>
+      </div>
+      <div class="analytics-table-wrap">
+        <table class="analytics-table">
+          <thead><tr><th></th><th>Card</th><th>Listing</th><th class="num">Each</th><th class="num" title="Store price minus the online estimate, per copy">vs online</th><th class="num">Copies</th></tr></thead>
+          <tbody>
+            ${rows.map((r) => {
+              const qty = picks.get(r.skuId) || 0;
+              const diff = r.onlineUnit != null ? r.price - r.onlineUnit : null;
+              return `<tr>
+                <td><input type="checkbox" data-cart-tick data-sku="${r.skuId}" ${qty ? 'checked' : ''} aria-label="Buy ${escapeHtml(r.name)} here"></td>
+                <td>${escapeHtml(r.name)}${r.need > 1 ? ` <span class="local-stores-hint">(need ${r.need})</span>` : ''}</td>
+                <td class="local-stores-hint">${escapeHtml(r.set)} · ${escapeHtml(r.condition)}${r.isFoil ? ' foil' : ''}</td>
+                <td class="num">${money(r.price)}</td>
+                <td class="num">${diff == null ? '<span class="local-stores-hint">—</span>'
+                  : `<span class="${diff > 0.005 ? 'local-stores-short' : 'local-stores-best'}">${diff > 0 ? '+' : diff < 0 ? '−' : ''}${money(Math.abs(diff))}</span>`}</td>
+                <td class="num"><input type="number" class="input-narrow" data-cart-qty data-sku="${r.skuId}" min="1" max="${r.qty}"
+                  value="${qty || Math.min(r.qty, r.need)}" ${qty ? '' : 'disabled'} aria-label="Copies of ${escapeHtml(r.name)}">
+                  <span class="local-stores-hint">/ ${r.qty}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="local-stores-options">
+        <span data-cart-total>${cartTotalText(store, rows, picks)}</span>
+        ${extension ? `<button type="button" class="btn btn-primary btn-sm" data-action="add-to-cart" data-id="${store.id}" ${cartRun || run || !picks.size ? 'disabled' : ''}>
+            <i class="ph ph-shopping-cart"></i> ${busy ? 'Adding…' : `Add to cart at ${escapeHtml(store.name)}`}</button>`
+          : '<span class="local-stores-hint">Install the extension above to add these to the store\'s cart.</span>'}
+      </div>
+      ${busy ? `<div class="local-stores-run"><i class="ph ph-circle-notch"></i> ${cartRun.total
+        ? `Adding ${Math.min(cartRun.done + 1, cartRun.total)} of ${cartRun.total}${cartRun.name ? ` — ${escapeHtml(cartRun.name)}` : ''}`
+        : 'Opening the store…'}</div>` : ''}
+      ${outcome ? renderCartOutcome(store, outcome) : ''}
+      <p class="local-stores-hint">The extension opens ${escapeHtml(store.name)}, adds the ticked copies to your cart there and
+        leaves the cart open for you to review. It never checks out. Stock is re-checked as it adds, so a card sold since
+        the lookup is reported rather than added.</p>
+    </details>`;
+}
+
+function cartTotalText(store, rows, picks) {
+  let copies = 0;
+  let cost = 0;
+  for (const r of rows) {
+    const q = picks.get(r.skuId) || 0;
+    copies += q;
+    cost += q * r.price;
+  }
+  return copies
+    ? `<strong>${copies} cop${copies === 1 ? 'y' : 'ies'}, ${money(cost)}</strong> <span class="local-stores-hint">at lookup prices</span>`
+    : '<span class="local-stores-hint">Nothing ticked.</span>';
+}
+
+function renderCartOutcome(store, outcome) {
+  if (outcome.error) {
+    return `<div class="local-stores-error">${escapeHtml(outcome.error === 'needs-permission'
+      ? `Open ${store.name}, click the Deck Lotus extension icon and choose "Allow price checks on this store".`
+      : outcome.error)}</div>`;
+  }
+  const res = outcome.results;
+  const added = res.reduce((n, r) => n + r.added, 0);
+  const wanted = res.reduce((n, r) => n + r.wanted, 0);
+  const problems = res.filter((r) => r.status !== 'added');
+  const repriced = res.filter((r) => r.added && r.price != null && Math.abs(r.price - r.was) >= 0.005);
+  return `
+    <div class="${problems.length ? 'local-stores-run-errors' : 'local-stores-hint'}">
+      <strong>${added} of ${wanted} cop${wanted === 1 ? 'y' : 'ies'} added to the cart at ${escapeHtml(store.name)}</strong>
+      ${problems.length ? `<ul>${problems.map((r) => `<li>${escapeHtml(r.name)}: ${r.status === 'gone'
+        ? 'no longer in stock'
+        : r.status === 'partial' ? `only ${r.added} of ${r.wanted} left` : escapeHtml(r.error || 'could not be added')}</li>`).join('')}</ul>` : ''}
+      ${repriced.length ? `<div>Price changed since the lookup: ${repriced.map((r) => `${escapeHtml(r.name)} ${money(r.was)} → ${money(r.price)}`).join(', ')}</div>` : ''}
+    </div>`;
+}
+
+function startCart(storeId) {
+  const store = stores.find((s) => s.id === storeId);
+  const items = getItems();
+  const picks = cartPicks.get(storeId)?.picks || new Map();
+  const list = storeRows(store, items)
+    .filter((r) => picks.get(r.skuId))
+    .map((r) => ({ name: r.name, productId: r.productId, skuId: r.skuId, qty: picks.get(r.skuId), price: r.price }));
+  if (!list.length) return;
+  cartRun = { storeId, done: 0, total: 0, name: null };
+  cartOutcome.delete(storeId);
+  window.postMessage({ source: 'deck-lotus', type: 'cart', store: { id: store.id, name: store.name, baseUrl: store.baseUrl }, items: list }, location.origin);
+  render();
 }
 
 function renderRemainderQuote(localSplit) {
@@ -906,7 +1087,7 @@ function renderRemainderQuote(localSplit) {
 
 function currentPlan() {
   const items = getItems();
-  return { items, plan: planPurchases(items, active().filter((s) => s.result)) };
+  return { items, plan: planFor(items, active().filter((s) => s.result)) };
 }
 
 async function onClick(event) {
@@ -915,7 +1096,30 @@ async function onClick(event) {
   const body = document.getElementById('local-stores-body');
   const action = el.dataset.action;
 
-  if (action === 'run-all') {
+  if (action === 'add-to-cart') {
+    startCart(Number(el.dataset.id));
+  } else if (action === 'cart-select') {
+    const store = stores.find((s) => s.id === Number(el.dataset.id));
+    const { items, plan } = currentPlan();
+    picksFor(store, items, plan);
+    const entry = cartPicks.get(store.id);
+    if (el.dataset.which === 'plan') {
+      cartPicks.delete(store.id);
+    } else {
+      entry.picks = new Map();
+      if (el.dataset.which === 'all') {
+        // Up to what each card needs, cheapest listing first (the lookup's order).
+        const left = new Map(items.map((i) => [i.name.toLowerCase(), i.quantity]));
+        for (const r of storeRows(store, items)) {
+          const k = r.name.toLowerCase();
+          const q = Math.min(r.qty, left.get(k) || 0);
+          if (q) entry.picks.set(r.skuId, q);
+          left.set(k, (left.get(k) || 0) - q);
+        }
+      }
+    }
+    render();
+  } else if (action === 'run-all') {
     startRun(active().map((s) => s.id));
   } else if (action === 'run-one') {
     startRun([Number(el.dataset.id)]);
@@ -1000,11 +1204,39 @@ async function onChange(event) {
     paintCompare();
     return;
   }
+  const cartInput = event.target.closest('[data-cart-tick], [data-cart-qty]');
+  if (cartInput) {
+    const box = cartInput.closest('[data-cart-store]');
+    const store = stores.find((s) => s.id === Number(box.dataset.cartStore));
+    const { items, plan } = currentPlan();
+    const picks = picksFor(store, items, plan);
+    const sku = Number(cartInput.dataset.sku);
+    const qtyInput = box.querySelector(`[data-cart-qty][data-sku="${sku}"]`);
+    const tick = box.querySelector(`[data-cart-tick][data-sku="${sku}"]`);
+    const max = Number(qtyInput.max) || 1;
+    const qty = Math.min(max, Math.max(1, Math.floor(Number(qtyInput.value) || 1)));
+    qtyInput.value = qty;
+    qtyInput.disabled = !tick.checked;
+    if (tick.checked) picks.set(sku, qty);
+    else picks.delete(sku);
+    box.querySelector('[data-cart-total]').innerHTML = cartTotalText(store, storeRows(store, items), picks);
+    const btn = box.querySelector('[data-action="add-to-cart"]');
+    if (btn) btn.disabled = !!(cartRun || run || !picks.size);
+    return;
+  }
   const el = event.target.closest('[data-option]');
   if (!el) return;
   const opts = options();
-  opts[el.dataset.option] = el.type === 'checkbox' ? el.checked : el.value;
+  opts[el.dataset.option] = el.type === 'checkbox' ? el.checked
+    : el.type === 'number' ? Math.max(0, Number(el.value) || 0) : el.value;
   writeStorage(OPTIONS_KEY, opts);
+  if (el.dataset.option === 'localPremium') {
+    // The split, and the ticks it suggests, follow the new allowance.
+    cartPicks.clear();
+    remainderQuote = null;
+    render();
+    paintCompare();
+  }
 }
 
 async function onSubmit(event) {
