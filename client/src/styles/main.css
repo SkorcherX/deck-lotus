@@ -10177,3 +10177,20 @@ body.pull-list-open { overflow: hidden; }
   transition: opacity 0.1s;
 }
 .shop-art-preview.is-visible { opacity: 1; }
+
+/* Proxy decks (migration 054): a checkbox beside the status picker, and a tag
+   on the deck list so a proxy pre-con is never mistaken for the real thing. */
+.deck-proxy-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.deck-proxy-tag {
+  border: 1px dashed currentColor;
+  background: transparent;
+}

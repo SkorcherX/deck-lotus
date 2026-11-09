@@ -153,14 +153,17 @@ export function findCard(name, setCode = null, collectorNumber = null) {
 /**
  * Import deck from parsed card list
  */
-export function importDeck(userId, deckName, format, cardList) {
+export function importDeck(userId, deckName, format, cardList, options = {}) {
   // Created as an 'idea': a pasted list is a claim nobody has built yet, and
   // at the column default ('building') it contested the cards of every other
   // building deck, reporting them short until the import was deleted.
+  // A proxy deck is the exception: it arrives built (a proxy pre-con) and
+  // claims nothing from the collection, so 'ready' cannot contest anything.
+  const isProxy = options.isProxy ? 1 : 0;
   const result = db.prepare(
-    `INSERT INTO decks (user_id, name, format, status, created_at, updated_at)
-     VALUES (?, ?, ?, 'idea', datetime('now'), datetime('now'))`
-  ).run(userId, deckName, format || '');
+    `INSERT INTO decks (user_id, name, format, status, is_proxy, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+  ).run(userId, deckName, format || '', isProxy ? 'ready' : 'idea', isProxy);
 
   const deckId = result.lastInsertRowid;
 
@@ -175,7 +178,7 @@ export function importDeck(userId, deckName, format, cardList) {
     source: 'deck_import',
     deckId,
     deckName: deckName,
-    detail: { batchId, format: format || null, lines: cardList.length },
+    detail: { batchId, format: format || null, lines: cardList.length, ...(isProxy ? { isProxy: true } : {}) },
   });
 
   // Add cards to deck. Finish and board are part of a deck card's identity —

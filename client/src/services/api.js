@@ -231,10 +231,10 @@ class ApiClient {
     return this.request(`/decks/${id}/combos`, { method: 'POST' });
   }
 
-  async createDeck(name, format, description, status) {
+  async createDeck(name, format, description, status, { isProxy = false } = {}) {
     return this.request('/decks', {
       method: 'POST',
-      body: JSON.stringify({ name, format, description, status }),
+      body: JSON.stringify({ name, format, description, status, isProxy }),
     });
   }
 
@@ -286,10 +286,10 @@ class ApiClient {
     return this.request(`/decks/${deckId}/price`);
   }
 
-  async importDeck(name, format, deckList) {
+  async importDeck(name, format, deckList, { isProxy = false } = {}) {
     return this.request('/decks/import', {
       method: 'POST',
-      body: JSON.stringify({ name, format, deckList }),
+      body: JSON.stringify({ name, format, deckList, isProxy }),
     });
   }
 

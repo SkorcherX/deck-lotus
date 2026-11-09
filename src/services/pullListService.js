@@ -75,7 +75,7 @@ export function getPullList(userId, deckId) {
   const elsewhereStmt = `SELECT DISTINCT d.id, d.name, d.status FROM deck_cards dc
        JOIN decks d ON dc.deck_id = d.id
        JOIN printings p ON dc.printing_id = p.id
-      WHERE d.user_id = ? AND d.id != ? AND p.card_id = ?
+      WHERE d.user_id = ? AND d.id != ? AND d.is_proxy = 0 AND p.card_id = ?
         AND COALESCE(dc.board_type, 'mainboard') != 'maybeboard'
       ORDER BY d.name`;
 

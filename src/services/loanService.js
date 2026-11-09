@@ -252,7 +252,7 @@ function recordReturnDisruptions(loan) {
        FROM deck_cards dc
        JOIN decks d ON d.id = dc.deck_id
        JOIN printings p ON p.id = dc.printing_id
-      WHERE d.user_id = ? AND p.card_id = ?`,
+      WHERE d.user_id = ? AND d.is_proxy = 0 AND p.card_id = ?`,
     [userId, card.card_id]
   );
 

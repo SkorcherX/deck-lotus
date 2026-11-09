@@ -645,3 +645,18 @@ taken on GitHub — only do it when explicitly asked.
   NM + LP, or all five, and refuses other sets rather than quoting a copy the
   user did not tick. An unlisted tier is unpriced, never filled from a worse
   copy. Old single values still in the column or a backup are read as those sets.
+- Proxy decks (`decks.is_proxy`, migration 054) are whole decks of proxies,
+  played as themed pre-cons and never mixed with real cards — so the flag is
+  per deck, not per card. Their cards never enter `owned_printings`, so they
+  cannot reach collection counts or value; what the flag adds is that a proxy
+  deck **claims nothing** from the real collection. Every "copies in decks"
+  count filters `d.is_proxy = 0`: inventory `in_decks`/`available`, readiness
+  `ELSEWHERE_TOTAL`, shopping (never shopped for, never a holder), the
+  generator pool, analytics deck use, EDHREC ownership, trade and loan-return
+  disruptions, and the pull list's "in another deck". A new query of that
+  kind needs the filter too. Its own readiness treats it as holding exactly
+  what it lists (`claimRows`), so it reads ready on cards and is judged on
+  size alone. Imported as proxy, a deck lands `ready` rather than `idea`,
+  since it contests nothing. Brackets, power, combos and legality ignore the
+  flag — a proxy plays as the real card. `backupService` carries it;
+  `test/integration/proxyDecks.test.js` pins the claim rules.

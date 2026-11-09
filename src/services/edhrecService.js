@@ -126,7 +126,7 @@ function ownershipFor(userId, names) {
       (SELECT COALESCE(SUM(op.quantity), 0) FROM owned_printings op JOIN printings p ON op.printing_id = p.id
         WHERE op.user_id = @u AND p.card_id = c.id) AS owned,
       (SELECT COALESCE(SUM(dc.quantity), 0) FROM deck_cards dc JOIN printings p ON dc.printing_id = p.id
-        JOIN decks d ON dc.deck_id = d.id WHERE d.user_id = @u AND p.card_id = c.id) AS in_decks,
+        JOIN decks d ON dc.deck_id = d.id WHERE d.user_id = @u AND d.is_proxy = 0 AND p.card_id = c.id) AS in_decks,
       (SELECT COALESCE(SUM(cl.quantity), 0) FROM card_loans cl JOIN printings p ON p.uuid = cl.printing_uuid
         WHERE cl.lender_user_id = @u AND p.card_id = c.id AND cl.status IN ${LIVE}) AS lent_out,
       (SELECT MIN(pr.price) FROM printings p JOIN prices pr ON pr.printing_uuid = p.uuid

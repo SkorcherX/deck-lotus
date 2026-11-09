@@ -103,6 +103,12 @@ function showNewDeckModal() {
           ).join('')}
         </select>
       </div>
+      <div class="form-group">
+        <label style="display: flex; gap: 0.5rem; align-items: center;">
+          <input autocomplete="off" type="checkbox" id="new-deck-proxy" />
+          Proxy deck (not counted in your collection)
+        </label>
+      </div>
       <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
         <button type="submit" class="btn btn-primary" style="flex: 1;">Create Deck</button>
         <button type="button" class="btn btn-secondary" id="cancel-new-deck">Cancel</button>
@@ -118,11 +124,12 @@ function showNewDeckModal() {
     const name = document.getElementById('new-deck-name').value;
     const format = document.getElementById('new-deck-format').value;
     const status = document.getElementById('new-deck-status').value;
+    const isProxy = document.getElementById('new-deck-proxy').checked;
 
     try {
       showLoading();
       modal.classList.add('hidden');
-      await api.createDeck(name, format, '', status);
+      await api.createDeck(name, format, '', status, { isProxy });
       await loadDecks();
       hideLoading();
     } catch (error) {
@@ -289,6 +296,7 @@ function renderDecks() {
         <div class="deck-card-meta">
           <div class="deck-card-badges">
             ${deck.format ? `<span class="deck-format">${deck.format}</span>` : ''}
+            ${deck.is_proxy ? `<span class="deck-format deck-proxy-tag" title="Proxy deck: not counted in your collection, never takes cards from other decks">Proxy</span>` : ''}
             ${deck.traded_away_count ? `<span class="deck-format" style="background:var(--drift-traded-amber);color:var(--on-accent);" title="Traded away, still listed in this deck">${deck.traded_away_count} traded away</span>` : ''}
           </div>
           <div class="deck-card-stats">
@@ -536,6 +544,7 @@ function showImportModal() {
   document.getElementById('import-deck-name').value = '';
   document.getElementById('import-deck-format').value = '';
   document.getElementById('import-deck-list').value = '';
+  document.getElementById('import-deck-proxy').checked = false;
   const unresolvedBox = document.getElementById('import-deck-unresolved');
   unresolvedBox.classList.add('hidden');
   unresolvedBox.innerHTML = '';
@@ -557,12 +566,13 @@ function showImportModal() {
     const name = document.getElementById('import-deck-name').value;
     const format = document.getElementById('import-deck-format').value;
     const deckList = document.getElementById('import-deck-list').value;
+    const isProxy = document.getElementById('import-deck-proxy').checked;
 
     try {
       showLoading();
       modal.classList.add('hidden');
 
-      const result = await api.importDeck(name, format, deckList);
+      const result = await api.importDeck(name, format, deckList, { isProxy });
 
       hideLoading();
 

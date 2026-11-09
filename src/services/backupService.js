@@ -269,7 +269,7 @@ export function createBackup(userId = null) {
     : [];
 
   backup.data.decks = db.prepare(`
-    SELECT id, user_id, name, format, description, status, plan, created_at, updated_at
+    SELECT id, user_id, name, format, description, status, plan, is_proxy, created_at, updated_at
     FROM decks
     WHERE user_id IN (${userIdsStr})
   `).all();
@@ -653,8 +653,8 @@ export function restoreBackup(backupData, options = {}) {
 
     // ---- Decks -----------------------------------------------------------
     const insertDeck = db.prepare(`
-      INSERT OR REPLACE INTO decks (id, user_id, name, format, description, status, plan, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO decks (id, user_id, name, format, description, status, plan, is_proxy, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const decks = (backupData.data.decks || []).filter(mine);
@@ -669,6 +669,9 @@ export function restoreBackup(backupData, options = {}) {
         deck.status || 'building',
         // Absent from backups made before migration 047.
         deck.plan ?? null,
+        // Absent from backups made before migration 054. A proxy deck restored
+        // as real would start claiming the collection's cards.
+        deck.is_proxy ? 1 : 0,
         deck.created_at, deck.updated_at
       );
       deckIdMap.set(deck.id, scoped ? Number(info.lastInsertRowid) : deck.id);

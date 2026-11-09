@@ -238,10 +238,12 @@ export function createDeck(userId, name, format, description, context = {}) {
   // the column default says the same thing, but cloneDeck and the importers
   // pass a status through and should not have to know what the default is.
   const status = validateStatus(context.status) || 'building';
+  // A proxy deck claims nothing from the real collection. See 054-add-deck-is-proxy.js.
+  const isProxy = context.isProxy ? 1 : 0;
 
   const result = db.run(
-    `INSERT INTO decks (user_id, name, format, description, status) VALUES (?, ?, ?, ?, ?)`,
-    [userId, name, format || null, description || null, status]
+    `INSERT INTO decks (user_id, name, format, description, status, is_proxy) VALUES (?, ?, ?, ?, ?, ?)`,
+    [userId, name, format || null, description || null, status, isProxy]
   );
 
   recordDeckEvent({
@@ -250,7 +252,7 @@ export function createDeck(userId, name, format, description, context = {}) {
     source: context.source || 'deck_builder',
     deckId: result.lastInsertRowid,
     deckName: name,
-    detail: { format: format || null, status },
+    detail: { format: format || null, status, ...(isProxy ? { isProxy: true } : {}) },
   });
 
   return {
@@ -259,6 +261,7 @@ export function createDeck(userId, name, format, description, context = {}) {
     name,
     format,
     description,
+    is_proxy: isProxy,
   };
 }
 
@@ -268,12 +271,13 @@ export function createDeck(userId, name, format, description, context = {}) {
 export function updateDeck(deckId, userId, updates) {
   const { name, format, description } = updates;
   const status = validateStatus(updates.status);
+  const isProxy = updates.isProxy === undefined ? undefined : (updates.isProxy ? 1 : 0);
 
   // Check if deck belongs to user. The current values come along so the audit
   // row can say what a rename was *from* — "deck renamed" on its own does not
   // help anybody find the deck they are looking for.
   const deck = db.get(
-    `SELECT id, name, format, description, status FROM decks WHERE id = ? AND user_id = ?`,
+    `SELECT id, name, format, description, status, is_proxy FROM decks WHERE id = ? AND user_id = ?`,
     [deckId, userId]
   );
 
@@ -299,6 +303,10 @@ export function updateDeck(deckId, userId, updates) {
   if (status !== undefined) {
     fields.push('status = ?');
     params.push(status);
+  }
+  if (isProxy !== undefined) {
+    fields.push('is_proxy = ?');
+    params.push(isProxy);
   }
 
   fields.push('updated_at = CURRENT_TIMESTAMP');
@@ -326,12 +334,14 @@ export function updateDeck(deckId, userId, updates) {
         format: deck.format,
         description: deck.description,
         status: deck.status,
+        isProxy: !!deck.is_proxy,
       },
       to: {
         name: name !== undefined ? name : deck.name,
         format: format !== undefined ? format : deck.format,
         description: description !== undefined ? description : deck.description,
         status: status !== undefined ? status : deck.status,
+        isProxy: isProxy !== undefined ? !!isProxy : !!deck.is_proxy,
       },
     },
   });

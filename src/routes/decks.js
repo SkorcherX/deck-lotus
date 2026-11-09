@@ -67,7 +67,7 @@ router.get('/', authenticate, (req, res, next) => {
  */
 router.post('/', authenticate, (req, res, next) => {
   try {
-    const { name, format, description, status } = req.body;
+    const { name, format, description, status, isProxy } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Deck name is required' });
@@ -79,7 +79,7 @@ router.post('/', authenticate, (req, res, next) => {
       return res.status(400).json({ error: `Status must be one of: ${DECK_STATUSES.join(', ')}` });
     }
 
-    const deck = createDeck(req.user.id, name, format, description, { status });
+    const deck = createDeck(req.user.id, name, format, description, { status, isProxy: !!isProxy });
     res.status(201).json({ deck });
   } catch (error) {
     next(error);
@@ -431,13 +431,16 @@ router.put('/:id/plan', authenticate, (req, res, next) => {
 router.put('/:id', authenticate, (req, res, next) => {
   try {
     const deckId = parseInt(req.params.id);
-    const { name, format, description, status } = req.body;
+    const { name, format, description, status, isProxy } = req.body;
 
     if (status !== undefined && !DECK_STATUSES.includes(status)) {
       return res.status(400).json({ error: `Status must be one of: ${DECK_STATUSES.join(', ')}` });
     }
 
-    const deck = updateDeck(deckId, req.user.id, { name, format, description, status });
+    const deck = updateDeck(deckId, req.user.id, {
+      name, format, description, status,
+      isProxy: isProxy === undefined ? undefined : !!isProxy,
+    });
     res.json({ deck });
   } catch (error) {
     next(error);
@@ -612,7 +615,7 @@ router.post('/:id/clone', authenticate, (req, res, next) => {
  */
 router.post('/import', authenticate, (req, res, next) => {
   try {
-    const { name, format, deckList } = req.body;
+    const { name, format, deckList, isProxy } = req.body;
 
     if (!name || !deckList) {
       return res.status(400).json({ error: 'Name and deck list are required' });
@@ -626,7 +629,7 @@ router.post('/import', authenticate, (req, res, next) => {
     }
 
     // Import deck
-    const result = importDeck(req.user.id, name, format, cardList);
+    const result = importDeck(req.user.id, name, format, cardList, { isProxy: !!isProxy });
 
     // Return the created deck
     const deck = getDeckById(result.deckId, req.user.id);

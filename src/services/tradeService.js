@@ -96,7 +96,7 @@ function shortfallsFor(userId, printingKeys, deltas = new Map()) {
               d.id AS deck_id, d.name AS deck_name, d.format, d.updated_at
          FROM deck_cards dc
          JOIN decks d ON d.id = dc.deck_id
-        WHERE d.user_id = ? AND dc.printing_id = ? AND dc.is_foil = ?`,
+        WHERE d.user_id = ? AND d.is_proxy = 0 AND dc.printing_id = ? AND dc.is_foil = ?`,
       [userId, printingId, foilFlag]
     );
 

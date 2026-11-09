@@ -63,6 +63,7 @@ const ELSEWHERE_TOTAL = `(
     JOIN decks d2 ON dc2.deck_id = d2.id
    WHERE d2.user_id = ?
      AND d2.id != d.id
+     AND d2.is_proxy = 0
      AND ${deckPrioritySql('d2')} <= ${deckPrioritySql('d')}
      AND dc2_p.card_id = c.id
      AND ${PLAYED_BOARDS_FOR('dc2')}
@@ -81,8 +82,12 @@ function claimRows(userId, deckId = null) {
       c.id as card_id,
       c.name,
       SUM(dc.quantity) as needed,
-      ${HELD_TOTAL} as owned,
-      ${ELSEWHERE_TOTAL} as elsewhere
+      -- A proxy deck's cards are in its own box, not the collection: it holds
+      -- exactly what it lists and nothing else contests it, so it is judged
+      -- on size alone. ELSEWHERE_TOTAL skips proxy decks for the same reason.
+      -- Both subqueries stay in the CASE so the bound parameters do not move.
+      CASE WHEN d.is_proxy = 1 THEN SUM(dc.quantity) ELSE ${HELD_TOTAL} END as owned,
+      CASE WHEN d.is_proxy = 1 THEN 0 ELSE ${ELSEWHERE_TOTAL} END as elsewhere
     FROM deck_cards dc
     JOIN decks d ON dc.deck_id = d.id
     JOIN printings p ON dc.printing_id = p.id

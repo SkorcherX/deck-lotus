@@ -197,6 +197,7 @@ export function setupDeckBuilder() {
     const name = deckNameInput.value;
     const format = deckFormatSelect.value;
     const status = deckStatusSelect.value;
+    const isProxy = document.getElementById('deck-is-proxy')?.checked ?? false;
 
     if (!name) {
       showToast('Please enter a deck name', 'warning');
@@ -205,7 +206,7 @@ export function setupDeckBuilder() {
 
     try {
       showLoading();
-      await api.updateDeck(currentDeckId, { name, format, status });
+      await api.updateDeck(currentDeckId, { name, format, status, isProxy });
       hideLoading();
       showToast('Deck saved!', 'success');
       // The deck list badges the status, so it has to re-read rather than
@@ -608,6 +609,8 @@ async function loadDeck(deckId) {
     document.getElementById('deck-name').value = currentDeck.name;
     document.getElementById('deck-format').value = currentDeck.format || '';
     document.getElementById('deck-status').value = currentDeck.status || 'building';
+    const proxyBox = document.getElementById('deck-is-proxy');
+    if (proxyBox) proxyBox.checked = !!currentDeck.is_proxy;
 
     renderDeckRecordLabel(currentDeck.record);
 
@@ -1809,7 +1812,7 @@ function displayDeckPrice(price) {
   const priceEl = document.getElementById('deck-total-price');
   if (priceEl) {
     priceEl.innerHTML = `
-      <span style="color: var(--text-secondary);">Deck Est. Value:</span>
+      <span style="color: var(--text-secondary);"${currentDeck?.is_proxy ? ' title="A proxy deck: this is what the real cards would cost. It is not part of your collection&#39;s value."' : ''}>${currentDeck?.is_proxy ? 'Real-card value:' : 'Deck Est. Value:'}</span>
       <span style="margin-left: 0.5rem;">$${price.total.toFixed(2)}</span>
     `;
   }

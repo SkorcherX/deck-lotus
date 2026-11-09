@@ -96,6 +96,7 @@ const CARD_NEEDED_IN = (placeholders) => `(
     JOIN printings sel_p ON sel.printing_id = sel_p.id
     JOIN decks sel_d ON sel.deck_id = sel_d.id
    WHERE sel_d.user_id = ?
+     AND sel_d.is_proxy = 0
      AND sel_d.id IN (${placeholders})
      AND sel_p.card_id = c.id
 )`;
@@ -144,6 +145,7 @@ const CARD_ELSEWHERE_NOT_IN = (placeholders) => `(
     JOIN printings oth_p ON oth.printing_id = oth_p.id
     JOIN decks oth_d ON oth.deck_id = oth_d.id
    WHERE oth_d.user_id = ?
+     AND oth_d.is_proxy = 0
      AND oth_d.id NOT IN (${placeholders})
      AND oth_p.card_id = c.id
      AND COALESCE(oth.board_type, CASE WHEN oth.is_sideboard = 1 THEN 'sideboard' ELSE 'mainboard' END)
@@ -207,6 +209,8 @@ export function getShoppingList(userId, deckIds, { includeContested = false, inc
       LEFT JOIN sets s ON p.set_code = s.code
       WHERE d.user_id = ?
         AND d.id IN (${placeholders})
+        -- A proxy deck is never shopped for: its cards are already in its box.
+        AND d.is_proxy = 0
         -- Basic lands are never shopped for. See basicLands.js: they are
         -- exempt from availability everywhere, so a list that quoted 24
         -- Islands would be quoting a trip nobody makes. Hand-added wanted
@@ -610,6 +614,7 @@ function decksHoldingCards(userId, cardIds, excludeDeckIds) {
          JOIN decks d ON dc.deck_id = d.id
          JOIN printings p ON dc.printing_id = p.id
         WHERE d.user_id = ?
+          AND d.is_proxy = 0
           ${excludeSql}
           ${prioritySql}
           AND p.card_id IN (${chunk.map(() => '?').join(',')})

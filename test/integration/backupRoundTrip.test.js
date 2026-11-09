@@ -207,6 +207,17 @@ describe('backup and restore round trip', () => {
     assert.deepEqual(JSON.parse(db.get(`SELECT plan FROM decks WHERE id = ?`, [deckId]).plan), JSON.parse(plan));
   });
 
+  test('a proxy deck comes back as a proxy deck', () => {
+    db.run(`UPDATE decks SET is_proxy = 1 WHERE id = ?`, [deckId]);
+
+    const backup = createBackup();
+    wipeUserData();
+    restoreBackup(backup, { overwrite: false });
+
+    assert.equal(db.get(`SELECT is_proxy FROM decks WHERE id = ?`, [deckId]).is_proxy, 1);
+    db.run(`UPDATE decks SET is_proxy = 0 WHERE id = ?`, [deckId]);
+  });
+
   test('the wanted list, found pile and price watches come back', () => {
     const backup = createBackup();
     wipeUserData();

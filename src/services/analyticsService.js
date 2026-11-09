@@ -284,7 +284,7 @@ export function getDeckUse(userIds) {
               FROM deck_cards dc
               JOIN printings dp ON dp.id = dc.printing_id
               JOIN decks d ON d.id = dc.deck_id
-             WHERE d.user_id IN ${s.in} AND dp.card_id = c.id) AS in_decks,
+             WHERE d.user_id IN ${s.in} AND d.is_proxy = 0 AND dp.card_id = c.id) AS in_decks,
            (SELECT COALESCE(SUM(cl.quantity), 0)
               FROM card_loans cl
               JOIN printings lp ON lp.uuid = cl.printing_uuid

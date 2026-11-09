@@ -503,6 +503,10 @@
                                 <option value="idea">Idea</option>
                                 <option value="retired">Retired</option>
                             </select>
+                            <label class="deck-proxy-toggle" title="Proxy deck: not real cards. Kept out of your collection's counts and value, never shopped for, and never takes cards from your other decks.">
+                                <input autocomplete="off" type="checkbox" id="deck-is-proxy" />
+                                Proxy
+                            </label>
                             <div class="deck-actions">
                                 <button
                                     id="deck-record-btn"
@@ -3756,6 +3760,18 @@
                                     font-size: 0.875rem;
                                 "
                             ></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; gap: 0.5rem; align-items: flex-start">
+                                <input autocomplete="off" type="checkbox" id="import-deck-proxy" style="margin-top: 0.2rem" />
+                                <span>
+                                    Proxy deck
+                                    <span style="display: block; font-size: 0.875rem; color: var(--text-secondary)">
+                                        Not real cards. Kept out of your collection's counts and value, never
+                                        shopped for, and never takes cards from your other decks.
+                                    </span>
+                                </span>
+                            </label>
                         </div>
                         <div
                             id="import-deck-unresolved"

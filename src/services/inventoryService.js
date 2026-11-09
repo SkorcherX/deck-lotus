@@ -95,7 +95,7 @@ const inDecksTotalSql = (scopeClause) => `(
   FROM deck_cards dc
   JOIN printings p ON dc.printing_id = p.id
   JOIN decks d ON dc.deck_id = d.id
-  WHERE d.user_id ${scopeClause} AND p.card_id = c.id
+  WHERE d.user_id ${scopeClause} AND d.is_proxy = 0 AND p.card_id = c.id
 )`;
 
 // Copies of a card the scope owns but has lent out on a live loan. Still
@@ -608,7 +608,7 @@ export function getInventoryStats(userIds) {
     SELECT COALESCE(SUM(dc.quantity), 0) as count
     FROM deck_cards dc
     JOIN decks d ON dc.deck_id = d.id
-    WHERE d.user_id ${scope.clause}
+    WHERE d.user_id ${scope.clause} AND d.is_proxy = 0
   `, scope.params);
 
   // Estimated total value
@@ -1771,6 +1771,7 @@ export function getGeneratorPool(userId, { includeCommitted = true, exceptDeckId
           JOIN printings dp ON dc.printing_id = dp.id
           JOIN decks d ON dc.deck_id = d.id
          WHERE d.user_id = ?
+           AND d.is_proxy = 0
            AND dp.card_id = c.id
            AND ${deckPrioritySql('d')} <= ${DECK_PRIORITY.idea}
            ${notThisDeck}
@@ -1864,7 +1865,7 @@ const AVAILABILITY_CTE = `
     SELECT dc.printing_id,
            dc.is_foil,
            SUM(CASE WHEN dc.deck_id =  ? THEN dc.quantity ELSE 0 END) AS in_this_deck,
-           SUM(CASE WHEN dc.deck_id <> ? THEN dc.quantity ELSE 0 END) AS committed
+           SUM(CASE WHEN dc.deck_id <> ? AND d.is_proxy = 0 THEN dc.quantity ELSE 0 END) AS committed
       FROM deck_cards dc
       JOIN decks d ON d.id = dc.deck_id
      WHERE d.user_id = ?
