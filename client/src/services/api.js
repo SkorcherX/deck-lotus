@@ -690,8 +690,8 @@ class ApiClient {
     });
   }
 
-  async exportInventory(shape = 'precise', condition = 'all') {
-    return this.request(`/inventory/export?shape=${encodeURIComponent(shape)}&condition=${encodeURIComponent(condition)}`);
+  async exportInventory(shape = 'precise', condition = 'all', scope = 'all') {
+    return this.request(`/inventory/export?shape=${encodeURIComponent(shape)}&condition=${encodeURIComponent(condition)}&scope=${encodeURIComponent(scope)}`);
   }
 
   /** A CardCastle singles export; `dryRun` reports without writing. */

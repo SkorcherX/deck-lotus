@@ -1529,6 +1529,7 @@ function setupExportModal() {
   const downloadBtn = document.getElementById('inventory-export-download');
   const shapeInputs = [...document.querySelectorAll('input[name="inventory-export-shape"]')];
   const conditionSelect = document.getElementById('inventory-export-condition');
+  const scopeSelect = document.getElementById('inventory-export-scope');
 
   if (!openBtn || !modal) return;
 
@@ -1538,7 +1539,7 @@ function setupExportModal() {
     textarea.value = 'Loading...';
     summary.textContent = '';
     try {
-      const result = await api.exportInventory(selectedShape(), conditionSelect?.value || 'all');
+      const result = await api.exportInventory(selectedShape(), conditionSelect?.value || 'all', scopeSelect?.value || 'all');
       textarea.value = result.text;
       if (downloadBtn) downloadBtn.textContent = ['moxfield', 'manabox'].includes(result.shape) ? 'Download .csv' : 'Download .txt';
       summary.textContent = `${result.cards} cards, ${result.copies} copies, ${result.lines} lines`;
@@ -1563,6 +1564,7 @@ function setupExportModal() {
 
   shapeInputs.forEach((input) => input.addEventListener('change', load));
   conditionSelect?.addEventListener('change', load);
+  scopeSelect?.addEventListener('change', load);
 
   copyBtn?.addEventListener('click', () => {
     if (!textarea.value) return;

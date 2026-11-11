@@ -1412,9 +1412,12 @@ export function regradeFromList(userId, items, { includeGraded = false, dryRun =
  * the unique key of `owned_printings`, so folding a foil in with its non-foil
  * would not merely lose a detail — it would re-import as the wrong rows.
  */
-export function exportInventory(userId, { shape = 'precise', condition = 'all' } = {}) {
-  const rows = db.all(`
+export function exportInventory(userId, { shape = 'precise', condition = 'all', availableOnly = false } = {}) {
+  let rows = db.all(`
     SELECT
+      c.id AS card_id,
+      p.id AS printing_id,
+      p.uuid AS printing_uuid,
       c.name,
       p.set_code,
       p.collector_number,
@@ -1432,9 +1435,17 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
     JOIN cards c ON p.card_id = c.id
     LEFT JOIN sets s ON s.code = p.set_code
     WHERE op.user_id = ? AND op.quantity > 0
-      ${condition === 'all' ? '' : 'AND op.condition = ?'}
     ORDER BY c.name COLLATE NOCASE, p.set_code, p.collector_number, op.is_foil, op.condition
-  `, condition === 'all' ? [userId] : [userId, condition === 'unrecorded' ? '' : condition]);
+  `, [userId]);
+
+  // Deducted before the condition filter: a deck's claim on a card is on the
+  // card, not on one condition's row, so filtering first would let a claim
+  // vanish along with the rows it should have come out of.
+  if (availableOnly) rows = withoutCommittedCopies(userId, rows);
+  if (condition !== 'all') {
+    const code = condition === 'unrecorded' ? '' : condition;
+    rows = rows.filter((row) => row.condition === code);
+  }
 
   const foilMark = (isFoil) => (isFoil ? ' *F*' : '');
   // Precise lines name the condition (see cardLines.js), so the export pastes
@@ -1479,7 +1490,7 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
   // otherwise undated and unlabelled.
   const header = [
     `// Deck Lotus collection export - ${new Date().toISOString().slice(0, 10)}`,
-    `// ${cards} cards, ${copies} copies, ${shape} format${condition === 'all' ? '' : `, condition ${condition}`}`,
+    `// ${cards} cards, ${copies} copies, ${shape} format${condition === 'all' ? '' : `, condition ${condition}`}${availableOnly ? ', available only (not in decks or lent out)' : ''}`,
   ];
 
   return {
@@ -1489,6 +1500,72 @@ export function exportInventory(userId, { shape = 'precise', condition = 'all' }
     cards,
     copies,
   };
+}
+
+/**
+ * The export's "available only" rows: each card's owned copies less what its
+ * real (non-proxy) decks list and what is out on a live loan — the same
+ * owned − in decks − lent out the Inventory page shows, so the two agree on
+ * the total per card. Availability is per card, so a claim is taken first
+ * from the exact printing and finish it names, and any remainder (a deck
+ * listing a printing the user holds under another) from the card's other
+ * rows, unrecorded and worst condition first so the best copies stay listed.
+ */
+function withoutCommittedCopies(userId, rows) {
+  const left = rows.map((row) => ({ ...row }));
+  const deckClaims = db.all(`
+    SELECT p.card_id, dc.printing_id, dc.is_foil, SUM(dc.quantity) AS quantity
+    FROM deck_cards dc
+    JOIN decks d ON d.id = dc.deck_id
+    JOIN printings p ON p.id = dc.printing_id
+    WHERE d.user_id = ? AND d.is_proxy = 0
+    GROUP BY dc.printing_id, dc.is_foil
+  `, [userId]);
+  const loanClaims = db.all(`
+    SELECT p.card_id, p.id AS printing_id, SUM(cl.quantity) AS quantity
+    FROM card_loans cl
+    JOIN printings p ON p.uuid = cl.printing_uuid
+    WHERE cl.lender_user_id = ? AND cl.status IN ${LIVE_LOANS}
+    GROUP BY p.id
+  `, [userId]);
+
+  const conditionRank = (code) => {
+    const order = ['', 'DMG', 'HP', 'MP', 'LP', 'NM'];
+    const i = order.indexOf(code || '');
+    return i === -1 ? 0 : i;
+  };
+  const byCard = new Map();
+  for (const row of left) {
+    if (!byCard.has(row.card_id)) byCard.set(row.card_id, []);
+    byCard.get(row.card_id).push(row);
+  }
+  for (const list of byCard.values()) {
+    list.sort((a, b) => conditionRank(a.condition) - conditionRank(b.condition));
+  }
+
+  const take = (candidates, amount) => {
+    for (const row of candidates) {
+      if (amount <= 0) break;
+      const n = Math.min(row.quantity, amount);
+      row.quantity -= n;
+      amount -= n;
+    }
+    return amount;
+  };
+  const leftovers = [];
+  for (const claim of deckClaims) {
+    const list = byCard.get(claim.card_id) || [];
+    const rest = take(list.filter((r) => r.printing_id === claim.printing_id && !!r.is_foil === !!claim.is_foil), claim.quantity);
+    if (rest > 0) leftovers.push({ card_id: claim.card_id, quantity: rest });
+  }
+  for (const claim of loanClaims) {
+    const list = byCard.get(claim.card_id) || [];
+    const rest = take(list.filter((r) => r.printing_id === claim.printing_id), claim.quantity);
+    if (rest > 0) leftovers.push({ card_id: claim.card_id, quantity: rest });
+  }
+  for (const claim of leftovers) take(byCard.get(claim.card_id) || [], claim.quantity);
+
+  return left.filter((row) => row.quantity > 0);
 }
 
 const MOXFIELD_COLUMNS = [

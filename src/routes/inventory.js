@@ -183,7 +183,11 @@ router.get('/sets', authenticate, (req, res, next) => {
 router.get('/export', authenticate, (req, res, next) => {
   try {
     const shape = ['simple', 'moxfield', 'manabox'].includes(req.query.shape) ? req.query.shape : 'precise';
-    res.json(exportInventory(req.user.id, { shape, condition: normalizeConditionFilter(req.query.condition) }));
+    res.json(exportInventory(req.user.id, {
+      shape,
+      condition: normalizeConditionFilter(req.query.condition),
+      availableOnly: req.query.scope === 'available',
+    }));
   } catch (error) {
     next(error);
   }
